@@ -1,0 +1,19 @@
+# Relaunch After Every Task
+
+**After completing any coding task, always run the full relaunch flow:**
+
+1. **Rebuild** from iOS project root:
+   `xcodebuild -project Prelura-swift.xcodeproj -scheme Prelura-swift -destination 'platform=iOS Simulator,name=iPhone 14' -configuration Debug build`
+
+2. **Terminate** any running instance:
+   `xcrun simctl terminate "iPhone 14" com.prelura.preloved`
+
+3. **Install** the new build (use DerivedData path from build output):
+   `xcrun simctl install "iPhone 14" <path-to-Prelura-swift.app>`
+
+4. **Launch** the app:
+   `xcrun simctl launch "iPhone 14" com.prelura.preloved`
+
+5. **Report** build/install/launch result and process ID if the app launched.
+
+If the user runs `/relaunch`, follow the steps in `.cursor/commands/relaunch.md` and include monitoring/confirmation in the report.

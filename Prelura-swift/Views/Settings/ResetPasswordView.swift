@@ -1,0 +1,111 @@
+import SwiftUI
+
+/// Reset password: current, new, confirm. Matches Flutter ResetPasswordScreen.
+struct ResetPasswordView: View {
+    @EnvironmentObject var authService: AuthService
+
+    @State private var currentPassword = ""
+    @State private var newPassword = ""
+    @State private var confirmPassword = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var showSuccess = false
+
+    private let userService = UserService()
+
+    private var canSubmit: Bool {
+        !currentPassword.isEmpty && !newPassword.isEmpty && !confirmPassword.isEmpty && newPassword == confirmPassword
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                if let err = errorMessage {
+                    Text(err)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.error)
+                }
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    Text("Current Password")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    SettingsTextField(
+                        placeholder: "Enter current password",
+                        text: $currentPassword,
+                        isSecure: true
+                    )
+                }
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    Text("New Password")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    SettingsTextField(
+                        placeholder: "Enter new password",
+                        text: $newPassword,
+                        isSecure: true
+                    )
+                }
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    Text("Confirm New Password")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    SettingsTextField(
+                        placeholder: "Confirm new password",
+                        text: $confirmPassword,
+                        isSecure: true
+                    )
+                    if !confirmPassword.isEmpty && newPassword != confirmPassword {
+                        Text("Passwords do not match")
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.error)
+                    }
+                }
+                Spacer(minLength: Theme.Spacing.xl)
+                Button {
+                    Task { await resetPassword() }
+                } label: {
+                    HStack {
+                        if isLoading {
+                            ProgressView()
+                                .tint(Theme.Colors.primaryText)
+                        } else {
+                            Text("Reset Password")
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Theme.Spacing.md)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.primaryColor)
+                .disabled(!canSubmit || isLoading)
+            }
+            .padding(Theme.Spacing.md)
+        }
+        .background(Theme.Colors.background)
+        .navigationTitle("Reset Password")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("Password updated", isPresented: $showSuccess) {
+            Button("OK") {
+                currentPassword = ""
+                newPassword = ""
+                confirmPassword = ""
+                errorMessage = nil
+            }
+        } message: {
+            Text("Your password has been changed successfully.")
+        }
+    }
+
+    private func resetPassword() async {
+        guard canSubmit else { return }
+        errorMessage = nil
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            try await userService.passwordChange(currentPassword: currentPassword, newPassword: newPassword)
+            showSuccess = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}

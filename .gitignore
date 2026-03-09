@@ -1,0 +1,16 @@
+# TestFlight credentials (never commit)
+scripts/testflight-credentials.json
+
+# Build
+build/
+DerivedData/
+*.xcarchive
+
+# Xcode
+*.pbxuser
+*.mode1v3
+*.mode2v3
+xcuserdata/
+
+# macOS
+.DS_Store

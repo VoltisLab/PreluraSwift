@@ -1,0 +1,22 @@
+IMPORTANT: Add New View Files to Xcode Project
+
+The following files exist but need to be added to your Xcode project:
+
+1. Open Prelura-swift.xcodeproj in Xcode
+2. Right-click on the "Prelura-swift" folder in the Project Navigator
+3. Select "Add Files to Prelura-swift..."
+4. Navigate to and select these folders/files:
+   - Views/Discover/DiscoverView.swift
+   - Views/Sell/SellView.swift  
+   - Views/Inbox/InboxView.swift
+   - ViewModels/DiscoverViewModel.swift
+   - ViewModels/SellViewModel.swift
+   - ViewModels/InboxViewModel.swift
+   - Models/Message.swift
+5. Make sure "Copy items if needed" is UNCHECKED (files are already in place)
+6. Make sure "Create groups" is selected
+7. Make sure "Add to targets: Prelura-swift" is CHECKED
+8. Click "Add"
+9. Rebuild and run
+
+This will make all 5 tabs appear: Home, Discover, Sell, Inbox, Profile
