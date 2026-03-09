@@ -84,6 +84,7 @@ struct ResetPasswordView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Reset Password")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .alert("Password updated", isPresented: $showSuccess) {
             Button("OK") {
                 currentPassword = ""

@@ -102,6 +102,7 @@ struct AddBankAccountView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Add Bank Account")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 
     private var canSubmit: Bool {

@@ -85,6 +85,7 @@ struct OrderDetailView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Order #\(order.id)")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 
     private var statusSection: some View {

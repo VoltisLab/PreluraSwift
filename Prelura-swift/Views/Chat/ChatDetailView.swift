@@ -21,6 +21,7 @@ struct ChatWithSellerView: View {
             }
         }
         .navigationBarHidden(true)
+        .toolbar(.hidden, for: .tabBar)
         .onAppear {
             if let token = authService?.authToken {
                 chatService.updateAuthToken(token)
@@ -125,6 +126,7 @@ struct ChatDetailView: View {
         }
         .background(Theme.Colors.background)
         .navigationBarHidden(true)
+        .toolbar(.hidden, for: .tabBar)
         .onAppear {
             loadMessages()
         }

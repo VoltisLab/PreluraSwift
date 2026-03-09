@@ -83,6 +83,7 @@ struct VerifyIdentityView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Identity verification")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 
     private func benefitRow(icon: String, text: String) -> some View {

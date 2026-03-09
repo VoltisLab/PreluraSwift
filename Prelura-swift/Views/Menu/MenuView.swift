@@ -79,6 +79,7 @@ struct MenuView: View {
                 }
             }
         }
+        .toolbar(.hidden, for: .tabBar)
         .alert("Logout", isPresented: $showLogoutConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Logout", role: .destructive) {

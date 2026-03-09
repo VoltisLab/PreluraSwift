@@ -88,6 +88,7 @@ struct MyOrdersView: View {
         .background(Theme.Colors.background)
         .navigationTitle("My orders")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .refreshable { await load() }
         .task { await load() }
     }

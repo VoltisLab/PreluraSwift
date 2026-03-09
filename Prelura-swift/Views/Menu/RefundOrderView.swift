@@ -12,5 +12,6 @@ struct RefundOrderView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Refund")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }

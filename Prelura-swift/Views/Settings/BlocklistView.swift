@@ -87,6 +87,7 @@ struct BlocklistView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Blocklist")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .task { await load() }
         .refreshable { await load() }
         .alert("Unblock user?", isPresented: $showUnblockAlert) {

@@ -131,6 +131,7 @@ struct AddPaymentCardView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Add Payment Card")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .alert("Card added", isPresented: $showSuccess) {
             Button("OK") {
                 onAdded?()

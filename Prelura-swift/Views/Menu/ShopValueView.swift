@@ -36,6 +36,7 @@ struct ShopValueView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Shop Value")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .refreshable { await loadEarnings() }
         .onAppear { Task { await loadEarnings() } }
     }

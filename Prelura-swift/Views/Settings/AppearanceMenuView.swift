@@ -48,5 +48,6 @@ struct AppearanceMenuView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Appearance")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }

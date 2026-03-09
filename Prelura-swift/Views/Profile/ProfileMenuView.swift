@@ -169,6 +169,7 @@ struct SettingsMenuView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .alert("Logout", isPresented: $showLogoutConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Logout", role: .destructive) {
@@ -208,6 +209,7 @@ struct AboutPreluraMenuView: View {
         .background(Theme.Colors.background)
         .navigationTitle("About Prelura")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
     
     private func aboutRow(_ title: String, icon: String) -> some View {

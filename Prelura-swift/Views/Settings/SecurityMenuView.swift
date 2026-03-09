@@ -21,6 +21,7 @@ struct SecurityMenuView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Security & Privacy")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 
     private func securityRow(_ title: String, icon: String) -> some View {

@@ -82,6 +82,7 @@ struct MyFavouritesView: View {
             }
         }
         .background(Theme.Colors.background)
+        .toolbar(.hidden, for: .tabBar)
         .navigationTitle("Favourites")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load(resetPage: true) }

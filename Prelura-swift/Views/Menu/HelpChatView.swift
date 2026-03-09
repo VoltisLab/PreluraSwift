@@ -15,5 +15,6 @@ struct HelpChatView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Help Chat")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }

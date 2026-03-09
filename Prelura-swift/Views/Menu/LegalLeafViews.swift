@@ -22,6 +22,7 @@ struct TermsAndConditionsView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Terms & Conditions")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }
 
@@ -47,6 +48,7 @@ struct PrivacyPolicyView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Privacy Policy")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }
 
@@ -72,6 +74,7 @@ struct AcknowledgementsView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Acknowledgements")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 
     private var staticAcknowledgements: some View {
@@ -115,6 +118,7 @@ struct HMRCReportingView: View {
         .background(Theme.Colors.background)
         .navigationTitle("HMRC reporting centre")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }
 

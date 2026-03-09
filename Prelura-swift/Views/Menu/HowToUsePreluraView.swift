@@ -18,5 +18,6 @@ struct HowToUsePreluraView: View {
         .background(Theme.Colors.background)
         .navigationTitle("How to use Prelura")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }

@@ -57,6 +57,7 @@ struct DeleteAccountView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Delete Account")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .confirmationDialog("Delete account?", isPresented: $showConfirm, titleVisibility: .visible) {
             Button("Delete Account", role: .destructive) {
                 Task { await deleteAccount() }

@@ -28,5 +28,6 @@ struct PostageSettingsView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Postage")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }

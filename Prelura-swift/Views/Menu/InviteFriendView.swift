@@ -54,6 +54,7 @@ struct InviteFriendView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Invite a friend")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 
     private func inviteRow(

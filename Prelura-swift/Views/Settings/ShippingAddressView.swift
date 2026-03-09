@@ -97,6 +97,7 @@ struct ShippingAddressView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Shipping Address")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .onAppear(perform: loadUser)
         .alert("Saved", isPresented: $showSuccess) {
             Button("OK", role: .cancel) { dismiss() }

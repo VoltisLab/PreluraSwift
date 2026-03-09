@@ -699,6 +699,7 @@ struct ConditionSelectionView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Select Condition")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }
 
@@ -737,6 +738,7 @@ struct ColoursSelectionView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Select Colours")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Done") {
@@ -816,6 +818,7 @@ struct MaterialSelectionView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Select Material")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }
 
@@ -852,6 +855,7 @@ struct StyleSelectionView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Select Style")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }
 
@@ -957,6 +961,7 @@ struct DiscountPriceInputView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Discount Price")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .onAppear {
             if let discountPrice = discountPrice {
                 discountPriceText = String(format: "%.0f", discountPrice)
@@ -1035,6 +1040,7 @@ struct BrandInputView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Brand")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .onAppear {
             brandText = selectedBrand ?? ""
             isFocused = true

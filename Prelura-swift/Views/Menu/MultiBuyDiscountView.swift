@@ -70,6 +70,7 @@ struct MultiBuyDiscountView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Multi-buy discounts")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .refreshable { await load() }
         .task { await load() }
         .alert("Saved", isPresented: .init(get: { successMessage != nil }, set: { if !$0 { successMessage = nil } })) {

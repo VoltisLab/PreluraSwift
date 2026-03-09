@@ -43,6 +43,7 @@ struct VacationModeView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Vacation Mode")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .refreshable { await fetch() }
         .task { await fetch() }
         .onAppear {

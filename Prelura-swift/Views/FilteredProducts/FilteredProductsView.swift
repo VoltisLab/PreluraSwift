@@ -121,6 +121,7 @@ struct FilteredProductsView: View {
         }
         .background(Theme.Colors.background)
         .navigationBarHidden(true)
+        .toolbar(.hidden, for: .tabBar)
         .onAppear {
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)

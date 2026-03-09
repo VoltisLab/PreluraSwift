@@ -68,6 +68,7 @@ struct UserProfileView: View {
         }
         .background(Theme.Colors.background)
         .navigationBarHidden(true)
+        .toolbar(.hidden, for: .tabBar)
         .refreshable { await viewModel.refreshAsync() }
         .onAppear {
             viewModel.load()

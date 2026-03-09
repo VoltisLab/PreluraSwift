@@ -103,6 +103,7 @@ struct AccountSettingsView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Account Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .onAppear(perform: loadUser)
         .sheet(isPresented: $showDatePicker) { datePickerSheet }
         .sheet(isPresented: $showGenderPicker) { genderPickerSheet }

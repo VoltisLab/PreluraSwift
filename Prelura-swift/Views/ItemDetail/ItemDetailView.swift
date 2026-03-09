@@ -70,6 +70,7 @@ struct ItemDetailView: View {
                 onDismiss: { showFullScreenImages = false }
             )
         }
+        .toolbar(.hidden, for: .tabBar)
     }
     
     private var isCurrentUser: Bool {

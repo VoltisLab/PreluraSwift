@@ -55,6 +55,7 @@ struct NotificationSettingsView: View {
         .background(Theme.Colors.background)
         .navigationTitle("\(title) Notification Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .refreshable { await viewModel.load() }
         .task { await viewModel.load() }
     }

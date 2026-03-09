@@ -15,5 +15,6 @@ struct ListOfContactsView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Contacts")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }

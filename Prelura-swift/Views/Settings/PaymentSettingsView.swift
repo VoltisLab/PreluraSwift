@@ -78,6 +78,7 @@ struct PaymentSettingsView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Payments")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .refreshable { await load() }
         .task { await load() }
         .confirmationDialog("Remove payment method?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {

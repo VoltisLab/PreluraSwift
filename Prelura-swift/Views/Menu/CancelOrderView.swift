@@ -12,5 +12,6 @@ struct CancelOrderView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Cancel Order")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }

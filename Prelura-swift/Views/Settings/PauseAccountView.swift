@@ -58,6 +58,7 @@ struct PauseAccountView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Pause Account")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .confirmationDialog("Pause account?", isPresented: $showConfirm, titleVisibility: .visible) {
             Button("Pause Account") {
                 Task { await pauseAccount() }

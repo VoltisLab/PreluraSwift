@@ -21,6 +21,7 @@ struct LegalInformationView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Legal Information")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 
     private func menuRow(_ title: String, icon: String) -> some View {

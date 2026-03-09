@@ -30,5 +30,6 @@ struct ProfileSettingsView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Profile details")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }

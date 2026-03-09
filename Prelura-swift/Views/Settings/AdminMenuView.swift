@@ -18,5 +18,6 @@ struct AdminMenuView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Admin Actions")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }
