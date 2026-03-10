@@ -47,12 +47,7 @@ struct GlassNavigationBar: ViewModifier {
                     .fill(.ultraThinMaterial)
                     .opacity(0.9)
             )
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
             
             content
         }

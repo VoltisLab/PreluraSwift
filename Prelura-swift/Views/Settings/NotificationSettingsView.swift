@@ -29,7 +29,7 @@ struct NotificationSettingsView: View {
                     }
 
                     Section {
-                        Text("General")
+                        Text(L10n.string("General"))
                             .font(Theme.Typography.headline)
                             .foregroundColor(Theme.primaryColor)
                     }
@@ -53,7 +53,7 @@ struct NotificationSettingsView: View {
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle("\(title) Notification Settings")
+        .navigationTitle("\(title) \(L10n.string("Notification Settings"))")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .refreshable { await viewModel.load() }

@@ -15,7 +15,7 @@ struct PrivacySettingsView: View {
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle("Privacy")
+        .navigationTitle(L10n.string("Privacy"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }

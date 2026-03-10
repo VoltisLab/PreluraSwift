@@ -161,12 +161,7 @@ struct UserProfileView: View {
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Theme.Colors.glassBorder),
-            alignment: .bottom
-        )
+        .overlay(ContentDivider(), alignment: .bottom)
     }
 
     private func bioSection(_ bio: String) -> some View {
@@ -182,27 +177,25 @@ struct UserProfileView: View {
     private var userStatsSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.md) {
-                StatColumn(value: "\(viewModel.items.count)", label: "Listings")
+                StatColumn(value: "\(viewModel.items.count)", label: L10n.string("Listings"))
                 NavigationLink(destination: FollowingListView(username: viewModel.user.username)) {
-                    StatColumn(value: "\(viewModel.user.followingsCount)", label: "Followings")
+                    StatColumn(value: "\(viewModel.user.followingsCount)", label: L10n.string("Followings"))
                 }
                 .buttonStyle(.plain)
                 NavigationLink(destination: FollowersListView(username: viewModel.user.username)) {
-                    StatColumn(value: "\(viewModel.user.followersCount)", label: "Followers")
+                    StatColumn(value: "\(viewModel.user.followersCount)", label: L10n.string("Followers"))
                 }
                 .buttonStyle(.plain)
-                StatColumn(value: "\(viewModel.user.reviewCount)", label: "Reviews")
-                StatColumn(value: viewModel.user.locationAbbreviation ?? "N/A", label: "Location")
+                NavigationLink(value: AppRoute.reviews(username: viewModel.user.username, rating: viewModel.user.rating)) {
+                    StatColumn(value: "\(viewModel.user.reviewCount)", label: L10n.string("Reviews"))
+                }
+                .buttonStyle(HapticTapButtonStyle())
+                StatColumn(value: viewModel.user.locationAbbreviation ?? L10n.string("N/A"), label: L10n.string("Location"))
             }
             .padding(.horizontal, Theme.Spacing.md)
         }
         .padding(.vertical, Theme.Spacing.md)
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Theme.Colors.glassBorder),
-            alignment: .bottom
-        )
+        .overlay(ContentDivider(), alignment: .bottom)
     }
 
     // MARK: - Filters Section (Categories, Multi-buy read-only, Top brands, Filter/Sort)
@@ -215,7 +208,7 @@ struct UserProfileView: View {
                     }
                 }) {
                     HStack {
-                        Text("Categories")
+                        Text(L10n.string("Categories"))
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.Colors.secondaryText)
                         Spacer()
@@ -241,7 +234,7 @@ struct UserProfileView: View {
                                     Text(category.name)
                                         .font(Theme.Typography.subheadline)
                                         .foregroundColor(Theme.Colors.primaryText)
-                                    Text("(\(category.count) \(category.count == 1 ? "item" : "items"))")
+                                    Text("(\(category.count) \(category.count == 1 ? L10n.string("item") : L10n.string("items"))")
                                         .font(Theme.Typography.caption)
                                         .foregroundColor(Theme.Colors.secondaryText)
                                     Spacer(minLength: Theme.Spacing.md)
@@ -254,38 +247,31 @@ struct UserProfileView: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                             if category.name != viewModel.categoriesWithCounts.last?.name {
-                                Divider()
-                                    .background(Theme.Colors.glassBorder)
+                                ContentDivider()
                                     .padding(.leading, Theme.Spacing.lg)
                             }
                         }
                     }
                 }
             }
-            .overlay(
-                Rectangle().frame(height: 0.5).foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
 
             HStack {
-                Text("Multi-buy:")
+                Text(L10n.string("Multi-buy:"))
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.secondaryText)
                 Spacer()
-                Text(viewModel.user.isMultibuyEnabled ? "On" : "Off")
+                Text(viewModel.user.isMultibuyEnabled ? L10n.string("On") : L10n.string("Off"))
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.primaryText)
             }
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.md)
-            .overlay(
-                Rectangle().frame(height: 0.5).foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("Top brands")
+                    Text(L10n.string("Top brands"))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.secondaryText)
                     Spacer()
@@ -318,7 +304,7 @@ struct UserProfileView: View {
                     HStack(spacing: Theme.Spacing.xs) {
                         Image(systemName: "line.3.horizontal.decrease")
                             .font(.system(size: 14))
-                        Text("Filter")
+                        Text(L10n.string("Filter"))
                             .font(Theme.Typography.subheadline)
                     }
                     .foregroundColor(Theme.Colors.secondaryText)
@@ -329,7 +315,7 @@ struct UserProfileView: View {
                 Spacer()
                 Button(action: { showSortSheet = true }) {
                     HStack(spacing: Theme.Spacing.xs) {
-                        Text(profileSort.rawValue)
+                        Text(L10n.string(profileSort.rawValue))
                             .font(Theme.Typography.subheadline)
                         Image(systemName: "arrow.up.arrow.down")
                             .font(.system(size: 12))
@@ -354,40 +340,40 @@ struct UserProfileView: View {
                 ForEach(ProfileSortOption.allCases, id: \.self) { option in
                     Button(action: { profileSort = option; showSortSheet = false }) {
                         HStack {
-                            Text(option.rawValue).foregroundColor(Theme.Colors.primaryText)
+                            Text(L10n.string(option.rawValue)).foregroundColor(Theme.Colors.primaryText)
                             Spacer()
                             if profileSort == option { Image(systemName: "checkmark").foregroundColor(Theme.primaryColor) }
                         }
                     }
                 }
                 Section {
-                    Button(role: .destructive, action: { profileSort = .relevance; showSortSheet = false }) { Text("Clear").frame(maxWidth: .infinity) }
+                    Button(role: .destructive, action: { profileSort = .relevance; showSortSheet = false }) { Text(L10n.string("Clear")).frame(maxWidth: .infinity) }
                 }
             }
-            .navigationTitle("Sort")
+            .navigationTitle(L10n.string("Sort"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { showSortSheet = false } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(L10n.string("Done")) { showSortSheet = false } } }
         }
     }
 
     private var userProfileFilterSheet: some View {
         NavigationStack {
             List {
-                Section(header: Text("Condition")) {
+                Section(header: Text(L10n.string("Condition"))) {
                     ForEach(profileConditionOptions, id: \.raw) { option in
                         Button(action: { filterCondition = filterCondition == option.raw ? nil : option.raw }) {
                             HStack {
-                                Text(option.display).foregroundColor(Theme.Colors.primaryText)
+                                Text(L10n.string(option.display)).foregroundColor(Theme.Colors.primaryText)
                                 Spacer()
                                 if filterCondition == option.raw { Image(systemName: "checkmark").foregroundColor(Theme.primaryColor) }
                             }
                         }
                     }
                 }
-                Section(header: Text("Price range")) {
+                Section(header: Text(L10n.string("Price range"))) {
                     Button(action: { showFilterSheet = false; showPriceFilterSheet = true }) {
                         HStack {
-                            Text("Price").foregroundColor(Theme.Colors.primaryText)
+                            Text(L10n.string("Price")).foregroundColor(Theme.Colors.primaryText)
                             Spacer()
                             if !filterMinPrice.isEmpty || !filterMaxPrice.isEmpty {
                                 Text([filterMinPrice, filterMaxPrice].filter { !$0.isEmpty }.joined(separator: " – "))
@@ -398,12 +384,12 @@ struct UserProfileView: View {
                     }
                 }
                 Section {
-                    Button(role: .destructive, action: { filterCondition = nil; filterMinPrice = ""; filterMaxPrice = ""; showFilterSheet = false }) { Text("Clear").frame(maxWidth: .infinity) }
+                    Button(role: .destructive, action: { filterCondition = nil; filterMinPrice = ""; filterMaxPrice = ""; showFilterSheet = false }) { Text(L10n.string("Clear")).frame(maxWidth: .infinity) }
                 }
             }
-            .navigationTitle("Filter")
+            .navigationTitle(L10n.string("Filter"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { showFilterSheet = false } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(L10n.string("Done")) { showFilterSheet = false } } }
         }
     }
 
@@ -411,17 +397,17 @@ struct UserProfileView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Min. Price", text: $filterMinPrice).keyboardType(.decimalPad)
-                    TextField("Max. Price", text: $filterMaxPrice).keyboardType(.decimalPad)
+                    TextField(L10n.string("Min. Price"), text: $filterMinPrice).keyboardType(.decimalPad)
+                    TextField(L10n.string("Max. Price"), text: $filterMaxPrice).keyboardType(.decimalPad)
                 }
                 Section {
-                    Button("Clear") { filterMinPrice = ""; filterMaxPrice = ""; showPriceFilterSheet = false }
-                    Button("Apply") { showPriceFilterSheet = false }.fontWeight(.semibold)
+                    Button(L10n.string("Clear")) { filterMinPrice = ""; filterMaxPrice = ""; showPriceFilterSheet = false }
+                    Button(L10n.string("Apply")) { showPriceFilterSheet = false }.fontWeight(.semibold)
                 }
             }
-            .navigationTitle("Price")
+            .navigationTitle(L10n.string("Price"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { showPriceFilterSheet = false } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(L10n.string("Done")) { showPriceFilterSheet = false } } }
         }
     }
 

@@ -25,71 +25,76 @@ struct AccountSettingsView: View {
     private enum Field { case fullName, email, phone, bio }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                SettingsTextField(
-                    placeholder: "Full name",
-                    text: $fullName,
-                    textContentType: .name
-                )
-                .focused($focusedField, equals: .fullName)
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                    SettingsTextField(
+                        placeholder: "Full name",
+                        text: $fullName,
+                        textContentType: .name
+                    )
+                    .focused($focusedField, equals: .fullName)
 
-                SettingsTextField(
-                    placeholder: "Email",
-                    text: $email,
-                    keyboardType: .emailAddress,
-                    textContentType: .emailAddress
-                )
-                .focused($focusedField, equals: .email)
+                    SettingsTextField(
+                        placeholder: "Email",
+                        text: $email,
+                        keyboardType: .emailAddress,
+                        textContentType: .emailAddress
+                    )
+                    .focused($focusedField, equals: .email)
 
-                SettingsTextField(
-                    placeholder: "Phone",
-                    text: $phone,
-                    keyboardType: .phonePad,
-                    textContentType: .telephoneNumber
-                )
-                .focused($focusedField, equals: .phone)
+                    SettingsTextField(
+                        placeholder: "Phone",
+                        text: $phone,
+                        keyboardType: .phonePad,
+                        textContentType: .telephoneNumber
+                    )
+                    .focused($focusedField, equals: .phone)
 
-                SettingsTextField(
-                    placeholder: "Date of birth",
-                    text: $dateOfBirthText,
-                    isEnabled: false,
-                    onTap: { showDatePicker = true }
-                )
+                    SettingsTextField(
+                        placeholder: "Date of birth",
+                        text: $dateOfBirthText,
+                        isEnabled: false,
+                        onTap: { showDatePicker = true }
+                    )
 
-                SettingsTextField(
-                    placeholder: "Gender",
-                    text: $gender,
-                    isEnabled: false,
-                    onTap: { showGenderPicker = true }
-                )
+                    SettingsTextField(
+                        placeholder: "Gender",
+                        text: $gender,
+                        isEnabled: false,
+                        onTap: { showGenderPicker = true }
+                    )
 
-                Button("AutoFill") {
-                    focusedField = .fullName
+                    Button("AutoFill") {
+                        focusedField = .fullName
+                    }
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Theme.Spacing.md)
+                    .background(Theme.Colors.secondaryBackground)
+                    .cornerRadius(30)
+
+                    SettingsTextEditor(placeholder: "Bio", text: $bio, minHeight: 100)
+                        .focused($focusedField, equals: .bio)
+
+                    if let err = errorMessage {
+                        Text(err)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(.red)
+                    }
                 }
-                .font(Theme.Typography.body)
-                .foregroundColor(Theme.Colors.primaryText)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, Theme.Spacing.md)
-                .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(30)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.lg)
+                .padding(.bottom, 100)
+            }
+            .background(Theme.Colors.background)
 
-                SettingsTextEditor(placeholder: "Bio", text: $bio, minHeight: 100)
-                    .focused($focusedField, equals: .bio)
-
-                if let err = errorMessage {
-                    Text(err)
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(.red)
-                }
-
+            PrimaryButtonBar {
                 PrimaryGlassButton("Save", isLoading: isSaving, action: save)
             }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.lg)
         }
-        .background(Theme.Colors.background)
-        .navigationTitle("Account Settings")
+        .navigationTitle(L10n.string("Account Settings"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .onAppear(perform: loadUser)
@@ -98,7 +103,7 @@ struct AccountSettingsView: View {
         .alert("Saved", isPresented: $showSuccess) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("Your account settings have been updated.")
+            Text(L10n.string("Your account settings have been updated."))
         }
     }
 
@@ -110,7 +115,7 @@ struct AccountSettingsView: View {
             ), displayedComponents: .date)
             .datePickerStyle(.graphical)
             .padding()
-            .navigationTitle("Date of birth")
+            .navigationTitle(L10n.string("Date of birth"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -129,7 +134,7 @@ struct AccountSettingsView: View {
                     showGenderPicker = false
                 }
             }
-            .navigationTitle("Gender")
+            .navigationTitle(L10n.string("Gender"))
             .navigationBarTitleDisplayMode(.inline)
         }
     }

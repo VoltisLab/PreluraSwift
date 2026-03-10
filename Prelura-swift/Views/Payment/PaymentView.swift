@@ -90,7 +90,7 @@ struct PaymentView: View {
                                 Image(systemName: "shield")
                                     .font(.system(size: 16))
                                     .foregroundColor(Theme.Colors.primaryText)
-                                Text("Buyer protection fee")
+                                Text(L10n.string("Buyer protection fee"))
                                     .font(Theme.Typography.body)
                                     .foregroundColor(Theme.Colors.primaryText)
                                 Text(String(format: "£%.2f", buyerProtectionFee))
@@ -128,7 +128,7 @@ struct PaymentView: View {
                                     Text("\(method.cardBrand) •••• \(method.last4Digits)")
                                         .font(Theme.Typography.headline)
                                         .foregroundColor(Theme.Colors.primaryText)
-                                    Text("Card ending in \(method.last4Digits)")
+                                    Text(String(format: L10n.string("Card ending in %@"), method.last4Digits))
                                         .font(Theme.Typography.caption)
                                         .foregroundColor(Theme.Colors.secondaryText)
                                 }
@@ -138,12 +138,12 @@ struct PaymentView: View {
                             .background(Theme.Colors.secondaryBackground)
                             .cornerRadius(Theme.Glass.cornerRadius)
                         } else if !isLoadingPaymentMethod {
-                            Text("No payment method added")
+                            Text(L10n.string("No payment method added"))
                                 .font(Theme.Typography.body)
                                 .foregroundColor(Theme.Colors.secondaryText)
                                 .padding(Theme.Spacing.md)
                             NavigationLink(destination: AddPaymentCardView(onAdded: { Task { await loadPaymentMethod() } })) {
-                                Text("Add payment method")
+                                Text(L10n.string("Add payment method"))
                                     .font(Theme.Typography.headline)
                                     .foregroundColor(Theme.primaryColor)
                             }
@@ -167,7 +167,7 @@ struct PaymentView: View {
 
                 bottomBar
             }
-            .navigationTitle("Payment")
+            .navigationTitle(L10n.string("Payment"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -177,6 +177,7 @@ struct PaymentView: View {
                         Image(systemName: "xmark")
                             .foregroundColor(Theme.Colors.primaryText)
                     }
+                    .buttonStyle(HapticTapButtonStyle())
                 }
             }
             .fullScreenCover(isPresented: $showPaymentSuccess) {
@@ -246,7 +247,7 @@ struct PaymentView: View {
                     .stroke(isSelected ? Theme.primaryColor : Theme.Colors.glassBorder, lineWidth: isSelected ? 2 : 1)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
     }
 
     private func infoRow(_ label: String, _ value: String, valueColor: Color? = nil, isBold: Bool = false) -> some View {
@@ -262,37 +263,24 @@ struct PaymentView: View {
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.sm)
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Theme.Colors.glassBorder),
-            alignment: .bottom
-        )
+        .overlay(ContentDivider(), alignment: .bottom)
     }
 
     private var bottomBar: some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            HStack(spacing: Theme.Spacing.sm) {
-                Image(systemName: "lock")
-                    .font(.system(size: 12))
-                    .foregroundColor(Theme.Colors.secondaryText)
-                Text("This is a secure encryption payment")
-                    .font(Theme.Typography.caption)
-                    .fontWeight(.light)
-                    .foregroundColor(Theme.Colors.secondaryText)
+        PrimaryButtonBar {
+            VStack(spacing: Theme.Spacing.sm) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Image(systemName: "lock")
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    Text(L10n.string("This is a secure encryption payment"))
+                        .font(Theme.Typography.caption)
+                        .fontWeight(.light)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+                PrimaryGlassButton("Pay by card", icon: "creditcard", isLoading: isSubmitting, action: payByCard)
             }
-            PrimaryGlassButton("Pay by card", icon: "creditcard", isLoading: isSubmitting, action: payByCard)
         }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.bottom, Theme.Spacing.lg)
-        .padding(.top, Theme.Spacing.sm)
-        .background(Theme.Colors.background)
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Theme.Colors.glassBorder),
-            alignment: .top
-        )
     }
 
     private func loadUser() async {

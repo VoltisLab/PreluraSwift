@@ -55,7 +55,9 @@ class GraphQLClient {
         // Decode body first so we can surface GraphQL errors even when status is 4xx (e.g. 400)
         let graphQLResponse: GraphQLResponse<T>
         do {
-            graphQLResponse = try JSONDecoder().decode(GraphQLResponse<T>.self, from: data)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            graphQLResponse = try decoder.decode(GraphQLResponse<T>.self, from: data)
         } catch {
             if !(200...299).contains(httpResponse.statusCode) {
                 throw GraphQLError.httpError(httpResponse.statusCode)
@@ -75,6 +77,50 @@ class GraphQLClient {
             throw GraphQLError.noData
         }
         
+        return responseData
+    }
+    
+    /// Execute and decode with a custom decoder (e.g. for requests that need different key strategy).
+    func execute<T: Decodable>(
+        query: String,
+        variables: [String: Any]? = nil,
+        operationName: String? = nil,
+        responseType: T.Type,
+        decoder: JSONDecoder
+    ) async throws -> T {
+        var request = URLRequest(url: baseURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        var body: [String: Any] = ["query": query]
+        if let variables = variables { body["variables"] = variables }
+        if let operationName = operationName { body["operationName"] = operationName }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GraphQLError.networkError("Invalid response")
+        }
+        let graphQLResponse: GraphQLResponse<T>
+        do {
+            graphQLResponse = try decoder.decode(GraphQLResponse<T>.self, from: data)
+        } catch {
+            if !(200...299).contains(httpResponse.statusCode) {
+                throw GraphQLError.httpError(httpResponse.statusCode)
+            }
+            throw GraphQLError.decodingError(error)
+        }
+        if let errors = graphQLResponse.errors, !errors.isEmpty {
+            throw GraphQLError.graphQLErrors(errors)
+        }
+        if !(200...299).contains(httpResponse.statusCode) {
+            throw GraphQLError.httpError(httpResponse.statusCode)
+        }
+        guard let responseData = graphQLResponse.data else {
+            throw GraphQLError.noData
+        }
         return responseData
     }
 }

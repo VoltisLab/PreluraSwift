@@ -35,7 +35,7 @@ struct GlassMaterialsView: View {
                 .buttonStyle(.plain)
                 .glassEffect(.regular, in: .rect(cornerRadius: 12))
 
-                // Liquid Glass (clear / more transparent)
+                // Glass clear button (fully glassy — used for Discover category buttons)
                 Button(action: {}) {
                     Text("Hello, World!")
                         .font(Theme.Typography.headline)
@@ -45,7 +45,7 @@ struct GlassMaterialsView: View {
                         .padding(.vertical, Theme.Spacing.md)
                 }
                 .buttonStyle(.plain)
-                .glassEffect(.clear, in: .rect(cornerRadius: 12))
+                .glassEffect(.clear, in: .rect(cornerRadius: 30))
 
                 // Liquid Glass (clear + primary colour tint)
                 Button(action: {}) {
@@ -110,7 +110,7 @@ struct GlassMaterialsView: View {
             Text("Glass (regular)")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
-            Text("Glass (clear)")
+            Text("Glass clear button (pill)")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
             Text("Glass (clear + primary tint)")

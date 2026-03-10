@@ -19,7 +19,7 @@ struct SecurityMenuView: View {
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle("Security & Privacy")
+        .navigationTitle(L10n.string("Security & Privacy"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }

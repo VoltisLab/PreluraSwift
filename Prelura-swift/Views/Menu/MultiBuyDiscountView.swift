@@ -16,47 +16,50 @@ struct MultiBuyDiscountView: View {
     private let tierMinItems = [2, 5, 10]
 
     var body: some View {
-        List {
-            Section {
-                Toggle(isOn: Binding(
-                    get: { isEnabled },
-                    set: { newValue in
-                        if newValue {
-                            isEnabled = true
-                        } else {
-                            Task { await turnOff() }
-                        }
-                    }
-                )) {
-                    Text("Multi-buy discounts")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.primaryText)
-                }
-                .tint(Theme.primaryColor)
-                .disabled(isSaving)
-            }
-            if isEnabled {
-                Section(header: Text("Discount tiers").font(Theme.Typography.caption).foregroundColor(Theme.Colors.secondaryText)) {
-                    tierRow(label: "2+ items", value: $tier2Percent)
-                    tierRow(label: "5+ items", value: $tier5Percent)
-                    tierRow(label: "10+ items", value: $tier10Percent)
-                }
-                if let err = errorMessage {
-                    Text(err)
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.error)
-                }
+        ZStack(alignment: .bottom) {
+            List {
                 Section {
-                    PrimaryGlassButton(
-                        "Save",
-                        isLoading: isSaving,
-                        action: { Task { await save() } }
-                    )
+                    Toggle(isOn: Binding(
+                        get: { isEnabled },
+                        set: { newValue in
+                            if newValue {
+                                isEnabled = true
+                            } else {
+                                Task { await turnOff() }
+                            }
+                        }
+                    )) {
+                        Text("Multi-buy discounts")
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                    .tint(Theme.primaryColor)
+                    .disabled(isSaving)
+                }
+                if isEnabled {
+                    Section(header: Text("Discount tiers").font(Theme.Typography.caption).foregroundColor(Theme.Colors.secondaryText)) {
+                        tierRow(label: "2+ items", value: $tier2Percent)
+                        tierRow(label: "5+ items", value: $tier5Percent)
+                        tierRow(label: "10+ items", value: $tier10Percent)
+                    }
+                    if let err = errorMessage {
+                        Text(err)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.error)
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if isEnabled {
+                    PrimaryButtonBar {
+                        PrimaryGlassButton("Save", isLoading: isSaving, action: { Task { await save() } })
+                    }
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .background(Theme.Colors.background)
         .navigationTitle("Multi-buy discounts")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)

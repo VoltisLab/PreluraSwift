@@ -12,85 +12,85 @@ struct AddBankAccountView: View {
     private enum Field { case sortCode, accountNumber, accountHolderName, accountLabel }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                Text("Enter your UK bank details. Your information is stored securely and used only for payouts.")
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .padding(.bottom, Theme.Spacing.xs)
-
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Sort code")
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    Text(L10n.string("Enter your UK bank details. Your information is stored securely and used only for payouts."))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(
-                        placeholder: "00-00-00",
-                        text: $sortCode,
-                        keyboardType: .numberPad
-                    )
-                    .focused($focusedField, equals: .sortCode)
-                    .onChange(of: sortCode) { _, newValue in
-                        sortCode = formatSortCode(newValue)
+                        .padding(.bottom, Theme.Spacing.xs)
+
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Sort code"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: "00-00-00",
+                            text: $sortCode,
+                            keyboardType: .numberPad
+                        )
+                        .focused($focusedField, equals: .sortCode)
+                        .onChange(of: sortCode) { _, newValue in
+                            sortCode = formatSortCode(newValue)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Account number"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: "12345678",
+                            text: $accountNumber,
+                            keyboardType: .numberPad
+                        )
+                        .focused($focusedField, equals: .accountNumber)
+                        .onChange(of: accountNumber) { _, newValue in
+                            let filtered = newValue.filter { $0.isNumber }.prefix(8)
+                            accountNumber = String(filtered)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Account holder name"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: "As shown on your bank account",
+                            text: $accountHolderName,
+                            textContentType: .name
+                        )
+                        .focused($focusedField, equals: .accountHolderName)
+                    }
+
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Account label (optional)"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: "e.g. Main account",
+                            text: $accountLabel
+                        )
+                        .focused($focusedField, equals: .accountLabel)
+                    }
+
+                    if let err = errorMessage {
+                        Text(err)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(.red)
                     }
                 }
-
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Account number")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(
-                        placeholder: "12345678",
-                        text: $accountNumber,
-                        keyboardType: .numberPad
-                    )
-                    .focused($focusedField, equals: .accountNumber)
-                    .onChange(of: accountNumber) { _, newValue in
-                        let filtered = newValue.filter { $0.isNumber }.prefix(8)
-                        accountNumber = String(filtered)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Account holder name")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(
-                        placeholder: "As shown on your bank account",
-                        text: $accountHolderName,
-                        textContentType: .name
-                    )
-                    .focused($focusedField, equals: .accountHolderName)
-                }
-
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Account label (optional)")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(
-                        placeholder: "e.g. Main account",
-                        text: $accountLabel
-                    )
-                    .focused($focusedField, equals: .accountLabel)
-                }
-
-                if let err = errorMessage {
-                    Text(err)
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(.red)
-                }
-
-                PrimaryGlassButton(
-                    "Add bank account",
-                    isEnabled: canSubmit,
-                    isLoading: isSaving,
-                    action: addBankAccount
-                )
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.lg)
+                .padding(.bottom, 100)
             }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.lg)
+            .background(Theme.Colors.background)
+
+            PrimaryButtonBar {
+                PrimaryGlassButton("Add bank account", isEnabled: canSubmit, isLoading: isSaving, action: addBankAccount)
+            }
         }
-        .background(Theme.Colors.background)
-        .navigationTitle("Add Bank Account")
+        .navigationTitle(L10n.string("Add Bank Account"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }

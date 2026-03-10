@@ -18,7 +18,7 @@ struct FollowingListView: View {
                     Image(systemName: "person.2")
                         .font(.system(size: 48))
                         .foregroundColor(Theme.Colors.secondaryText)
-                    Text("Not following anyone yet")
+                    Text(L10n.string("Not following anyone yet"))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
@@ -54,7 +54,7 @@ struct FollowingListView: View {
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Following")
+        .navigationTitle(L10n.string("Following"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .onAppear {

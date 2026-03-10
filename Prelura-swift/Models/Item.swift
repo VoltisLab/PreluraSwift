@@ -66,6 +66,29 @@ struct Item: Identifiable, Hashable {
         lhs.id == rhs.id
     }
     
+    /// Returns a copy with updated like state (for optimistic/local updates after toggle like).
+    func with(likeCount: Int? = nil, isLiked: Bool? = nil) -> Item {
+        Item(
+            id: id,
+            productId: productId,
+            title: title,
+            description: description,
+            price: price,
+            originalPrice: originalPrice,
+            imageURLs: imageURLs,
+            category: category,
+            categoryName: categoryName,
+            seller: seller,
+            condition: condition,
+            size: size,
+            brand: brand,
+            likeCount: likeCount ?? self.likeCount,
+            views: views,
+            createdAt: createdAt,
+            isLiked: isLiked ?? self.isLiked
+        )
+    }
+
     /// Format price: whole numbers as "£14", decimals as "£6.80" or "£6.87"
     private static func formatPrice(_ value: Double) -> String {
         if value == floor(value) {
@@ -105,6 +128,13 @@ struct Item: Identifiable, Hashable {
             // If already formatted or unknown, return as-is
             return condition
         }
+    }
+}
+
+extension Array where Element == Item {
+    /// Returns a new array with the item matching productId replaced by the given item.
+    func replacingItem(productId: String, with updated: Item) -> [Item] {
+        map { $0.productId == productId ? updated : $0 }
     }
 }
 

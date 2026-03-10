@@ -5,6 +5,7 @@ enum AppRoute: Hashable {
     case itemDetail(Item)
     case conversation(Conversation)
     case menu(MenuContext)
+    case reviews(username: String, rating: Double)
 }
 
 /// Context passed when pushing Menu (profile menu with listing counts and flags).

@@ -156,6 +156,32 @@ class DiscoverViewModel: ObservableObject {
     func refresh() {
         loadData()
     }
+
+    /// Toggle like for a product and update it in all relevant arrays.
+    func toggleLike(productId: String) {
+        guard !productId.isEmpty else { return }
+        let current = discoverItems.first(where: { $0.productId == productId })
+            ?? recentlyViewedItems.first(where: { $0.productId == productId })
+            ?? brandsYouLoveItems.first(where: { $0.productId == productId })
+            ?? shopBargainsItems.first(where: { $0.productId == productId })
+            ?? onSaleItems.first(where: { $0.productId == productId })
+        guard let item = current else { return }
+        Task {
+            do {
+                let (isLiked, likeCount) = try await productService.toggleLike(productId: productId, isLiked: !item.isLiked)
+                await MainActor.run {
+                    let updated = item.with(likeCount: likeCount, isLiked: isLiked)
+                    discoverItems = discoverItems.replacingItem(productId: productId, with: updated)
+                    recentlyViewedItems = recentlyViewedItems.replacingItem(productId: productId, with: updated)
+                    brandsYouLoveItems = brandsYouLoveItems.replacingItem(productId: productId, with: updated)
+                    shopBargainsItems = shopBargainsItems.replacingItem(productId: productId, with: updated)
+                    onSaleItems = onSaleItems.replacingItem(productId: productId, with: updated)
+                }
+            } catch {
+                await MainActor.run { errorMessage = error.localizedDescription }
+            }
+        }
+    }
     
     func refreshAsync() async {
         await MainActor.run {

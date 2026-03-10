@@ -9,14 +9,14 @@ struct AdminMenuView: View {
                     Image(systemName: "trash")
                         .font(.body)
                         .foregroundColor(.red)
-                    Text("Delete All Conversations")
+                    Text(L10n.string("Delete All Conversations"))
                         .foregroundColor(.red)
                 }
             }
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle("Admin Actions")
+        .navigationTitle(L10n.string("Admin Actions"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }

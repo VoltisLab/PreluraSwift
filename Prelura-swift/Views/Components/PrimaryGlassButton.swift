@@ -24,7 +24,10 @@ struct PrimaryGlassButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            HapticManager.primaryAction()
+            action()
+        }) {
             HStack(spacing: Theme.Spacing.sm) {
                 if isLoading {
                     ProgressView()

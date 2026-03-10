@@ -1,0 +1,346 @@
+//
+//  Localization.swift
+//  Prelura-swift
+//
+//  In-app language: English (en) or Cypriot/Greek (el). When "el" is selected, UI strings use Greek.
+//
+
+import Foundation
+
+/// UserDefaults key for selected app language: "en" | "el"
+let kAppLanguage = "app_language"
+
+enum L10n {
+
+    /// Returns the localized string for the current app language. English uses the key as text; Cypriot uses Greek.
+    static func string(_ key: String) -> String {
+        let lang = UserDefaults.standard.string(forKey: kAppLanguage) ?? "en"
+        if lang == "el" {
+            return greek[key] ?? key
+        }
+        return key
+    }
+
+    /// Current language code for conditional logic if needed
+    static var currentLanguage: String {
+        UserDefaults.standard.string(forKey: kAppLanguage) ?? "en"
+    }
+
+    static var isGreek: Bool { currentLanguage == "el" }
+
+    private static let greek: [String: String] = [
+        // Tab bar
+        "Home": "Αρχική",
+        "Discover": "Ανακάλυψη",
+        "Sell": "Πώληση",
+        "Inbox": "Εισερχόμενα",
+        "Profile": "Προφίλ",
+
+        // Menu – profile drawer
+        "Shop Value": "Αξία Καταστήματος",
+        "Orders": "Παραγγελίες",
+        "Favourites": "Αγαπημένα",
+        "Multi-buy discounts": "Εκπτώσεις πολλαπλών αγορών",
+        "On": "Ενεργό",
+        "Off": "Ανενεργό",
+        "Vacation Mode": "Λειτουργία Αργίας",
+        "Invite Friend": "Προσκάλεσε Φίλο",
+        "Help Centre": "Κέντρο Βοήθειας",
+        "About Prelura": "Σχετικά με το Prelura",
+        "Settings": "Ρυθμίσεις",
+        "Logout": "Αποσύνδεση",
+
+        // Settings
+        "Account Settings": "Ρυθμίσεις Λογαριασμού",
+        "Currency": "Νόμισμα",
+        "Privacy": "Απόρρητο",
+        "Shipping Address": "Διεύθυνση Αποστολής",
+        "Appearance": "Εμφάνιση",
+        "Profile details": "Στοιχεία προφίλ",
+        "Payments": "Πληρωμές",
+        "Postage": "Ταχυδρομικά",
+        "Security & Privacy": "Ασφάλεια και απόρρητο",
+        "Identity verification": "Επαλήθευση ταυτότητας",
+        "Admin Actions": "Ενέργειες διαχειριστή",
+        "Notifications": "Ειδοποιήσεις",
+        "Push notifications": "Ειδοποιήσεις push",
+        "Email notifications": "Ειδοποιήσεις email",
+        "Log out": "Αποσύνδεση",
+        "Cancel": "Ακύρωση",
+        "Are you sure you want to logout?": "Είστε σίγουροι ότι θέλετε να αποσυνδεθείτε;",
+
+        // Appearance
+        "Theme": "Θέμα",
+        "Use System Settings": "Χρήση ρυθμίσεων συστήματος",
+        "Light": "Φωτεινή",
+        "Dark": "Σκούρα",
+        "Light and Dark apply to all screens, components, and elements. System follows your device setting.": "Φωτεινή και σκούρα ισχύουν σε όλες τις οθόνες. Το σύστημα ακολουθεί τη ρύθμιση της συσκευής σας.",
+        "Your app's language": "Γλώσσα εφαρμογής",
+        "Language": "Γλώσσα",
+        "English": "Αγγλικά",
+        "Cypriot": "Κυπριακά",
+        "Cypriot displays the app in Greek.": "Τα Κυπριακά εμφανίζουν την εφαρμογή στα Ελληνικά.",
+
+        // About Prelura
+        "How to use Prelura": "Πώς να χρησιμοποιήσετε το Prelura",
+        "Legal Information": "Νομικές πληροφορίες",
+
+        // Help Centre
+        "Got a burning question?": "Έχετε κάποια ερώτηση;",
+        "Frequently asked": "Συχνές ερωτήσεις",
+        "More topics": "Περισσότερα θέματα",
+        "How can I cancel an existing order": "Πώς μπορώ να ακυρώσω μια υπάρχουσα παραγγελία",
+        "How long does a refund normally take?": "Πόσο διαρκεί συνήθως η επιστροφή χρημάτων;",
+        "When will I receive my item?": "Πότε θα λάβω το προϊόν μου;",
+        "How will I know if my order has been shipped?": "Πώς θα μάθω αν η παραγγελία μου έχει σταλεί;",
+        "What's a collection point?": "Τι είναι το σημείο παραλαβής;",
+        "Item says \"Delivered\" but I don't have it": "Γράφει \"Παραδόθηκε\" αλλά δεν το έχω λάβει",
+        "What's Vacation mode?": "Τι είναι η λειτουργία αργίας;",
+        "How do I earn a trusted seller badge?": "Πώς κερδίζω το σήμα αξιόπιστου πωλητή;",
+        "Start a conversation": "Ξεκινήστε συνομιλία",
+        "e.g. How do I change my profile photo?": "π.χ. Πώς αλλάζω τη φωτογραφία προφίλ μου;",
+
+        // Menu (navigation)
+        "Menu": "Μενού",
+        "© Prelura 2026": "© Prelura 2026",
+        "Debug": "Εντοπισμός σφαλμάτων",
+
+        // Home
+        "Search items, brands or styles": "Αναζήτηση προϊόντων, εμπορικών σημάτων ή στυλ",
+        "All": "Όλα",
+        "Women": "Γυναίκες",
+        "Men": "Άνδρες",
+        "Kids": "Παιδικά",
+        "Toddlers": "Νήπια",
+
+        // Discover
+        "Search members": "Αναζήτηση μελών",
+
+        // Browse
+        "Browse": "Περιήγηση",
+        "Sort: ": "Ταξινόμηση: ",
+        "No items found": "Δεν βρέθηκαν προϊόντα",
+        "Try adjusting your filters": "Δοκιμάστε να αλλάξετε τα φίλτρα",
+        "No products found": "Δεν βρέθηκαν προϊόντα",
+
+        // Favourites (Favourites key in Menu section)
+        "No favourites yet": "Δεν υπάρχουν αγαπημένα ακόμα",
+        "Items you save as favourites will appear here.": "Τα προϊόντα που αποθηκεύετε ως αγαπημένα θα εμφανίζονται εδώ.",
+        "No results for \"%@\"": "Δεν βρέθηκαν αποτελέσματα για «%@»",
+        "Search favourites": "Αναζήτηση αγαπημένων",
+
+        // Profile (Favourites used from Menu section)
+        "Listings": "Αγγελίες",
+        "Followings": "Ακόλουθοι",
+        "Followers": "Οπαδοί",
+        "Reviews": "Κριτικές",
+        "Location": "Τοποθεσία",
+        "N/A": "Μ/Δ",
+        "Categories": "Κατηγορίες",
+        "item": "προϊόν",
+        "items": "προϊόντα",
+        "Multi-buy:": "Πολλαπλές αγορές:",
+        "Top brands": "Κορυφαίες μάρκες",
+        "Filter": "Φίλτρο",
+        "Clear": "Καθαρισμός",
+        "Sort": "Ταξινόμηση",
+        "Done": "ΟΚ",
+        "Condition": "Κατάσταση",
+        "Price": "Τιμή",
+        "OK": "ΟΚ",
+
+        // Auth
+        "Welcome back": "Καλώς ήρθατε πάλι",
+        "Username": "Όνομα χρήστη",
+        "Enter your username": "Εισάγετε το όνομα χρήστη σας",
+        "Password": "Κωδικός",
+        "Enter your password": "Εισάγετε τον κωδικό σας",
+        "Forgot password?": "Ξεχάσατε τον κωδικό;",
+        "Don't have an account?": "Δεν έχετε λογαριασμό;",
+        "Sign up": "Εγγραφή",
+        "Login": "Σύνδεση",
+
+        // Profile sort
+        "Relevance": "Συσχέτιση",
+        "Newest First": "Νεότερα πρώτα",
+        "Price Ascending": "Τιμή αύξουσα",
+        "Price Descending": "Τιμή φθίνουσα",
+        "Price range": "Εύρος τιμών",
+        "Excellent Condition": "Εξαιρετική κατάσταση",
+        "Good Condition": "Καλή κατάσταση",
+        "Brand New With Tags": "Καινό με ετικέτες",
+        "Brand new Without Tags": "Καινό χωρίς ετικέτες",
+        "Heavily Used": "Έντονα χρησιμοποιημένο",
+        "Apply": "Εφαρμογή",
+        "Min. Price": "Ελάχ. τιμή",
+        "Max. Price": "Μέγ. τιμή",
+
+        // Sell
+        "Sell an item": "Πώληση προϊόντος",
+        "Close": "Κλείσιμο",
+        "Upload": "Μεταφόρτωση",
+        "Upload from drafts": "Μεταφόρτωση από πρόχειρα",
+        "Add up to 20 photos": "Προσθήκη έως 20 φωτογραφιών",
+        "Tap to select photos from your gallery": "Αγγίξτε για να επιλέξετε φωτογραφίες από τη συλλογή σας",
+        "Item Details": "Στοιχεία προϊόντος",
+        "Item Information": "Πληροφορίες προϊόντος",
+        "Category": "Κατηγορία",
+        "Brand": "Μάρκα",
+        "Colours": "Χρώματα",
+        "Additional Details": "Επιπλέον στοιχεία",
+        "Measurements (Optional)": "Διαστάσεις (προαιρετικό)",
+        "Material (Optional)": "Υλικό (προαιρετικό)",
+        "Style (Optional)": "Στυλ (προαιρετικό)",
+        "Pricing & Shipping": "Τιμή και αποστολή",
+        "Discount Price (Optional)": "Εκπτωτική τιμή (προαιρετικό)",
+        "Parcel Size": "Μέγεθος δέματος",
+        "The buyer always pays for postage.": "Ο αγοραστής πληρώνει πάντα την αποστολή.",
+        "Select Category": "Επιλογή κατηγορίας",
+        "Select Condition": "Επιλογή κατάστασης",
+        "Select Colours": "Επιλογή χρωμάτων",
+        "Measurements": "Διαστάσεις",
+        "Select Material": "Επιλογή υλικού",
+        "Select Style": "Επιλογή στυλ",
+        "Discount: %d%%": "Έκπτωση: %d%%",
+        "Please set the price first": "Ορίστε πρώτα την τιμή",
+        "Discount Price": "Εκπτωτική τιμή",
+        "Loading brands...": "Φόρτωση μαρκών...",
+        "Enter brand name": "Εισάγετε όνομα μάρκας",
+
+        // Discover
+        "Discover": "Ανακάλυψη",
+        "Recently viewed": "Πρόσφατα προβεβλημένα",
+        "See All": "Δείτε όλα",
+        "Brands You Love": "Οι αγαπημένες σας μάρκες",
+        "Recommended from your favorite brands": "Προτεινόμενα από τις αγαπημένες σας μάρκες",
+        "Top Shops": "Κορυφαία καταστήματα",
+        "Buy from trusted and popular vendors": "Αγοράστε από αξιόπιστους και δημοφιλείς πωλητές",
+        "Shop Bargains": "Προσφορές",
+        "Steals under £15": "Ευκαιρίες κάτω από 15 £",
+        "On Sale": "Προσφορά",
+        "Discounted items": "Προϊόντα με έκπτωση",
+
+        // Notifications & Chat
+        "No notifications": "Δεν υπάρχουν ειδοποιήσεις",
+        "Notifications": "Ειδοποιήσεις",
+        "Messages": "Μηνύματα",
+
+        // Auth (extra)
+        "Create Account": "Δημιουργία λογαριασμού",
+        "Join Prelura today": "Γίνε μέλος του Prelura σήμερα",
+        "Email": "Email",
+        "First Name": "Όνομα",
+        "Last Name": "Επώνυμο",
+        "Confirm Password": "Επιβεβαίωση κωδικού",
+        "Forgot Password": "Ξεχάσατε τον κωδικό;",
+        "Enter the email address associated with your account and we'll send you a link to reset your password.": "Εισάγετε το email του λογαριασμού σας και θα σας στείλουμε σύνδεσμο για επαναφορά κωδικού.",
+        "Check your email": "Ελέγξτε το email σας",
+        "We've sent a 6-digit code to %@. Enter it on the next screen to set a new password.": "Στείλαμε 6ψήφιο κωδικό στο %@. Εισάγετέ τον στην επόμενη οθόνη για νέο κωδικό.",
+        "Enter code": "Εισάγετε κωδικό",
+        "Send reset link": "Αποστολή συνδέσμου επαναφοράς",
+        "Enter your email": "Εισάγετε το email σας",
+
+        // Item detail
+        "Member's items": "Προϊόντα μέλους",
+        "Similar items": "Παρόμοια προϊόντα",
+        "Shop bundles": "Αγορές σε πακέτα",
+        "Save on postage": "Εξοικονομήστε στην αποστολή",
+        "No member items available yet": "Δεν υπάρχουν ακόμα προϊόντα μέλους",
+        "No similar items available yet": "Δεν υπάρχουν ακόμα παρόμοια προϊόντα",
+        "Your offer": "Η προσφορά σας",
+        "Message (optional)": "Μήνυμα (προαιρετικό)",
+        "Send an offer": "Αποστολή προσφοράς",
+
+        // Vacation mode
+        "Vacation Mode": "Λειτουργία αργίας",
+        "Note: Turning on vacation will hide your items from all catalogues": "Σημείωση: Η ενεργοποίηση της λειτουργίας αργίας θα αποκρύψει τα προϊόντα σας από όλους τους καταλόγους",
+
+        // Shop value
+        "Current shop value": "Τρέχουσα αξία καταστήματος",
+        "active listings": "ενεργές αγγελίες",
+        "Balance": "Υπόλοιπο",
+        "Pending %@": "Εκκρεμεί %@",
+        "This month": "Αυτό το μήνα",
+        "Total earnings": "Συνολικά κέρδη",
+        "transactions completed": "ολοκληρωμένες συναλλαγές",
+        "Help": "Βοήθεια",
+
+        // Payment
+        "Buyer protection fee": "Τέλος προστασίας αγοραστή",
+        "Card ending in %@": "Κάρτα που τελειώνει σε %@",
+        "No payment method added": "Δεν προστέθηκε μέθοδος πληρωμής",
+        "Add payment method": "Προσθήκη μεθόδου πληρωμής",
+        "Payment": "Πληρωμή",
+        "This is a secure encryption payment": "Αυτή είναι ασφαλής κρυπτογραφημένη πληρωμή",
+
+        // Reviews
+        "No reviews yet": "Δεν υπάρχουν ακόμα κριτικές",
+        "Reviews": "Κριτικές",
+        "Member reviews (%@)": "Κριτικές μελών (%@)",
+        "Automatic reviews (0)": "Αυτόματες κριτικές (0)",
+        "How reviews work": "Πώς λειτουργούν οι κριτικές",
+
+        // Followers / Following
+        "No followers yet": "Δεν υπάρχουν ακόμα οπαδοί",
+        "Followers": "Οπαδοί",
+        "Not following anyone yet": "Δεν ακολουθείτε ακόμα κανέναν",
+        "Following": "Ακόλουθοι",
+
+        // Settings (extended)
+        "Saved": "Αποθηκεύτηκε",
+        "Unlock your account": "Ξεκλειδώστε τον λογαριασμό σας",
+        "Verify your identity to access all features and build trust with buyers.": "Επαληθεύστε την ταυτότητά σας για πρόσβαση σε όλες τις λειτουργίες και να δημιουργήσετε εμπιστοσύνη με αγοραστές.",
+        "Identity verification": "Επαλήθευση ταυτότητας",
+        "Current Password": "Τρέχων κωδικός",
+        "New Password": "Νέος κωδικός",
+        "Confirm New Password": "Επιβεβαίωση νέου κωδικού",
+        "Passwords do not match": "Οι κωδικοί δεν ταιριάζουν",
+        "Reset Password": "Επαναφορά κωδικού",
+        "Your password has been changed successfully.": "Ο κωδικός σας άλλαξε με επιτυχία.",
+        "Pausing your account will hide your profile and listings. You can reactivate later by logging in.": "Η παύση του λογαριασμού θα αποκρύψει το προφίλ και τις αγγελίες σας. Μπορείτε να τον ξαναενεργοποιήσετε συνδεόμενοι.",
+        "Pause Account": "Παύση λογαριασμού",
+        "Your profile and listings will be hidden until you log in again.": "Το προφίλ και οι αγγελίες σας θα αποκρυφθούν μέχρι να συνδεθείτε ξανά.",
+        "Your account has been paused. You will be signed out.": "Ο λογαριασμός σας έχει παυθεί. Θα αποσυνδεθείτε.",
+        "Enter your UK bank details. Your information is stored securely and used only for payouts.": "Εισάγετε τα στοιχεία της βρετανικής τράπεζάς σας. Τα στοιχεία σας αποθηκεύονται ασφαλώς και χρησιμοποιούνται μόνο για πληρωμές.",
+        "Sort code": "Κωδικός ταξινόμησης",
+        "Account number": "Αριθμός λογαριασμού",
+        "Account holder name": "Όνομα δικαιούχου",
+        "Account label (optional)": "Ετικέτα λογαριασμού (προαιρετικό)",
+        "Add Bank Account": "Προσθήκη τραπεζικού λογαριασμού",
+        "Address": "Διεύθυνση",
+        "Address line 1": "Διεύθυνση γραμμή 1",
+        "Address line 2": "Διεύθυνση γραμμή 2",
+        "City": "Πόλη",
+        "State / County": "Νομός / Κομητεία",
+        "Country": "Χώρα",
+        "Postcode": "Ταχυδρομικός κώδικας",
+        "Your shipping address has been updated.": "Η διεύθυνση αποστολής σας ενημερώθηκε.",
+        "Your account settings have been updated.": "Οι ρυθμίσεις λογαριασμού σας ενημερώθηκαν.",
+        "Date of birth": "Ημερομηνία γέννησης",
+        "Gender": "Φύλο",
+        "Enter your card details securely. Your payment information is encrypted.": "Εισάγετε τα στοιχεία της κάρτας σας ασφαλώς. Οι πληροφορίες πληρωμής κρυπτογραφούνται.",
+        "Card number": "Αριθμός κάρτας",
+        "Expiry": "Λήξη",
+        "CVV": "CVV",
+        "Name on card": "Όνομα στην κάρτα",
+        "Add Payment Card": "Προσθήκη κάρτας πληρωμής",
+        "Your payment method has been saved.": "Η μέθοδος πληρωμής σας αποθηκεύτηκε.",
+        "Deleting your account is permanent. You will lose access to your listings, messages, and data.": "Η διαγραφή του λογαριασμού είναι μόνιμη. Θα χάσετε την πρόσβαση στις αγγελίες, μηνύματα και δεδομένα σας.",
+        "Delete Account": "Διαγραφή λογαριασμού",
+        "This action cannot be undone. All your data will be permanently removed.": "Αυτή η ενέργεια δεν μπορεί να αναιρεθεί. Όλα τα δεδομένα σας θα αφαιρεθούν μόνιμα.",
+        "Delete All Conversations": "Διαγραφή όλων των συνομιλιών",
+        "Admin Actions": "Ενέργειες διαχειριστή",
+        "Royal Mail": "Royal Mail",
+        "DPD": "DPD",
+        "Postage": "Ταχυδρομικά",
+        "Bio": "Βιογραφικό",
+        "No blocked users": "Δεν υπάρχουν αποκλεισμένοι χρήστες",
+        "Do you want to unblock %@?": "Θέλετε να ξεμπλοκάρετε τον %@;",
+        "Blocklist": "Λίστα αποκλεισμού",
+        "Active Payment method": "Ενεργή μέθοδος πληρωμής",
+        "Delete": "Διαγραφή",
+        "This card will be removed from your account.": "Αυτή η κάρτα θα αφαιρεθεί από τον λογαριασμό σας.",
+        "General": "Γενικά",
+        "Notification Settings": "Ρυθμίσεις ειδοποιήσεων",
+    ]
+}

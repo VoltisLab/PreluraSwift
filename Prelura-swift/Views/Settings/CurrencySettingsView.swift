@@ -33,14 +33,14 @@ struct CurrencySettingsView: View {
                 .buttonStyle(.plain)
             }
             if saved {
-                Text("Saved")
+                Text(L10n.string("Saved"))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.primaryColor)
             }
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle("Currency")
+        .navigationTitle(L10n.string("Currency"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {

@@ -6,6 +6,8 @@ let kNotificationTapPayloadKey = "payload"
 
 extension Notification.Name {
     static let preluraNotificationTapped = Notification.Name("PreluraNotificationTapped")
+    /// Posted when vacation mode (or other profile flags) are updated so Profile can refresh.
+    static let preluraUserProfileDidUpdate = Notification.Name("PreluraUserProfileDidUpdate")
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {

@@ -1,8 +1,10 @@
 import SwiftUI
 
 struct InboxView: View {
+    @ObservedObject var tabCoordinator: TabCoordinator
+
     var body: some View {
-        ChatListView()
+        ChatListView(tabCoordinator: tabCoordinator)
     }
 }
 
@@ -80,6 +82,6 @@ struct MessageDetailView: View {
 }
 
 #Preview {
-    InboxView()
+    InboxView(tabCoordinator: TabCoordinator())
         .preferredColorScheme(.dark)
 }

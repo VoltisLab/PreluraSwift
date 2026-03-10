@@ -15,7 +15,7 @@ struct DeleteAccountView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                Text("Deleting your account is permanent. You will lose access to your listings, messages, and data.")
+                Text(L10n.string("Deleting your account is permanent. You will lose access to your listings, messages, and data."))
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.secondaryText)
                 if let err = errorMessage {
@@ -24,7 +24,7 @@ struct DeleteAccountView: View {
                         .foregroundColor(Theme.Colors.error)
                 }
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Password")
+                    Text(L10n.string("Password"))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                     SettingsTextField(
@@ -42,7 +42,7 @@ struct DeleteAccountView: View {
                             ProgressView()
                                 .tint(.white)
                         } else {
-                            Text("Delete Account")
+                            Text(L10n.string("Delete Account"))
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -55,7 +55,7 @@ struct DeleteAccountView: View {
             .padding(Theme.Spacing.md)
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Delete Account")
+        .navigationTitle(L10n.string("Delete Account"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .confirmationDialog("Delete account?", isPresented: $showConfirm, titleVisibility: .visible) {
@@ -64,7 +64,7 @@ struct DeleteAccountView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This action cannot be undone. All your data will be permanently removed.")
+            Text(L10n.string("This action cannot be undone. All your data will be permanently removed."))
         }
     }
 

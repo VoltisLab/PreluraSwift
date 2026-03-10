@@ -86,14 +86,12 @@ class ItemDetailViewModel: ObservableObject {
     }
     
     func toggleLike(productId: String) {
-        guard let productIdInt = Int(productId) else { return }
-        let newIsLiked = !isLiked
         Task {
             do {
-                _ = try await productService.likeProduct(productId: productIdInt)
+                let (newIsLiked, newCount) = try await productService.toggleLike(productId: productId, isLiked: !isLiked)
                 await MainActor.run {
                     self.isLiked = newIsLiked
-                    self.likeCount = newIsLiked ? self.likeCount + 1 : max(0, self.likeCount - 1)
+                    self.likeCount = newCount
                 }
             } catch {
                 await MainActor.run {

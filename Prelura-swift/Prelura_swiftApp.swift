@@ -49,6 +49,8 @@ struct AppearanceRootView: View {
         resolvedScheme ?? colorScheme
     }
 
+    @AppStorage(kAppLanguage) private var appLanguage: String = "en"
+
     var body: some View {
         Group {
             if authService.isAuthenticated {
@@ -57,6 +59,7 @@ struct AppearanceRootView: View {
                 LoginView()
             }
         }
+        .id(appLanguage)
         .preferredColorScheme(resolvedScheme)
         .tint(Theme.primaryColor)
         .onAppear { syncThemeScheme() }
@@ -91,30 +94,36 @@ struct ContentView: View {
     }
 }
 
-// Root tab controller: TabView at root, each tab has its own NavigationStack. Pushed screens hide the tab bar automatically.
+// Root tab controller: TabView at root with custom tab bar for tap-to-refresh. Each tab has its own NavigationStack.
 struct MainTabView: View {
-    @State private var selectedTab: Int = 0
+    @StateObject private var tabCoordinator = TabCoordinator()
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            HomeNavigation()
-                .tabItem { Label("Home", systemImage: "house.fill") }
+        TabView(selection: Binding(
+            get: { tabCoordinator.selectedTab },
+            set: { tabCoordinator.handleTabTap($0) }
+        )) {
+            HomeNavigation(tabCoordinator: tabCoordinator)
+                .tabItem { Label(L10n.string("Home"), systemImage: "house.fill") }
                 .tag(0)
 
-            DiscoverNavigation()
-                .tabItem { Label("Discover", systemImage: "magnifyingglass") }
+            DiscoverNavigation(tabCoordinator: tabCoordinator)
+                .tabItem { Label(L10n.string("Discover"), systemImage: "magnifyingglass") }
                 .tag(1)
 
-            SellNavigation(selectedTab: $selectedTab)
-                .tabItem { Label("Sell", systemImage: "plus") }
-                .tag(2)
+            SellNavigation(selectedTab: Binding(
+                get: { tabCoordinator.selectedTab },
+                set: { tabCoordinator.selectTab($0) }
+            ))
+            .tabItem { Label(L10n.string("Sell"), systemImage: "plus") }
+            .tag(2)
 
-            InboxNavigation()
-                .tabItem { Label("Inbox", systemImage: "envelope") }
+            InboxNavigation(tabCoordinator: tabCoordinator)
+                .tabItem { Label(L10n.string("Inbox"), systemImage: "envelope") }
                 .tag(3)
 
-            ProfileNavigation()
-                .tabItem { Label("Profile", systemImage: "person.fill") }
+            ProfileNavigation(tabCoordinator: tabCoordinator)
+                .tabItem { Label(L10n.string("Profile"), systemImage: "person.fill") }
                 .tag(4)
         }
         .accentColor(Theme.primaryColor)

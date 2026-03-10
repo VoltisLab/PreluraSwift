@@ -149,6 +149,7 @@ struct ItemDetailView: View {
                         .background(Color.black.opacity(0.2))
                         .clipShape(Circle())
                 }
+                .buttonStyle(HapticTapButtonStyle())
                 .padding(.leading, Theme.AppBar.horizontalPadding)
                 .padding(.top, Self.statusBarHeight + Theme.AppBar.verticalPadding)
                 
@@ -178,6 +179,7 @@ struct ItemDetailView: View {
                         .background(Color.black.opacity(0.6))
                         .cornerRadius(8)
                     }
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
                     .padding(.trailing, 15)
                     .padding(.bottom, 15)
                 }
@@ -226,7 +228,7 @@ struct ItemDetailView: View {
                             .font(Theme.Typography.body)
                             .foregroundColor(Theme.primaryColor)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HapticTapButtonStyle())
                 }
                 Spacer()
                 if let size = item.size {
@@ -235,7 +237,7 @@ struct ItemDetailView: View {
                             .font(Theme.Typography.body)
                             .foregroundColor(Theme.primaryColor)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HapticTapButtonStyle())
                 }
             }
             
@@ -345,12 +347,7 @@ struct ItemDetailView: View {
             descriptionBody
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.lg)
-                .overlay(
-                    Rectangle()
-                        .frame(height: 0.5)
-                        .foregroundColor(Theme.Colors.glassBorder),
-                    alignment: .bottom
-                )
+                .overlay(ContentDivider(), alignment: .bottom)
         }
         .background(Theme.Colors.background)
     }
@@ -434,12 +431,7 @@ struct ItemDetailView: View {
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.lg)
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Theme.Colors.glassBorder),
-            alignment: .bottom
-        )
+        .overlay(ContentDivider(), alignment: .bottom)
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -451,10 +443,10 @@ struct ItemDetailView: View {
     // MARK: - Tabs Section
     private var tabsSection: some View {
         HStack(spacing: 0) {
-            TabButton(title: "Member's items", isSelected: selectedTab == 0) {
+            TabButton(title: L10n.string("Member's items"), isSelected: selectedTab == 0) {
                 selectedTab = 0
             }
-            TabButton(title: "Similar items", isSelected: selectedTab == 1) {
+            TabButton(title: L10n.string("Similar items"), isSelected: selectedTab == 1) {
                 selectedTab = 1
             }
         }
@@ -481,25 +473,18 @@ struct ItemDetailView: View {
             // Shop Bundles Section
             HStack {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("Shop bundles")
+                    Text(L10n.string("Shop bundles"))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.primaryText)
-                    Text("Save on postage")
+                    Text(L10n.string("Save on postage"))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
                 Spacer()
-                Button(action: {
+                PrimaryGlassButton("Create Bundle", action: {
                     // Create bundle
-                }) {
-                    Text("Create Bundle")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.vertical, Theme.Spacing.sm)
-                        .background(Theme.primaryColor)
-                        .cornerRadius(25)
-                }
+                })
+                .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.md)
@@ -514,7 +499,7 @@ struct ItemDetailView: View {
                     Image(systemName: "bag")
                         .font(.system(size: 40))
                         .foregroundColor(Theme.Colors.secondaryText)
-                    Text("No member items available yet")
+                    Text(L10n.string("No member items available yet"))
                         .font(Theme.Typography.body)
                         .fontWeight(.bold)
                         .foregroundColor(Theme.Colors.primaryText)
@@ -553,7 +538,7 @@ struct ItemDetailView: View {
                     Image(systemName: "bag")
                         .font(.system(size: 40))
                         .foregroundColor(Theme.Colors.secondaryText)
-                    Text("No similar items available yet")
+                    Text(L10n.string("No similar items available yet"))
                         .font(Theme.Typography.body)
                         .fontWeight(.bold)
                         .foregroundColor(Theme.Colors.primaryText)
@@ -583,26 +568,16 @@ struct ItemDetailView: View {
     
     // MARK: - Bottom Action Buttons
     private var bottomActionButtons: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            BorderGlassButton("Send an Offer", action: {
-                showSendOfferSheet = true
-            })
-            
-            PrimaryGlassButton("Buy now", action: {
-                showPaymentSheet = true
-            })
+        PrimaryButtonBar {
+            HStack(spacing: Theme.Spacing.sm) {
+                BorderGlassButton("Send an Offer", action: {
+                    showSendOfferSheet = true
+                })
+                PrimaryGlassButton("Buy now", action: {
+                    showPaymentSheet = true
+                })
+            }
         }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.top, Theme.Spacing.md)
-        .padding(.bottom, 16)
-        .background(Theme.Colors.background)
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Theme.Colors.glassBorder),
-            alignment: .top
-        )
-        .ignoresSafeArea(edges: .bottom)
     }
 }
 
@@ -653,6 +628,7 @@ struct FullScreenImageViewer: View {
                             .foregroundColor(.white.opacity(0.9))
                             .symbolRenderingMode(.hierarchical)
                     }
+                    .buttonStyle(HapticTapButtonStyle())
                     .padding(.trailing, Theme.Spacing.md)
                     .padding(.top, Theme.Spacing.lg)
                 }
@@ -690,6 +666,7 @@ struct TabButton: View {
                     .frame(height: 2)
             }
         }
+        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
         .frame(maxWidth: .infinity)
     }
 }

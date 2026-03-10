@@ -16,7 +16,7 @@ struct VacationModeView: View {
         List {
             Section {
                 Toggle(isOn: $isOn) {
-                    Text("Vacation Mode")
+                    Text(L10n.string("Vacation Mode"))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.primaryText)
                 }
@@ -34,14 +34,14 @@ struct VacationModeView: View {
                 }
             }
             Section {
-                Text("Note: Turning on vacation will hide your items from all catalogues")
+                Text(L10n.string("Note: Turning on vacation will hide your items from all catalogues"))
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle("Vacation Mode")
+        .navigationTitle(L10n.string("Vacation Mode"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .refreshable { await fetch() }
@@ -73,7 +73,10 @@ struct VacationModeView: View {
         errorMessage = nil
         do {
             try await userService.updateProfile(isVacationMode: value)
-            await MainActor.run { isUpdating = false }
+            await MainActor.run {
+                isUpdating = false
+                NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
+            }
         } catch {
             await MainActor.run {
                 isOn = !value

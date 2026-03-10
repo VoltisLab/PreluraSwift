@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Favourites: fetch liked products, grid, search, empty state. Matches Flutter MyFavouriteScreen.
 struct MyFavouritesView: View {
+    @EnvironmentObject var authService: AuthService
     @State private var searchText: String = ""
     @State private var items: [Item] = []
     @State private var totalNumber: Int = 0
@@ -22,9 +23,12 @@ struct MyFavouritesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DiscoverSearchField(text: $searchText, placeholder: "Search favourites", outerPadding: false)
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.sm)
+            DiscoverSearchField(
+                text: $searchText,
+                placeholder: L10n.string("Search favourites"),
+                topPadding: Theme.Spacing.xs
+            )
+            .padding(.trailing, Theme.Spacing.sm)
 
             if let err = errorMessage {
                 Text(err)
@@ -40,10 +44,10 @@ struct MyFavouritesView: View {
             } else if items.isEmpty {
                 Spacer()
                 VStack(spacing: Theme.Spacing.md) {
-                    Text("No favourites yet")
+                    Text(L10n.string("No favourites yet"))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.primaryText)
-                    Text("Items you save as favourites will appear here.")
+                    Text(L10n.string("Items you save as favourites will appear here."))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .multilineTextAlignment(.center)
@@ -52,7 +56,7 @@ struct MyFavouritesView: View {
                 Spacer()
             } else if filteredItems.isEmpty {
                 Spacer()
-                Text("No results for \"\(searchText)\"")
+                Text(String(format: L10n.string("No results for \"%@\""), searchText))
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.secondaryText)
                 Spacer()
@@ -83,13 +87,14 @@ struct MyFavouritesView: View {
         }
         .background(Theme.Colors.background)
         .toolbar(.hidden, for: .tabBar)
-        .navigationTitle("Favourites")
+        .navigationTitle(L10n.string("Favourites"))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load(resetPage: true) }
         .task { await load(resetPage: true) }
     }
 
     private func load(resetPage: Bool) async {
+        productService.updateAuthToken(authService.authToken)
         if resetPage {
             currentPage = 1
         }

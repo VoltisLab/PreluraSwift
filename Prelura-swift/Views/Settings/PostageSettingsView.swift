@@ -9,14 +9,14 @@ struct PostageSettingsView: View {
 
     var body: some View {
         List {
-            Section(header: Text("Royal Mail")) {
+            Section(header: Text(L10n.string("Royal Mail"))) {
                 Toggle("Enable Royal Mail", isOn: $royalMailEnabled)
                     .tint(Theme.primaryColor)
                 TextField("Price (£)", text: $royalMailPrice)
                     .keyboardType(.decimalPad)
                     .disabled(!royalMailEnabled)
             }
-            Section(header: Text("DPD")) {
+            Section(header: Text(L10n.string("DPD"))) {
                 Toggle("Enable DPD", isOn: $dpdEnabled)
                     .tint(Theme.primaryColor)
                 TextField("Price (£)", text: $dpdPrice)
@@ -26,7 +26,7 @@ struct PostageSettingsView: View {
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle("Postage")
+        .navigationTitle(L10n.string("Postage"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }

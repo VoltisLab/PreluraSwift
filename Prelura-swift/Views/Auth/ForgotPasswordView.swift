@@ -14,44 +14,50 @@ struct ForgotPasswordView: View {
             if showEmailSent {
                 emailSentContent
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                        Text("Enter the email address associated with your account and we'll send you a link to reset your password.")
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                            Text("Email")
-                                .font(Theme.Typography.subheadline)
+                ZStack(alignment: .bottom) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                            Text(L10n.string("Enter the email address associated with your account and we'll send you a link to reset your password."))
+                                .font(Theme.Typography.body)
                                 .foregroundColor(Theme.Colors.secondaryText)
-                            TextField("Enter your email", text: $email)
-                                .textContentType(.emailAddress)
-                                .keyboardType(.emailAddress)
-                                .textInputAutocapitalization(.never)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .padding(Theme.Spacing.md)
-                                .background(Theme.Colors.secondaryBackground)
-                                .cornerRadius(16)
-                                .foregroundColor(Theme.Colors.primaryText)
+                            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                                Text("Email")
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                TextField(L10n.string("Enter your email"), text: $email)
+                                    .textContentType(.emailAddress)
+                                    .keyboardType(.emailAddress)
+                                    .textInputAutocapitalization(.never)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .padding(Theme.Spacing.md)
+                                    .background(Theme.Colors.secondaryBackground)
+                                    .cornerRadius(16)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                            }
+                            if let err = errorMessage {
+                                Text(err)
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.Colors.error)
+                            }
                         }
-                        if let err = errorMessage {
-                            Text(err)
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(Theme.Colors.error)
-                        }
+                        .padding(Theme.Spacing.lg)
+                        .padding(.bottom, 100)
+                    }
+                    PrimaryButtonBar {
                         PrimaryGlassButton("Send reset link", isLoading: isLoading, action: submit)
                             .disabled(!isValidEmail(email))
                     }
-                    .padding(Theme.Spacing.lg)
                 }
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Forgot Password")
+        .navigationTitle(L10n.string("Forgot Password"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
                     .foregroundColor(Theme.primaryColor)
+                    .buttonStyle(HapticTapButtonStyle())
             }
         }
     }
@@ -61,7 +67,7 @@ struct ForgotPasswordView: View {
             Image(systemName: "envelope.badge")
                 .font(.system(size: 64))
                 .foregroundColor(Theme.primaryColor)
-            Text("Check your email")
+            Text(L10n.string("Check your email"))
                 .font(Theme.Typography.title2)
                 .foregroundColor(Theme.Colors.primaryText)
             Text("We've sent a 6-digit code to \(email). Enter it on the next screen to set a new password.")
@@ -70,17 +76,18 @@ struct ForgotPasswordView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
             NavigationLink(destination: NewPasswordView(email: email.trimmingCharacters(in: .whitespacesAndNewlines)).environmentObject(authService)) {
-                Text("Enter code")
+                Text(L10n.string("Enter code"))
                     .font(Theme.Typography.headline)
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, Theme.Spacing.md)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.primaryAction() }))
             .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
             Button("Back to login") { dismiss() }
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.primaryColor)
+                .buttonStyle(HapticTapButtonStyle())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(Theme.Spacing.lg)

@@ -2,14 +2,16 @@ import SwiftUI
 
 struct ChatListView: View {
     @EnvironmentObject var authService: AuthService
+    @ObservedObject var tabCoordinator: TabCoordinator
     @StateObject private var chatService: ChatService
     @State private var conversations: [Conversation] = []
     @State private var searchText: String = ""
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
-    
-    init() {
-        // Initialize ChatService - it will load token from UserDefaults
+    @State private var scrollPosition: String? = "inbox_top"
+
+    init(tabCoordinator: TabCoordinator) {
+        self.tabCoordinator = tabCoordinator
         _chatService = StateObject(wrappedValue: ChatService())
     }
     
@@ -17,66 +19,95 @@ struct ChatListView: View {
         Group {
             if isLoading && conversations.isEmpty {
                 InboxShimmerView()
-                    .navigationTitle("Messages")
+                    .navigationTitle(L10n.string("Messages"))
                     .navigationBarTitleDisplayMode(.inline)
             } else if conversations.isEmpty && !isLoading {
-                VStack(spacing: Theme.Spacing.lg) {
-                    Image(systemName: errorMessage != nil ? "exclamationmark.triangle" : "message")
-                        .font(.system(size: 60))
-                        .foregroundColor(errorMessage != nil ? Theme.primaryColor : Theme.Colors.secondaryText)
-                    Text(errorMessage != nil ? "Couldn't load conversations" : "No conversations yet")
-                        .font(Theme.Typography.title3)
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .multilineTextAlignment(.center)
-                    if let error = errorMessage, !error.isEmpty {
-                        Text(error)
-                            .font(Theme.Typography.caption)
-                            .foregroundColor(Theme.Colors.secondaryText)
+                ZStack(alignment: .bottom) {
+                    VStack(spacing: Theme.Spacing.lg) {
+                        Image(systemName: errorMessage != nil ? "exclamationmark.triangle" : "message")
+                            .font(.system(size: 60))
+                            .foregroundColor(errorMessage != nil ? Theme.primaryColor : Theme.Colors.secondaryText)
+                        Text(errorMessage != nil ? "Couldn't load conversations" : "No conversations yet")
+                            .font(Theme.Typography.title3)
+                            .foregroundColor(Theme.Colors.primaryText)
                             .multilineTextAlignment(.center)
-                            .lineLimit(3)
-                            .padding(.horizontal)
+                        if let error = errorMessage, !error.isEmpty {
+                            Text(error)
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(3)
+                                .padding(.horizontal)
+                        }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.Colors.background)
+                    .padding(.bottom, errorMessage != nil ? 100 : 0)
+
                     if errorMessage != nil {
-                        PrimaryGlassButton("Retry", action: {
-                            errorMessage = nil
-                            loadConversations()
-                        })
-                        .frame(maxWidth: 200)
-                        .padding(.top, Theme.Spacing.sm)
+                        PrimaryButtonBar {
+                            PrimaryGlassButton("Retry", action: {
+                                errorMessage = nil
+                                loadConversations()
+                            })
+                        }
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Theme.Colors.background)
-                .navigationTitle("Messages")
+                .navigationTitle(L10n.string("Messages"))
                 .navigationBarTitleDisplayMode(.inline)
             } else {
-                VStack(spacing: 0) {
-                    DiscoverSearchField(
-                        text: $searchText,
-                        placeholder: "Search conversations",
-                        topPadding: Theme.Spacing.xs
-                    )
-                    .padding(.trailing, Theme.Spacing.sm)
+                ScrollViewReader { proxy in
+                    VStack(spacing: 0) {
+                        DiscoverSearchField(
+                            text: $searchText,
+                            placeholder: "Search conversations",
+                            topPadding: Theme.Spacing.xs
+                        )
+                        .padding(.trailing, Theme.Spacing.sm)
 
-                    List {
-                        ForEach(filteredConversations, id: \.id) { conversation in
-                            NavigationLink(value: AppRoute.conversation(conversation)) {
-                                ChatRowView(conversation: conversation)
+                        List {
+                            ForEach(Array(filteredConversations.enumerated()), id: \.element.id) { index, conversation in
+                                NavigationLink(value: AppRoute.conversation(conversation)) {
+                                    ChatRowView(conversation: conversation)
+                                }
+                                .id(index == 0 ? "inbox_top" : conversation.id)
+                            }
+                        }
+                        .listStyle(PlainListStyle())
+                        .scrollPosition(id: $scrollPosition, anchor: .top)
+                        .onAppear {
+                            tabCoordinator.reportAtTop(tab: 3, isAtTop: filteredConversations.isEmpty || scrollPosition == "inbox_top")
+                            tabCoordinator.registerScrollToTop(tab: 3) {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    proxy.scrollTo("inbox_top", anchor: .top)
+                                }
+                            }
+                            tabCoordinator.registerRefresh(tab: 3) {
+                                Task { await loadConversationsAsync() }
                             }
                         }
                     }
-                    .listStyle(PlainListStyle())
+                    .background(Theme.Colors.background)
+                    .navigationTitle(L10n.string("Messages"))
+                    .navigationBarTitleDisplayMode(.inline)
+                    .refreshable {
+                        await loadConversationsAsync()
+                    }
                 }
-                .background(Theme.Colors.background)
-                .navigationTitle("Messages")
-                .navigationBarTitleDisplayMode(.inline)
-                .refreshable {
-                    await loadConversationsAsync()
+                .onChange(of: scrollPosition) { _, new in
+                    tabCoordinator.reportAtTop(tab: 3, isAtTop: new == "inbox_top")
+                }
+                .onChange(of: filteredConversations.isEmpty) { _, isEmpty in
+                    if isEmpty { tabCoordinator.reportAtTop(tab: 3, isAtTop: true) }
                 }
             }
         }
         .onAppear {
-            // Update token before loading
+            tabCoordinator.reportAtTop(tab: 3, isAtTop: true)
+            tabCoordinator.registerScrollToTop(tab: 3) { }
+            tabCoordinator.registerRefresh(tab: 3) {
+                Task { await loadConversationsAsync() }
+            }
             if let token = authService.authToken {
                 chatService.updateAuthToken(token)
             }
@@ -228,6 +259,6 @@ struct ChatRowView: View {
 }
 
 #Preview {
-    ChatListView()
+    ChatListView(tabCoordinator: TabCoordinator())
         .preferredColorScheme(.dark)
 }

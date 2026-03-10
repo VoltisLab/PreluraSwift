@@ -15,57 +15,60 @@ struct MenuView: View {
         List {
             if listingCount > 0 {
                 NavigationLink(destination: ShopValueView(listingCount: listingCount)) {
-                    menuRow("Shop Value", icon: "chart.bar")
+                    menuRow(L10n.string("Shop Value"), icon: "chart.bar")
                 }
             }
             NavigationLink(destination: MyOrdersView()) {
-                menuRow("Orders", icon: "bag")
+                menuRow(L10n.string("Orders"), icon: "bag")
             }
             NavigationLink(destination: MyFavouritesView()) {
-                menuRow("Favourites", icon: "heart")
+                menuRow(L10n.string("Favourites"), icon: "heart")
             }
             NavigationLink(destination: MultiBuyDiscountView()) {
                 HStack {
-                    menuRow("Multi-buy discounts", icon: "tag")
+                    menuRow(L10n.string("Multi-buy discounts"), icon: "tag")
                     Spacer()
-                    Text(isMultiBuyEnabled ? "on" : "off")
-                        .font(Theme.Typography.caption)
+                    Text(isMultiBuyEnabled ? L10n.string("On") : L10n.string("Off"))
+                        .font(.system(size: 14))
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
             }
             NavigationLink(destination: VacationModeView(initialIsOn: isVacationMode)) {
                 HStack {
-                    menuRow("Vacation Mode", icon: "umbrella")
+                    menuRow(L10n.string("Vacation Mode"), icon: "umbrella")
                     Spacer()
-                    Text(isVacationMode ? "on" : "off")
-                        .font(Theme.Typography.caption)
+                    Text(isVacationMode ? L10n.string("On") : L10n.string("Off"))
+                        .font(.system(size: 14))
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
             }
             NavigationLink(destination: InviteFriendView()) {
-                menuRow("Invite Friend", icon: "person.badge.plus")
+                menuRow(L10n.string("Invite Friend"), icon: "person.badge.plus")
             }
             NavigationLink(destination: HelpCentreView()) {
-                menuRow("Help Centre", icon: "questionmark.circle")
+                menuRow(L10n.string("Help Centre"), icon: "questionmark.circle")
             }
             NavigationLink(destination: AboutPreluraMenuView()) {
-                menuRow("About Prelura", icon: "info.circle")
+                menuRow(L10n.string("About Prelura"), icon: "info.circle")
             }
             NavigationLink(destination: DebugMenuView()) {
-                menuRow("Debug", icon: "ladybug")
+                menuRow(L10n.string("Debug"), icon: "ladybug")
             }
-            Button(role: .destructive, action: { showLogoutConfirm = true }) {
+            Button(role: .destructive, action: {
+                showLogoutConfirm = true
+            }) {
                 HStack {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
                         .font(.body)
-                    Text("Logout")
+                    Text(L10n.string("Logout"))
                     Spacer()
                 }
             }
+            .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.destructive() }))
             Section {
                 EmptyView()
             } footer: {
-                Text("© Prelura 2026")
+                Text(L10n.string("© Prelura 2026"))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
                     .frame(maxWidth: .infinity)
@@ -73,25 +76,28 @@ struct MenuView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("Menu")
+        .navigationTitle(L10n.string("Menu"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink(destination: SettingsMenuView(isStaff: isStaff)) {
                     Image(systemName: "gearshape")
+                        .foregroundColor(Theme.Colors.primaryText)
                 }
+                .buttonStyle(HapticTapButtonStyle())
             }
         }
         .toolbar(.hidden, for: .tabBar)
-        .alert("Logout", isPresented: $showLogoutConfirm) {
-            Button("Cancel", role: .cancel) {}
-            Button("Logout", role: .destructive) {
+        .alert(L10n.string("Logout"), isPresented: $showLogoutConfirm) {
+            Button(L10n.string("Cancel"), role: .cancel) { HapticManager.tap() }
+            Button(L10n.string("Logout"), role: .destructive) {
+                HapticManager.destructive()
                 Task {
                     try? await authService.logout()
                 }
             }
         } message: {
-            Text("Are you sure you want to logout?")
+            Text(L10n.string("Are you sure you want to logout?"))
         }
     }
     

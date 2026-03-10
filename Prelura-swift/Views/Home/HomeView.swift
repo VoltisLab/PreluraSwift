@@ -2,18 +2,24 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject var authService: AuthService
+    @ObservedObject var tabCoordinator: TabCoordinator
     @StateObject private var viewModel = HomeViewModel()
     @State private var searchText: String = ""
     @State private var selectedCategory: String = "All"
-    
+    @State private var scrollPosition: String? = "home_top"
+
     let categories = ["All", "Women", "Men", "Kids", "Toddlers"]
-    
+
+    private let topId = "home_top"
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                DiscoverSearchField(
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: 1).id(topId)
+                    DiscoverSearchField(
                     text: $searchText,
-                    placeholder: "Search items, brands or styles",
+                    placeholder: L10n.string("Search items, brands or styles"),
                     onSubmit: { viewModel.searchItems(query: searchText) },
                     topPadding: Theme.Spacing.xs
                 )
@@ -27,6 +33,22 @@ struct HomeView: View {
                     productGridSection
                 }
             }
+            }
+            .scrollPosition(id: $scrollPosition, anchor: .top)
+            .onAppear {
+                tabCoordinator.reportAtTop(tab: 0, isAtTop: true)
+                tabCoordinator.registerScrollToTop(tab: 0) {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(topId, anchor: .top)
+                    }
+                }
+                tabCoordinator.registerRefresh(tab: 0) {
+                    Task { await viewModel.refreshAsync() }
+                }
+            }
+        }
+        .onChange(of: scrollPosition) { _, new in
+            tabCoordinator.reportAtTop(tab: 0, isAtTop: new == topId)
         }
         .background(Theme.Colors.background)
         .navigationBarTitleDisplayMode(.inline)
@@ -44,13 +66,12 @@ struct HomeView: View {
                         .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HapticTapButtonStyle())
             }
         }
         .refreshable {
             await viewModel.refreshAsync()
         }
-        .onAppear { }
     }
 
     // MARK: - Category Filters
@@ -59,7 +80,7 @@ struct HomeView: View {
             HStack(spacing: Theme.Spacing.sm) {
                 ForEach(categories, id: \.self) { category in
                     CategoryFilterButton(
-                        title: category,
+                        title: L10n.string(category),
                         isSelected: selectedCategory == category,
                         action: {
                             selectedCategory = category
@@ -86,7 +107,7 @@ struct HomeView: View {
         ) {
             ForEach(viewModel.filteredItems) { item in
                             NavigationLink(value: AppRoute.itemDetail(item)) {
-                    HomeItemCard(item: item)
+                    HomeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -117,7 +138,8 @@ struct HomeView: View {
 // MARK: - Home Item Card
 struct HomeItemCard: View {
     let item: Item
-    
+    var onLikeTap: (() -> Void)? = nil
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             // Seller info (avatar + username) above image
@@ -238,11 +260,9 @@ struct HomeItemCard: View {
                     .cornerRadius(8)
                     
                     // Like count overlay - tappable
-                    Button(action: {
-                        // TODO: Handle like action
-                    }) {
+                    Button(action: { onLikeTap?() }) {
                         HStack(spacing: Theme.Spacing.xs) {
-                            Image(systemName: "heart.fill")
+                            Image(systemName: item.isLiked ? "heart.fill" : "heart")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.white)
                             Text("\(item.likeCount)")
@@ -256,7 +276,7 @@ struct HomeItemCard: View {
                                 .fill(Color.black.opacity(0.6))
                         )
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
                     .padding(Theme.Spacing.xs)
                 }
             }
@@ -314,6 +334,6 @@ struct HomeItemCard: View {
 }
 
 #Preview {
-    HomeView()
+    HomeView(tabCoordinator: TabCoordinator())
         .preferredColorScheme(.dark)
 }

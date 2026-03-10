@@ -19,107 +19,107 @@ struct AddPaymentCardView: View {
     private enum Field { case cardNumber, expiryMonth, expiryYear, cvv, cardholderName }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                Text("Enter your card details securely. Your payment information is encrypted.")
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .padding(.bottom, Theme.Spacing.xs)
-
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Card number")
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    Text(L10n.string("Enter your card details securely. Your payment information is encrypted."))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(
-                        placeholder: "1234 5678 9012 3456",
-                        text: $cardNumber,
-                        keyboardType: .numberPad,
-                        textContentType: .creditCardNumber
-                    )
-                    .focused($focusedField, equals: .cardNumber)
-                    .onChange(of: cardNumber) { _, newValue in
-                        cardNumber = formatCardNumber(newValue)
-                    }
-                }
+                        .padding(.bottom, Theme.Spacing.xs)
 
-                HStack(spacing: Theme.Spacing.md) {
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        Text("Expiry")
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                        HStack(spacing: Theme.Spacing.sm) {
-                            SettingsTextField(
-                                placeholder: "MM",
-                                text: $expiryMonth,
-                                keyboardType: .numberPad
-                            )
-                            .focused($focusedField, equals: .expiryMonth)
-                            .onChange(of: expiryMonth) { _, newValue in
-                                let filtered = newValue.filter { $0.isNumber }.prefix(2)
-                                expiryMonth = String(filtered)
-                            }
-                            Text("/")
-                                .font(Theme.Typography.body)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                            SettingsTextField(
-                                placeholder: "YY",
-                                text: $expiryYear,
-                                keyboardType: .numberPad
-                            )
-                            .focused($focusedField, equals: .expiryYear)
-                            .onChange(of: expiryYear) { _, newValue in
-                                let filtered = newValue.filter { $0.isNumber }.prefix(2)
-                                expiryYear = String(filtered)
-                            }
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        Text("CVV")
+                        Text(L10n.string("Card number"))
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.Colors.secondaryText)
                         SettingsTextField(
-                            placeholder: "123",
-                            text: $cvv,
-                            keyboardType: .numberPad
+                            placeholder: "1234 5678 9012 3456",
+                            text: $cardNumber,
+                            keyboardType: .numberPad,
+                            textContentType: .creditCardNumber
                         )
-                        .focused($focusedField, equals: .cvv)
-                        .onChange(of: cvv) { _, newValue in
-                            let filtered = newValue.filter { $0.isNumber }.prefix(4)
-                            cvv = String(filtered)
+                        .focused($focusedField, equals: .cardNumber)
+                        .onChange(of: cardNumber) { _, newValue in
+                            cardNumber = formatCardNumber(newValue)
                         }
                     }
-                }
 
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Name on card")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(
-                        placeholder: "Cardholder name",
-                        text: $cardholderName,
-                        textContentType: .name
-                    )
-                    .focused($focusedField, equals: .cardholderName)
-                }
+                    HStack(spacing: Theme.Spacing.md) {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                            Text(L10n.string("Expiry"))
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                            HStack(spacing: Theme.Spacing.sm) {
+                                SettingsTextField(
+                                    placeholder: "MM",
+                                    text: $expiryMonth,
+                                    keyboardType: .numberPad
+                                )
+                                .focused($focusedField, equals: .expiryMonth)
+                                .onChange(of: expiryMonth) { _, newValue in
+                                    let filtered = newValue.filter { $0.isNumber }.prefix(2)
+                                    expiryMonth = String(filtered)
+                                }
+                                Text("/")
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                SettingsTextField(
+                                    placeholder: "YY",
+                                    text: $expiryYear,
+                                    keyboardType: .numberPad
+                                )
+                                .focused($focusedField, equals: .expiryYear)
+                                .onChange(of: expiryYear) { _, newValue in
+                                    let filtered = newValue.filter { $0.isNumber }.prefix(2)
+                                    expiryYear = String(filtered)
+                                }
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                            Text(L10n.string("CVV"))
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                            SettingsTextField(
+                                placeholder: "123",
+                                text: $cvv,
+                                keyboardType: .numberPad
+                            )
+                            .focused($focusedField, equals: .cvv)
+                            .onChange(of: cvv) { _, newValue in
+                                let filtered = newValue.filter { $0.isNumber }.prefix(4)
+                                cvv = String(filtered)
+                            }
+                        }
+                    }
 
-                if let err = errorMessage {
-                    Text(err)
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(.red)
-                }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Name on card"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: "Cardholder name",
+                            text: $cardholderName,
+                            textContentType: .name
+                        )
+                        .focused($focusedField, equals: .cardholderName)
+                    }
 
-                PrimaryGlassButton(
-                    "Add card",
-                    isEnabled: canSubmit,
-                    isLoading: isSaving,
-                    action: addCard
-                )
+                    if let err = errorMessage {
+                        Text(err)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(.red)
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.lg)
+                .padding(.bottom, 100)
             }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.lg)
+            .background(Theme.Colors.background)
+
+            PrimaryButtonBar {
+                PrimaryGlassButton("Add card", isEnabled: canSubmit, isLoading: isSaving, action: addCard)
+            }
         }
-        .background(Theme.Colors.background)
-        .navigationTitle("Add Payment Card")
+        .navigationTitle(L10n.string("Add Payment Card"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .alert("Card added", isPresented: $showSuccess) {
@@ -128,7 +128,7 @@ struct AddPaymentCardView: View {
                 dismiss()
             }
         } message: {
-            Text("Your payment method has been saved.")
+            Text(L10n.string("Your payment method has been saved."))
         }
     }
 

@@ -16,9 +16,35 @@ class HomeViewModel: ObservableObject {
     private let productService = ProductService()
     private var currentPage = 1
     private let pageSize = 20
+
+    func updateAuthToken(_ token: String?) {
+        productService.updateAuthToken(token)
+    }
     
     init() {
         loadData()
+    }
+
+    /// Toggle like for a product and update local state.
+    func toggleLike(productId: String) {
+        guard !productId.isEmpty, let item = allItems.first(where: { $0.productId == productId }) else { return }
+        let newLiked = !item.isLiked
+        Task {
+            do {
+                let (isLiked, likeCount) = try await productService.toggleLike(productId: productId, isLiked: newLiked)
+                await MainActor.run {
+                    let updated = item.with(likeCount: likeCount, isLiked: isLiked)
+                    if let i = allItems.firstIndex(where: { $0.productId == productId }) {
+                        allItems[i] = updated
+                    }
+                    if let j = filteredItems.firstIndex(where: { $0.productId == productId }) {
+                        filteredItems[j] = updated
+                    }
+                }
+            } catch {
+                await MainActor.run { errorMessage = error.localizedDescription }
+            }
+        }
     }
     
     func loadData() {

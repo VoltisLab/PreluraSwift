@@ -31,7 +31,7 @@ struct BlocklistView: View {
                     Image(systemName: "person.slash")
                         .font(.system(size: 44))
                         .foregroundColor(Theme.Colors.secondaryText)
-                    Text("No blocked users")
+                    Text(L10n.string("No blocked users"))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
@@ -85,7 +85,7 @@ struct BlocklistView: View {
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Blocklist")
+        .navigationTitle(L10n.string("Blocklist"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .task { await load() }
@@ -104,7 +104,7 @@ struct BlocklistView: View {
             }
         } message: {
             if !unblockUsername.isEmpty {
-                Text("Do you want to unblock \(unblockUsername)?")
+                Text(String(format: L10n.string("Do you want to unblock %@?"), unblockUsername))
             }
         }
     }

@@ -15,137 +15,118 @@ struct SignupView: View {
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: Theme.Spacing.lg) {
-                    // Header
-                    VStack(spacing: Theme.Spacing.sm) {
-                        Text("Create Account")
-                            .font(Theme.Typography.title)
-                            .foregroundColor(Theme.Colors.primaryText)
-                        
-                        Text("Join Prelura today")
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.secondaryText)
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    VStack(spacing: Theme.Spacing.lg) {
+                        VStack(spacing: Theme.Spacing.sm) {
+                            Text(L10n.string("Create Account"))
+                                .font(Theme.Typography.title)
+                                .foregroundColor(Theme.Colors.primaryText)
+                            Text(L10n.string("Join Prelura today"))
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        }
+                        .padding(.top, Theme.Spacing.lg)
+
+                        VStack(spacing: Theme.Spacing.md) {
+                            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                                Text("Email")
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                TextField("Enter your email", text: $email)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .keyboardType(.emailAddress)
+                                    .autocapitalization(.none)
+                                    .padding(Theme.Spacing.md)
+                                    .background(Theme.Colors.secondaryBackground)
+                                    .cornerRadius(16)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                            }
+                            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                                Text(L10n.string("First Name"))
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                TextField("Enter your first name", text: $firstName)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .padding(Theme.Spacing.md)
+                                    .background(Theme.Colors.secondaryBackground)
+                                    .cornerRadius(16)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                            }
+                            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                                Text("Last Name")
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                TextField("Enter your last name", text: $lastName)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .padding(Theme.Spacing.md)
+                                    .background(Theme.Colors.secondaryBackground)
+                                    .cornerRadius(16)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                            }
+                            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                                Text(L10n.string("Username"))
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                TextField("Choose a username", text: $username)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .autocapitalization(.none)
+                                    .padding(Theme.Spacing.md)
+                                    .background(Theme.Colors.secondaryBackground)
+                                    .cornerRadius(16)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                            }
+                            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                                Text("Password")
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                SecureField("Enter your password", text: $password)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .padding(Theme.Spacing.md)
+                                    .background(Theme.Colors.secondaryBackground)
+                                    .cornerRadius(16)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                            }
+                            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                                Text(L10n.string("Confirm Password"))
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                SecureField("Confirm your password", text: $confirmPassword)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .padding(Theme.Spacing.md)
+                                    .background(Theme.Colors.secondaryBackground)
+                                    .cornerRadius(16)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                            }
+                            if let error = errorMessage {
+                                Text(error)
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(.red)
+                                    .padding(.horizontal, Theme.Spacing.md)
+                            }
+                            if let success = successMessage {
+                                Text(success)
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(.green)
+                                    .padding(.horizontal, Theme.Spacing.md)
+                            }
+                        }
+                        .padding(.horizontal, Theme.Spacing.lg)
+                        .padding(.bottom, 100)
                     }
-                    .padding(.top, Theme.Spacing.lg)
-                    
-                    // Form
-                    VStack(spacing: Theme.Spacing.md) {
-                        // Email field
-                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                            Text("Email")
-                                .font(Theme.Typography.subheadline)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                            
-                            TextField("Enter your email", text: $email)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .keyboardType(.emailAddress)
-                                .autocapitalization(.none)
-                                .padding(Theme.Spacing.md)
-                                .background(Theme.Colors.secondaryBackground)
-                                .cornerRadius(16)
-                                .foregroundColor(Theme.Colors.primaryText)
-                        }
-                        
-                        // First name field
-                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                            Text("First Name")
-                                .font(Theme.Typography.subheadline)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                            
-                            TextField("Enter your first name", text: $firstName)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .padding(Theme.Spacing.md)
-                                .background(Theme.Colors.secondaryBackground)
-                                .cornerRadius(16)
-                                .foregroundColor(Theme.Colors.primaryText)
-                        }
-                        
-                        // Last name field
-                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                            Text("Last Name")
-                                .font(Theme.Typography.subheadline)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                            
-                            TextField("Enter your last name", text: $lastName)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .padding(Theme.Spacing.md)
-                                .background(Theme.Colors.secondaryBackground)
-                                .cornerRadius(16)
-                                .foregroundColor(Theme.Colors.primaryText)
-                        }
-                        
-                        // Username field
-                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                            Text("Username")
-                                .font(Theme.Typography.subheadline)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                            
-                            TextField("Choose a username", text: $username)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .autocapitalization(.none)
-                                .padding(Theme.Spacing.md)
-                                .background(Theme.Colors.secondaryBackground)
-                                .cornerRadius(16)
-                                .foregroundColor(Theme.Colors.primaryText)
-                        }
-                        
-                        // Password field
-                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                            Text("Password")
-                                .font(Theme.Typography.subheadline)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                            
-                            SecureField("Enter your password", text: $password)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .padding(Theme.Spacing.md)
-                                .background(Theme.Colors.secondaryBackground)
-                                .cornerRadius(16)
-                                .foregroundColor(Theme.Colors.primaryText)
-                        }
-                        
-                        // Confirm password field
-                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                            Text("Confirm Password")
-                                .font(Theme.Typography.subheadline)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                            
-                            SecureField("Confirm your password", text: $confirmPassword)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .padding(Theme.Spacing.md)
-                                .background(Theme.Colors.secondaryBackground)
-                                .cornerRadius(16)
-                                .foregroundColor(Theme.Colors.primaryText)
-                        }
-                        
-                        // Error/Success message
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(.red)
-                                .padding(.horizontal, Theme.Spacing.md)
-                        }
-                        
-                        if let success = successMessage {
-                            Text(success)
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(.green)
-                                .padding(.horizontal, Theme.Spacing.md)
-                        }
-                        
-                        // Signup button
-                        PrimaryGlassButton(
-                            "Sign Up",
-                            isEnabled: isFormValid,
-                            isLoading: isLoading,
-                            action: handleSignup
-                        )
-                    }
-                    .padding(.horizontal, Theme.Spacing.lg)
+                    .padding(.vertical, Theme.Spacing.lg)
                 }
-                .padding(.vertical, Theme.Spacing.lg)
+                .background(Theme.Colors.background)
+
+                PrimaryButtonBar {
+                    PrimaryGlassButton(
+                        "Sign Up",
+                        isEnabled: isFormValid,
+                        isLoading: isLoading,
+                        action: handleSignup
+                    )
+                }
             }
-            .background(Theme.Colors.background)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -153,6 +134,7 @@ struct SignupView: View {
                         dismiss()
                     }
                     .foregroundColor(Theme.primaryColor)
+                    .buttonStyle(HapticTapButtonStyle())
                 }
             }
         }

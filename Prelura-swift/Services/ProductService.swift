@@ -227,6 +227,24 @@ class ProductService: ObservableObject {
         return try await getAllProducts(pageNumber: pageNumber, pageCount: pageCount, search: query)
     }
 
+    /// Fetch unique brand names from the catalog (for sell flow brand picker). Uses existing allProducts and extracts brand/customBrand.
+    func getBrandNames() async throws -> [String] {
+        var all: [String] = []
+        var seen = Set<String>()
+        for page in 1...3 {
+            let products = try await getAllProducts(pageNumber: page, pageCount: 50)
+            for item in products {
+                let name = item.brand ?? ""
+                if !name.isEmpty, !seen.contains(name) {
+                    seen.insert(name)
+                    all.append(name)
+                }
+            }
+            if products.count < 50 { break }
+        }
+        return all.sorted()
+    }
+
     /// Favourites: fetch liked products. Matches Flutter getMyFavouriteProduct (query likedProducts).
     func getLikedProducts(pageNumber: Int = 1, pageCount: Int = 50) async throws -> (items: [Item], totalNumber: Int) {
         let query = """

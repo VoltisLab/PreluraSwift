@@ -105,6 +105,21 @@ class ProfileViewModel: ObservableObject {
     func refreshAsync() async {
         await loadUserData()
     }
+
+    /// Toggle like for a product and update userItems.
+    func toggleLike(productId: String) {
+        guard !productId.isEmpty, let item = userItems.first(where: { $0.productId == productId }) else { return }
+        Task {
+            do {
+                let (isLiked, likeCount) = try await productService.toggleLike(productId: productId, isLiked: !item.isLiked)
+                await MainActor.run {
+                    userItems = userItems.replacingItem(productId: productId, with: item.with(likeCount: likeCount, isLiked: isLiked))
+                }
+            } catch {
+                await MainActor.run { errorMessage = error.localizedDescription }
+            }
+        }
+    }
     
     func toggleMenu() {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {

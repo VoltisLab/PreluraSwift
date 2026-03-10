@@ -14,27 +14,27 @@ struct ProfileMenuView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 if listingCount > 0 {
-                    MenuItemRow(title: "Shop Value", icon: "chart.bar.fill", action: { onDismiss(); onSelect(.shopValue) })
+                    MenuItemRow(title: L10n.string("Shop Value"), icon: "chart.bar.fill", action: { onDismiss(); onSelect(.shopValue) })
                     menuDivider
                 }
                 
-                MenuItemRow(title: "Orders", icon: "bag.fill", action: { onDismiss(); onSelect(.orders) })
+                MenuItemRow(title: L10n.string("Orders"), icon: "bag.fill", action: { onDismiss(); onSelect(.orders) })
                 menuDivider
-                MenuItemRow(title: "Favourites", icon: "heart.fill", action: { onDismiss(); onSelect(.favourites) })
+                MenuItemRow(title: L10n.string("Favourites"), icon: "heart.fill", action: { onDismiss(); onSelect(.favourites) })
                 menuDivider
-                MenuItemRow(title: "Multi-buy discounts", subtitle: isMultiBuyEnabled ? "on" : "off", icon: "tag.fill", action: { onDismiss(); onSelect(.multiBuyDiscounts) })
+                MenuItemRow(title: L10n.string("Multi-buy discounts"), subtitle: isMultiBuyEnabled ? L10n.string("On") : L10n.string("Off"), icon: "tag.fill", action: { onDismiss(); onSelect(.multiBuyDiscounts) })
                 menuDivider
-                MenuItemRow(title: "Vacation Mode", subtitle: isVacationMode ? "on" : "off", icon: "umbrella.fill", action: { onDismiss(); onSelect(.vacationMode) })
+                MenuItemRow(title: L10n.string("Vacation Mode"), subtitle: isVacationMode ? L10n.string("On") : L10n.string("Off"), icon: "umbrella.fill", action: { onDismiss(); onSelect(.vacationMode) })
                 menuDivider
-                MenuItemRow(title: "Invite Friend", icon: "person.badge.plus.fill", action: { onDismiss(); onSelect(.inviteFriend) })
+                MenuItemRow(title: L10n.string("Invite Friend"), icon: "person.badge.plus.fill", action: { onDismiss(); onSelect(.inviteFriend) })
                 menuDivider
-                MenuItemRow(title: "Help Centre", icon: "questionmark.circle.fill", action: { onDismiss(); onSelect(.helpCentre) })
+                MenuItemRow(title: L10n.string("Help Centre"), icon: "questionmark.circle.fill", action: { onDismiss(); onSelect(.helpCentre) })
                 menuDivider
-                MenuItemRow(title: "About Prelura", icon: "info.circle.fill", action: { onDismiss(); onSelect(.aboutPrelura) })
+                MenuItemRow(title: L10n.string("About Prelura"), icon: "info.circle.fill", action: { onDismiss(); onSelect(.aboutPrelura) })
                 menuDivider
-                MenuItemRow(title: "Settings", icon: "gearshape.fill", action: { onDismiss(); onSelect(.settings) })
+                MenuItemRow(title: L10n.string("Settings"), icon: "gearshape.fill", action: { onDismiss(); onSelect(.settings) })
                 menuDivider
-                MenuItemRow(title: "Logout", icon: "rectangle.portrait.and.arrow.right", action: { onDismiss(); onSelect(.logout) }, isDestructive: true)
+                MenuItemRow(title: L10n.string("Logout"), icon: "rectangle.portrait.and.arrow.right", action: { onDismiss(); onSelect(.logout) }, isDestructive: true)
             }
             .padding(.vertical, Theme.Spacing.sm)
         }
@@ -74,7 +74,7 @@ struct MenuRowContent: View {
                     .foregroundColor(isDestructive ? .red : Theme.Colors.primaryText)
                 if let subtitle = subtitle {
                     Text(subtitle)
-                        .font(Theme.Typography.caption)
+                        .font(.system(size: 14))
                         .foregroundColor(Theme.primaryColor)
                 }
             }
@@ -111,52 +111,55 @@ struct SettingsMenuView: View {
         List {
             Section {
                 NavigationLink(destination: AccountSettingsView()) {
-                    settingsRow("Account Settings", icon: "person.crop.circle")
+                    settingsRow(L10n.string("Account Settings"), icon: "person.crop.circle")
                 }
                 NavigationLink(destination: CurrencySettingsView()) {
-                    settingsRow("Currency", icon: "dollarsign.circle")
+                    settingsRow(L10n.string("Currency"), icon: "dollarsign.circle")
                 }
                 NavigationLink(destination: PrivacySettingsView()) {
-                    settingsRow("Privacy", icon: "hand.raised")
+                    settingsRow(L10n.string("Privacy"), icon: "hand.raised")
                 }
                 NavigationLink(destination: ShippingAddressView()) {
-                    settingsRow("Shipping Address", icon: "location")
+                    settingsRow(L10n.string("Shipping Address"), icon: "location")
                 }
                 NavigationLink(destination: AppearanceMenuView()) {
-                    settingsRow("Appearance", icon: "paintbrush")
+                    settingsRow(L10n.string("Appearance"), icon: "paintbrush")
+                }
+                NavigationLink(destination: LanguageMenuView()) {
+                    settingsRow(L10n.string("Language"), icon: "globe")
                 }
                 NavigationLink(destination: ProfileSettingsView()) {
-                    settingsRow("Profile details", icon: "person.text.rectangle")
+                    settingsRow(L10n.string("Profile details"), icon: "person.text.rectangle")
                 }
                 NavigationLink(destination: PaymentSettingsView()) {
-                    settingsRow("Payments", icon: "creditcard")
+                    settingsRow(L10n.string("Payments"), icon: "creditcard")
                 }
                 NavigationLink(destination: PostageSettingsView()) {
-                    settingsRow("Postage", icon: "shippingbox")
+                    settingsRow(L10n.string("Postage"), icon: "shippingbox")
                 }
                 NavigationLink(destination: SecurityMenuView()) {
-                    settingsRow("Security & Privacy", icon: "lock.shield")
+                    settingsRow(L10n.string("Security & Privacy"), icon: "lock.shield")
                 }
                 NavigationLink(destination: VerifyIdentityView()) {
-                    settingsRow("Identity verification", icon: "checkmark.shield")
+                    settingsRow(L10n.string("Identity verification"), icon: "checkmark.shield")
                 }
                 if isStaff {
                     NavigationLink(destination: AdminMenuView()) {
-                        settingsRow("Admin Actions", icon: "shield")
+                        settingsRow(L10n.string("Admin Actions"), icon: "shield")
                     }
                 }
             }
-            Section("Notifications") {
-                NavigationLink(destination: NotificationSettingsView(title: "Push")) {
-                    settingsRow("Push notifications", icon: "bell")
+            Section(L10n.string("Notifications")) {
+                NavigationLink(destination: NotificationSettingsView(title: L10n.string("Push notifications"))) {
+                    settingsRow(L10n.string("Push notifications"), icon: "bell")
                 }
-                NavigationLink(destination: NotificationSettingsView(title: "Email")) {
-                    settingsRow("Email notifications", icon: "envelope")
+                NavigationLink(destination: NotificationSettingsView(title: L10n.string("Email notifications"))) {
+                    settingsRow(L10n.string("Email notifications"), icon: "envelope")
                 }
             }
             Section {
                 NavigationLink(destination: InviteFriendView()) {
-                    settingsRow("Invite Friend", icon: "person.badge.plus")
+                    settingsRow(L10n.string("Invite Friend"), icon: "person.badge.plus")
                 }
             }
             Section {
@@ -165,7 +168,7 @@ struct SettingsMenuView: View {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
                             .foregroundColor(.red)
                             .frame(width: 24)
-                        Text("Log out")
+                        Text(L10n.string("Log out"))
                             .foregroundColor(.red)
                     }
                 }
@@ -173,18 +176,18 @@ struct SettingsMenuView: View {
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle("Settings")
+        .navigationTitle(L10n.string("Settings"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .alert("Logout", isPresented: $showLogoutConfirm) {
-            Button("Cancel", role: .cancel) {}
-            Button("Logout", role: .destructive) {
+        .alert(L10n.string("Logout"), isPresented: $showLogoutConfirm) {
+            Button(L10n.string("Cancel"), role: .cancel) {}
+            Button(L10n.string("Logout"), role: .destructive) {
                 Task {
                     try? await authService.logout()
                 }
             }
         } message: {
-            Text("Are you sure you want to logout?")
+            Text(L10n.string("Are you sure you want to logout?"))
         }
     }
     
@@ -205,15 +208,15 @@ struct AboutPreluraMenuView: View {
     var body: some View {
         List {
             NavigationLink(destination: HowToUsePreluraView()) {
-                aboutRow("How to use Prelura", icon: "book.fill")
+                aboutRow(L10n.string("How to use Prelura"), icon: "book.fill")
             }
             NavigationLink(destination: LegalInformationView()) {
-                aboutRow("Legal Information", icon: "doc.text.fill")
+                aboutRow(L10n.string("Legal Information"), icon: "doc.text.fill")
             }
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle("About Prelura")
+        .navigationTitle(L10n.string("About Prelura"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }
@@ -233,49 +236,76 @@ struct AboutPreluraMenuView: View {
 struct HelpCentreView: View {
     @State private var searchText: String = ""
 
+    private var moreTopicsLocalized: [String] {
+        [
+            L10n.string("What's a collection point?"),
+            L10n.string("Item says \"Delivered\" but I don't have it"),
+            L10n.string("What's Vacation mode?"),
+            L10n.string("How do I earn a trusted seller badge?")
+        ]
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                Text("Got a burning question?")
-                    .font(Theme.Typography.title2)
-                    .foregroundColor(Theme.Colors.primaryText)
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    DiscoverSearchField(
+                        text: $searchText,
+                        placeholder: L10n.string("e.g. How do I change my profile photo?"),
+                        outerPadding: false,
+                        topPadding: Theme.Spacing.xs
+                    )
+                    .padding(.trailing, Theme.Spacing.sm)
 
-                DiscoverSearchField(
-                    text: $searchText,
-                    placeholder: "e.g. How do I change my profile photo?",
-                    outerPadding: false
-                )
+                    Text(L10n.string("Got a burning question?"))
+                        .font(Theme.Typography.title2)
+                        .foregroundColor(Theme.Colors.primaryText)
 
-                Text("Frequently asked")
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
+                    Text(L10n.string("Frequently asked"))
+                        .font(Theme.Typography.headline)
+                        .foregroundColor(Theme.Colors.primaryText)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Theme.Spacing.md) {
-                        faqCard("How can I cancel an existing order")
-                        faqCard("How long does a refund normally take?")
-                        faqCard("When will I receive my item?")
-                        faqCard("How will I know if my order has been shipped?")
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Spacing.md) {
+                            faqCard(L10n.string("How can I cancel an existing order"))
+                            faqCard(L10n.string("How long does a refund normally take?"))
+                            faqCard(L10n.string("When will I receive my item?"))
+                            faqCard(L10n.string("How will I know if my order has been shipped?"))
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
                     }
-                    .padding(.horizontal, Theme.Spacing.md)
+
+                    Text(L10n.string("More topics"))
+                        .font(Theme.Typography.headline)
+                        .foregroundColor(Theme.Colors.primaryText)
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(moreTopicsLocalized.enumerated()), id: \.offset) { index, title in
+                            helpTopicRow(title)
+                                .overlay(alignment: .bottom) {
+                                    if index < moreTopicsLocalized.count - 1 {
+                                        ContentDivider()
+                                    }
+                                }
+                        }
+                    }
+                    .background(Theme.Colors.secondaryBackground)
+                    .cornerRadius(Theme.Glass.cornerRadius)
+
+                    Color.clear.frame(height: 100)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.md)
+            }
+            .background(Theme.Colors.background)
 
-                Text("More topics")
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
-
-                VStack(spacing: 0) {
-                    helpTopicRow("What's a collection point?")
-                    helpTopicRow("Item says \"Delivered\" but I don't have it")
-                    helpTopicRow("What's Vacation mode?")
-                    helpTopicRow("How do I earn a trusted seller badge?")
-                }
-
+            PrimaryButtonBar {
                 NavigationLink(destination: HelpChatView()) {
                     HStack(spacing: Theme.Spacing.sm) {
                         Image(systemName: "bubble.left.and.bubble.right")
                             .font(.system(size: 16, weight: .semibold))
-                        Text("Start a conversation")
+                        Text(L10n.string("Start a conversation"))
                             .font(Theme.Typography.headline)
                     }
                     .foregroundStyle(.white)
@@ -286,11 +316,8 @@ struct HelpCentreView: View {
                 .buttonStyle(.plain)
                 .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Theme.Spacing.md)
         }
-        .background(Theme.Colors.background)
-        .navigationTitle("Help Centre")
+        .navigationTitle(L10n.string("Help Centre"))
         .navigationBarTitleDisplayMode(.inline)
     }
 

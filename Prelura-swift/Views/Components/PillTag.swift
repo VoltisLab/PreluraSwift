@@ -2,6 +2,8 @@ import SwiftUI
 
 /// Single component for all filter/category/brand pills. Inactive state uses material card style (3D elevation).
 struct PillTag: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let title: String
     let isSelected: Bool
     /// When true, unselected state uses primaryColor text; when false, secondaryText.
@@ -12,13 +14,18 @@ struct PillTag: View {
 
     private let shape = RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
 
-    /// Material-style elevation for inactive cards (shadow only).
-    private let inactiveShadowColor = Color.black.opacity(0.22)
+    /// In light mode, skip shadow to avoid muddy low-contrast look on white; in dark mode use elevation shadow.
+    private var inactiveShadowColor: Color {
+        colorScheme == .light ? .clear : Color.black.opacity(0.22)
+    }
     private let inactiveShadowRadius: CGFloat = 6
     private let inactiveShadowY: CGFloat = 3
 
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            HapticManager.selection()
+            action()
+        }) {
             HStack(spacing: Theme.Spacing.xs) {
                 if let icon = icon {
                     Image(systemName: icon)
@@ -58,13 +65,20 @@ struct PillTag: View {
     }
 
     /// Inactive: subtle stroke for card edge. Selected: no border.
+    /// Use a stronger border in light mode so the pill stays visible on white (glassBorder at 0.5 is too faint).
     @ViewBuilder
     private var overlayView: some View {
         if isSelected {
             EmptyView()
         } else {
             shape
-                .strokeBorder(Theme.Colors.glassBorder.opacity(0.5), lineWidth: 1)
+                .strokeBorder(inactiveBorderColor, lineWidth: 1)
         }
+    }
+
+    private var inactiveBorderColor: Color {
+        colorScheme == .light
+            ? Color.black.opacity(0.18)
+            : Theme.Colors.glassBorder.opacity(0.5)
     }
 }

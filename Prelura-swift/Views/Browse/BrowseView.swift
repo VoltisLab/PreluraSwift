@@ -15,14 +15,16 @@ struct BrowseView: View {
                 // Custom Header with title centered
                 customHeader
                 
-                // Search and Filters (DiscoverSearchField – 30pt)
+                // Search (same position as feed / discover / inbox)
                 VStack(spacing: Theme.Spacing.md) {
                     DiscoverSearchField(
                         text: $searchText,
-                        placeholder: "Search items...",
+                        placeholder: L10n.string("Search items, brands or styles"),
                         onChange: { viewModel.setSearchText($0) },
-                        outerPadding: false
+                        outerPadding: false,
+                        topPadding: Theme.Spacing.xs
                     )
+                    .padding(.trailing, Theme.Spacing.sm)
 
                     // Category Filters
                     categoryFilters
@@ -31,7 +33,7 @@ struct BrowseView: View {
                     sortOptions
                 }
                 .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.sm)
+                .padding(.top, Theme.Spacing.xs)
                 .padding(.bottom, Theme.Spacing.sm)
                 .background(Theme.Colors.background)
                 
@@ -76,7 +78,7 @@ struct BrowseView: View {
         HStack {
             Color.clear.frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
             Spacer()
-            Text("Browse")
+            Text(L10n.string("Browse"))
                 .font(Theme.Typography.title)
                 .foregroundColor(Theme.Colors.primaryText)
             Spacer()
@@ -91,7 +93,7 @@ struct BrowseView: View {
             HStack(spacing: Theme.Spacing.sm) {
                 // All Categories Button
                 CategoryFilterButton(
-                    title: "All",
+                    title: L10n.string("All"),
                     isSelected: viewModel.selectedCategory == nil,
                     action: {
                         viewModel.selectCategory(nil)
@@ -128,7 +130,7 @@ struct BrowseView: View {
             }
         } label: {
             HStack {
-                Text("Sort: \(viewModel.sortOption.rawValue)")
+                Text(L10n.string("Sort: ") + viewModel.sortOption.rawValue)
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.primaryText)
                 
@@ -148,11 +150,11 @@ struct BrowseView: View {
                 .font(.system(size: 60))
                 .foregroundColor(Theme.Colors.secondaryText)
             
-            Text("No items found")
+            Text(L10n.string("No items found"))
                 .font(Theme.Typography.title3)
                 .foregroundColor(Theme.Colors.primaryText)
             
-            Text("Try adjusting your filters")
+            Text(L10n.string("Try adjusting your filters"))
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.secondaryText)
         }

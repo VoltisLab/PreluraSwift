@@ -17,7 +17,7 @@ struct PaymentSettingsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
-                    Section(header: Text("Active Payment method")) {
+                    Section(header: Text(L10n.string("Active Payment method"))) {
                         if let method = paymentMethod {
                             HStack(spacing: Theme.Spacing.md) {
                                 Image(systemName: "creditcard.fill")
@@ -27,7 +27,7 @@ struct PaymentSettingsView: View {
                                     Text("\(method.cardBrand) •••• \(method.last4Digits)")
                                         .font(Theme.Typography.headline)
                                         .foregroundColor(Theme.Colors.primaryText)
-                                    Text("Card ending in \(method.last4Digits)")
+                                    Text(String(format: L10n.string("Card ending in %@"), method.last4Digits))
                                         .font(Theme.Typography.caption)
                                         .foregroundColor(Theme.Colors.secondaryText)
                                 }
@@ -43,14 +43,14 @@ struct PaymentSettingsView: View {
                                             .scaleEffect(0.9)
                                             .tint(Theme.Colors.error)
                                     } else {
-                                        Text("Delete")
+                                        Text(L10n.string("Delete"))
                                     }
                                 }
                                 .frame(maxWidth: .infinity)
                             }
                             .disabled(isDeleting)
                         } else {
-                            Text("No payment method added")
+                            Text(L10n.string("No payment method added"))
                                 .foregroundColor(Theme.Colors.secondaryText)
                         }
                     }
@@ -76,7 +76,7 @@ struct PaymentSettingsView: View {
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle("Payments")
+        .navigationTitle(L10n.string("Payments"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .refreshable { await load() }
@@ -89,7 +89,7 @@ struct PaymentSettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This card will be removed from your account.")
+            Text(L10n.string("This card will be removed from your account."))
         }
     }
 

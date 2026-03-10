@@ -337,6 +337,67 @@ class UserService: ObservableObject {
         }
     }
 
+    /// Fetch reviews for a user. Matches Flutter getUserReviews (query userReviews + userReviewsTotalNumber).
+    func getUserReviews(username: String, pageNumber: Int = 1, pageCount: Int = 20) async throws -> (reviews: [UserReview], totalNumber: Int) {
+        let query = """
+        query UserReviews($username: String!, $pageCount: Int, $pageNumber: Int) {
+          userReviews(username: $username, pageCount: $pageCount, pageNumber: $pageNumber) {
+            id
+            rating
+            comment
+            isAutoReview
+            dateCreated
+            reviewer {
+              username
+              profilePictureUrl
+            }
+          }
+          userReviewsTotalNumber
+        }
+        """
+        struct Payload: Decodable {
+            let userReviews: [UserReviewRow]?
+            let userReviewsTotalNumber: Int?
+        }
+        struct UserReviewRow: Decodable {
+            let id: String?
+            let rating: Int?
+            let comment: String?
+            let isAutoReview: Bool?
+            let dateCreated: String?
+            let reviewer: ReviewerRow?
+        }
+        struct ReviewerRow: Decodable {
+            let username: String?
+            let profilePictureUrl: String?
+        }
+        let variables: [String: Any] = ["username": username, "pageCount": pageCount, "pageNumber": pageNumber]
+        let response: Payload = try await client.execute(query: query, variables: variables, responseType: Payload.self)
+        let total = response.userReviewsTotalNumber ?? 0
+        let reviews = (response.userReviews ?? []).compactMap { row -> UserReview? in
+            let id = row.id ?? "\(row.reviewer?.username ?? "")-\(row.dateCreated ?? "")"
+            guard !id.isEmpty else { return nil }
+            let date: Date = {
+                guard let s = row.dateCreated else { return Date() }
+                let iso = ISO8601DateFormatter()
+                iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let d = iso.date(from: s) { return d }
+                iso.formatOptions = [.withInternetDateTime]
+                return iso.date(from: s) ?? Date()
+            }()
+            return UserReview(
+                id: id,
+                rating: row.rating ?? 0,
+                comment: row.comment ?? "",
+                isAutoReview: row.isAutoReview ?? false,
+                dateCreated: date,
+                reviewerUsername: row.reviewer?.username ?? "",
+                reviewerProfilePictureUrl: row.reviewer?.profilePictureUrl
+            )
+        }
+        return (reviews, total)
+    }
+
     /// Unblock user. Matches Flutter blockUnblockUser(action: false) → blockUser: false.
     func unblockUser(userId: Int) async throws {
         let mutation = """
@@ -521,15 +582,15 @@ class UserService: ObservableObject {
         ]
         struct Payload: Decodable {
             let userOrders: [OrderRow]?
-            let userOrdersTotalNumber: Int?
+            let userOrdersTotalNumber: IntOrString?
         }
         struct OrderRow: Decodable {
             let id: AnyCodable?
-            let priceTotal: String?
-            let discountPrice: String?
+            let priceTotal: DecimalStringOrNumber?
+            let discountPrice: DecimalStringOrNumber?
             let status: String?
-            let createdAt: String?
-            let updatedAt: String?
+            let createdAt: DateStringOrTimestamp?
+            let updatedAt: DateStringOrTimestamp?
             let shippingAddress: String?
             let user: OrderUserRow?
             let products: [OrderProductRow]?
@@ -543,8 +604,58 @@ class UserService: ObservableObject {
         struct OrderProductRow: Decodable {
             let id: AnyCodable?
             let name: String?
-            let imagesUrl: [String]?
-            let price: String?
+            let imagesUrl: [OrderImageUrlElement]?
+            let price: DecimalStringOrNumber?
+        }
+        /// Accepts ISO8601 string or Unix timestamp (Double/Int).
+        struct DateStringOrTimestamp: Decodable {
+            let date: Date?
+            init(from decoder: Decoder) throws {
+                let c = try decoder.singleValueContainer()
+                if let s = try? c.decode(String.self) {
+                    date = Self.parseISO8601(s)
+                } else if let n = try? c.decode(Double.self) {
+                    date = Date(timeIntervalSince1970: n)
+                } else if let n = try? c.decode(Int.self) {
+                    date = Date(timeIntervalSince1970: Double(n))
+                } else {
+                    date = nil
+                }
+            }
+            static func parseISO8601(_ s: String) -> Date? {
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let d = formatter.date(from: s) { return d }
+                formatter.formatOptions = [.withInternetDateTime]
+                return formatter.date(from: s)
+            }
+        }
+        /// Accepts "url" string or object { "url": "..." }.
+        struct OrderImageUrlElement: Decodable {
+            let urlString: String?
+            init(from decoder: Decoder) throws {
+                let c = try decoder.singleValueContainer()
+                if let s = try? c.decode(String.self) {
+                    urlString = s
+                } else if let dict = try? c.decode([String: String].self), let u = dict["url"] {
+                    urlString = u
+                } else {
+                    urlString = nil
+                }
+            }
+        }
+        struct IntOrString: Decodable {
+            let intValue: Int
+            init(from decoder: Decoder) throws {
+                let c = try decoder.singleValueContainer()
+                if let n = try? c.decode(Int.self) {
+                    intValue = n
+                } else if let s = try? c.decode(String.self), let n = Int(s) {
+                    intValue = n
+                } else {
+                    intValue = 0
+                }
+            }
         }
         let response: Payload = try await client.execute(query: query, variables: variables, responseType: Payload.self)
         let rows = response.userOrders ?? []
@@ -561,19 +672,21 @@ class UserService: ObservableObject {
             let products: [OrderProductSummary] = (row.products ?? []).compactMap { p -> OrderProductSummary? in
                 let pid = (p.id?.value as? Int).map { String($0) } ?? (p.id?.value as? String)
                 guard let pid = pid else { return nil }
-                var imgUrl: String?
-                if let first = p.imagesUrl?.first,
-                   let data = first.data(using: .utf8),
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let url = json["url"] as? String {
-                    imgUrl = url
-                }
-                return OrderProductSummary(id: String(describing: pid), name: p.name ?? "", imageUrl: imgUrl, price: p.price)
+                let imgUrl: String? = {
+                    guard let first = p.imagesUrl?.first, let s = first.urlString, !s.isEmpty else { return nil }
+                    if s.hasPrefix("{"), let data = s.data(using: .utf8),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let u = json["url"] as? String { return u }
+                    return s
+                }()
+                let priceStr = p.price?.stringValue ?? ""
+                return OrderProductSummary(id: String(describing: pid), name: p.name ?? "", imageUrl: imgUrl, price: priceStr)
             }
-            let createdAt = Self.parseCreatedAt(row.createdAt) ?? Date()
+            let createdAt = row.createdAt?.date ?? Self.parseCreatedAt(nil) ?? Date()
+            let priceStr = row.priceTotal?.stringValue ?? "0"
             return Order(
                 id: idStr,
-                priceTotal: row.priceTotal ?? "0",
+                priceTotal: priceStr,
                 status: row.status ?? "",
                 createdAt: createdAt,
                 otherParty: otherParty,
@@ -581,7 +694,7 @@ class UserService: ObservableObject {
                 shippingAddress: parseShippingAddress(row.shippingAddress)
             )
         }
-        let total = response.userOrdersTotalNumber ?? 0
+        let total = response.userOrdersTotalNumber?.intValue ?? 0
         return (orders, total)
     }
 

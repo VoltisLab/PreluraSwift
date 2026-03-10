@@ -24,7 +24,10 @@ struct BorderGlassButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            HapticManager.secondaryAction()
+            action()
+        }) {
             HStack(spacing: Theme.Spacing.sm) {
                 if let icon = icon {
                     Image(systemName: icon)

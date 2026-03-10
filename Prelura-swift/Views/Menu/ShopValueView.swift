@@ -21,20 +21,25 @@ struct ShopValueView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    VStack(spacing: Theme.Spacing.lg) {
-                        heroCard
-                        balanceCard
-                        withdrawButton
-                        earningsRow
-                        footer
+                ZStack(alignment: .bottom) {
+                    ScrollView {
+                        VStack(spacing: Theme.Spacing.lg) {
+                            heroCard
+                            balanceCard
+                            earningsRow
+                            footer
+                        }
+                        .padding(Theme.Spacing.md)
+                        .padding(.bottom, 100)
                     }
-                    .padding(Theme.Spacing.md)
+                    PrimaryButtonBar {
+                        PrimaryGlassButton("Withdraw", action: {})
+                    }
                 }
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Shop Value")
+        .navigationTitle(L10n.string("Shop Value"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .refreshable { await loadEarnings() }
@@ -68,7 +73,7 @@ struct ShopValueView: View {
     // MARK: - Hero: current value + listings
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("Current shop value")
+            Text(L10n.string("Current shop value"))
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
                 .textCase(.uppercase)
@@ -80,7 +85,7 @@ struct ShopValueView: View {
                 Image(systemName: "tag")
                     .font(.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
-                Text("\(listingCount) active listings")
+                Text("\(listingCount) \(L10n.string("active listings"))")
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
@@ -95,11 +100,11 @@ struct ShopValueView: View {
     private var balanceCard: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             HStack {
-                Text("Balance")
+                Text(L10n.string("Balance"))
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
                 Spacer()
-                Text("Pending \(formatCurrency(pendingPayments))")
+                Text(String(format: L10n.string("Pending %@"), formatCurrency(pendingPayments)))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.primaryColor)
             }
@@ -113,15 +118,11 @@ struct ShopValueView: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
     }
 
-    private var withdrawButton: some View {
-        PrimaryGlassButton("Withdraw", action: {})
-    }
-
     // MARK: - Earnings: two cards
     private var earningsRow: some View {
         HStack(spacing: Theme.Spacing.md) {
-            earningsCard(title: "This month", value: earningsThisMonth)
-            earningsCard(title: "Total earnings", value: totalEarnings)
+            earningsCard(title: L10n.string("This month"), value: earningsThisMonth)
+            earningsCard(title: L10n.string("Total earnings"), value: totalEarnings)
         }
     }
 
@@ -142,15 +143,15 @@ struct ShopValueView: View {
 
     private var footer: some View {
         VStack(spacing: Theme.Spacing.sm) {
-            Text("\(transactionsCompleted) transactions completed")
+            Text("\(transactionsCompleted) \(L10n.string("transactions completed"))")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
             Button(action: {}) {
-                Text("Help")
+                Text(L10n.string("Help"))
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.primaryColor)
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(HapticTapButtonStyle())
         }
         .padding(.top, Theme.Spacing.sm)
     }

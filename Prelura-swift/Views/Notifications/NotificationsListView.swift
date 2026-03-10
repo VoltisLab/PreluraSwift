@@ -37,7 +37,7 @@ struct NotificationsListView: View {
                     Image(systemName: "bell.slash")
                         .font(.system(size: 48))
                         .foregroundColor(Theme.Colors.secondaryText)
-                    Text("No notifications")
+                    Text(L10n.string("No notifications"))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
@@ -60,7 +60,7 @@ struct NotificationsListView: View {
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Notifications")
+        .navigationTitle(L10n.string("Notifications"))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
             await load(page: 1)
@@ -101,6 +101,17 @@ struct NotificationsListView: View {
 private struct NotificationRowView: View {
     let notification: AppNotification
 
+    /// Strips the sender's username from the start of the message (e.g. "shinor Transaction paused" → "Transaction paused").
+    private var displayMessage: String {
+        let msg = notification.message
+        guard let username = notification.sender?.username, !username.isEmpty else { return msg }
+        let prefix = username + " "
+        if msg.hasPrefix(prefix) {
+            return String(msg.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        }
+        return msg
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Spacing.md) {
             if let sender = notification.sender, let urlString = sender.profilePictureUrl, let url = URL(string: urlString) {
@@ -130,7 +141,7 @@ private struct NotificationRowView: View {
                     )
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(notification.message)
+                Text(displayMessage)
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.primaryText)
                     .lineLimit(2)
@@ -141,11 +152,6 @@ private struct NotificationRowView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            if !notification.isRead {
-                Circle()
-                    .fill(Theme.primaryColor)
-                    .frame(width: 8, height: 8)
-            }
         }
         .padding(.vertical, Theme.Spacing.sm)
     }

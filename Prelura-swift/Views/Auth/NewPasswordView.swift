@@ -14,54 +14,61 @@ struct NewPasswordView: View {
     @State private var success = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                Text("Enter the 6-digit code we sent to \(email) and choose a new password.")
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("Code")
-                        .font(Theme.Typography.subheadline)
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    Text("Enter the 6-digit code we sent to \(email) and choose a new password.")
+                        .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
-                    TextField("000000", text: $code)
-                        .keyboardType(.numberPad)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .padding(Theme.Spacing.md)
-                        .background(Theme.Colors.secondaryBackground)
-                        .cornerRadius(16)
-                        .foregroundColor(Theme.Colors.primaryText)
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        Text("Code")
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        TextField("000000", text: $code)
+                            .keyboardType(.numberPad)
+                            .textFieldStyle(PlainTextFieldStyle())
+                            .padding(Theme.Spacing.md)
+                            .background(Theme.Colors.secondaryBackground)
+                            .cornerRadius(16)
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        Text("New password")
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SecureField("At least 8 characters", text: $newPassword)
+                            .textFieldStyle(PlainTextFieldStyle())
+                            .padding(Theme.Spacing.md)
+                            .background(Theme.Colors.secondaryBackground)
+                            .cornerRadius(16)
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        Text("Confirm password")
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SecureField("Confirm new password", text: $confirmPassword)
+                            .textFieldStyle(PlainTextFieldStyle())
+                            .padding(Theme.Spacing.md)
+                            .background(Theme.Colors.secondaryBackground)
+                            .cornerRadius(16)
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                    if let err = errorMessage {
+                        Text(err)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.error)
+                    }
                 }
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("New password")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SecureField("At least 8 characters", text: $newPassword)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .padding(Theme.Spacing.md)
-                        .background(Theme.Colors.secondaryBackground)
-                        .cornerRadius(16)
-                        .foregroundColor(Theme.Colors.primaryText)
-                }
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("Confirm password")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SecureField("Confirm new password", text: $confirmPassword)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .padding(Theme.Spacing.md)
-                        .background(Theme.Colors.secondaryBackground)
-                        .cornerRadius(16)
-                        .foregroundColor(Theme.Colors.primaryText)
-                }
-                if let err = errorMessage {
-                    Text(err)
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.error)
-                }
+                .padding(Theme.Spacing.lg)
+                .padding(.bottom, 100)
+            }
+            .background(Theme.Colors.background)
+
+            PrimaryButtonBar {
                 PrimaryGlassButton("Set new password", isLoading: isLoading, action: submit)
                     .disabled(!canSubmit)
             }
-            .padding(Theme.Spacing.lg)
         }
         .background(Theme.Colors.background)
         .navigationTitle("New Password")

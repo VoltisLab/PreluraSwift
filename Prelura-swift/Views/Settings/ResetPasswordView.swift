@@ -18,49 +18,56 @@ struct ResetPasswordView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                if let err = errorMessage {
-                    Text(err)
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.error)
-                }
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Current Password")
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(
-                        placeholder: "Enter current password",
-                        text: $currentPassword,
-                        isSecure: true
-                    )
-                }
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("New Password")
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(
-                        placeholder: "Enter new password",
-                        text: $newPassword,
-                        isSecure: true
-                    )
-                }
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Confirm New Password")
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(
-                        placeholder: "Confirm new password",
-                        text: $confirmPassword,
-                        isSecure: true
-                    )
-                    if !confirmPassword.isEmpty && newPassword != confirmPassword {
-                        Text("Passwords do not match")
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    if let err = errorMessage {
+                        Text(err)
                             .font(Theme.Typography.caption)
                             .foregroundColor(Theme.Colors.error)
                     }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Current Password"))
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: "Enter current password",
+                            text: $currentPassword,
+                            isSecure: true
+                        )
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("New Password"))
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: "Enter new password",
+                            text: $newPassword,
+                            isSecure: true
+                        )
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Confirm New Password"))
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: "Confirm new password",
+                            text: $confirmPassword,
+                            isSecure: true
+                        )
+                        if !confirmPassword.isEmpty && newPassword != confirmPassword {
+                            Text(L10n.string("Passwords do not match"))
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.error)
+                        }
+                    }
                 }
-                Spacer(minLength: Theme.Spacing.xl)
+                .padding(Theme.Spacing.md)
+                .padding(.bottom, 100)
+            }
+            .background(Theme.Colors.background)
+
+            PrimaryButtonBar {
                 PrimaryGlassButton(
                     "Reset Password",
                     isEnabled: canSubmit,
@@ -68,10 +75,8 @@ struct ResetPasswordView: View {
                     action: { Task { await resetPassword() } }
                 )
             }
-            .padding(Theme.Spacing.md)
         }
-        .background(Theme.Colors.background)
-        .navigationTitle("Reset Password")
+        .navigationTitle(L10n.string("Reset Password"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .alert("Password updated", isPresented: $showSuccess) {
@@ -82,7 +87,7 @@ struct ResetPasswordView: View {
                 errorMessage = nil
             }
         } message: {
-            Text("Your password has been changed successfully.")
+            Text(L10n.string("Your password has been changed successfully."))
         }
     }
 

@@ -19,7 +19,7 @@ struct FollowersListView: View {
                     Image(systemName: "person.2")
                         .font(.system(size: 48))
                         .foregroundColor(Theme.Colors.secondaryText)
-                    Text("No followers yet")
+                    Text(L10n.string("No followers yet"))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
@@ -40,7 +40,7 @@ struct FollowersListView: View {
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Followers")
+        .navigationTitle(L10n.string("Followers"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .onAppear {

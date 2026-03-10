@@ -20,7 +20,9 @@ let profileConditionOptions: [(raw: String, display: String)] = [
 
 struct ProfileView: View {
     @EnvironmentObject var authService: AuthService
+    @ObservedObject var tabCoordinator: TabCoordinator
     @StateObject private var viewModel: ProfileViewModel
+    @State private var scrollPosition: String? = "profile_top"
     @State private var isMultiBuyEnabled: Bool = false
     @State private var selectedBrand: String? = nil
     @State private var expandedCategories: Bool = false
@@ -35,19 +37,23 @@ struct ProfileView: View {
     @State private var showSortSheet: Bool = false
     @State private var showFilterSheet: Bool = false
     @State private var showPriceFilterSheet: Bool = false
+
+    private let topId = "profile_top"
     
-    init() {
-        // Initialize with nil, will be updated in onAppear
+    init(tabCoordinator: TabCoordinator) {
+        self.tabCoordinator = tabCoordinator
         _viewModel = StateObject(wrappedValue: ProfileViewModel(authService: nil))
     }
     
     var body: some View {
         ZStack(alignment: .topTrailing) {
+            ScrollViewReader { proxy in
                 ScrollView {
                     if viewModel.isLoading && viewModel.user == nil {
                         ProfileShimmerView()
                     } else {
                         VStack(spacing: 0) {
+                            Color.clear.frame(height: 1).id(topId)
                             profileSection
                             
                             // Bio/Welcome Message
@@ -66,15 +72,30 @@ struct ProfileView: View {
                         }
                     }
                 }
-                .background(Theme.Colors.background)
-                .refreshable {
-                    await viewModel.refreshAsync()
+                .scrollPosition(id: $scrollPosition, anchor: .top)
+                .onAppear {
+                    tabCoordinator.reportAtTop(tab: 4, isAtTop: true)
+                    tabCoordinator.registerScrollToTop(tab: 4) {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo(topId, anchor: .top)
+                        }
+                    }
+                    tabCoordinator.registerRefresh(tab: 4) {
+                        Task { await viewModel.refreshAsync() }
+                    }
                 }
-                
             }
-            .navigationTitle(viewModel.user?.username ?? "Profile")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
+            .onChange(of: scrollPosition) { _, new in
+                tabCoordinator.reportAtTop(tab: 4, isAtTop: new == topId)
+            }
+            .background(Theme.Colors.background)
+            .refreshable {
+                await viewModel.refreshAsync()
+            }
+        }
+        .navigationTitle(viewModel.user?.username ?? L10n.string("Profile"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink(value: AppRoute.menu(MenuContext(
                         listingCount: viewModel.user?.listingsCount ?? 0,
@@ -117,6 +138,9 @@ struct ProfileView: View {
                 isMultiBuyEnabled = u.isMultibuyEnabled
                 isVacationMode = u.isVacationMode
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .preluraUserProfileDidUpdate)) { _ in
+            viewModel.refresh()
         }
     }
 
@@ -221,21 +245,6 @@ struct ProfileView: View {
             }
             
             Spacer()
-            
-            // Action Icons (Person and Share)
-            HStack(spacing: Theme.Spacing.sm) {
-                Button(action: {}) {
-                    Image(systemName: "person.circle")
-                        .font(.system(size: 20))
-                        .foregroundColor(Theme.Colors.primaryText)
-                }
-                
-                Button(action: {}) {
-                    Image(systemName: "arrowshape.turn.up.left")
-                        .font(.system(size: 20))
-                        .foregroundColor(Theme.Colors.primaryText)
-                }
-            }
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
@@ -255,32 +264,30 @@ struct ProfileView: View {
     private var userStatsSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.md) {
-                StatColumn(value: "\(viewModel.user?.listingsCount ?? 0)", label: "Listings")
+                StatColumn(value: "\(viewModel.user?.listingsCount ?? 0)", label: L10n.string("Listings"))
                 if let u = viewModel.user {
                     NavigationLink(destination: FollowingListView(username: u.username)) {
-                        StatColumn(value: "\(u.followingsCount)", label: "Followings")
+                        StatColumn(value: "\(u.followingsCount)", label: L10n.string("Followings"))
                     }
                     .buttonStyle(.plain)
                     NavigationLink(destination: FollowersListView(username: u.username)) {
-                        StatColumn(value: "\(u.followersCount)", label: "Followers")
+                        StatColumn(value: "\(u.followersCount)", label: L10n.string("Followers"))
                     }
                     .buttonStyle(.plain)
                 } else {
-                    StatColumn(value: "\(viewModel.user?.followingsCount ?? 0)", label: "Followings")
-                    StatColumn(value: "\(viewModel.user?.followersCount ?? 0)", label: "Followers")
+                    StatColumn(value: "\(viewModel.user?.followingsCount ?? 0)", label: L10n.string("Followings"))
+                    StatColumn(value: "\(viewModel.user?.followersCount ?? 0)", label: L10n.string("Followers"))
                 }
-                StatColumn(value: "\(viewModel.user?.reviewCount ?? 0)", label: "Reviews")
-                StatColumn(value: viewModel.user?.locationAbbreviation ?? "N/A", label: "Location")
+                NavigationLink(value: AppRoute.reviews(username: viewModel.user?.username ?? "", rating: viewModel.user?.rating ?? 5.0)) {
+                    StatColumn(value: "\(viewModel.user?.reviewCount ?? 0)", label: L10n.string("Reviews"))
+                }
+                .buttonStyle(HapticTapButtonStyle())
+                StatColumn(value: viewModel.user?.locationAbbreviation ?? L10n.string("N/A"), label: L10n.string("Location"))
             }
             .padding(.horizontal, Theme.Spacing.md)
         }
         .padding(.vertical, Theme.Spacing.md)
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Theme.Colors.glassBorder),
-            alignment: .bottom
-        )
+        .overlay(ContentDivider(), alignment: .bottom)
     }
     
     // MARK: - Filters Section
@@ -294,7 +301,7 @@ struct ProfileView: View {
                     }
                 }) {
                     HStack {
-                        Text("Categories")
+                        Text(L10n.string("Categories"))
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.Colors.secondaryText)
                         Spacer()
@@ -302,10 +309,10 @@ struct ProfileView: View {
                             .font(.system(size: 12))
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
-                    .padding(.horizontal, Theme.Spacing.lg)
+                    .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.md)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.toggle() }))
                 
                 // Expanded categories list (standard spacing: Theme.Spacing)
                 if expandedCategories {
@@ -324,7 +331,7 @@ struct ProfileView: View {
                                         .font(Theme.Typography.subheadline)
                                         .foregroundColor(Theme.Colors.primaryText)
                                     
-                                    Text("(\(category.count) \(category.count == 1 ? "item" : "items"))")
+                                    Text("(\(category.count) \(category.count == 1 ? L10n.string("item") : L10n.string("items"))")
                                         .font(Theme.Typography.caption)
                                         .foregroundColor(Theme.Colors.secondaryText)
                                     
@@ -334,50 +341,40 @@ struct ProfileView: View {
                                         .font(.system(size: 16))
                                         .foregroundColor(selectedCategory == category.name ? Theme.primaryColor : Theme.Colors.secondaryText)
                                 }
-                                .padding(.horizontal, Theme.Spacing.lg)
+                                .padding(.horizontal, Theme.Spacing.md)
                                 .padding(.vertical, Theme.Spacing.md)
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                             
                             if category.name != viewModel.categoriesWithCounts.last?.name {
-                                Divider()
-                                    .background(Theme.Colors.glassBorder)
-                                    .padding(.leading, Theme.Spacing.lg)
+                                ContentDivider()
+                                    .padding(.leading, Theme.Spacing.md)
                             }
                         }
                     }
                 }
             }
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
             
             // Multi-buy Toggle
             HStack {
-                Text("Multi-buy:")
+                Text(L10n.string("Multi-buy:"))
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.secondaryText)
                 Spacer()
                 Toggle("", isOn: $isMultiBuyEnabled)
                     .tint(Theme.primaryColor)
                     .frame(width: 50)
+                    .onChange(of: isMultiBuyEnabled) { _, _ in HapticManager.toggle() }
             }
-            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.md)
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
             
             // Top Brands (same component and placement as Home filter tags)
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("Top brands")
+                    Text(L10n.string("Top brands"))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.secondaryText)
                     Spacer()
@@ -386,6 +383,7 @@ struct ProfileView: View {
                             .font(.system(size: 16))
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
+                    .buttonStyle(HapticTapButtonStyle())
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.md)
@@ -411,20 +409,21 @@ struct ProfileView: View {
                     HStack(spacing: Theme.Spacing.xs) {
                         Image(systemName: "line.3.horizontal.decrease")
                             .font(.system(size: 14))
-                        Text("Filter")
+                        Text(L10n.string("Filter"))
                             .font(Theme.Typography.subheadline)
                     }
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                 }
+                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                 .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
                 
                 Spacer()
                 
                 Button(action: { showSortSheet = true }) {
                     HStack(spacing: Theme.Spacing.xs) {
-                        Text(profileSort.rawValue)
+                        Text(L10n.string(profileSort.rawValue))
                             .font(Theme.Typography.subheadline)
                         Image(systemName: "arrow.up.arrow.down")
                             .font(.system(size: 12))
@@ -433,6 +432,7 @@ struct ProfileView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                 }
+                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                 .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
             }
             .padding(.horizontal, Theme.Spacing.md)
@@ -453,7 +453,7 @@ struct ProfileView: View {
                         showSortSheet = false
                     }) {
                         HStack {
-                            Text(option.rawValue)
+                            Text(L10n.string(option.rawValue))
                                 .foregroundColor(Theme.Colors.primaryText)
                             Spacer()
                             if profileSort == option {
@@ -462,22 +462,25 @@ struct ProfileView: View {
                             }
                         }
                     }
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                 }
                 Section {
                     Button(role: .destructive, action: {
                         profileSort = .relevance
                         showSortSheet = false
                     }) {
-                        Text("Clear")
+                        Text(L10n.string("Clear"))
                             .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.destructive() }))
                 }
             }
-            .navigationTitle("Sort")
+            .navigationTitle(L10n.string("Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { showSortSheet = false }
+                    Button(L10n.string("Done")) { showSortSheet = false }
+                        .buttonStyle(HapticTapButtonStyle())
                 }
             }
         }
@@ -493,7 +496,7 @@ struct ProfileView: View {
                             filterCondition = filterCondition == option.raw ? nil : option.raw
                         }) {
                             HStack {
-                                Text(option.display)
+                                Text(L10n.string(option.display))
                                     .foregroundColor(Theme.Colors.primaryText)
                                 Spacer()
                                 if filterCondition == option.raw {
@@ -502,12 +505,13 @@ struct ProfileView: View {
                                 }
                             }
                         }
+                        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                     }
-                } header: { Text("Condition") }
+                } header: { Text(L10n.string("Condition")) }
                 Section {
                     Button(action: { showFilterSheet = false; showPriceFilterSheet = true }) {
                         HStack {
-                            Text("Price")
+                            Text(L10n.string("Price"))
                                 .foregroundColor(Theme.Colors.primaryText)
                             Spacer()
                             if !filterMinPrice.isEmpty || !filterMaxPrice.isEmpty {
@@ -520,7 +524,8 @@ struct ProfileView: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                         }
                     }
-                } header: { Text("Price range") }
+                    .buttonStyle(HapticTapButtonStyle())
+                } header: { Text(L10n.string("Price range")) }
                 Section {
                     Button(role: .destructive, action: {
                         filterCondition = nil
@@ -528,16 +533,18 @@ struct ProfileView: View {
                         filterMaxPrice = ""
                         showFilterSheet = false
                     }) {
-                        Text("Clear")
+                        Text(L10n.string("Clear"))
                             .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.destructive() }))
                 }
             }
-            .navigationTitle("Filter")
+            .navigationTitle(L10n.string("Filter"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { showFilterSheet = false }
+                    Button(L10n.string("Done")) { showFilterSheet = false }
+                        .buttonStyle(HapticTapButtonStyle())
                 }
             }
         }
@@ -547,28 +554,31 @@ struct ProfileView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Min. Price", text: $filterMinPrice)
+                    TextField(L10n.string("Min. Price"), text: $filterMinPrice)
                         .keyboardType(.decimalPad)
-                    TextField("Max. Price", text: $filterMaxPrice)
+                    TextField(L10n.string("Max. Price"), text: $filterMaxPrice)
                         .keyboardType(.decimalPad)
                 }
                 Section {
-                    Button("Clear") {
+                    Button(L10n.string("Clear")) {
                         filterMinPrice = ""
                         filterMaxPrice = ""
                         showPriceFilterSheet = false
                     }
-                    Button("Apply") {
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.secondaryAction() }))
+                    Button(L10n.string("Apply")) {
                         showPriceFilterSheet = false
                     }
                     .fontWeight(.semibold)
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.primaryAction() }))
                 }
             }
-            .navigationTitle("Price")
+            .navigationTitle(L10n.string("Price"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { showPriceFilterSheet = false }
+                    Button(L10n.string("Done")) { showPriceFilterSheet = false }
+                        .buttonStyle(HapticTapButtonStyle())
                 }
             }
         }
@@ -617,7 +627,7 @@ struct ProfileView: View {
         ) {
             ForEach(items) { item in
                 NavigationLink(value: AppRoute.itemDetail(item)) {
-                    WardrobeItemCard(item: item)
+                    WardrobeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
                 }
                 .buttonStyle(PlainButtonStyle())
             }
@@ -665,7 +675,8 @@ struct BrandButton: View {
 
 struct WardrobeItemCard: View {
     let item: Item
-    
+    var onLikeTap: (() -> Void)? = nil
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             // Image with like count overlay - fixed size container
@@ -728,11 +739,9 @@ struct WardrobeItemCard: View {
                     .cornerRadius(8)
                     
                     // Like count overlay - tappable
-                    Button(action: {
-                        // TODO: Handle like action
-                    }) {
+                    Button(action: { onLikeTap?() }) {
                         HStack(spacing: Theme.Spacing.xs) {
-                            Image(systemName: "heart.fill")
+                            Image(systemName: item.isLiked ? "heart.fill" : "heart")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.white)
                             Text("\(item.likeCount)")
@@ -746,7 +755,7 @@ struct WardrobeItemCard: View {
                                 .fill(Color.black.opacity(0.6))
                         )
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
                     .padding(Theme.Spacing.xs)
                 }
             }
@@ -804,6 +813,6 @@ struct WardrobeItemCard: View {
 }
 
 #Preview {
-    ProfileView()
+    ProfileView(tabCoordinator: TabCoordinator())
         .preferredColorScheme(.dark)
 }

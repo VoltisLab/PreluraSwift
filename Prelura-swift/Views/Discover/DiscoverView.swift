@@ -2,12 +2,14 @@ import SwiftUI
 
 struct DiscoverView: View {
     @EnvironmentObject var authService: AuthService
+    @ObservedObject var tabCoordinator: TabCoordinator
     @StateObject private var viewModel: DiscoverViewModel
     @State private var searchText: String = ""
     @State private var selectedBrand: String? = nil
-    
-    init() {
-        // Initialize with nil, will be updated in onAppear
+    @State private var scrollPosition: String? = "discover_top"
+
+    init(tabCoordinator: TabCoordinator) {
+        self.tabCoordinator = tabCoordinator
         _viewModel = StateObject(wrappedValue: DiscoverViewModel(authService: nil))
     }
     
@@ -21,33 +23,37 @@ struct DiscoverView: View {
         "Girls": "https://i.pravatar.cc/150?img=20"
     ]
     
+    private let topId = "discover_top"
+
     var body: some View {
         GeometryReader { geometry in
+            ScrollViewReader { proxy in
                 ScrollView {
                     if viewModel.isLoading && viewModel.discoverItems.isEmpty {
                         DiscoverShimmerView()
                             .frame(width: geometry.size.width)
                     } else {
                         VStack(spacing: 0) {
+                            Color.clear.frame(height: 1).id(topId)
                             DiscoverSearchField(
                                 text: $searchText,
-                                placeholder: "Search members",
+                                placeholder: L10n.string("Search members"),
                                 topPadding: Theme.Spacing.xs
                             )
                             .padding(.trailing, Theme.Spacing.sm)
                             VStack(spacing: 0) {
                                 brandFiltersSection
-                                SectionDivider()
+                                ContentDivider().padding(.vertical, Theme.Spacing.lg)
                                 categoryCirclesSection
-                                SectionDivider()
+                                ContentDivider().padding(.vertical, Theme.Spacing.lg)
                                 recentlyViewedSection
-                                SectionDivider()
+                                ContentDivider().padding(.vertical, Theme.Spacing.lg)
                                 brandsYouLoveSection
-                                SectionDivider()
+                                ContentDivider().padding(.vertical, Theme.Spacing.lg)
                                 topShopsSection
-                                SectionDivider()
+                                ContentDivider().padding(.vertical, Theme.Spacing.lg)
                                 shopBargainsSection
-                                SectionDivider()
+                                ContentDivider().padding(.vertical, Theme.Spacing.lg)
                                 onSaleSection
                             }
                             .padding(.horizontal, Theme.Spacing.md)
@@ -57,9 +63,24 @@ struct DiscoverView: View {
                         .frame(maxWidth: .infinity)
                     }
                 }
+                .scrollPosition(id: $scrollPosition, anchor: .top)
+                .onAppear {
+                    tabCoordinator.reportAtTop(tab: 1, isAtTop: true)
+                    tabCoordinator.registerScrollToTop(tab: 1) {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo(topId, anchor: .top)
+                        }
+                    }
+                    tabCoordinator.registerRefresh(tab: 1) {
+                        Task { await viewModel.refreshAsync() }
+                    }
+                }
+            }
+            .onChange(of: scrollPosition) { _, new in
+                tabCoordinator.reportAtTop(tab: 1, isAtTop: new == topId)
             }
             .background(Theme.Colors.background)
-            .navigationTitle("Discover")
+            .navigationTitle(L10n.string("Discover"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -70,14 +91,14 @@ struct DiscoverView: View {
                                 .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
                         Button(action: {}) {
                             Image(systemName: "bell")
                                 .foregroundColor(Theme.Colors.primaryText)
                                 .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(HapticTapButtonStyle())
                     }
                 }
             }
@@ -102,6 +123,7 @@ struct DiscoverView: View {
                 viewModel.updateAuthToken(newToken)
                 viewModel.refresh()
             }
+        }
         }
     }
     
@@ -167,14 +189,14 @@ struct DiscoverView: View {
     private var recentlyViewedSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack {
-                Text("Recently viewed")
+                Text(L10n.string("Recently viewed"))
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
                 
                 Spacer()
                 
-                NavigationLink(destination: FilteredProductsView(title: "Recently viewed", filterType: .recentlyViewed, authService: authService)) {
-                    Text("See All")
+                NavigationLink(destination: FilteredProductsView(title: L10n.string("Recently viewed"), filterType: .recentlyViewed, authService: authService)) {
+                    Text(L10n.string("See All"))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.primaryColor)
                 }
@@ -184,7 +206,7 @@ struct DiscoverView: View {
                 LazyHStack(spacing: Theme.Spacing.sm) {
                     ForEach(viewModel.recentlyViewedItems) { item in
                         NavigationLink(value: AppRoute.itemDetail(item)) {
-                            DiscoverItemCard(item: item)
+                            DiscoverItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
                                 .frame(width: 160)
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -199,19 +221,19 @@ struct DiscoverView: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("Brands You Love")
+                    Text(L10n.string("Brands You Love"))
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
                     
-                    Text("Recommended from your favorite brands")
+                    Text(L10n.string("Recommended from your favorite brands"))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
                 
                 Spacer()
                 
-                NavigationLink(destination: FilteredProductsView(title: "Brands You Love", filterType: .brandsYouLove, authService: authService)) {
-                    Text("See All")
+                NavigationLink(destination: FilteredProductsView(title: L10n.string("Brands You Love"), filterType: .brandsYouLove, authService: authService)) {
+                    Text(L10n.string("See All"))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.primaryColor)
                 }
@@ -221,7 +243,7 @@ struct DiscoverView: View {
                 LazyHStack(spacing: Theme.Spacing.sm) {
                     ForEach(viewModel.brandsYouLoveItems) { item in
                         NavigationLink(value: AppRoute.itemDetail(item)) {
-                            DiscoverItemCard(item: item)
+                            DiscoverItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
                                 .frame(width: 160)
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -235,11 +257,11 @@ struct DiscoverView: View {
     private var topShopsSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text("Top Shops")
+                Text(L10n.string("Top Shops"))
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
                 
-                Text("Buy from trusted and popular vendors")
+                Text(L10n.string("Buy from trusted and popular vendors"))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
@@ -314,19 +336,19 @@ struct DiscoverView: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("Shop Bargains")
+                    Text(L10n.string("Shop Bargains"))
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
                     
-                    Text("Steals under £15")
+                    Text(L10n.string("Steals under £15"))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
                 
                 Spacer()
                 
-                NavigationLink(destination: FilteredProductsView(title: "Shop Bargains", filterType: .shopBargains, authService: authService)) {
-                    Text("See All")
+                NavigationLink(destination: FilteredProductsView(title: L10n.string("Shop Bargains"), filterType: .shopBargains, authService: authService)) {
+                    Text(L10n.string("See All"))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.primaryColor)
                 }
@@ -351,19 +373,19 @@ struct DiscoverView: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("On Sale")
+                    Text(L10n.string("On Sale"))
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
                     
-                    Text("Discounted items")
+                    Text(L10n.string("Discounted items"))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
                 
                 Spacer()
                 
-                NavigationLink(destination: FilteredProductsView(title: "On Sale", filterType: .onSale, authService: authService)) {
-                    Text("See All")
+                NavigationLink(destination: FilteredProductsView(title: L10n.string("On Sale"), filterType: .onSale, authService: authService)) {
+                    Text(L10n.string("See All"))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.primaryColor)
                 }
@@ -373,7 +395,7 @@ struct DiscoverView: View {
                 LazyHStack(spacing: Theme.Spacing.sm) {
                     ForEach(viewModel.onSaleItems) { item in
                         NavigationLink(value: AppRoute.itemDetail(item)) {
-                            DiscoverItemCard(item: item)
+                            DiscoverItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
                                 .frame(width: 160)
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -397,98 +419,33 @@ struct BrandFilterPill: View {
     }
 }
 
+/// Category button with fully glassy (clear) style, matching the Glass materials "Glass clear" button.
 struct CategoryCircle: View {
     let category: String
     let imageURL: String?
-    
+    private let circleSize: CGFloat = 85
+    private let cornerRadius: CGFloat = 43 // half of circleSize for full circle
+
     var body: some View {
-        VStack(spacing: Theme.Spacing.xs) {
-            // Circular image - using URL if available
-            if let imageURL = imageURL, let url = URL(string: imageURL) {
-                AsyncImage(url: url) { phase in
-                    Group {
-                        switch phase {
-                        case .empty:
-                            Circle()
-                                .fill(Theme.Colors.secondaryBackground)
-                                .frame(width: 85, height: 85)
-                                .overlay(
-                                    ProgressView()
-                                        .tint(Theme.primaryColor)
-                                )
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 85, height: 85)
-                                .clipShape(Circle())
-                        case .failure:
-                            Circle()
-                                .fill(Theme.Colors.secondaryBackground)
-                                .frame(width: 85, height: 85)
-                                .overlay(
-                                    Image(systemName: categoryIcon(for: category))
-                                        .font(.system(size: 24))
-                                        .foregroundColor(Theme.primaryColor)
-                                )
-                        @unknown default:
-                            Circle()
-                                .fill(Theme.Colors.secondaryBackground)
-                                .frame(width: 85, height: 85)
-                                .overlay(
-                                    Image(systemName: categoryIcon(for: category))
-                                        .font(.system(size: 24))
-                                        .foregroundColor(Theme.primaryColor)
-                                )
-                        }
-                    }
+        Button(action: {}) {
+            VStack(spacing: Theme.Spacing.xs) {
+                ZStack {
+                    Image(systemName: categoryIcon(for: category))
+                        .font(.system(size: 28))
+                        .foregroundStyle(.white)
                 }
-                .overlay(
-                    Circle()
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.2),
-                                    Color.white.opacity(0.05)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                )
-            } else {
-                Circle()
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 85, height: 85)
-                    .overlay(
-                        Image(systemName: categoryIcon(for: category))
-                            .font(.system(size: 24))
-                            .foregroundColor(Theme.primaryColor)
-                    )
-                    .overlay(
-                        Circle()
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.2),
-                                        Color.white.opacity(0.05)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1
-                            )
-                    )
+                .frame(width: circleSize, height: circleSize)
+                .glassEffect(.clear, in: .rect(cornerRadius: cornerRadius))
+
+                Text(category)
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.primaryText)
             }
-            
-            Text(category)
-                .font(Theme.Typography.caption)
-                .foregroundColor(Theme.Colors.primaryText)
         }
-        .frame(width: 80)
+        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
+        .frame(width: 88)
     }
-    
+
     private func categoryIcon(for category: String) -> String {
         switch category {
         case "Women": return "person.fill"
@@ -502,7 +459,8 @@ struct CategoryCircle: View {
 
 struct DiscoverItemCard: View {
     let item: Item
-    
+    var onLikeTap: (() -> Void)? = nil
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             // Seller info (avatar + username) above image
@@ -623,11 +581,9 @@ struct DiscoverItemCard: View {
                     .cornerRadius(8)
                     
                     // Like count overlay - tappable
-                    Button(action: {
-                        // TODO: Handle like action
-                    }) {
+                    Button(action: { onLikeTap?() }) {
                         HStack(spacing: Theme.Spacing.xs) {
-                            Image(systemName: "heart.fill")
+                            Image(systemName: item.isLiked ? "heart.fill" : "heart")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.white)
                             Text("\(item.likeCount)")
@@ -641,7 +597,7 @@ struct DiscoverItemCard: View {
                                 .fill(Color.black.opacity(0.6))
                         )
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
                     .padding(Theme.Spacing.xs)
                 }
             }
@@ -700,17 +656,7 @@ struct DiscoverItemCard: View {
     }
 }
 
-// MARK: - Section Divider
-private struct SectionDivider: View {
-    var body: some View {
-        Rectangle()
-            .fill(Theme.Colors.glassBorder)
-            .frame(height: 0.5)
-            .padding(.vertical, Theme.Spacing.lg)
-    }
-}
-
 #Preview {
-    DiscoverView()
+    DiscoverView(tabCoordinator: TabCoordinator())
         .preferredColorScheme(.dark)
 }

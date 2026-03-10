@@ -36,6 +36,14 @@ struct DebugMenuView: View {
                         Text("Glass effect transition")
                     }
                 }
+                NavigationLink(destination: BlackScreensMenuView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "square.fill")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Black screens")
+                    }
+                }
             }
         }
         .listStyle(.insetGrouped)

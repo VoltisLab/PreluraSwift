@@ -23,82 +23,82 @@ struct SendOfferSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                    // Product summary
-                    HStack(spacing: Theme.Spacing.md) {
-                        if let url = item.imageURLs.first, let imageURL = URL(string: url) {
-                            AsyncImage(url: imageURL) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                default:
-                                    Rectangle()
-                                        .fill(Theme.Colors.secondaryBackground)
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                        HStack(spacing: Theme.Spacing.md) {
+                            if let url = item.imageURLs.first, let imageURL = URL(string: url) {
+                                AsyncImage(url: imageURL) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                    default:
+                                        Rectangle()
+                                            .fill(Theme.Colors.secondaryBackground)
+                                    }
                                 }
+                                .frame(width: 64, height: 64)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
                             }
-                            .frame(width: 64, height: 64)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
-                        }
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.title)
-                                .font(Theme.Typography.headline)
-                                .foregroundColor(Theme.Colors.primaryText)
-                            Text(item.formattedPrice)
-                                .font(Theme.Typography.subheadline)
-                                .foregroundColor(Theme.primaryColor)
-                        }
-                        Spacer()
-                    }
-                    .padding(Theme.Spacing.md)
-                    .background(Theme.Colors.secondaryBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
-
-                    // Offer amount
-                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        Text("Your offer")
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                        HStack(spacing: Theme.Spacing.sm) {
-                            Text("£")
-                                .font(Theme.Typography.title2)
-                                .foregroundColor(Theme.primaryColor)
-                            TextField("0", text: $offerAmount)
-                                .keyboardType(.decimalPad)
-                                .font(Theme.Typography.title2)
-                                .foregroundColor(Theme.Colors.primaryText)
-                                .focused($offerFieldFocused)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.title)
+                                    .font(Theme.Typography.headline)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                Text(item.formattedPrice)
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.primaryColor)
+                            }
+                            Spacer()
                         }
                         .padding(Theme.Spacing.md)
                         .background(Theme.Colors.secondaryBackground)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
-                    }
 
-                    // Optional message
-                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        Text("Message (optional)")
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                        TextField("Add a message to the seller...", text: $message, axis: .vertical)
-                            .lineLimit(3...6)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                            Text("Your offer")
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                            HStack(spacing: Theme.Spacing.sm) {
+                                Text("£")
+                                    .font(Theme.Typography.title2)
+                                    .foregroundColor(Theme.primaryColor)
+                                TextField("0", text: $offerAmount)
+                                    .keyboardType(.decimalPad)
+                                    .font(Theme.Typography.title2)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                    .focused($offerFieldFocused)
+                            }
                             .padding(Theme.Spacing.md)
                             .background(Theme.Colors.secondaryBackground)
                             .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                        }
+
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                            Text(L10n.string("Message (optional)"))
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                            TextField("Add a message to the seller...", text: $message, axis: .vertical)
+                                .lineLimit(3...6)
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.primaryText)
+                                .padding(Theme.Spacing.md)
+                                .background(Theme.Colors.secondaryBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                        }
                     }
+                    .padding(Theme.Spacing.lg)
+                    .padding(.bottom, 100)
+                }
+                .background(Theme.Colors.background)
 
-                    Spacer(minLength: Theme.Spacing.xl)
-
+                PrimaryButtonBar {
                     PrimaryGlassButton("Send offer", icon: "paperplane.fill", isLoading: isSubmitting, action: submitOffer)
                         .disabled(!canSubmit)
                 }
-                .padding(Theme.Spacing.lg)
             }
-            .background(Theme.Colors.background)
-            .navigationTitle("Send an offer")
+            .navigationTitle(L10n.string("Send an offer"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -107,6 +107,7 @@ struct SendOfferSheet: View {
                         onDismiss()
                     }
                     .foregroundColor(Theme.primaryColor)
+                    .buttonStyle(HapticTapButtonStyle())
                 }
             }
             .toolbar(.hidden, for: .tabBar)

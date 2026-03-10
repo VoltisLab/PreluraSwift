@@ -78,7 +78,7 @@ struct GlassIconButton: View {
                 .foregroundColor(iconColor)
                 .modifier(GlassIconCircleStyle(size: size))
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(HapticTapButtonStyle())
     }
 }
 

@@ -4,16 +4,19 @@ import SwiftUI
 
 struct HomeNavigation: View {
     @EnvironmentObject var authService: AuthService
+    @ObservedObject var tabCoordinator: TabCoordinator
 
     var body: some View {
         NavigationStack {
-            HomeView()
+            HomeView(tabCoordinator: tabCoordinator)
                 .navigationDestination(for: AppRoute.self) { route in
                     switch route {
                     case .itemDetail(let item):
                         ItemDetailView(item: item, authService: authService)
                     case .conversation, .menu:
                         EmptyView()
+                    case .reviews(let username, let rating):
+                        ReviewsView(username: username, rating: rating)
                     }
                 }
         }
@@ -24,16 +27,19 @@ struct HomeNavigation: View {
 
 struct DiscoverNavigation: View {
     @EnvironmentObject var authService: AuthService
+    @ObservedObject var tabCoordinator: TabCoordinator
 
     var body: some View {
         NavigationStack {
-            DiscoverView()
+            DiscoverView(tabCoordinator: tabCoordinator)
                 .navigationDestination(for: AppRoute.self) { route in
                     switch route {
                     case .itemDetail(let item):
                         ItemDetailView(item: item, authService: authService)
                     case .conversation, .menu:
                         EmptyView()
+                    case .reviews(let username, let rating):
+                        ReviewsView(username: username, rating: rating)
                     }
                 }
         }
@@ -55,15 +61,19 @@ struct SellNavigation: View {
 // MARK: - Inbox
 
 struct InboxNavigation: View {
+    @ObservedObject var tabCoordinator: TabCoordinator
+
     var body: some View {
         NavigationStack {
-            ChatListView()
+            ChatListView(tabCoordinator: tabCoordinator)
                 .navigationDestination(for: AppRoute.self) { route in
                     switch route {
                     case .conversation(let conversation):
                         ChatDetailView(conversation: conversation)
                     case .itemDetail, .menu:
                         EmptyView()
+                    case .reviews(let username, let rating):
+                        ReviewsView(username: username, rating: rating)
                     }
                 }
         }
@@ -74,10 +84,11 @@ struct InboxNavigation: View {
 
 struct ProfileNavigation: View {
     @EnvironmentObject var authService: AuthService
+    @ObservedObject var tabCoordinator: TabCoordinator
 
     var body: some View {
         NavigationStack {
-            ProfileView()
+            ProfileView(tabCoordinator: tabCoordinator)
                 .navigationDestination(for: AppRoute.self) { route in
                     switch route {
                     case .itemDetail(let item):
@@ -89,6 +100,8 @@ struct ProfileNavigation: View {
                             isVacationMode: context.isVacationMode,
                             isStaff: context.isStaff
                         )
+                    case .reviews(let username, let rating):
+                        ReviewsView(username: username, rating: rating)
                     case .conversation:
                         EmptyView()
                     }

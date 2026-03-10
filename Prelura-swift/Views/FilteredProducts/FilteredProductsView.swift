@@ -46,22 +46,19 @@ struct FilteredProductsView: View {
             .padding(.horizontal, Theme.AppBar.horizontalPadding)
             .padding(.vertical, Theme.AppBar.verticalPadding)
             .background(Theme.Colors.background)
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
             
-            // Search Bar (DiscoverSearchField – 30pt)
+            // Search Bar (same position as feed / discover / inbox)
             DiscoverSearchField(
                 text: $searchText,
-                placeholder: "Search for items",
+                placeholder: L10n.string("Search items, brands or styles"),
                 onChange: { viewModel.searchText = $0 },
                 showClearButton: true,
-                onClear: { viewModel.searchText = "" }
+                onClear: { viewModel.searchText = "" },
+                topPadding: Theme.Spacing.xs
             )
-            
+            .padding(.trailing, Theme.Spacing.sm)
+
             // Product Grid
             if viewModel.isLoading && viewModel.items.isEmpty {
                 FeedShimmerView()
@@ -71,7 +68,7 @@ struct FilteredProductsView: View {
                     Image(systemName: "bag")
                         .font(.system(size: 60))
                         .foregroundColor(Theme.Colors.secondaryText)
-                    Text("No products found")
+                    Text(L10n.string("No products found"))
                         .font(Theme.Typography.title3)
                         .foregroundColor(Theme.Colors.secondaryText)
                     Spacer()

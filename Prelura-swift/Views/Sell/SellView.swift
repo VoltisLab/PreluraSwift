@@ -40,7 +40,8 @@ struct SellView: View {
     }
 
     var body: some View {
-        ScrollView {
+        ZStack(alignment: .bottom) {
+            ScrollView {
                 VStack(spacing: 0) {
                     // 1. Upload from drafts (Flutter: same)
                     if draftCount > 0 {
@@ -56,22 +57,44 @@ struct SellView: View {
                     additionalDetailsSection
                     // 6. Pricing & Shipping (Flutter)
                     pricingShippingSection
-                    // 7. Upload button (Flutter)
-                    uploadButton
                 }
+                .padding(.bottom, 100)
             }
             .background(Theme.Colors.background)
-            .navigationTitle("Sell an item")
+
+            PrimaryButtonBar {
+                PrimaryGlassButton(
+                    L10n.string("Upload"),
+                    isEnabled: canUpload,
+                    action: {
+                        viewModel.submitListing(
+                            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                            description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                            price: price ?? 0.0,
+                            brand: brand ?? "",
+                            condition: condition ?? "",
+                            size: "",
+                            categoryId: category?.id,
+                            categoryName: category?.name,
+                            images: selectedImages
+                        )
+                    }
+                )
+            }
+        }
+        .navigationTitle(L10n.string("Sell an item"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { selectedTab = 0 }) {
-                        Text("Close")
+                        Text(L10n.string("Close"))
                             .font(Theme.Typography.body)
                             .fontWeight(.medium)
                             .foregroundColor(Theme.primaryColor)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
+                    .buttonStyle(HapticTapButtonStyle())
                 }
             }
     }
@@ -82,7 +105,7 @@ struct SellView: View {
             // TODO: Navigate to drafts
         }) {
             HStack {
-                Text("Upload from drafts")
+                Text(L10n.string("Upload from drafts"))
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.primaryColor)
                 
@@ -101,12 +124,8 @@ struct SellView: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
         }
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Theme.Colors.glassBorder),
-            alignment: .bottom
-        )
+        .buttonStyle(HapticTapButtonStyle())
+        .overlay(ContentDivider(), alignment: .bottom)
     }
     
     // MARK: - Photo Upload Section
@@ -137,10 +156,10 @@ struct SellView: View {
                                         .font(.system(size: 36))
                                         .foregroundColor(Theme.primaryColor)
                                 }
-                                Text("Add up to 20 photos")
+                                Text(L10n.string("Add up to 20 photos"))
                                     .font(Theme.Typography.headline)
                                     .foregroundColor(Theme.Colors.primaryText)
-                                Text("Tap to select photos from your gallery")
+                                Text(L10n.string("Tap to select photos from your gallery"))
                                     .font(Theme.Typography.caption)
                                     .foregroundColor(Theme.Colors.secondaryText)
                             }
@@ -203,18 +222,13 @@ struct SellView: View {
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Theme.Colors.glassBorder),
-            alignment: .bottom
-        )
+        .overlay(ContentDivider(), alignment: .bottom)
     }
     
     // MARK: - Item Details Section (Flutter: header + Title + Describe your item only)
     private var itemDetailsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Item Details")
+            Text(L10n.string("Item Details"))
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(Theme.Colors.primaryText)
                 .padding(.horizontal, Theme.Spacing.md)
@@ -236,12 +250,7 @@ struct SellView: View {
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.md)
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
         }
         .padding(.top, Theme.Spacing.md)
         .background(Theme.Colors.background)
@@ -250,7 +259,7 @@ struct SellView: View {
     // MARK: - Item Information Section (Flutter: Category, Brand, Condition, Colours)
     private var itemInformationSection: some View {
         VStack(spacing: 0) {
-            Text("Item Information")
+            Text(L10n.string("Item Information"))
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(Theme.Colors.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -260,43 +269,31 @@ struct SellView: View {
                 .background(Theme.Colors.background)
 
             NavigationLink(destination: CategorySelectionView(selectedCategory: $category)) {
-                SellFormRow(title: "Category", value: category?.name)
+                SellFormRow(title: L10n.string("Category"), value: category?.name)
             }
             .buttonStyle(.plain)
-            .overlay(
-                Rectangle().frame(height: 0.5).foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
 
             NavigationLink(destination: BrandInputView(selectedBrand: $brand)) {
-                SellFormRow(title: "Brand", value: brand)
+                SellFormRow(title: L10n.string("Brand"), value: brand)
             }
             .buttonStyle(.plain)
-            .overlay(
-                Rectangle().frame(height: 0.5).foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
 
             NavigationLink(destination: ConditionSelectionView(selectedCondition: $condition)) {
-                SellFormRow(title: "Condition", value: condition)
+                SellFormRow(title: L10n.string("Condition"), value: ConditionSelectionView.displayName(for: condition))
             }
             .buttonStyle(.plain)
-            .overlay(
-                Rectangle().frame(height: 0.5).foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
 
             NavigationLink(destination: ColoursSelectionView(selectedColours: $colours)) {
                 SellFormRow(
-                    title: "Colours",
+                    title: L10n.string("Colours"),
                     value: colours.isEmpty ? nil : colours.joined(separator: ", ")
                 )
             }
             .buttonStyle(.plain)
-            .overlay(
-                Rectangle().frame(height: 0.5).foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
         }
         .background(Theme.Colors.background)
     }
@@ -304,7 +301,7 @@ struct SellView: View {
     // MARK: - Additional Details Section (Flutter: Measurements, Material, Style)
     private var additionalDetailsSection: some View {
         VStack(spacing: 0) {
-            Text("Additional Details")
+            Text(L10n.string("Additional Details"))
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(Theme.Colors.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -315,46 +312,31 @@ struct SellView: View {
             
             // Measurements Field
             NavigationLink(destination: MeasurementsView(measurements: $measurements)) {
-                SellFormRow(title: "Measurements (Optional)", value: measurements)
+                SellFormRow(title: L10n.string("Measurements (Optional)"), value: measurements)
             }
             .buttonStyle(.plain)
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
 
             // Material Field
             NavigationLink(destination: MaterialSelectionView(selectedMaterial: $material)) {
-                SellFormRow(title: "Material (Optional)", value: material)
+                SellFormRow(title: L10n.string("Material (Optional)"), value: material)
             }
             .buttonStyle(.plain)
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
 
             // Style Field
             NavigationLink(destination: StyleSelectionView(selectedStyle: $style)) {
-                SellFormRow(title: "Style (Optional)", value: style)
+                SellFormRow(title: L10n.string("Style (Optional)"), value: style)
             }
             .buttonStyle(.plain)
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
         }
     }
     
     // MARK: - Pricing & Shipping Section (Flutter: Price, Discount, Parcel, info banner)
     private var pricingShippingSection: some View {
         VStack(spacing: 0) {
-            Text("Pricing & Shipping")
+            Text(L10n.string("Pricing & Shipping"))
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(Theme.Colors.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -366,44 +348,29 @@ struct SellView: View {
             // Price Field
             NavigationLink(destination: PriceInputView(price: $price)) {
                 SellFormRow(
-                    title: "Price",
+                    title: L10n.string("Price"),
                     value: price.map { "£\(String(format: "%.0f", $0))" }
                 )
             }
             .buttonStyle(.plain)
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
 
             // Discount Price Field
             NavigationLink(destination: DiscountPriceInputView(price: $price, discountPrice: $discountPrice)) {
                 SellFormRow(
-                    title: "Discount Price (Optional)",
+                    title: L10n.string("Discount Price (Optional)"),
                     value: discountPercentText
                 )
             }
             .buttonStyle(.plain)
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
 
             // Parcel Size Field
             NavigationLink(destination: ParcelSizeSelectionView(selectedParcelSize: $parcelSize)) {
-                SellFormRow(title: "Parcel Size", value: parcelSize)
+                SellFormRow(title: L10n.string("Parcel Size"), value: parcelSize)
             }
             .buttonStyle(.plain)
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
+            .overlay(ContentDivider(), alignment: .bottom)
 
             // Info Banner (Flutter: primary 0.1 bg, primary icon & text)
             HStack(spacing: Theme.Spacing.sm) {
@@ -411,7 +378,7 @@ struct SellView: View {
                     .font(.system(size: 16))
                     .foregroundColor(Theme.primaryColor)
 
-                Text("The buyer always pays for postage.")
+                Text(L10n.string("The buyer always pays for postage."))
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.primaryColor)
             }
@@ -424,28 +391,6 @@ struct SellView: View {
         }
     }
     
-    // MARK: - Upload Button
-    private var uploadButton: some View {
-        PrimaryGlassButton(
-            "Upload",
-            isEnabled: canUpload,
-            action: {
-                viewModel.submitListing(
-                    title: title.trimmingCharacters(in: .whitespacesAndNewlines),
-                    description: description.trimmingCharacters(in: .whitespacesAndNewlines),
-                    price: price ?? 0.0,
-                    brand: brand ?? "",
-                    condition: condition ?? "",
-                    size: "",
-                    categoryId: category?.id,
-                    categoryName: category?.name,
-                    images: selectedImages
-                )
-            }
-        )
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.bottom, Theme.Spacing.lg)
-    }
 }
 
 // MARK: - Category Selection View (hierarchical, matches Flutter: root → children → leaf)
@@ -499,7 +444,7 @@ struct CategorySelectionView: View {
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Select Category")
+        .navigationTitle(L10n.string("Select Category"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .task {
@@ -626,51 +571,71 @@ struct SubCategoryView: View {
     }
 }
 
-// MARK: - Condition Selection View
+// MARK: - Condition Selection View (display names, subtitles, icons)
 struct ConditionSelectionView: View {
     @Binding var selectedCondition: String?
     @Environment(\.presentationMode) var presentationMode
-    
-    let conditions = [
-        "BRAND_NEW_WITH_TAGS": "Brand New With Tags",
-        "BRAND_NEW_WITHOUT_TAGS": "Brand new Without Tags",
-        "EXCELLENT_CONDITION": "Excellent Condition",
-        "GOOD_CONDITION": "Good Condition",
-        "HEAVILY_USED": "Heavily Used"
+
+    private static let conditions: [(key: String, title: String, subtitle: String, icon: String)] = [
+        ("BRAND_NEW_WITH_TAGS", "Brand New With Tags", "Never worn, with original tags", "tag.fill"),
+        ("BRAND_NEW_WITHOUT_TAGS", "Brand new Without Tags", "Never worn, tags removed", "sparkles"),
+        ("EXCELLENT_CONDITION", "Excellent Condition", "Like new, minimal wear", "star.fill"),
+        ("GOOD_CONDITION", "Good Condition", "Light wear, fully functional", "checkmark.circle.fill"),
+        ("HEAVILY_USED", "Heavily Used", "Visible wear, still usable", "clock.fill")
     ]
-    
+
+    /// Human-readable label for the condition key (for display in form after selection).
+    static func displayName(for key: String?) -> String? {
+        guard let key = key else { return nil }
+        return conditions.first(where: { $0.key == key })?.title ?? key
+    }
+
     var body: some View {
         List {
-            ForEach(Array(conditions.keys.sorted()), id: \.self) { key in
+            ForEach(Self.conditions, id: \.key) { item in
                 Button(action: {
-                    selectedCondition = key
+                    selectedCondition = item.key
                     presentationMode.wrappedValue.dismiss()
                 }) {
-                    HStack {
-                        Text(conditions[key] ?? key)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                        
+                    HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 22))
+                            .foregroundColor(Theme.primaryColor)
+                            .frame(width: 32, alignment: .center)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title)
+                                .font(Theme.Typography.body)
+                                .fontWeight(.medium)
+                                .foregroundColor(Theme.Colors.primaryText)
+                            Text(item.subtitle)
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        }
+
                         Spacer()
-                        
-                        if selectedCondition == key {
-                            Image(systemName: "checkmark")
+
+                        if selectedCondition == item.key {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 22))
                                 .foregroundColor(Theme.primaryColor)
                         }
                     }
+                    .padding(.vertical, Theme.Spacing.xs)
                 }
             }
         }
         .listStyle(PlainListStyle())
         .background(Theme.Colors.background)
-        .navigationTitle("Select Condition")
+        .navigationTitle(L10n.string("Select Condition"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }
 }
 
-// MARK: - Colours Selection View
+// MARK: - Colours Selection View (ring around colour when selected; tap to toggle; max 3)
 struct ColoursSelectionView: View {
+    private static let maxSelections = 3
     @Binding var selectedColours: [String]
     @Environment(\.presentationMode) var presentationMode
     @State private var availableColours = ["Black", "White", "Red", "Blue", "Green", "Yellow", "Pink", "Purple", "Orange", "Brown", "Grey", "Beige", "Navy", "Maroon", "Teal"]
@@ -681,7 +646,7 @@ struct ColoursSelectionView: View {
                 Button(action: {
                     if selectedColours.contains(colour) {
                         selectedColours.removeAll { $0 == colour }
-                    } else {
+                    } else if selectedColours.count < Self.maxSelections {
                         selectedColours.append(colour)
                     }
                 }) {
@@ -699,18 +664,18 @@ struct ColoursSelectionView: View {
                                 Circle()
                                     .strokeBorder(Theme.Colors.glassBorder, lineWidth: colour == "White" || colour == "Black" ? 1 : 0)
                             )
-
-                        if selectedColours.contains(colour) {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(Theme.primaryColor)
-                        }
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(Theme.primaryColor, lineWidth: selectedColours.contains(colour) ? 3 : 0)
+                            )
                     }
                 }
+                .disabled(!selectedColours.contains(colour) && selectedColours.count >= Self.maxSelections)
             }
         }
         .listStyle(PlainListStyle())
         .background(Theme.Colors.background)
-        .navigationTitle("Select Colours")
+        .navigationTitle(L10n.string("Select Colours"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
@@ -765,7 +730,7 @@ struct MeasurementsView: View {
             Spacer()
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Measurements")
+        .navigationTitle(L10n.string("Measurements"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             measurementsText = measurements ?? ""
@@ -812,7 +777,7 @@ struct MaterialSelectionView: View {
         }
         .listStyle(PlainListStyle())
         .background(Theme.Colors.background)
-        .navigationTitle("Select Material")
+        .navigationTitle(L10n.string("Select Material"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }
@@ -849,7 +814,7 @@ struct StyleSelectionView: View {
         }
         .listStyle(PlainListStyle())
         .background(Theme.Colors.background)
-        .navigationTitle("Select Style")
+        .navigationTitle(L10n.string("Select Style"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }
@@ -883,7 +848,7 @@ struct PriceInputView: View {
             Spacer()
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Price")
+        .navigationTitle(L10n.string("Price"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             if let price = price {
@@ -939,14 +904,14 @@ struct DiscountPriceInputView: View {
                     .cornerRadius(8)
                     
                     if discountPercent > 0 {
-                        Text("Discount: \(discountPercent)%")
+                        Text(String(format: L10n.string("Discount: %d%%"), discountPercent))
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.primaryColor)
                     }
                 }
                 .padding(Theme.Spacing.md)
             } else {
-                Text("Please set the price first")
+                Text(L10n.string("Please set the price first"))
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(Theme.Spacing.md)
@@ -955,7 +920,7 @@ struct DiscountPriceInputView: View {
             Spacer()
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Discount Price")
+        .navigationTitle(L10n.string("Discount Price"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
@@ -1008,46 +973,87 @@ struct ParcelSizeSelectionView: View {
         }
         .listStyle(PlainListStyle())
         .background(Theme.Colors.background)
-        .navigationTitle("Parcel Size")
+        .navigationTitle(L10n.string("Parcel Size"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-// MARK: - Brand Input View (integrated: Theme colours, styled field, primary Done)
+// MARK: - Brand Input View (integrated: Theme colours, feed-matching search field, brand suggestions from API)
 struct BrandInputView: View {
     @Binding var selectedBrand: String?
     @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject var authService: AuthService
     @State private var brandText: String = ""
+    @State private var fetchedBrands: [String] = []
+    @State private var isLoadingBrands: Bool = false
     @FocusState private var isFocused: Bool
+
+    private let productService = ProductService()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                Text("Brand name")
-                    .font(Theme.Typography.body)
-                    .fontWeight(.medium)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                TextField("Enter brand name", text: $brandText)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .padding(Theme.Spacing.md)
-                    .background(Theme.Colors.secondaryBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
-                    .focused($isFocused)
+            DiscoverSearchField(
+                text: $brandText,
+                placeholder: L10n.string("Enter brand name"),
+                outerPadding: true,
+                topPadding: Theme.Spacing.xs
+            )
+            .padding(.trailing, Theme.Spacing.sm)
+            .onAppear { isFocused = true }
+
+            if isLoadingBrands && fetchedBrands.isEmpty {
+                HStack {
+                    ProgressView()
+                        .tint(Theme.primaryColor)
+                    Text(L10n.string("Loading brands..."))
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, Theme.Spacing.md)
             }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.top, Theme.Spacing.lg)
-            Spacer()
+
+            if !fetchedBrands.isEmpty {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(filteredBrands, id: \.self) { brand in
+                            Button {
+                                brandText = brand
+                                selectedBrand = brand
+                                presentationMode.wrappedValue.dismiss()
+                            } label: {
+                                Text(brand)
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, Theme.Spacing.sm)
+                                    .padding(.horizontal, Theme.Spacing.md)
+                            }
+                            .buttonStyle(.plain)
+                            if brand != filteredBrands.last {
+                                ContentDivider()
+                                    .padding(.leading, Theme.Spacing.md)
+                            }
+                        }
+                    }
+                    .background(Theme.Colors.secondaryBackground)
+                    .cornerRadius(Theme.Glass.cornerRadius)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.md)
+                }
+            }
+
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Theme.Colors.background)
-        .navigationTitle("Brand")
+        .navigationTitle(L10n.string("Brand"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .tint(Theme.primaryColor)
         .onAppear {
             brandText = selectedBrand ?? ""
-            isFocused = true
+            Task { await loadBrands() }
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -1059,6 +1065,24 @@ struct BrandInputView: View {
                 .foregroundColor(Theme.primaryColor)
             }
         }
+    }
+
+    private var filteredBrands: [String] {
+        let q = brandText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty { return fetchedBrands }
+        return fetchedBrands.filter { $0.lowercased().contains(q) }
+    }
+
+    private func loadBrands() async {
+        isLoadingBrands = true
+        productService.updateAuthToken(authService.authToken)
+        do {
+            let brands = try await productService.getBrandNames()
+            fetchedBrands = brands
+        } catch {
+            fetchedBrands = []
+        }
+        isLoadingBrands = false
     }
 }
 

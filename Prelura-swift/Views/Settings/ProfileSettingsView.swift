@@ -17,7 +17,7 @@ struct ProfileSettingsView: View {
                 TextField("Email", text: $email)
                     .keyboardType(.emailAddress)
             }
-            Section(header: Text("Bio")) {
+            Section(header: Text(L10n.string("Bio"))) {
                 TextEditor(text: $bio)
                     .frame(minHeight: 80)
             }
@@ -28,7 +28,7 @@ struct ProfileSettingsView: View {
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Profile details")
+        .navigationTitle(L10n.string("Profile details"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }

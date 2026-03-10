@@ -18,81 +18,81 @@ struct ShippingAddressView: View {
     private let userService = UserService()
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                Text("Address")
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
-
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Address line 1")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(placeholder: "Street address", text: $addressLine1, textContentType: .streetAddressLine1)
-                }
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Address line 2")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(placeholder: "Apartment, suite, etc. (optional)", text: $addressLine2, textContentType: .streetAddressLine2)
-                }
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("City")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(placeholder: "City", text: $city, textContentType: .addressCity)
-                }
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("State / County")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(placeholder: "State or county", text: $state, textContentType: .addressState)
-                }
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Country")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    Text(country)
-                        .font(Theme.Typography.body)
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    Text(L10n.string("Address"))
+                        .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.vertical, Theme.Spacing.md)
-                        .background(Theme.Colors.secondaryBackground)
-                        .cornerRadius(30)
-                }
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Postcode")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    SettingsTextField(placeholder: "Postcode", text: $postcode, textContentType: .postalCode)
-                }
 
-                if let err = errorMessage {
-                    Text(err)
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(.red)
-                }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Address line 1"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(placeholder: "Street address", text: $addressLine1, textContentType: .streetAddressLine1)
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Address line 2"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(placeholder: "Apartment, suite, etc. (optional)", text: $addressLine2, textContentType: .streetAddressLine2)
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("City"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(placeholder: "City", text: $city, textContentType: .addressCity)
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("State / County"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(placeholder: "State or county", text: $state, textContentType: .addressState)
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Country"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        Text(country)
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.md)
+                            .background(Theme.Colors.secondaryBackground)
+                            .cornerRadius(30)
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Postcode"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(placeholder: "Postcode", text: $postcode, textContentType: .postalCode)
+                    }
 
-                PrimaryGlassButton(
-                    "Save",
-                    isEnabled: canSave,
-                    isLoading: isSaving,
-                    action: save
-                )
+                    if let err = errorMessage {
+                        Text(err)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(.red)
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.lg)
+                .padding(.bottom, 100)
             }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.lg)
+            .background(Theme.Colors.background)
+
+            PrimaryButtonBar {
+                PrimaryGlassButton("Save", isEnabled: canSave, isLoading: isSaving, action: save)
+            }
         }
-        .background(Theme.Colors.background)
-        .navigationTitle("Shipping Address")
+        .navigationTitle(L10n.string("Shipping Address"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .onAppear(perform: loadUser)
         .alert("Saved", isPresented: $showSuccess) {
             Button("OK", role: .cancel) { dismiss() }
         } message: {
-            Text("Your shipping address has been updated.")
+            Text(L10n.string("Your shipping address has been updated."))
         }
     }
 

@@ -11,87 +11,82 @@ struct LoginView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: Theme.Spacing.lg) {
-                // Header
-                VStack(spacing: Theme.Spacing.sm) {
-                    Text("Prelura")
-                        .font(.system(size: 48, weight: .bold))
-                        .foregroundColor(Theme.primaryColor)
-                    
-                    Text("Welcome back")
-                        .font(Theme.Typography.title2)
-                        .foregroundColor(Theme.Colors.primaryText)
-                }
-                .padding(.top, Theme.Spacing.xl)
-                
-                // Form
-                VStack(spacing: Theme.Spacing.md) {
-                    // Username field
-                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                        Text("Username")
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                        
-                        TextField("Enter your username", text: $username)
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .padding(Theme.Spacing.md)
-                            .background(Theme.Colors.secondaryBackground)
-                            .cornerRadius(16)
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    
-                    // Password field
-                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                        Text("Password")
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                        
-                        SecureField("Enter your password", text: $password)
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .padding(Theme.Spacing.md)
-                            .background(Theme.Colors.secondaryBackground)
-                            .cornerRadius(16)
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    
-                    // Error message
-                    if let error = errorMessage {
-                        Text(error)
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    VStack(spacing: Theme.Spacing.lg) {
+                        // Header
+                        VStack(spacing: Theme.Spacing.sm) {
+                            Text("Prelura")
+                                .font(.system(size: 48, weight: .bold))
+                                .foregroundColor(Theme.primaryColor)
+                            Text(L10n.string("Welcome back"))
+                                .font(Theme.Typography.title2)
+                                .foregroundColor(Theme.Colors.primaryText)
+                        }
+                        .padding(.top, Theme.Spacing.xl)
+
+                        // Form
+                        VStack(spacing: Theme.Spacing.md) {
+                            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                                Text(L10n.string("Username"))
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                TextField(L10n.string("Enter your username"), text: $username)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .padding(Theme.Spacing.md)
+                                    .background(Theme.Colors.secondaryBackground)
+                                    .cornerRadius(16)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                            }
+                            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                                Text(L10n.string("Password"))
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                SecureField(L10n.string("Enter your password"), text: $password)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .padding(Theme.Spacing.md)
+                                    .background(Theme.Colors.secondaryBackground)
+                                    .cornerRadius(16)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                            }
+                            if let error = errorMessage {
+                                Text(error)
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(.red)
+                                    .padding(.horizontal, Theme.Spacing.md)
+                            }
+                            Button(L10n.string("Forgot password?")) {
+                                showForgotPassword = true
+                            }
                             .font(Theme.Typography.caption)
-                            .foregroundColor(.red)
-                            .padding(.horizontal, Theme.Spacing.md)
+                            .foregroundColor(Theme.primaryColor)
+                            .buttonStyle(HapticTapButtonStyle())
+                        }
+                        .padding(.horizontal, Theme.Spacing.lg)
+
+                        HStack {
+                            Text(L10n.string("Don't have an account?"))
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                            Button(action: { showSignup = true }) {
+                                Text(L10n.string("Sign up"))
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.primaryColor)
+                            }
+                            .buttonStyle(HapticTapButtonStyle())
+                        }
+                        .padding(.bottom, 100)
                     }
-                    
-                    // Login button
+                }
+
+                PrimaryButtonBar {
                     PrimaryGlassButton(
-                        "Login",
+                        L10n.string("Login"),
                         isEnabled: !username.isEmpty && !password.isEmpty,
                         isLoading: isLoading,
                         action: handleLogin
                     )
-                    Button("Forgot password?") {
-                        showForgotPassword = true
-                    }
-                    .font(Theme.Typography.caption)
-                    .foregroundColor(Theme.primaryColor)
                 }
-                .padding(.horizontal, Theme.Spacing.lg)
-
-                Spacer()
-                
-                // Signup link
-                HStack {
-                    Text("Don't have an account?")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    
-                    Button(action: { showSignup = true }) {
-                        Text("Sign up")
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.primaryColor)
-                    }
-                }
-                .padding(.bottom, Theme.Spacing.lg)
             }
             .background(Theme.Colors.background)
             .navigationBarHidden(true)
