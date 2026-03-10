@@ -62,28 +62,12 @@ struct LoginView: View {
                     }
                     
                     // Login button
-                    Button(action: handleLogin) {
-                        if isLoading {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        } else {
-                            Text("Login")
-                                .font(Theme.Typography.headline)
-                                .foregroundColor(.white)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .background(
-                        LinearGradient(
-                            colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.8)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                    PrimaryGlassButton(
+                        "Login",
+                        isEnabled: !username.isEmpty && !password.isEmpty,
+                        isLoading: isLoading,
+                        action: handleLogin
                     )
-                    .cornerRadius(16)
-                    .disabled(isLoading || username.isEmpty || password.isEmpty)
-                    .opacity((isLoading || username.isEmpty || password.isEmpty) ? 0.6 : 1.0)
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
                 

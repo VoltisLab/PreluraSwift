@@ -4,6 +4,7 @@ struct ChatListView: View {
     @EnvironmentObject var authService: AuthService
     @StateObject private var chatService: ChatService
     @State private var conversations: [Conversation] = []
+    @State private var searchText: String = ""
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
     
@@ -36,18 +37,11 @@ struct ChatListView: View {
                             .padding(.horizontal)
                     }
                     if errorMessage != nil {
-                        Button(action: {
+                        PrimaryGlassButton("Retry", action: {
                             errorMessage = nil
                             loadConversations()
-                        }) {
-                            Text("Retry")
-                                .font(Theme.Typography.headline)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, Theme.Spacing.lg)
-                                .padding(.vertical, Theme.Spacing.sm)
-                                .background(Theme.primaryColor)
-                                .clipShape(Capsule())
-                        }
+                        })
+                        .frame(maxWidth: 200)
                         .padding(.top, Theme.Spacing.sm)
                     }
                 }
@@ -56,14 +50,23 @@ struct ChatListView: View {
                 .navigationTitle("Messages")
                 .navigationBarTitleDisplayMode(.inline)
             } else {
-                List {
-                    ForEach(conversations, id: \.id) { conversation in
-                        NavigationLink(value: AppRoute.conversation(conversation)) {
-                            ChatRowView(conversation: conversation)
+                VStack(spacing: 0) {
+                    DiscoverSearchField(
+                        text: $searchText,
+                        placeholder: "Search conversations",
+                        topPadding: Theme.Spacing.xs
+                    )
+                    .padding(.trailing, Theme.Spacing.sm)
+
+                    List {
+                        ForEach(filteredConversations, id: \.id) { conversation in
+                            NavigationLink(value: AppRoute.conversation(conversation)) {
+                                ChatRowView(conversation: conversation)
+                            }
                         }
                     }
+                    .listStyle(PlainListStyle())
                 }
-                .listStyle(PlainListStyle())
                 .background(Theme.Colors.background)
                 .navigationTitle("Messages")
                 .navigationBarTitleDisplayMode(.inline)
@@ -84,6 +87,16 @@ struct ChatListView: View {
         }
     }
     
+    private var filteredConversations: [Conversation] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return conversations }
+        return conversations.filter {
+            $0.recipient.username.lowercased().contains(query)
+                || ($0.recipient.displayName.isEmpty ? false : $0.recipient.displayName.lowercased().contains(query))
+                || ($0.lastMessage?.lowercased().contains(query) ?? false)
+        }
+    }
+
     private func loadConversations() {
         isLoading = true
         errorMessage = nil

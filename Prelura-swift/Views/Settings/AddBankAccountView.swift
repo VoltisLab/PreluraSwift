@@ -79,22 +79,12 @@ struct AddBankAccountView: View {
                         .foregroundColor(.red)
                 }
 
-                Button(action: addBankAccount) {
-                    HStack {
-                        if isSaving {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        }
-                        Text("Add bank account")
-                            .font(Theme.Typography.headline)
-                            .foregroundColor(.white)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .background(canSubmit ? Theme.primaryColor : Theme.primaryColor.opacity(0.5))
-                    .cornerRadius(30)
-                }
-                .disabled(!canSubmit || isSaving)
+                PrimaryGlassButton(
+                    "Add bank account",
+                    isEnabled: canSubmit,
+                    isLoading: isSaving,
+                    action: addBankAccount
+                )
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.lg)

@@ -134,28 +134,12 @@ struct SignupView: View {
                         }
                         
                         // Signup button
-                        Button(action: handleSignup) {
-                            if isLoading {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            } else {
-                                Text("Sign Up")
-                                    .font(Theme.Typography.headline)
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, Theme.Spacing.md)
-                        .background(
-                            LinearGradient(
-                                colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.8)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+                        PrimaryGlassButton(
+                            "Sign Up",
+                            isEnabled: isFormValid,
+                            isLoading: isLoading,
+                            action: handleSignup
                         )
-                        .cornerRadius(16)
-                        .disabled(isLoading || !isFormValid)
-                        .opacity((isLoading || !isFormValid) ? 0.6 : 1.0)
                     }
                     .padding(.horizontal, Theme.Spacing.lg)
                 }

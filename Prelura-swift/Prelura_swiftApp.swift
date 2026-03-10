@@ -49,6 +49,7 @@ struct AppearanceRootView: View {
             }
         }
         .preferredColorScheme(resolvedScheme)
+        .tint(Theme.primaryColor)
         .onAppear { syncThemeScheme() }
         .onChange(of: appearanceMode) { _, _ in syncThemeScheme() }
         .onChange(of: colorScheme) { _, _ in syncThemeScheme() }
@@ -85,7 +86,7 @@ struct MainTabView: View {
                 .tabItem { Label("Discover", systemImage: "magnifyingglass") }
                 .tag(1)
 
-            SellNavigation()
+            SellNavigation(selectedTab: $selectedTab)
                 .tabItem { Label("Sell", systemImage: "plus") }
                 .tag(2)
 

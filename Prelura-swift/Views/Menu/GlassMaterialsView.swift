@@ -6,10 +6,10 @@ struct GlassMaterialsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.xl) {
-                // Rich background strip so glass shows through (like Apple's reference image)
                 glassButtonsSection
-                // Labels for reference
                 labelsSection
+                borderButtonsSection
+                borderLabelsSection
             }
             .padding(Theme.Spacing.lg)
         }
@@ -19,33 +19,50 @@ struct GlassMaterialsView: View {
         .toolbar(.hidden, for: .tabBar)
     }
 
-    /// Horizontal strip of three buttons: two with Liquid Glass, one solid (per Apple's doc image).
+    /// Vertical stack of full-width buttons: two with Liquid Glass, one solid.
     private var glassButtonsSection: some View {
         GlassEffectContainer(spacing: Theme.Spacing.md) {
-            HStack(spacing: Theme.Spacing.md) {
-                // Left: Liquid Glass (regular)
+            VStack(spacing: Theme.Spacing.md) {
+                // Liquid Glass (regular)
                 Button(action: {}) {
                     Text("Hello, World!")
                         .font(Theme.Typography.headline)
                         .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
                         .padding(.horizontal, Theme.Spacing.lg)
                         .padding(.vertical, Theme.Spacing.md)
                 }
                 .buttonStyle(.plain)
                 .glassEffect(.regular, in: .rect(cornerRadius: 12))
 
-                // Middle: Liquid Glass (clear / more transparent)
+                // Liquid Glass (clear / more transparent)
                 Button(action: {}) {
                     Text("Hello, World!")
                         .font(Theme.Typography.headline)
                         .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
                         .padding(.horizontal, Theme.Spacing.lg)
                         .padding(.vertical, Theme.Spacing.md)
                 }
                 .buttonStyle(.plain)
                 .glassEffect(.clear, in: .rect(cornerRadius: 12))
 
-                // Right: Solid (no glass) for comparison
+                // Liquid Glass (clear + primary colour tint)
+                Button(action: {}) {
+                    Text("Hello, World!")
+                        .font(Theme.Typography.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, Theme.Spacing.lg)
+                        .padding(.vertical, Theme.Spacing.md)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 12))
+
+                // Liquid Glass (clear + primary tint, corner radius 30) — PrimaryGlassButton component
+                PrimaryGlassButton("Hello, World!", action: {})
+
+                // Solid (no glass) for comparison
                 Button(action: {}) {
                     Text("Hello, World!")
                         .font(Theme.Typography.headline)
@@ -60,6 +77,34 @@ struct GlassMaterialsView: View {
         }
     }
 
+    /// Border versions: outline only (no fill), stroke only. Radius-30 row uses BorderGlassButton.
+    private var borderButtonsSection: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            outlineButton(cornerRadius: 12, strokeColor: .white)
+            outlineButton(cornerRadius: 12, strokeColor: .white)
+            outlineButton(cornerRadius: 12, strokeColor: Theme.primaryColor)
+            BorderGlassButton("Hello, World!", action: {})
+            outlineButton(cornerRadius: 12, strokeColor: .orange)
+        }
+    }
+
+    private func outlineButton(cornerRadius: CGFloat, strokeColor: Color) -> some View {
+        Button(action: {}) {
+            Text("Hello, World!")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(strokeColor)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.vertical, Theme.Spacing.md)
+        }
+        .buttonStyle(.plain)
+        .background(Color.clear)
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .strokeBorder(strokeColor, lineWidth: 2)
+        )
+    }
+
     private var labelsSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text("Glass (regular)")
@@ -68,7 +113,34 @@ struct GlassMaterialsView: View {
             Text("Glass (clear)")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
+            Text("Glass (clear + primary tint)")
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text("Glass (clear + primary tint, radius 30)")
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
             Text("Solid (no glass)")
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var borderLabelsSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("Border — Glass (regular)")
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text("Border — Glass (clear)")
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text("Border — Glass (clear + primary tint)")
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text("Border — Glass (clear + primary tint, radius 30)")
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text("Border — Solid (no glass)")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
         }

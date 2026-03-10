@@ -268,17 +268,17 @@ struct HelpCentreView: View {
                 NavigationLink(destination: HelpChatView()) {
                     HStack(spacing: Theme.Spacing.sm) {
                         Image(systemName: "bubble.left.and.bubble.right")
-                            .foregroundColor(.white)
+                            .font(.system(size: 16, weight: .semibold))
                         Text("Start a conversation")
-                            .font(Theme.Typography.body)
-                            .foregroundColor(.white)
+                            .font(Theme.Typography.headline)
                     }
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
+                    .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.vertical, Theme.Spacing.md)
-                    .background(Theme.primaryColor)
-                    .clipShape(RoundedRectangle(cornerRadius: 25))
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(.plain)
+                .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.md)

@@ -7,6 +7,7 @@ struct ItemDetailView: View {
     @State private var selectedImageIndex: Int = 0
     @State private var selectedTab: Int = 0
     @State private var showFullScreenImages: Bool = false
+    @State private var showSendOfferSheet: Bool = false
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authService: AuthService
     
@@ -578,35 +579,13 @@ struct ItemDetailView: View {
     // MARK: - Bottom Action Buttons
     private var bottomActionButtons: some View {
         HStack(spacing: Theme.Spacing.sm) {
-            Button(action: {
-                // Send an offer
-            }) {
-                Text("Send an Offer")
-                    .font(Theme.Typography.body)
-                    .fontWeight(.medium)
-                    .foregroundColor(Theme.primaryColor)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(Theme.Colors.background)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 25)
-                            .stroke(Theme.primaryColor, lineWidth: 1.5)
-                    )
-                    .cornerRadius(25)
-            }
+            BorderGlassButton("Send an Offer", action: {
+                showSendOfferSheet = true
+            })
             
-            Button(action: {
+            PrimaryGlassButton("Buy now", action: {
                 // Buy now
-            }) {
-                Text("Buy now")
-                    .font(Theme.Typography.body)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(Theme.primaryColor)
-                    .cornerRadius(25)
-            }
+            })
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.top, Theme.Spacing.md)

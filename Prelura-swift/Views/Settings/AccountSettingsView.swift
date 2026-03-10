@@ -83,19 +83,7 @@ struct AccountSettingsView: View {
                         .foregroundColor(.red)
                 }
 
-                Button(action: save) {
-                    HStack {
-                        if isSaving { ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white)) }
-                        Text("Save")
-                            .font(Theme.Typography.headline)
-                            .foregroundColor(.white)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .background(Theme.primaryColor)
-                    .cornerRadius(30)
-                }
-                .disabled(isSaving)
+                PrimaryGlassButton("Save", isLoading: isSaving, action: save)
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.lg)

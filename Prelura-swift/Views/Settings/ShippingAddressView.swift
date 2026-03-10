@@ -74,22 +74,12 @@ struct ShippingAddressView: View {
                         .foregroundColor(.red)
                 }
 
-                Button(action: save) {
-                    HStack {
-                        if isSaving {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        }
-                        Text("Save")
-                            .font(Theme.Typography.headline)
-                            .foregroundColor(.white)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .background(canSave ? Theme.primaryColor : Theme.primaryColor.opacity(0.5))
-                    .cornerRadius(30)
-                }
-                .disabled(!canSave || isSaving)
+                PrimaryGlassButton(
+                    "Save",
+                    isEnabled: canSave,
+                    isLoading: isSaving,
+                    action: save
+                )
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.lg)

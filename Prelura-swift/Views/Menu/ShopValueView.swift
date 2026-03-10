@@ -114,16 +114,7 @@ struct ShopValueView: View {
     }
 
     private var withdrawButton: some View {
-        Button(action: {}) {
-            Text("Withdraw")
-                .font(Theme.Typography.headline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, Theme.Spacing.md)
-                .background(Theme.primaryColor)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
-        }
-        .buttonStyle(PlainButtonStyle())
+        PrimaryGlassButton("Withdraw", action: {})
     }
 
     // MARK: - Earnings: two cards

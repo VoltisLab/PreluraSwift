@@ -35,23 +35,12 @@ struct PauseAccountView: View {
                     )
                 }
                 Spacer(minLength: Theme.Spacing.xl)
-                Button {
-                    showConfirm = true
-                } label: {
-                    HStack {
-                        if isLoading {
-                            ProgressView()
-                                .tint(Theme.Colors.primaryText)
-                        } else {
-                            Text("Pause Account")
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.md)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.primaryColor)
-                .disabled(password.isEmpty || isLoading)
+                PrimaryGlassButton(
+                    "Pause Account",
+                    isEnabled: !password.isEmpty,
+                    isLoading: isLoading,
+                    action: { showConfirm = true }
+                )
             }
             .padding(Theme.Spacing.md)
         }

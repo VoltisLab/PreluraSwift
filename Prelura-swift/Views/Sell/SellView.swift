@@ -2,13 +2,13 @@ import SwiftUI
 import PhotosUI
 
 struct SellView: View {
+    @Binding var selectedTab: Int
     @StateObject private var viewModel = SellViewModel()
-    @Environment(\.presentationMode) var presentationMode
     @State private var selectedImages: [UIImage] = []
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var title: String = ""
     @State private var description: String = ""
-    @State private var category: Category? = nil
+    @State private var category: SellCategory? = nil
     @State private var brand: String? = nil
     @State private var condition: String? = nil
     @State private var colours: [String] = []
@@ -19,38 +19,58 @@ struct SellView: View {
     @State private var discountPrice: Double? = nil
     @State private var parcelSize: String? = nil
     @State private var draftCount: Int = 5 // TODO: Fetch from backend
-    
+
+    private var discountPercentText: String {
+        guard let price = price, let discountPrice = discountPrice, price > 0 else { return "0%" }
+        let percent = Int(((price - discountPrice) / price) * 100)
+        return "\(percent)%"
+    }
+
+    /// Flutter: category, description, images, parcel, title, price (not 0), selectedColors, brand or customBrand, condition
+    private var canUpload: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !selectedImages.isEmpty
+            && category != nil
+            && (brand != nil && !(brand?.isEmpty ?? true))
+            && condition != nil
+            && !colours.isEmpty
+            && price != nil && (price ?? 0) > 0
+            && parcelSize != nil
+    }
+
     var body: some View {
         ScrollView {
                 VStack(spacing: 0) {
-                    // Upload from drafts
+                    // 1. Upload from drafts (Flutter: same)
                     if draftCount > 0 {
                         draftsSection
                     }
-                    
-                    // Photo Upload Section
+                    // 2. Photo upload (Flutter: same)
                     photoUploadSection
-                    
-                    // Item Details Section
+                    // 3. Item Details = Title + Describe your item only (Flutter)
                     itemDetailsSection
-                    
-                    // Additional Details Section
+                    // 4. Item Information = Category, Brand, Condition, Colours (Flutter)
+                    itemInformationSection
+                    // 5. Additional Details (Flutter)
                     additionalDetailsSection
-                    
-                    // Pricing & Shipping Section
+                    // 6. Pricing & Shipping (Flutter)
                     pricingShippingSection
-                    
-                    // Upload Button
+                    // 7. Upload button (Flutter)
                     uploadButton
                 }
             }
             .background(Theme.Colors.background)
             .navigationTitle("Sell an item")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .tabBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        presentationMode.wrappedValue.dismiss()
+                    Button(action: { selectedTab = 0 }) {
+                        Text("Close")
+                            .font(Theme.Typography.body)
+                            .fontWeight(.medium)
+                            .foregroundColor(Theme.primaryColor)
                     }
                 }
             }
@@ -99,20 +119,27 @@ struct SellView: View {
             ) {
                 VStack(spacing: Theme.Spacing.md) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Theme.Colors.secondaryBackground)
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Theme.Colors.background)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .strokeBorder(Theme.Colors.glassBorder, lineWidth: 1)
+                            )
                             .frame(height: 200)
                         
                         if selectedImages.isEmpty {
                             VStack(spacing: Theme.Spacing.sm) {
-                                Image(systemName: "photo.badge.plus")
-                                    .font(.system(size: 50))
-                                    .foregroundColor(Theme.primaryColor)
-                                
+                                ZStack {
+                                    Circle()
+                                        .fill(Theme.primaryColor.opacity(0.1))
+                                        .frame(width: 72, height: 72)
+                                    Image(systemName: "photo.badge.plus")
+                                        .font(.system(size: 36))
+                                        .foregroundColor(Theme.primaryColor)
+                                }
                                 Text("Add up to 20 photos")
                                     .font(Theme.Typography.headline)
                                     .foregroundColor(Theme.Colors.primaryText)
-                                
                                 Text("Tap to select photos from your gallery")
                                     .font(Theme.Typography.caption)
                                     .foregroundColor(Theme.Colors.secondaryText)
@@ -184,130 +211,31 @@ struct SellView: View {
         )
     }
     
-    // MARK: - Item Details Section
+    // MARK: - Item Details Section (Flutter: header + Title + Describe your item only)
     private var itemDetailsSection: some View {
-        VStack(spacing: 0) {
-            // Section Header
-            HStack {
-                Text("Item Details")
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                Spacer()
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Item Details")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Theme.Colors.primaryText)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.sm)
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                SellLabeledField(
+                    label: "Title",
+                    placeholder: "e.g. White COS Jumper",
+                    text: $title
+                )
+                SellLabeledField(
+                    label: "Describe your item",
+                    placeholder: "e.g. only worn a few times, true to size",
+                    text: $description,
+                    minLines: 6,
+                    maxLines: nil
+                )
             }
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-            .background(Theme.Colors.background)
-            
-            // Category Field
-            NavigationLink(destination: CategorySelectionView(selectedCategory: $category)) {
-                HStack {
-                    Text("Category")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(category == nil ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    if let category = category {
-                        Text(category.name)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
-            }
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
-            
-            // Brand Field
-            NavigationLink(destination: BrandInputView(selectedBrand: $brand)) {
-                HStack {
-                    Text("Brand")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(brand == nil ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    if let brand = brand {
-                        Text(brand)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
-            }
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
-            
-            // Condition Field
-            NavigationLink(destination: ConditionSelectionView(selectedCondition: $condition)) {
-                HStack {
-                    Text("Condition")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(condition == nil ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    if let condition = condition {
-                        Text(condition)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
-            }
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
-            
-            // Colours Field
-            NavigationLink(destination: ColoursSelectionView(selectedColours: $colours)) {
-                HStack {
-                    Text("Colours")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(colours.isEmpty ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    if !colours.isEmpty {
-                        Text(colours.joined(separator: ", "))
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .lineLimit(1)
-                    }
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
-            }
+            .padding(.vertical, Theme.Spacing.md)
             .overlay(
                 Rectangle()
                     .frame(height: 0.5)
@@ -315,103 +243,105 @@ struct SellView: View {
                 alignment: .bottom
             )
         }
+        .padding(.top, Theme.Spacing.md)
+        .background(Theme.Colors.background)
+    }
+
+    // MARK: - Item Information Section (Flutter: Category, Brand, Condition, Colours)
+    private var itemInformationSection: some View {
+        VStack(spacing: 0) {
+            Text("Item Information")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Theme.Colors.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.lg)
+                .padding(.bottom, Theme.Spacing.sm)
+                .background(Theme.Colors.background)
+
+            NavigationLink(destination: CategorySelectionView(selectedCategory: $category)) {
+                SellFormRow(title: "Category", value: category?.name)
+            }
+            .buttonStyle(.plain)
+            .overlay(
+                Rectangle().frame(height: 0.5).foregroundColor(Theme.Colors.glassBorder),
+                alignment: .bottom
+            )
+
+            NavigationLink(destination: BrandInputView(selectedBrand: $brand)) {
+                SellFormRow(title: "Brand", value: brand)
+            }
+            .buttonStyle(.plain)
+            .overlay(
+                Rectangle().frame(height: 0.5).foregroundColor(Theme.Colors.glassBorder),
+                alignment: .bottom
+            )
+
+            NavigationLink(destination: ConditionSelectionView(selectedCondition: $condition)) {
+                SellFormRow(title: "Condition", value: condition)
+            }
+            .buttonStyle(.plain)
+            .overlay(
+                Rectangle().frame(height: 0.5).foregroundColor(Theme.Colors.glassBorder),
+                alignment: .bottom
+            )
+
+            NavigationLink(destination: ColoursSelectionView(selectedColours: $colours)) {
+                SellFormRow(
+                    title: "Colours",
+                    value: colours.isEmpty ? nil : colours.joined(separator: ", ")
+                )
+            }
+            .buttonStyle(.plain)
+            .overlay(
+                Rectangle().frame(height: 0.5).foregroundColor(Theme.Colors.glassBorder),
+                alignment: .bottom
+            )
+        }
+        .background(Theme.Colors.background)
     }
     
-    // MARK: - Additional Details Section
+    // MARK: - Additional Details Section (Flutter: Measurements, Material, Style)
     private var additionalDetailsSection: some View {
         VStack(spacing: 0) {
-            // Section Header
-            HStack {
-                Text("Additional Details")
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                Spacer()
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-            .background(Theme.Colors.background)
+            Text("Additional Details")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Theme.Colors.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.lg)
+                .padding(.bottom, Theme.Spacing.sm)
+                .background(Theme.Colors.background)
             
             // Measurements Field
             NavigationLink(destination: MeasurementsView(measurements: $measurements)) {
-                HStack {
-                    Text("Measurements (Optional)")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(measurements == nil ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    if let measurements = measurements {
-                        Text(measurements)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .lineLimit(1)
-                    }
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
+                SellFormRow(title: "Measurements (Optional)", value: measurements)
             }
+            .buttonStyle(.plain)
             .overlay(
                 Rectangle()
                     .frame(height: 0.5)
                     .foregroundColor(Theme.Colors.glassBorder),
                 alignment: .bottom
             )
-            
+
             // Material Field
             NavigationLink(destination: MaterialSelectionView(selectedMaterial: $material)) {
-                HStack {
-                    Text("Material (Optional)")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(material == nil ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    if let material = material {
-                        Text(material)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
+                SellFormRow(title: "Material (Optional)", value: material)
             }
+            .buttonStyle(.plain)
             .overlay(
                 Rectangle()
                     .frame(height: 0.5)
                     .foregroundColor(Theme.Colors.glassBorder),
                 alignment: .bottom
             )
-            
+
             // Style Field
             NavigationLink(destination: StyleSelectionView(selectedStyle: $style)) {
-                HStack {
-                    Text("Style (Optional)")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(style == nil ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    if let style = style {
-                        Text(style)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
+                SellFormRow(title: "Style (Optional)", value: style)
             }
+            .buttonStyle(.plain)
             .overlay(
                 Rectangle()
                     .frame(height: 0.5)
@@ -421,242 +351,278 @@ struct SellView: View {
         }
     }
     
-    // MARK: - Pricing & Shipping Section
+    // MARK: - Pricing & Shipping Section (Flutter: Price, Discount, Parcel, info banner)
     private var pricingShippingSection: some View {
         VStack(spacing: 0) {
-            // Section Header
-            HStack {
-                Text("Pricing & Shipping")
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                Spacer()
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-            .background(Theme.Colors.background)
+            Text("Pricing & Shipping")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Theme.Colors.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.lg)
+                .padding(.bottom, Theme.Spacing.sm)
+                .background(Theme.Colors.background)
             
             // Price Field
             NavigationLink(destination: PriceInputView(price: $price)) {
-                HStack {
-                    Text("Price")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(price == nil ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    if let price = price {
-                        Text("£\(String(format: "%.0f", price))")
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
+                SellFormRow(
+                    title: "Price",
+                    value: price.map { "£\(String(format: "%.0f", $0))" }
+                )
             }
+            .buttonStyle(.plain)
             .overlay(
                 Rectangle()
                     .frame(height: 0.5)
                     .foregroundColor(Theme.Colors.glassBorder),
                 alignment: .bottom
             )
-            
+
             // Discount Price Field
             NavigationLink(destination: DiscountPriceInputView(price: $price, discountPrice: $discountPrice)) {
-                HStack {
-                    Text("Discount Price (Optional)")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(discountPrice == nil ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    if let price = price, let discountPrice = discountPrice, price > 0 {
-                        let discountPercent = Int(((price - discountPrice) / price) * 100)
-                        Text("\(discountPercent)%")
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                    } else {
-                        Text("0%")
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                    }
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
+                SellFormRow(
+                    title: "Discount Price (Optional)",
+                    value: discountPercentText
+                )
             }
+            .buttonStyle(.plain)
             .overlay(
                 Rectangle()
                     .frame(height: 0.5)
                     .foregroundColor(Theme.Colors.glassBorder),
                 alignment: .bottom
             )
-            
+
             // Parcel Size Field
             NavigationLink(destination: ParcelSizeSelectionView(selectedParcelSize: $parcelSize)) {
-                HStack {
-                    Text("Parcel Size")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(parcelSize == nil ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    if let parcelSize = parcelSize {
-                        Text(parcelSize)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
+                SellFormRow(title: "Parcel Size", value: parcelSize)
             }
+            .buttonStyle(.plain)
             .overlay(
                 Rectangle()
                     .frame(height: 0.5)
                     .foregroundColor(Theme.Colors.glassBorder),
                 alignment: .bottom
             )
-            
-            // Info Banner
+
+            // Info Banner (Flutter: primary 0.1 bg, primary icon & text)
             HStack(spacing: Theme.Spacing.sm) {
                 Image(systemName: "info.circle.fill")
                     .font(.system(size: 16))
-                    .foregroundColor(.white)
-                
+                    .foregroundColor(Theme.primaryColor)
+
                 Text("The buyer always pays for postage.")
                     .font(Theme.Typography.subheadline)
-                    .foregroundColor(.white)
+                    .foregroundColor(Theme.primaryColor)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.md)
-            .background(Theme.primaryColor)
-            .cornerRadius(8)
+            .background(Theme.primaryColor.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.md)
         }
     }
     
-    // MARK: - Item Information Section
-    private var itemInformationSection: some View {
-        VStack(spacing: 0) {
-            // Section Header
-            HStack {
-                Text("Item Information")
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                Spacer()
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-            .background(Theme.Colors.background)
-            
-            // Category Field
-            NavigationLink(destination: CategorySelectionView(selectedCategory: $category)) {
-                HStack {
-                    Text("Category")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(category == nil ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    if let category = category {
-                        Text(category.name)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
-            }
-            .overlay(
-                Rectangle()
-                    .frame(height: 0.5)
-                    .foregroundColor(Theme.Colors.glassBorder),
-                alignment: .bottom
-            )
-        }
-    }
-    
     // MARK: - Upload Button
     private var uploadButton: some View {
-        Button(action: {
-            viewModel.submitListing(
-                title: title,
-                description: description,
-                price: price ?? 0.0,
-                brand: "", // Will be set in next screen
-                condition: condition ?? "",
-                size: "", // Will be set in next screen
-                category: category,
-                images: selectedImages
-            )
-        }) {
-            Text("Upload")
-                .font(Theme.Typography.headline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, Theme.Spacing.md)
-                .background(
-                    LinearGradient(
-                        colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.8)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+        PrimaryGlassButton(
+            "Upload",
+            isEnabled: canUpload,
+            action: {
+                viewModel.submitListing(
+                    title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                    description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                    price: price ?? 0.0,
+                    brand: brand ?? "",
+                    condition: condition ?? "",
+                    size: "",
+                    categoryId: category?.id,
+                    categoryName: category?.name,
+                    images: selectedImages
                 )
-                .cornerRadius(12)
-        }
-            .disabled(selectedImages.isEmpty || category == nil || condition == nil || price == nil)
-            .opacity((selectedImages.isEmpty || category == nil || condition == nil || price == nil) ? 0.6 : 1.0)
+            }
+        )
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.bottom, Theme.Spacing.lg)
     }
 }
 
-// MARK: - Category Selection View
+// MARK: - Category Selection View (hierarchical, matches Flutter: root → children → leaf)
 struct CategorySelectionView: View {
-    @Binding var selectedCategory: Category?
+    @Binding var selectedCategory: SellCategory?
     @Environment(\.presentationMode) var presentationMode
-    
+    @State private var categories: [APICategory] = []
+    @State private var isLoading = true
+    @State private var loadError: String?
+    private let service = CategoriesService()
+
+    private static let rootOrder = ["Men", "Women", "Boys", "Girls", "Toddlers"]
+
     var body: some View {
-        List {
-            ForEach(Category.allCategories, id: \.id) { category in
-                Button(action: {
-                    selectedCategory = category
-                    presentationMode.wrappedValue.dismiss()
-                }) {
-                    HStack {
-                        Text(category.name)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                        
-                        Spacer()
-                        
-                        if selectedCategory?.id == category.id {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(Theme.primaryColor)
+        Group {
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .tint(Theme.primaryColor)
+            } else if let error = loadError {
+                VStack(spacing: Theme.Spacing.md) {
+                    Text(error)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(sortedCategories, id: \.id) { cat in
+                        if cat.hasChildren == true {
+                            NavigationLink(destination: SubCategoryView(
+                                parentId: cat.id,
+                                parentName: cat.name,
+                                selectedCategory: $selectedCategory
+                            )) {
+                                categoryRow(cat.name, isSelected: false)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Button(action: {
+                                selectedCategory = SellCategory(id: cat.id, name: cat.name)
+                                presentationMode.wrappedValue.dismiss()
+                            }) {
+                                categoryRow(cat.name, isSelected: selectedCategory?.id == cat.id)
+                            }
                         }
                     }
                 }
+                .listStyle(PlainListStyle())
             }
         }
-        .listStyle(PlainListStyle())
         .background(Theme.Colors.background)
         .navigationTitle("Select Category")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .task {
+            await loadCategories(parentId: nil)
+        }
+    }
+
+    private var sortedCategories: [APICategory] {
+        guard categories.count > 1 else { return categories }
+        return categories.sorted { a, b in
+            let i1 = Self.rootOrder.firstIndex(of: a.name) ?? Self.rootOrder.count
+            let i2 = Self.rootOrder.firstIndex(of: b.name) ?? Self.rootOrder.count
+            return i1 < i2
+        }
+    }
+
+    private func categoryRow(_ name: String, isSelected: Bool) -> some View {
+        HStack {
+            Text(name)
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.primaryText)
+            Spacer()
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .foregroundColor(Theme.primaryColor)
+            }
+        }
+    }
+
+    private func loadCategories(parentId: Int?) async {
+        isLoading = true
+        loadError = nil
+        do {
+            categories = try await service.fetchCategories(parentId: parentId)
+        } catch {
+            loadError = error.localizedDescription
+        }
+        isLoading = false
+    }
+}
+
+// MARK: - Sub Category View (children of a category; recursive)
+struct SubCategoryView: View {
+    let parentId: String
+    let parentName: String
+    @Binding var selectedCategory: SellCategory?
+    @Environment(\.presentationMode) var presentationMode
+    @State private var categories: [APICategory] = []
+    @State private var isLoading = true
+    @State private var loadError: String?
+    private let service = CategoriesService()
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .tint(Theme.primaryColor)
+            } else if let error = loadError {
+                VStack(spacing: Theme.Spacing.md) {
+                    Text(error)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(categories, id: \.id) { cat in
+                        if cat.hasChildren == true {
+                            NavigationLink(destination: SubCategoryView(
+                                parentId: cat.id,
+                                parentName: cat.name,
+                                selectedCategory: $selectedCategory
+                            )) {
+                                subCategoryRow(cat)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Button(action: {
+                                selectedCategory = SellCategory(id: cat.id, name: cat.name)
+                                presentationMode.wrappedValue.dismiss()
+                            }) {
+                                subCategoryRow(cat)
+                            }
+                        }
+                    }
+                }
+                .listStyle(PlainListStyle())
+            }
+        }
+        .background(Theme.Colors.background)
+        .navigationTitle(parentName)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .task {
+            let id = Int(parentId)
+            await loadCategories(parentId: id)
+        }
+    }
+
+    private func subCategoryRow(_ cat: APICategory) -> some View {
+        HStack {
+            Text(cat.name)
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.primaryText)
+            Spacer()
+            if selectedCategory?.id == cat.id {
+                Image(systemName: "checkmark")
+                    .foregroundColor(Theme.primaryColor)
+            }
+        }
+    }
+
+    private func loadCategories(parentId: Int?) async {
+        isLoading = true
+        loadError = nil
+        do {
+            categories = try await service.fetchCategories(parentId: parentId)
+        } catch {
+            loadError = error.localizedDescription
+        }
+        isLoading = false
     }
 }
 
@@ -708,7 +674,7 @@ struct ColoursSelectionView: View {
     @Binding var selectedColours: [String]
     @Environment(\.presentationMode) var presentationMode
     @State private var availableColours = ["Black", "White", "Red", "Blue", "Green", "Yellow", "Pink", "Purple", "Orange", "Brown", "Grey", "Beige", "Navy", "Maroon", "Teal"]
-    
+
     var body: some View {
         List {
             ForEach(availableColours, id: \.self) { colour in
@@ -723,9 +689,17 @@ struct ColoursSelectionView: View {
                         Text(colour)
                             .font(Theme.Typography.body)
                             .foregroundColor(Theme.Colors.primaryText)
-                        
+
                         Spacer()
-                        
+
+                        Circle()
+                            .fill(ColoursSelectionView.sampleColor(for: colour))
+                            .frame(width: 24, height: 24)
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(Theme.Colors.glassBorder, lineWidth: colour == "White" || colour == "Black" ? 1 : 0)
+                            )
+
                         if selectedColours.contains(colour) {
                             Image(systemName: "checkmark")
                                 .foregroundColor(Theme.primaryColor)
@@ -744,7 +718,29 @@ struct ColoursSelectionView: View {
                 Button("Done") {
                     presentationMode.wrappedValue.dismiss()
                 }
+                .foregroundColor(Theme.primaryColor)
             }
+        }
+    }
+
+    private static func sampleColor(for name: String) -> Color {
+        switch name.lowercased() {
+        case "black": return .black
+        case "white": return .white
+        case "red": return .red
+        case "blue": return .blue
+        case "green": return .green
+        case "yellow": return .yellow
+        case "pink": return .pink
+        case "purple": return .purple
+        case "orange": return .orange
+        case "brown": return .brown
+        case "grey", "gray": return .gray
+        case "beige": return Color(red: 0.96, green: 0.96, blue: 0.86)
+        case "navy": return Color(red: 0, green: 0, blue: 0.5)
+        case "maroon": return Color(red: 0.5, green: 0, blue: 0)
+        case "teal": return .teal
+        default: return .gray
         }
     }
 }
@@ -1017,30 +1013,38 @@ struct ParcelSizeSelectionView: View {
     }
 }
 
-// MARK: - Brand Input View
+// MARK: - Brand Input View (integrated: Theme colours, styled field, primary Done)
 struct BrandInputView: View {
     @Binding var selectedBrand: String?
     @Environment(\.presentationMode) var presentationMode
     @State private var brandText: String = ""
     @FocusState private var isFocused: Bool
-    
+
     var body: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            TextField("Enter brand name", text: $brandText)
-                .font(Theme.Typography.body)
-                .foregroundColor(Theme.Colors.primaryText)
-                .padding(Theme.Spacing.md)
-                .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(8)
-                .padding(Theme.Spacing.md)
-                .focused($isFocused)
-            
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                Text("Brand name")
+                    .font(Theme.Typography.body)
+                    .fontWeight(.medium)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                TextField("Enter brand name", text: $brandText)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .padding(Theme.Spacing.md)
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                    .focused($isFocused)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.lg)
             Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Theme.Colors.background)
         .navigationTitle("Brand")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .tint(Theme.primaryColor)
         .onAppear {
             brandText = selectedBrand ?? ""
             isFocused = true
@@ -1048,15 +1052,17 @@ struct BrandInputView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Done") {
-                    selectedBrand = brandText.isEmpty ? nil : brandText
+                    selectedBrand = brandText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : brandText.trimmingCharacters(in: .whitespacesAndNewlines)
                     presentationMode.wrappedValue.dismiss()
                 }
+                .fontWeight(.semibold)
+                .foregroundColor(Theme.primaryColor)
             }
         }
     }
 }
 
 #Preview {
-    SellView()
+    SellView(selectedTab: .constant(0))
         .preferredColorScheme(.dark)
 }

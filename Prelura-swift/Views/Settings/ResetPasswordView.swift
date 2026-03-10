@@ -61,23 +61,12 @@ struct ResetPasswordView: View {
                     }
                 }
                 Spacer(minLength: Theme.Spacing.xl)
-                Button {
-                    Task { await resetPassword() }
-                } label: {
-                    HStack {
-                        if isLoading {
-                            ProgressView()
-                                .tint(Theme.Colors.primaryText)
-                        } else {
-                            Text("Reset Password")
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.md)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.primaryColor)
-                .disabled(!canSubmit || isLoading)
+                PrimaryGlassButton(
+                    "Reset Password",
+                    isEnabled: canSubmit,
+                    isLoading: isLoading,
+                    action: { Task { await resetPassword() } }
+                )
             }
             .padding(Theme.Spacing.md)
         }

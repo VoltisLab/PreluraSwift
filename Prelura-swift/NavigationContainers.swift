@@ -43,9 +43,11 @@ struct DiscoverNavigation: View {
 // MARK: - Sell
 
 struct SellNavigation: View {
+    @Binding var selectedTab: Int
+
     var body: some View {
         NavigationStack {
-            SellView()
+            SellView(selectedTab: $selectedTab)
         }
     }
 }

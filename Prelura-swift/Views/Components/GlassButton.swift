@@ -27,57 +27,10 @@ struct GlassButton: View {
     var body: some View {
         Group {
             if style == .primary {
-                Button(action: action) {
-                    labelContent
-                }
-                .foregroundStyle(foregroundColor)
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.primaryColor)
+                PrimaryGlassButton(title, icon: icon, action: action)
             } else {
-                Button(action: action) {
-                    labelContent
-                        .background(backgroundView)
-                        .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
-                }
-                .foregroundStyle(foregroundColor)
-                .buttonStyle(.plain)
+                BorderGlassButton(title, icon: icon, action: action)
             }
-        }
-    }
-    
-    private var labelContent: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            if let icon = icon {
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
-            }
-            Text(title)
-                .font(Theme.Typography.headline)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Spacing.md)
-        .padding(.horizontal, Theme.Spacing.lg)
-        .contentShape(Rectangle())
-    }
-    
-    private var foregroundColor: Color {
-        switch style {
-        case .primary:
-            return .white
-        case .secondary, .outline:
-            return Theme.primaryColor
-        }
-    }
-    
-    @ViewBuilder
-    private var backgroundView: some View {
-        switch style {
-        case .primary:
-            Color.clear
-        case .secondary:
-            Color.clear
-        case .outline:
-            Color.clear
         }
     }
 }

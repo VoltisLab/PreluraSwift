@@ -14,7 +14,8 @@ class SellViewModel: ObservableObject {
         brand: String,
         condition: String,
         size: String,
-        category: Category?,
+        categoryId: String?,
+        categoryName: String?,
         images: [UIImage]
     ) {
         isSubmitting = true

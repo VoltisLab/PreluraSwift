@@ -108,22 +108,12 @@ struct AddPaymentCardView: View {
                         .foregroundColor(.red)
                 }
 
-                Button(action: addCard) {
-                    HStack {
-                        if isSaving {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        }
-                        Text("Add card")
-                            .font(Theme.Typography.headline)
-                            .foregroundColor(.white)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .background(canSubmit ? Theme.primaryColor : Theme.primaryColor.opacity(0.5))
-                    .cornerRadius(30)
-                }
-                .disabled(!canSubmit || isSaving)
+                PrimaryGlassButton(
+                    "Add card",
+                    isEnabled: canSubmit,
+                    isLoading: isSaving,
+                    action: addCard
+                )
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.lg)

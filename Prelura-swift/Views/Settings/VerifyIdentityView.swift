@@ -55,27 +55,8 @@ struct VerifyIdentityView: View {
                 Spacer(minLength: Theme.Spacing.lg)
 
                 // CTA
-                Button(action: {}) {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        Text("Verify identity")
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .background(
-                        LinearGradient(
-                            colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.85)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 25))
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, Theme.Spacing.md)
+                PrimaryGlassButton("Verify identity", icon: "arrow.right", action: {})
+                    .padding(.horizontal, Theme.Spacing.md)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, Theme.Spacing.lg)

@@ -47,22 +47,11 @@ struct MultiBuyDiscountView: View {
                         .foregroundColor(Theme.Colors.error)
                 }
                 Section {
-                    Button(action: { Task { await save() } }) {
-                        HStack {
-                            Spacer()
-                            if isSaving {
-                                ProgressView()
-                                    .tint(Theme.Colors.primaryText)
-                            } else {
-                                Text("Save")
-                                    .fontWeight(.medium)
-                            }
-                            Spacer()
-                        }
-                        .padding(.vertical, Theme.Spacing.sm)
-                    }
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .disabled(isSaving)
+                    PrimaryGlassButton(
+                        "Save",
+                        isLoading: isSaving,
+                        action: { Task { await save() } }
+                    )
                 }
             }
         }
