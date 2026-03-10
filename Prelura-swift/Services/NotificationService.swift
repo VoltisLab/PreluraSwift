@@ -159,6 +159,23 @@ final class NotificationService {
             let createdAt: String?
             let meta: String?
             let sender: RawSender?
+            enum CodingKeys: String, CodingKey { case id, message, model, modelId, modelGroup, isRead, createdAt, meta, sender }
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                let idValue: String
+                if let s = try? c.decode(String.self, forKey: .id) { idValue = s }
+                else if let i = try? c.decode(Int.self, forKey: .id) { idValue = String(i) }
+                else { idValue = "" }
+                id = idValue
+                message = try c.decodeIfPresent(String.self, forKey: .message)
+                model = try c.decodeIfPresent(String.self, forKey: .model)
+                modelId = try c.decodeIfPresent(String.self, forKey: .modelId)
+                modelGroup = try c.decodeIfPresent(String.self, forKey: .modelGroup)
+                isRead = try c.decodeIfPresent(Bool.self, forKey: .isRead)
+                createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+                meta = try c.decodeIfPresent(String.self, forKey: .meta)
+                sender = try c.decodeIfPresent(RawSender.self, forKey: .sender)
+            }
         }
         struct RawSender: Decodable {
             let username: String?

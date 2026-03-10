@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Full-screen Menu page (matches Flutter MenuPage). Pushed from Profile. Uses system navigation bar.
+/// Full-screen Menu page. Pushed from Profile. Refreshes multibuy/vacation state from API on appear and when profile updates.
 struct MenuView: View {
     @EnvironmentObject var authService: AuthService
 
@@ -9,10 +9,17 @@ struct MenuView: View {
     var isVacationMode: Bool = false
     var isStaff: Bool = false
 
+    @State private var displayedMultiBuy: Bool = false
+    @State private var displayedVacation: Bool = false
     @State private var showLogoutConfirm = false
+
+    private let userService = UserService()
 
     var body: some View {
         List {
+            NavigationLink(destination: DebugMenuView()) {
+                menuRow(L10n.string("Debug"), icon: "ladybug")
+            }
             if listingCount > 0 {
                 NavigationLink(destination: ShopValueView(listingCount: listingCount)) {
                     menuRow(L10n.string("Shop Value"), icon: "chart.bar")
@@ -28,16 +35,16 @@ struct MenuView: View {
                 HStack {
                     menuRow(L10n.string("Multi-buy discounts"), icon: "tag")
                     Spacer()
-                    Text(isMultiBuyEnabled ? L10n.string("On") : L10n.string("Off"))
+                    Text(displayedMultiBuy ? L10n.string("On") : L10n.string("Off"))
                         .font(.system(size: 14))
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
             }
-            NavigationLink(destination: VacationModeView(initialIsOn: isVacationMode)) {
+            NavigationLink(destination: VacationModeView(initialIsOn: displayedVacation)) {
                 HStack {
                     menuRow(L10n.string("Vacation Mode"), icon: "umbrella")
                     Spacer()
-                    Text(isVacationMode ? L10n.string("On") : L10n.string("Off"))
+                    Text(displayedVacation ? L10n.string("On") : L10n.string("Off"))
                         .font(.system(size: 14))
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
@@ -51,16 +58,15 @@ struct MenuView: View {
             NavigationLink(destination: AboutPreluraMenuView()) {
                 menuRow(L10n.string("About Prelura"), icon: "info.circle")
             }
-            NavigationLink(destination: DebugMenuView()) {
-                menuRow(L10n.string("Debug"), icon: "ladybug")
-            }
             Button(role: .destructive, action: {
                 showLogoutConfirm = true
             }) {
                 HStack {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
                         .font(.body)
+                        .foregroundColor(.red)
                     Text(L10n.string("Logout"))
+                        .foregroundColor(.red)
                     Spacer()
                 }
             }
@@ -72,8 +78,17 @@ struct MenuView: View {
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
                     .frame(maxWidth: .infinity)
-                    .padding(.top, Theme.Spacing.lg)
+                    .padding(.top, Theme.Spacing.sm)
+                    .padding(.bottom, Theme.Spacing.xs)
             }
+        }
+        .onAppear {
+            displayedMultiBuy = isMultiBuyEnabled
+            displayedVacation = isVacationMode
+            Task { await refreshUserState() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .preluraUserProfileDidUpdate)) { _ in
+            Task { await refreshUserState() }
         }
         .listStyle(.insetGrouped)
         .navigationTitle(L10n.string("Menu"))
@@ -107,6 +122,19 @@ struct MenuView: View {
                 .font(.body)
                 .foregroundStyle(Theme.Colors.secondaryText)
             Text(title)
+        }
+    }
+
+    private func refreshUserState() async {
+        userService.updateAuthToken(authService.authToken)
+        do {
+            let user = try await userService.getUser()
+            await MainActor.run {
+                displayedMultiBuy = user.isMultibuyEnabled
+                displayedVacation = user.isVacationMode
+            }
+        } catch {
+            // Keep displayed state from params / previous fetch
         }
     }
 }

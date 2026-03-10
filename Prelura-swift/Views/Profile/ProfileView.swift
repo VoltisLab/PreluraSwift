@@ -1,7 +1,7 @@
 import SwiftUI
 import PhotosUI
 
-// MARK: - Profile sort (matches Flutter userProductSort / Enum$SortEnum)
+// MARK: - Profile sort
 enum ProfileSortOption: String, CaseIterable {
     case relevance = "Relevance"
     case newestFirst = "Newest First"
@@ -9,7 +9,7 @@ enum ProfileSortOption: String, CaseIterable {
     case priceDesc = "Price Descending"
 }
 
-// MARK: - Condition filter options (raw API values; display names match Item.formattedCondition). Shared with UserProfileView.
+// MARK: - Condition filter options. Shared with UserProfileView.
 let profileConditionOptions: [(raw: String, display: String)] = [
     ("EXCELLENT_CONDITION", "Excellent Condition"),
     ("GOOD_CONDITION", "Good Condition"),
@@ -61,14 +61,15 @@ struct ProfileView: View {
                                 bioSection(bio)
                             }
                             
-                            // User Statistics (5 columns)
-                            userStatsSection
-                            
-                            // Categories, Multi-buy, Top Brands, Filter/Sort
-                            filtersSection
-                            
-                            // Items Grid
-                            itemsGridSection
+                            // When vacation mode is on, hide products and show holiday message (matches Flutter)
+                            if viewModel.user?.isVacationMode == true {
+                                vacationModeSection
+                            } else {
+                                // Categories, Multi-buy, Top Brands, Filter/Sort
+                                filtersSection
+                                // Items Grid
+                                itemsGridSection
+                            }
                         }
                     }
                 }
@@ -96,21 +97,21 @@ struct ProfileView: View {
         .navigationTitle(viewModel.user?.username ?? L10n.string("Profile"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(value: AppRoute.menu(MenuContext(
-                        listingCount: viewModel.user?.listingsCount ?? 0,
-                        isMultiBuyEnabled: viewModel.user?.isMultibuyEnabled ?? isMultiBuyEnabled,
-                        isVacationMode: viewModel.user?.isVacationMode ?? isVacationMode,
-                        isStaff: viewModel.user?.isStaff ?? false
-                    ))) {
-                        Image(systemName: "line.3.horizontal")
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+            ToolbarItem(placement: .navigationBarTrailing) {
+                NavigationLink(value: AppRoute.menu(MenuContext(
+                    listingCount: viewModel.user?.listingsCount ?? 0,
+                    isMultiBuyEnabled: viewModel.user?.isMultibuyEnabled ?? isMultiBuyEnabled,
+                    isVacationMode: viewModel.user?.isVacationMode ?? isVacationMode,
+                    isStaff: viewModel.user?.isStaff ?? false
+                ))) {
+                    Image(systemName: "line.3.horizontal")
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(HapticTapButtonStyle())
             }
+        }
         .onAppear {
             if profileImage == nil, let saved = viewModel.loadLocalProfileImage() {
                 profileImage = saved
@@ -152,108 +153,125 @@ struct ProfileView: View {
 
     // MARK: - Profile Section
     private var profileSection: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            // Profile Avatar (70px) with upload capability
-            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                Group {
-                    if let profileImage = profileImage {
-                        Image(uiImage: profileImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 70, height: 70)
-                            .clipShape(Circle())
-                    } else if let user = viewModel.user, let avatarURL = user.avatarURL, let url = URL(string: avatarURL) {
-                        AsyncImage(url: url) { image in
-                            image
+        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+            // Left: Avatar + stars + location (unchanged)
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    Group {
+                        if let profileImage = profileImage {
+                            Image(uiImage: profileImage)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                        } placeholder: {
+                                .frame(width: 70, height: 70)
+                                .clipShape(Circle())
+                        } else if let user = viewModel.user, let avatarURL = user.avatarURL, let url = URL(string: avatarURL) {
+                            AsyncImage(url: url) { image in
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            } placeholder: {
+                                Circle()
+                                    .fill(Theme.primaryColor)
+                                    .overlay(
+                                        Image(systemName: "person.fill")
+                                            .font(.system(size: 35))
+                                            .foregroundColor(.white)
+                                    )
+                            }
+                            .frame(width: 70, height: 70)
+                            .clipShape(Circle())
+                        } else {
                             Circle()
                                 .fill(Theme.primaryColor)
+                                .frame(width: 70, height: 70)
                                 .overlay(
                                     Image(systemName: "person.fill")
                                         .font(.system(size: 35))
                                         .foregroundColor(.white)
                                 )
                         }
-                        .frame(width: 70, height: 70)
-                        .clipShape(Circle())
-                    } else {
-                        Circle()
-                            .fill(Theme.primaryColor)
+                    }
+                }
+                .onChange(of: selectedPhoto) { oldValue, newItem in
+                    Task {
+                        if let newItem = newItem,
+                           let data = try? await newItem.loadTransferable(type: Data.self),
+                           let image = UIImage(data: data) {
+                            await MainActor.run {
+                                profileImage = image
+                                viewModel.uploadProfileImage(image)
+                            }
+                        }
+                    }
+                }
+                .overlay {
+                    if viewModel.isUploadingProfilePhoto {
+                        ProgressView()
+                            .tint(.white)
                             .frame(width: 70, height: 70)
-                            .overlay(
-                                Image(systemName: "person.fill")
-                                    .font(.system(size: 35))
-                                    .foregroundColor(.white)
-                            )
+                            .background(Color.black.opacity(0.4))
+                            .clipShape(Circle())
                     }
                 }
-            }
-            .onChange(of: selectedPhoto) { oldValue, newItem in
-                Task {
-                    if let newItem = newItem,
-                       let data = try? await newItem.loadTransferable(type: Data.self),
-                       let image = UIImage(data: data) {
-                        await MainActor.run {
-                            profileImage = image
-                            viewModel.uploadProfileImage(image)
-                        }
+                .alert("Profile photo", isPresented: Binding(
+                    get: { viewModel.profilePhotoUploadError != nil },
+                    set: { if !$0 { viewModel.profilePhotoUploadError = nil } }
+                )) {
+                    Button("OK") { viewModel.profilePhotoUploadError = nil }
+                } message: {
+                    if let err = viewModel.profilePhotoUploadError {
+                        Text(err)
                     }
                 }
-            }
-            .overlay {
-                if viewModel.isUploadingProfilePhoto {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(width: 70, height: 70)
-                        .background(Color.black.opacity(0.4))
-                        .clipShape(Circle())
-                }
-            }
-            .alert("Profile photo", isPresented: Binding(
-                get: { viewModel.profilePhotoUploadError != nil },
-                set: { if !$0 { viewModel.profilePhotoUploadError = nil } }
-            )) {
-                Button("OK") { viewModel.profilePhotoUploadError = nil }
-            } message: {
-                if let err = viewModel.profilePhotoUploadError {
-                    Text(err)
-                }
-            }
 
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                // Username
-                Text(viewModel.user?.username ?? "")
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                
-                // Rating with count
-                HStack(spacing: Theme.Spacing.xs) {
-                    HStack(spacing: 2) {
-                        ForEach(0..<5) { _ in
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 13))
-                                .foregroundColor(.yellow)
-                        }
+                // Stars and location under the profile photo
+                HStack(alignment: .center, spacing: 4) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(.yellow)
                     }
                     Text("(\(viewModel.user?.reviewCount ?? 0))")
                         .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.primaryColor)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: true)
                 }
-                
-                // Location
                 if let location = viewModel.user?.location {
                     Text(location)
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.primaryText)
                 }
             }
-            
-            Spacer()
+
+            // Right: Compact stats (smaller fonts so layout stays within screen width)
+            profileStatsRowCompact
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
+    }
+
+    /// Stats row next to avatar — compact fonts so we don't increase effective screen width.
+    private var profileStatsRowCompact: some View {
+        HStack(spacing: Theme.Spacing.lg) {
+            StatColumn(value: "\(viewModel.user?.listingsCount ?? 0)", label: (viewModel.user?.listingsCount ?? 0) == 1 ? L10n.string("Listing") : L10n.string("Listings"), compact: true)
+            if let u = viewModel.user {
+                NavigationLink(destination: FollowingListView(username: u.username)) {
+                    StatColumn(value: "\(u.followingsCount)", label: L10n.string("Following"), compact: true)
+                }
+                .buttonStyle(.plain)
+                NavigationLink(destination: FollowersListView(username: u.username)) {
+                    StatColumn(value: "\(u.followersCount)", label: (u.followersCount == 1 ? L10n.string("Follower") : L10n.string("Followers")), compact: true)
+                }
+                .buttonStyle(.plain)
+            } else {
+                StatColumn(value: "\(viewModel.user?.followingsCount ?? 0)", label: L10n.string("Following"), compact: true)
+                StatColumn(value: "\(viewModel.user?.followersCount ?? 0)", label: L10n.string("Followers"), compact: true)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(Theme.Spacing.sm)
     }
     
     // MARK: - Bio Section
@@ -265,35 +283,22 @@ struct ProfileView: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
     }
-    
-    // MARK: - User Stats Section (scrollable)
-    private var userStatsSection: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Spacing.md) {
-                StatColumn(value: "\(viewModel.user?.listingsCount ?? 0)", label: L10n.string("Listings"))
-                if let u = viewModel.user {
-                    NavigationLink(destination: FollowingListView(username: u.username)) {
-                        StatColumn(value: "\(u.followingsCount)", label: L10n.string("Followings"))
-                    }
-                    .buttonStyle(.plain)
-                    NavigationLink(destination: FollowersListView(username: u.username)) {
-                        StatColumn(value: "\(u.followersCount)", label: L10n.string("Followers"))
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    StatColumn(value: "\(viewModel.user?.followingsCount ?? 0)", label: L10n.string("Followings"))
-                    StatColumn(value: "\(viewModel.user?.followersCount ?? 0)", label: L10n.string("Followers"))
-                }
-                NavigationLink(value: AppRoute.reviews(username: viewModel.user?.username ?? "", rating: viewModel.user?.rating ?? 5.0)) {
-                    StatColumn(value: "\(viewModel.user?.reviewCount ?? 0)", label: L10n.string("Reviews"))
-                }
-                .buttonStyle(HapticTapButtonStyle())
-                StatColumn(value: viewModel.user?.locationAbbreviation ?? L10n.string("N/A"), label: L10n.string("Location"))
-            }
-            .padding(.horizontal, Theme.Spacing.md)
+
+    /// Shown when vacation mode is on: products and filters are hidden (matches Flutter HolidayModeWidget).
+    private var vacationModeSection: some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            Spacer(minLength: 40)
+            Image(systemName: "umbrella.fill")
+                .font(.system(size: 64))
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text(L10n.string("Vacation mode turned on"))
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+            Spacer(minLength: 40)
         }
-        .padding(.vertical, Theme.Spacing.md)
-        .overlay(ContentDivider(), alignment: .bottom)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.xl)
     }
     
     // MARK: - Filters Section
@@ -449,7 +454,7 @@ struct ProfileView: View {
         .sheet(isPresented: $showPriceFilterSheet) { profilePriceFilterSheet }
     }
     
-    // MARK: - Sort sheet (Flutter: Sort bottom sheet – Relevance, Newest First, Price Asc/Desc, Clear)
+    // MARK: - Sort sheet
     private var profileSortSheet: some View {
         NavigationStack {
             List {
@@ -492,7 +497,7 @@ struct ProfileView: View {
         }
     }
     
-    // MARK: - Filter sheet (Flutter: Filter types – Condition, Price; exclude Category/Brand)
+    // MARK: - Filter sheet
     private var profileFilterSheet: some View {
         NavigationStack {
             List {
@@ -590,7 +595,7 @@ struct ProfileView: View {
         }
     }
     
-    // MARK: - Items Grid Section (category + brand + filter + sort, matching Flutter)
+    // MARK: - Items Grid Section
     private var itemsGridSection: some View {
         var items = viewModel.userItems
         
@@ -648,18 +653,20 @@ struct ProfileView: View {
 struct StatColumn: View {
     let value: String
     let label: String
+    /// When true, uses smaller fonts and minWidth for use next to profile avatar (avoids zoomed layout).
+    var compact: Bool = false
     
     var body: some View {
-        VStack(spacing: Theme.Spacing.xs) {
+        VStack(spacing: compact ? 2 : Theme.Spacing.xs) {
             Text(value)
-                .font(Theme.Typography.title2)
+                .font(compact ? .system(size: 18, weight: .regular) : Theme.Typography.title2)
                 .foregroundColor(Theme.Colors.primaryText)
             
             Text(label)
-                .font(Theme.Typography.subheadline)
+                .font(compact ? .system(size: 14, weight: .regular) : Theme.Typography.subheadline)
                 .foregroundColor(Theme.Colors.secondaryText)
         }
-        .frame(minWidth: 80)
+        .frame(minWidth: compact ? 50 : 80)
     }
 }
 

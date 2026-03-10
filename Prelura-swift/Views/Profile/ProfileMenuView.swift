@@ -186,10 +186,10 @@ struct AboutPreluraMenuView: View {
     var body: some View {
         List {
             NavigationLink(destination: HowToUsePreluraView()) {
-                aboutRow(L10n.string("How to use Prelura"), icon: "book.fill")
+                aboutRow(L10n.string("How to use Prelura"), icon: "book")
             }
             NavigationLink(destination: LegalInformationView()) {
-                aboutRow(L10n.string("Legal Information"), icon: "doc.text.fill")
+                aboutRow(L10n.string("Legal Information"), icon: "doc.text")
             }
         }
         .listStyle(.insetGrouped)
@@ -202,7 +202,7 @@ struct AboutPreluraMenuView: View {
     private func aboutRow(_ title: String, icon: String) -> some View {
         HStack(spacing: Theme.Spacing.md) {
             Image(systemName: icon)
-                .foregroundColor(Theme.primaryColor)
+                .foregroundColor(Theme.Colors.secondaryText)
                 .frame(width: 24)
             Text(title)
                 .foregroundColor(Theme.Colors.primaryText)

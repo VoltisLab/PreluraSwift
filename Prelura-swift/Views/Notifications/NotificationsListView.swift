@@ -2,10 +2,12 @@ import SwiftUI
 
 /// List of in-app notifications (Flutter NotificationsScreen + NotificationsTab).
 struct NotificationsListView: View {
+    @EnvironmentObject private var authService: AuthService
     @Environment(\.dismiss) private var dismiss
     @State private var notifications: [AppNotification] = []
     @State private var totalNumber: Int = 0
     @State private var isLoading = true
+    @State private var isLoadingMore = false
     @State private var errorMessage: String?
     @State private var page = 1
     private let pageSize = 15
@@ -45,12 +47,15 @@ struct NotificationsListView: View {
             } else {
                 List {
                     ForEach(notifications) { notification in
-                        NotificationRowView(notification: notification)
+                        NavigationLink(destination: NotificationDestinationView(notification: notification)) {
+                            NotificationRowView(notification: notification)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    if notifications.count < totalNumber && !isLoading {
+                    if notifications.count < totalNumber {
                         HStack {
                             Spacer()
-                            ProgressView()
+                            if isLoadingMore { ProgressView() }
                             Spacer()
                         }
                         .onAppear { Task { await loadMore() } }
@@ -66,16 +71,22 @@ struct NotificationsListView: View {
             await load(page: 1)
         }
         .onAppear {
+            notificationService.updateAuthToken(authService.authToken)
             Task { await load(page: 1) }
+        }
+        .onChange(of: authService.authToken) { _, newToken in
+            notificationService.updateAuthToken(newToken)
         }
         .toolbar(.hidden, for: .tabBar)
     }
 
     private func load(page: Int) async {
-        if page == 1 { isLoading = true; errorMessage = nil }
-        defer { if page == 1 { isLoading = false } }
+        if page == 1 { isLoading = true; errorMessage = nil } else { isLoadingMore = true }
+        defer {
+            if page == 1 { isLoading = false } else { isLoadingMore = false }
+        }
         do {
-            notificationService.updateAuthToken(UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
+            notificationService.updateAuthToken(authService.authToken)
             let (list, total) = try await notificationService.getNotifications(pageCount: pageSize, pageNumber: page)
             await MainActor.run {
                 if page == 1 {
@@ -93,8 +104,158 @@ struct NotificationsListView: View {
     }
 
     private func loadMore() async {
-        guard !isLoading, notifications.count < totalNumber else { return }
+        guard !isLoading, !isLoadingMore, notifications.count < totalNumber else { return }
         await load(page: page + 1)
+    }
+}
+
+// MARK: - Notification tap destination (product, profile, or chat)
+
+/// Resolves and presents the appropriate screen when user taps a notification (matches Flutter NotificationCard navigation).
+struct NotificationDestinationView: View {
+    let notification: AppNotification
+    @EnvironmentObject private var authService: AuthService
+
+    @State private var resolvedItem: Item?
+    @State private var resolvedUser: User?
+    @State private var resolvedConversation: Conversation?
+    @State private var isLoading = true
+    @State private var loadError: String?
+
+    private let productService = ProductService()
+    private let userService = UserService()
+    private let chatService = ChatService()
+
+    var body: some View {
+        content
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .onAppear {
+            productService.updateAuthToken(authService.authToken)
+            userService.updateAuthToken(authService.authToken)
+            chatService.updateAuthToken(authService.authToken)
+            Task { await resolve() }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isLoading {
+            VStack(spacing: Theme.Spacing.md) {
+                ProgressView()
+                if let err = loadError {
+                    Text(err)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.Colors.background)
+        } else if modelGroup == "Product", let item = resolvedItem {
+            ItemDetailView(item: item, authService: authService)
+        } else if modelGroup == "UserProfile", let user = resolvedUser {
+            UserProfileView(seller: user, authService: authService)
+        } else if (modelGroup == "Chat" || modelGroup == "Offer" || modelGroup == "Order"), let conv = resolvedConversation {
+            ChatDetailView(conversation: conv)
+        } else if let err = loadError {
+            VStack(spacing: Theme.Spacing.md) {
+                Text(err)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.Colors.background)
+        } else {
+            EmptyView()
+        }
+    }
+
+    private var modelGroup: String {
+        (notification.modelGroup ?? "").trimmingCharacters(in: .whitespaces)
+    }
+
+    private func resolve() async {
+        switch modelGroup {
+        case "Product":
+            guard let modelId = notification.modelId, let productId = Int(modelId) else {
+                await MainActor.run { loadError = "Invalid product"; isLoading = false }
+                return
+            }
+            do {
+                let item = try await productService.getProduct(id: productId)
+                await MainActor.run {
+                    resolvedItem = item
+                    loadError = item == nil ? "Product not found" : nil
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run { loadError = error.localizedDescription; isLoading = false }
+            }
+        case "UserProfile":
+            guard let username = notification.sender?.username, !username.isEmpty else {
+                await MainActor.run { loadError = "Unknown user"; isLoading = false }
+                return
+            }
+            do {
+                let user = try await userService.getUser(username: username)
+                await MainActor.run {
+                    resolvedUser = user
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run { loadError = error.localizedDescription; isLoading = false }
+            }
+        case "Chat", "Offer", "Order":
+            let convId = notification.meta?["conversation_id"] ?? ""
+            let username = notification.sender?.username ?? ""
+            let avatarUrl = notification.sender?.profilePictureUrl
+            do {
+                let convs = try await chatService.getConversations()
+                let existing = convs.first { $0.id == convId }
+                if let conv = existing {
+                    await MainActor.run {
+                        resolvedConversation = conv
+                        isLoading = false
+                    }
+                } else {
+                    let recipient = User(
+                        username: username,
+                        displayName: username,
+                        avatarURL: avatarUrl
+                    )
+                    await MainActor.run {
+                        resolvedConversation = Conversation(
+                            id: convId.isEmpty ? "0" : convId,
+                            recipient: recipient,
+                            lastMessage: nil,
+                            lastMessageTime: nil,
+                            unreadCount: 0
+                        )
+                        isLoading = false
+                    }
+                }
+            } catch {
+                let recipient = User(
+                    username: username,
+                    displayName: username,
+                    avatarURL: avatarUrl
+                )
+                await MainActor.run {
+                    resolvedConversation = Conversation(
+                        id: convId.isEmpty ? "0" : convId,
+                        recipient: recipient,
+                        lastMessage: nil,
+                        lastMessageTime: nil,
+                        unreadCount: 0
+                    )
+                    isLoading = false
+                }
+            }
+        default:
+            await MainActor.run { loadError = "Unknown notification type"; isLoading = false }
+        }
     }
 }
 
@@ -166,5 +327,6 @@ private struct NotificationRowView: View {
 #Preview {
     NavigationStack {
         NotificationsListView()
+            .environmentObject(AuthService())
     }
 }

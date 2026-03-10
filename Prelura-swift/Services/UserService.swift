@@ -778,6 +778,7 @@ class UserService: ObservableObject {
               username
               displayName
               profilePictureUrl
+              isVacationMode
             }
             category {
               id
@@ -871,7 +872,8 @@ class UserService: ObservableObject {
                     id: UUID(uuidString: sellerIdString) ?? UUID(),
                     username: product.seller?.username ?? "",
                     displayName: product.seller?.displayName ?? "",
-                    avatarURL: product.seller?.profilePictureUrl
+                    avatarURL: product.seller?.profilePictureUrl,
+                    isVacationMode: product.seller?.isVacationMode ?? false
                 ),
                 condition: product.condition ?? "",
                 size: product.size?.name,

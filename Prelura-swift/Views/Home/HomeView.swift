@@ -6,6 +6,7 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @State private var searchText: String = ""
     @State private var scrollPosition: String? = "home_top"
+    @State private var showAIChat: Bool = false
 
     let categories = ["All", "Women", "Men", "Kids", "Toddlers"]
 
@@ -20,6 +21,7 @@ struct HomeView: View {
                         text: $searchText,
                         placeholder: L10n.string("Search items, brands or colours"),
                         onSubmit: { viewModel.searchWithParsed($0) },
+                        onAITap: { showAIChat = true },
                         topPadding: Theme.Spacing.xs
                     )
                     .padding(.trailing, Theme.Spacing.sm)
@@ -84,6 +86,12 @@ struct HomeView: View {
         }
         .refreshable {
             await viewModel.refreshAsync()
+        }
+        .sheet(isPresented: $showAIChat) {
+            AIChatView(viewModel: viewModel) {
+                showAIChat = false
+            }
+            .environmentObject(authService)
         }
     }
 

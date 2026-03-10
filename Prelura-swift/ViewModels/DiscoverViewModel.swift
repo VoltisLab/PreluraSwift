@@ -69,16 +69,22 @@ class DiscoverViewModel: ObservableObject {
                 // Fetch recently viewed products from backend (like Flutter)
                 let recentlyViewedProducts = try await productService.getRecentlyViewedProducts()
                 
-                // Main product grid
-                self.discoverItems = allProducts
+                // Exclude items from sellers in vacation mode (hidden from catalogues)
+                let allVisible = allProducts.excludingVacationModeSellers()
+                let onSaleVisible = onSaleProducts.excludingVacationModeSellers()
+                let shopBargainsVisible = shopBargainsProducts.excludingVacationModeSellers()
+                let recentlyViewedVisible = recentlyViewedProducts.excludingVacationModeSellers()
                 
-                guard !allProducts.isEmpty else {
+                // Main product grid
+                self.discoverItems = allVisible
+                
+                guard !allVisible.isEmpty else {
                     self.isLoading = false
                     return
                 }
                 
                 // Recently viewed - use actual recently viewed products from backend
-                self.recentlyViewedItems = Array(recentlyViewedProducts.prefix(10))
+                self.recentlyViewedItems = Array(recentlyViewedVisible.prefix(10))
                 
                 var usedProductIds: Set<UUID> = Set(self.recentlyViewedItems.map { $0.id })
                 
@@ -87,7 +93,7 @@ class DiscoverViewModel: ObservableObject {
                 var brandsYouLove: [Item] = []
                 var seenBrands: Set<String> = []
                 
-                for product in allProducts {
+                for product in allVisible {
                     if let brand = product.brand, !seenBrands.contains(brand), !usedProductIds.contains(product.id) {
                         brandsYouLove.append(product)
                         seenBrands.insert(brand)
@@ -98,7 +104,7 @@ class DiscoverViewModel: ObservableObject {
                 
                 // If we don't have enough, fill with any products not already used
                 if brandsYouLove.count < 5 {
-                    let remaining = allProducts.filter { !usedProductIds.contains($0.id) }
+                    let remaining = allVisible.filter { !usedProductIds.contains($0.id) }
                     brandsYouLove.append(contentsOf: remaining.prefix(5 - brandsYouLove.count))
                 }
                 self.brandsYouLoveItems = Array(brandsYouLove.prefix(5))
@@ -109,7 +115,7 @@ class DiscoverViewModel: ObservableObject {
                 // Top Shops - extract unique seller info (username + avatar) from all products
                 // This should ideally use a GraphQL query for top shops, but for now use all products
                 var shopMap: [String: (username: String, avatarURL: String?)] = [:]
-                for product in allProducts {
+                for product in allVisible {
                     let username = product.seller.username
                     if shopMap[username] == nil && !username.isEmpty {
                         shopMap[username] = (username: username, avatarURL: product.seller.avatarURL)
@@ -120,7 +126,7 @@ class DiscoverViewModel: ObservableObject {
                 }
                 
                 // Shop Bargains - use the separately fetched products under £15, excluding already used products
-                let availableBargains = shopBargainsProducts.filter { !usedProductIds.contains($0.id) }
+                let availableBargains = shopBargainsVisible.filter { !usedProductIds.contains($0.id) }
                 if availableBargains.count >= 5 {
                     self.shopBargainsItems = Array(availableBargains.prefix(5))
                 } else {
@@ -132,7 +138,7 @@ class DiscoverViewModel: ObservableObject {
                 usedProductIds.formUnion(Set(self.shopBargainsItems.map { $0.id }))
                 
                 // On Sale - use the separately fetched discounted products, excluding already used products
-                let availableOnSale = onSaleProducts.filter { !usedProductIds.contains($0.id) }
+                let availableOnSale = onSaleVisible.filter { !usedProductIds.contains($0.id) }
                 if availableOnSale.count >= 5 {
                     self.onSaleItems = Array(availableOnSale.prefix(5))
                 } else {
@@ -212,16 +218,21 @@ class DiscoverViewModel: ObservableObject {
             // Fetch recently viewed products from backend (like Flutter)
             let recentlyViewedProducts = try await productService.getRecentlyViewedProducts()
             
+            let allVisible = allProducts.excludingVacationModeSellers()
+            let onSaleVisible = onSaleProducts.excludingVacationModeSellers()
+            let shopBargainsVisible = shopBargainsProducts.excludingVacationModeSellers()
+            let recentlyViewedVisible = recentlyViewedProducts.excludingVacationModeSellers()
+            
             await MainActor.run {
-                self.discoverItems = allProducts
+                self.discoverItems = allVisible
                 
-                guard !allProducts.isEmpty else {
+                guard !allVisible.isEmpty else {
                     self.isLoading = false
                     return
                 }
                 
                 // Recently viewed - use actual recently viewed products from backend
-                self.recentlyViewedItems = Array(recentlyViewedProducts.prefix(10))
+                self.recentlyViewedItems = Array(recentlyViewedVisible.prefix(10))
                 
                 var usedProductIds: Set<UUID> = Set(self.recentlyViewedItems.map { $0.id })
                 
@@ -229,7 +240,7 @@ class DiscoverViewModel: ObservableObject {
                 var brandsYouLove: [Item] = []
                 var seenBrands: Set<String> = []
                 
-                for product in allProducts {
+                for product in allVisible {
                     if let brand = product.brand, !seenBrands.contains(brand), !usedProductIds.contains(product.id) {
                         brandsYouLove.append(product)
                         seenBrands.insert(brand)
@@ -239,7 +250,7 @@ class DiscoverViewModel: ObservableObject {
                 }
                 
                 if brandsYouLove.count < 5 {
-                    let remaining = allProducts.filter { !usedProductIds.contains($0.id) }
+                    let remaining = allVisible.filter { !usedProductIds.contains($0.id) }
                     brandsYouLove.append(contentsOf: remaining.prefix(5 - brandsYouLove.count))
                 }
                 self.brandsYouLoveItems = Array(brandsYouLove.prefix(5))
@@ -248,7 +259,7 @@ class DiscoverViewModel: ObservableObject {
                 
                 // Top Shops - extract unique seller info from all products
                 var shopMap: [String: (username: String, avatarURL: String?)] = [:]
-                for product in allProducts {
+                for product in allVisible {
                     let username = product.seller.username
                     if shopMap[username] == nil && !username.isEmpty {
                         shopMap[username] = (username: username, avatarURL: product.seller.avatarURL)
@@ -259,7 +270,7 @@ class DiscoverViewModel: ObservableObject {
                 }
                 
                 // Shop Bargains - use the separately fetched products under £15
-                let availableBargains = shopBargainsProducts.filter { !usedProductIds.contains($0.id) }
+                let availableBargains = shopBargainsVisible.filter { !usedProductIds.contains($0.id) }
                 if availableBargains.count >= 5 {
                     self.shopBargainsItems = Array(availableBargains.prefix(5))
                 } else {
@@ -269,7 +280,7 @@ class DiscoverViewModel: ObservableObject {
                 usedProductIds.formUnion(Set(self.shopBargainsItems.map { $0.id }))
                 
                 // On Sale - use the separately fetched discounted products, excluding already used products
-                let availableOnSale = onSaleProducts.filter { !usedProductIds.contains($0.id) }
+                let availableOnSale = onSaleVisible.filter { !usedProductIds.contains($0.id) }
                 if availableOnSale.count >= 5 {
                     self.onSaleItems = Array(availableOnSale.prefix(5))
                 } else {

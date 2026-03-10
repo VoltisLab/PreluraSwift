@@ -50,6 +50,7 @@ class ProductService: ObservableObject {
               username
               displayName
               profilePictureUrl
+              isVacationMode
             }
             category {
               id
@@ -171,7 +172,8 @@ class ProductService: ObservableObject {
                     id: UUID(uuidString: sellerIdString) ?? UUID(),
                     username: product.seller?.username ?? "",
                     displayName: product.seller?.displayName ?? "",
-                    avatarURL: product.seller?.profilePictureUrl
+                    avatarURL: product.seller?.profilePictureUrl,
+                    isVacationMode: product.seller?.isVacationMode ?? false
                 ),
                 condition: product.condition ?? "",
                 size: product.size?.name,
@@ -265,7 +267,7 @@ class ProductService: ObservableObject {
               likes
               views
               userLiked
-              seller { id username displayName profilePictureUrl }
+              seller { id username displayName profilePictureUrl isVacationMode }
               category { id name }
             }
           }
@@ -316,6 +318,10 @@ class ProductService: ObservableObject {
             return "KIDS"
         case "Toddlers":
             return "TODDLERS"
+        case "Boys":
+            return "BOYS"
+        case "Girls":
+            return "GIRLS"
         default:
             return nil
         }
@@ -361,6 +367,7 @@ struct SellerData: Decodable {
     let username: String?
     let displayName: String?
     let profilePictureUrl: String?
+    let isVacationMode: Bool?
 }
 
 struct CategoryData: Decodable {
@@ -388,7 +395,7 @@ extension ProductService {
             likes
             views
             userLiked
-            seller { id username displayName profilePictureUrl }
+            seller { id username displayName profilePictureUrl isVacationMode }
             category { id name }
           }
         }
@@ -434,6 +441,7 @@ extension ProductService {
               username
               displayName
               profilePictureUrl
+              isVacationMode
             }
             category {
               id
@@ -531,7 +539,8 @@ extension ProductService {
                     id: UUID(uuidString: sellerIdString) ?? UUID(),
                     username: product.seller?.username ?? "",
                     displayName: product.seller?.displayName ?? "",
-                    avatarURL: product.seller?.profilePictureUrl
+                    avatarURL: product.seller?.profilePictureUrl,
+                    isVacationMode: product.seller?.isVacationMode ?? false
                 ),
                 condition: product.condition ?? "UNKNOWN",
                 size: sizeName,
@@ -573,6 +582,7 @@ extension ProductService {
               username
               displayName
               profilePictureUrl
+              isVacationMode
             }
             category {
               id
@@ -733,7 +743,8 @@ extension ProductService {
                 id: UUID(uuidString: sellerIdString) ?? UUID(),
                 username: product.seller?.username ?? "",
                 displayName: product.seller?.displayName ?? "",
-                avatarURL: product.seller?.profilePictureUrl
+                avatarURL: product.seller?.profilePictureUrl,
+                isVacationMode: product.seller?.isVacationMode ?? false
             ),
             condition: product.condition ?? "UNKNOWN",
             size: sizeName,

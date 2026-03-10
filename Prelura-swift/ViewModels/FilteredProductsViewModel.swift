@@ -2,14 +2,32 @@ import Foundation
 import SwiftUI
 import Combine
 
+/// Sort options for filtered product lists (e.g. category pages).
+enum FilteredProductsSortOption: String, CaseIterable {
+    case relevance = "Relevance"
+    case newestFirst = "Newest First"
+    case priceAsc = "Price Ascending"
+    case priceDesc = "Price Descending"
+}
+
 @MainActor
 class FilteredProductsViewModel: ObservableObject {
     @Published var items: [Item] = []
     @Published var filteredItems: [Item] = []
     @Published var searchText: String = "" {
-        didSet {
-            applySearchFilter()
-        }
+        didSet { applyFilters() }
+    }
+    @Published var sortOption: FilteredProductsSortOption = .newestFirst {
+        didSet { applyFilters() }
+    }
+    @Published var filterCondition: String? = nil {
+        didSet { applyFilters() }
+    }
+    @Published var filterMinPrice: String = "" {
+        didSet { applyFilters() }
+    }
+    @Published var filterMaxPrice: String = "" {
+        didSet { applyFilters() }
     }
     @Published var isLoading: Bool = false
     @Published var isLoadingMore: Bool = false
@@ -54,8 +72,8 @@ class FilteredProductsViewModel: ObservableObject {
             do {
                 let products = try await fetchProducts(page: 1)
                 await MainActor.run {
-                    self.items = products
-                    self.filteredItems = products
+                    self.items = products.excludingVacationModeSellers()
+                    self.applyFilters()
                     self.isLoading = false
                     self.hasMorePages = products.count >= pageSize
                 }
@@ -77,8 +95,8 @@ class FilteredProductsViewModel: ObservableObject {
                 currentPage += 1
                 let products = try await fetchProducts(page: currentPage)
                 await MainActor.run {
-                    self.items.append(contentsOf: products)
-                    applySearchFilter()
+                    self.items.append(contentsOf: products.excludingVacationModeSellers())
+                    applyFilters()
                     self.isLoadingMore = false
                     self.hasMorePages = products.count >= pageSize
                 }
@@ -100,8 +118,8 @@ class FilteredProductsViewModel: ObservableObject {
         do {
             let products = try await fetchProducts(page: 1)
             await MainActor.run {
-                self.items = products
-                applySearchFilter()
+                self.items = products.excludingVacationModeSellers()
+                applyFilters()
                 self.isLoading = false
                 self.hasMorePages = products.count >= pageSize
             }
@@ -153,18 +171,37 @@ class FilteredProductsViewModel: ObservableObject {
                 pageCount: pageSize,
                 search: sizeName
             )
+        case .byParentCategory(let categoryName):
+            return try await productService.getAllProducts(
+                pageNumber: page,
+                pageCount: pageSize,
+                parentCategory: categoryName
+            )
         }
     }
     
-    private func applySearchFilter() {
-        if searchText.isEmpty {
-            filteredItems = items
-        } else {
-            filteredItems = items.filter {
+    private func applyFilters() {
+        var result = items
+        if !searchText.isEmpty {
+            result = result.filter {
                 $0.title.localizedCaseInsensitiveContains(searchText) ||
                 $0.description.localizedCaseInsensitiveContains(searchText) ||
                 ($0.brand?.localizedCaseInsensitiveContains(searchText) ?? false)
             }
         }
+        if let cond = filterCondition {
+            result = result.filter { $0.condition.uppercased() == cond.uppercased() }
+        }
+        let minP = Double(filterMinPrice.replacingOccurrences(of: ",", with: "."))
+        let maxP = Double(filterMaxPrice.replacingOccurrences(of: ",", with: "."))
+        if let min = minP, min > 0 { result = result.filter { $0.price >= min } }
+        if let max = maxP, max > 0 { result = result.filter { $0.price <= max } }
+        switch sortOption {
+        case .relevance: break
+        case .newestFirst: result = result.sorted { $0.createdAt > $1.createdAt }
+        case .priceAsc: result = result.sorted { $0.price < $1.price }
+        case .priceDesc: result = result.sorted { $0.price > $1.price }
+        }
+        filteredItems = result
     }
 }

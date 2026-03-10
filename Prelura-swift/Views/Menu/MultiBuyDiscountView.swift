@@ -124,6 +124,7 @@ struct MultiBuyDiscountView: View {
             await MainActor.run {
                 isEnabled = false
                 discounts = []
+                NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
             }
             await load()
         } catch {
@@ -153,6 +154,7 @@ struct MultiBuyDiscountView: View {
             try await userService.createOrUpdateMultibuyDiscount(inputs: inputs)
             await MainActor.run {
                 successMessage = "Saved"
+                NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
             }
             await load()
         } catch {

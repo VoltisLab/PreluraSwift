@@ -7,13 +7,17 @@ enum ProductFilterType: Equatable {
     case brandsYouLove
     case byBrand(brandName: String)
     case bySize(sizeName: String)
+    /// Discover category: Men, Women, Boys, Girls (parent category filter).
+    case byParentCategory(categoryName: String)
 }
 
 struct FilteredProductsView: View {
     @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject var authService: AuthService
     @StateObject private var viewModel: FilteredProductsViewModel
-    @State private var searchText: String = ""
+    @State private var showSortSheet = false
+    @State private var showFilterSheet = false
+    @State private var showPriceFilterSheet = false
     
     let title: String
     let filterType: ProductFilterType
@@ -35,7 +39,7 @@ struct FilteredProductsView: View {
                         .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HapticTapButtonStyle())
                 Spacer()
                 Text(title)
                     .font(Theme.Typography.title3)
@@ -50,14 +54,41 @@ struct FilteredProductsView: View {
             
             // Search Bar (same position as feed / discover / inbox)
             DiscoverSearchField(
-                text: $searchText,
+                text: Binding(get: { viewModel.searchText }, set: { viewModel.searchText = $0 }),
                 placeholder: L10n.string("Search items, brands or styles"),
-                onChange: { viewModel.searchText = $0 },
                 showClearButton: true,
                 onClear: { viewModel.searchText = "" },
                 topPadding: Theme.Spacing.xs
             )
             .padding(.trailing, Theme.Spacing.sm)
+
+            // Filter / Sort row
+            HStack(spacing: Theme.Spacing.md) {
+                Button(action: { showFilterSheet = true }) {
+                    HStack(spacing: Theme.Spacing.xs) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .font(.system(size: 16))
+                        Text(L10n.string("Filter"))
+                            .font(Theme.Typography.subheadline)
+                    }
+                    .foregroundColor(Theme.Colors.primaryText)
+                }
+                .buttonStyle(HapticTapButtonStyle())
+                Button(action: { showSortSheet = true }) {
+                    HStack(spacing: Theme.Spacing.xs) {
+                        Image(systemName: "arrow.up.arrow.down.circle")
+                            .font(.system(size: 16))
+                        Text(L10n.string(viewModel.sortOption.rawValue))
+                            .font(Theme.Typography.subheadline)
+                    }
+                    .foregroundColor(Theme.Colors.primaryText)
+                }
+                .buttonStyle(HapticTapButtonStyle())
+                Spacer()
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
+            .background(Theme.Colors.background)
 
             // Product Grid
             if viewModel.isLoading && viewModel.items.isEmpty {
@@ -128,6 +159,161 @@ struct FilteredProductsView: View {
         .onChange(of: authService.authToken) { oldToken, newToken in
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(newToken)
+            }
+        }
+        .sheet(isPresented: $showSortSheet) { filteredProductsSortSheet }
+        .sheet(isPresented: $showFilterSheet) { filteredProductsFilterSheet }
+        .sheet(isPresented: $showPriceFilterSheet) { filteredProductsPriceSheet }
+    }
+
+    private var filteredProductsSortSheet: some View {
+        NavigationStack {
+            List {
+                ForEach(FilteredProductsSortOption.allCases, id: \.self) { option in
+                    Button(action: {
+                        viewModel.sortOption = option
+                        showSortSheet = false
+                    }) {
+                        HStack {
+                            Text(L10n.string(option.rawValue))
+                                .foregroundColor(Theme.Colors.primaryText)
+                            Spacer()
+                            if viewModel.sortOption == option {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(Theme.primaryColor)
+                            }
+                        }
+                    }
+                    .buttonStyle(HapticTapButtonStyle())
+                }
+                Button(role: .destructive, action: {
+                    viewModel.sortOption = .relevance
+                    showSortSheet = false
+                }) {
+                    Text(L10n.string("Clear"))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(HapticTapButtonStyle())
+            }
+            .listStyle(.plain)
+            .background(Theme.Colors.background)
+            .navigationTitle(L10n.string("Sort"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(L10n.string("Done")) {
+                        showSortSheet = false
+                    }
+                    .foregroundColor(Theme.primaryColor)
+                }
+            }
+        }
+    }
+
+    private var filteredProductsFilterSheet: some View {
+        NavigationStack {
+            List {
+                Section(header: Text(L10n.string("Condition"))) {
+                    ForEach(profileConditionOptions, id: \.raw) { option in
+                        Button(action: {
+                            viewModel.filterCondition = viewModel.filterCondition == option.raw ? nil : option.raw
+                        }) {
+                            HStack {
+                                Text(L10n.string(option.display))
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                Spacer()
+                                if viewModel.filterCondition == option.raw {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(Theme.primaryColor)
+                                }
+                            }
+                        }
+                        .buttonStyle(HapticTapButtonStyle())
+                    }
+                }
+                Section(header: Text(L10n.string("Price range"))) {
+                    Button(action: {
+                        showFilterSheet = false
+                        showPriceFilterSheet = true
+                    }) {
+                        HStack {
+                            Text(L10n.string("Price"))
+                                .foregroundColor(Theme.Colors.primaryText)
+                            Spacer()
+                            if !viewModel.filterMinPrice.isEmpty || !viewModel.filterMaxPrice.isEmpty {
+                                Text([viewModel.filterMinPrice, viewModel.filterMaxPrice].filter { !$0.isEmpty }.joined(separator: " – "))
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        }
+                    }
+                    .buttonStyle(HapticTapButtonStyle())
+                }
+                Section {
+                    Button(role: .destructive, action: {
+                        viewModel.filterCondition = nil
+                        viewModel.filterMinPrice = ""
+                        viewModel.filterMaxPrice = ""
+                        showFilterSheet = false
+                    }) {
+                        Text(L10n.string("Clear"))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(HapticTapButtonStyle())
+                }
+            }
+            .listStyle(.plain)
+            .background(Theme.Colors.background)
+            .navigationTitle(L10n.string("Filter"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(L10n.string("Done")) {
+                        showFilterSheet = false
+                    }
+                    .foregroundColor(Theme.primaryColor)
+                }
+            }
+        }
+    }
+
+    private var filteredProductsPriceSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(L10n.string("Min. Price"), text: Binding(get: { viewModel.filterMinPrice }, set: { viewModel.filterMinPrice = $0 }))
+                        .keyboardType(.decimalPad)
+                    TextField(L10n.string("Max. Price"), text: Binding(get: { viewModel.filterMaxPrice }, set: { viewModel.filterMaxPrice = $0 }))
+                        .keyboardType(.decimalPad)
+                }
+                Section {
+                    Button(L10n.string("Clear")) {
+                        viewModel.filterMinPrice = ""
+                        viewModel.filterMaxPrice = ""
+                        showPriceFilterSheet = false
+                    }
+                    .foregroundColor(Theme.Colors.primaryText)
+                    Button(L10n.string("Apply")) {
+                        showPriceFilterSheet = false
+                    }
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.primaryColor)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
+            .navigationTitle(L10n.string("Price"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(L10n.string("Done")) {
+                        showPriceFilterSheet = false
+                    }
+                    .foregroundColor(Theme.primaryColor)
+                }
             }
         }
     }

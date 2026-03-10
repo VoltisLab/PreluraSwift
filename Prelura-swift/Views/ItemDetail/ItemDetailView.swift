@@ -43,8 +43,7 @@ struct ItemDetailView: View {
             .background(Theme.Colors.background)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
 
             // Bottom Action Buttons
             if !isCurrentUser {
@@ -74,9 +73,14 @@ struct ItemDetailView: View {
                 onDismiss: { showFullScreenImages = false }
             )
         }
-        .fullScreenCover(isPresented: $showPaymentSheet) {
+        .sheet(isPresented: $showSendOfferSheet) {
+            SendOfferSheet(item: item) { showSendOfferSheet = false }
+                .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showPaymentSheet) {
             PaymentView(products: [item], totalPrice: item.price)
                 .environmentObject(authService)
+                .presentationDetents([.large])
         }
         .toolbar(.hidden, for: .tabBar)
     }

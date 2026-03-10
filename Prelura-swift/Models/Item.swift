@@ -136,6 +136,10 @@ extension Array where Element == Item {
     func replacingItem(productId: String, with updated: Item) -> [Item] {
         map { $0.productId == productId ? updated : $0 }
     }
+    /// Excludes items from sellers who have vacation mode on (so they are hidden from catalogues).
+    func excludingVacationModeSellers() -> [Item] {
+        filter { !$0.seller.isVacationMode }
+    }
 }
 
 // Sample data

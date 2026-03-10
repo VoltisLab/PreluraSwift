@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Other user's profile – same layout as ProfileView (read-only: no menu, no photo edit). Filter/Sort match Flutter.
+/// Other user's profile – same layout as ProfileView (read-only: no menu, no photo edit).
 struct UserProfileView: View {
     let seller: User
     @EnvironmentObject var authService: AuthService
@@ -22,57 +22,68 @@ struct UserProfileView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Custom header (same position as all app bar icons/back buttons)
-            HStack {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(Theme.primaryColor)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
+        GeometryReader { geometry in
+            let contentWidth = geometry.size.width
+            VStack(spacing: 0) {
+                HStack {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(Theme.primaryColor)
+                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                    Text(viewModel.user.username)
+                        .font(Theme.Typography.headline)
+                        .foregroundColor(Theme.Colors.primaryText)
+                    Spacer()
+                    NavigationLink(destination: ReportUserView(username: viewModel.user.username)) {
+                        Image(systemName: "flag")
+                            .font(.system(size: 18))
+                            .foregroundColor(Theme.primaryColor)
+                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                Spacer()
-                Text(viewModel.user.username)
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                Spacer()
-                NavigationLink(destination: ReportUserView(username: viewModel.user.username)) {
-                    Image(systemName: "flag")
-                        .font(.system(size: 18))
-                        .foregroundColor(Theme.primaryColor)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, Theme.AppBar.horizontalPadding)
-            .padding(.vertical, Theme.AppBar.verticalPadding)
-            .background(Theme.Colors.background)
+                .padding(.horizontal, Theme.AppBar.horizontalPadding)
+                .padding(.vertical, Theme.AppBar.verticalPadding)
+                .background(Theme.Colors.background)
 
-            ScrollView {
-                if viewModel.isLoading && viewModel.items.isEmpty && viewModel.errorMessage == nil {
-                    ProfileShimmerView()
-                } else {
-                    VStack(spacing: 0) {
-                        profileSection
-                        if let bio = viewModel.user.bio {
-                            bioSection(bio)
+                ScrollView {
+                    if viewModel.isLoading && viewModel.items.isEmpty && viewModel.errorMessage == nil {
+                        ProfileShimmerView()
+                    } else {
+                        VStack(spacing: 0) {
+                            profileHeaderSection
+                            profileLocationSection
+                            if let bio = viewModel.user.bio, !bio.isEmpty {
+                                bioSection(bio)
+                            }
+                            if viewModel.user.isVacationMode {
+                                vacationModeSection(isLoggedInUser: false)
+                            } else {
+                                filtersSection
+                                itemsGridSection
+                            }
                         }
-                        userStatsSection
-                        filtersSection
-                        itemsGridSection
+                        .padding(.horizontal, Theme.Spacing.xxl)
+                        .frame(maxWidth: contentWidth)
+                    }
+                    if let message = viewModel.errorMessage, !viewModel.items.isEmpty {
+                        Text(message)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .padding()
                     }
                 }
-                if let message = viewModel.errorMessage, !viewModel.items.isEmpty {
-                    Text(message)
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                        .padding()
-                }
+                .frame(width: contentWidth)
+                .clipped()
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
         .navigationBarHidden(true)
         .toolbar(.hidden, for: .tabBar)
@@ -82,116 +93,113 @@ struct UserProfileView: View {
         }
     }
 
-    // MARK: - Profile Section (same as ProfileView: 70px avatar, username, stars, location)
-    private var profileSection: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            AsyncImage(url: URL(string: viewModel.user.avatarURL ?? "")) { phase in
-                switch phase {
-                case .empty:
-                    Circle()
-                        .fill(Theme.Colors.secondaryBackground)
-                        .frame(width: 70, height: 70)
-                        .shimmer()
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 70, height: 70)
-                        .clipShape(Circle())
-                case .failure:
-                    Circle()
-                        .fill(Theme.primaryColor)
-                        .frame(width: 70, height: 70)
-                        .overlay(
-                            Text(String(viewModel.user.username.prefix(1)).uppercased())
-                                .font(.system(size: 28, weight: .semibold))
-                                .foregroundColor(.white)
-                        )
-                @unknown default:
-                    EmptyView()
-                }
-            }
-            .frame(width: 70, height: 70)
-
+    private var profileHeaderSection: some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.lg) {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text(viewModel.user.username)
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                HStack(spacing: Theme.Spacing.xs) {
-                    HStack(spacing: 2) {
-                        ForEach(0..<5, id: \.self) { _ in
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 13))
-                                .foregroundColor(.yellow)
-                        }
+                AsyncImage(url: URL(string: viewModel.user.avatarURL ?? "")) { phase in
+                    switch phase {
+                    case .empty:
+                        Circle()
+                            .fill(Theme.Colors.secondaryBackground)
+                            .frame(width: 75, height: 75)
+                            .shimmer()
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 75, height: 75)
+                            .clipShape(Circle())
+                    case .failure:
+                        Circle()
+                            .fill(Theme.primaryColor)
+                            .frame(width: 75, height: 75)
+                            .overlay(
+                                Text(String(viewModel.user.username.prefix(1)).uppercased())
+                                    .font(.system(size: 28, weight: .semibold))
+                                    .foregroundColor(.white)
+                            )
+                    @unknown default:
+                        EmptyView()
                     }
-                    Text("(\(viewModel.user.reviewCount))")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.primaryColor)
                 }
-                if let location = viewModel.user.location {
-                    Text(location)
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.primaryText)
+                .frame(width: 75, height: 75)
+
+                NavigationLink(value: AppRoute.reviews(username: viewModel.user.username, rating: viewModel.user.rating)) {
+                    HStack(alignment: .center, spacing: 4) {
+                        HStack(spacing: 2) {
+                            ForEach(0..<5, id: \.self) { _ in
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.yellow)
+                            }
+                        }
+                        Text("(\(viewModel.user.reviewCount))")
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: true)
+                    }
                 }
+                .buttonStyle(HapticTapButtonStyle())
             }
 
-            Spacer()
-
-            HStack(spacing: Theme.Spacing.sm) {
-                Button(action: {}) {
-                    Image(systemName: "person.badge.plus")
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
+            HStack(spacing: 0) {
+                StatColumn(value: "\(viewModel.items.count)", label: viewModel.items.count == 1 ? L10n.string("Listing") : L10n.string("Listings"))
+                Spacer(minLength: Theme.Spacing.sm)
+                NavigationLink(destination: FollowingListView(username: viewModel.user.username)) {
+                    StatColumn(value: "\(viewModel.user.followingsCount)", label: L10n.string("Following"))
                 }
                 .buttonStyle(.plain)
-                Button(action: {}) {
-                    Image(systemName: "arrowshape.turn.up.left")
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
+                Spacer(minLength: Theme.Spacing.sm)
+                NavigationLink(destination: FollowersListView(username: viewModel.user.username)) {
+                    StatColumn(value: "\(viewModel.user.followersCount)", label: viewModel.user.followersCount == 1 ? L10n.string("Follower") : L10n.string("Followers"))
                 }
                 .buttonStyle(.plain)
             }
+            .padding(.leading, Theme.Spacing.xs)
         }
-        .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
         .overlay(ContentDivider(), alignment: .bottom)
+    }
+
+    private var profileLocationSection: some View {
+        Group {
+            if let location = viewModel.user.location, !location.isEmpty {
+                Text(location)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, Theme.Spacing.md)
+            }
+        }
     }
 
     private func bioSection(_ bio: String) -> some View {
         Text(bio)
-            .font(Theme.Typography.subheadline)
+            .font(Theme.Typography.body)
+            .lineSpacing(5)
             .foregroundColor(Theme.Colors.primaryText)
+            .lineLimit(2)
+            .truncationMode(.tail)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.vertical, Theme.Spacing.md)
     }
 
-    // MARK: - User Stats (same as ProfileView: Listings, Followings, Followers, Reviews, Location)
-    private var userStatsSection: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Spacing.md) {
-                StatColumn(value: "\(viewModel.items.count)", label: L10n.string("Listings"))
-                NavigationLink(destination: FollowingListView(username: viewModel.user.username)) {
-                    StatColumn(value: "\(viewModel.user.followingsCount)", label: L10n.string("Followings"))
-                }
-                .buttonStyle(.plain)
-                NavigationLink(destination: FollowersListView(username: viewModel.user.username)) {
-                    StatColumn(value: "\(viewModel.user.followersCount)", label: L10n.string("Followers"))
-                }
-                .buttonStyle(.plain)
-                NavigationLink(value: AppRoute.reviews(username: viewModel.user.username, rating: viewModel.user.rating)) {
-                    StatColumn(value: "\(viewModel.user.reviewCount)", label: L10n.string("Reviews"))
-                }
-                .buttonStyle(HapticTapButtonStyle())
-                StatColumn(value: viewModel.user.locationAbbreviation ?? L10n.string("N/A"), label: L10n.string("Location"))
-            }
-            .padding(.horizontal, Theme.Spacing.md)
+    /// When the profile user has vacation mode on, show message and hide products (matches Flutter).
+    private func vacationModeSection(isLoggedInUser: Bool) -> some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            Spacer(minLength: 40)
+            Image(systemName: "umbrella.fill")
+                .font(.system(size: 64))
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text(isLoggedInUser ? L10n.string("Vacation mode turned on") : L10n.string("This member is on vacation"))
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+            Spacer(minLength: 40)
         }
-        .padding(.vertical, Theme.Spacing.md)
-        .overlay(ContentDivider(), alignment: .bottom)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.xl)
     }
 
     // MARK: - Filters Section (Categories, Multi-buy read-only, Top brands, Filter/Sort)
@@ -205,14 +213,13 @@ struct UserProfileView: View {
                 }) {
                     HStack {
                         Text(L10n.string("Categories"))
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.Colors.secondaryText)
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.primaryText)
                         Spacer()
                         Image(systemName: expandedCategories ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 12))
+                            .font(.system(size: 16, weight: .medium))
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
-                    .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.vertical, Theme.Spacing.md)
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -228,23 +235,21 @@ struct UserProfileView: View {
                                         .font(.system(size: 13))
                                         .foregroundColor(Theme.Colors.secondaryText)
                                     Text(category.name)
-                                        .font(Theme.Typography.subheadline)
+                                        .font(Theme.Typography.body)
                                         .foregroundColor(Theme.Colors.primaryText)
                                     Text("(\(category.count) \(category.count == 1 ? L10n.string("item") : L10n.string("items"))")
-                                        .font(Theme.Typography.caption)
+                                        .font(Theme.Typography.subheadline)
                                         .foregroundColor(Theme.Colors.secondaryText)
                                     Spacer(minLength: Theme.Spacing.md)
                                     Image(systemName: selectedCategory == category.name ? "checkmark.square" : "square")
-                                        .font(.system(size: 16))
+                                        .font(.system(size: 18))
                                         .foregroundColor(selectedCategory == category.name ? Theme.primaryColor : Theme.Colors.secondaryText)
                                 }
-                                .padding(.horizontal, Theme.Spacing.lg)
                                 .padding(.vertical, Theme.Spacing.md)
                             }
                             .buttonStyle(PlainButtonStyle())
                             if category.name != viewModel.categoriesWithCounts.last?.name {
                                 ContentDivider()
-                                    .padding(.leading, Theme.Spacing.lg)
                             }
                         }
                     }
@@ -254,30 +259,28 @@ struct UserProfileView: View {
 
             HStack {
                 Text(L10n.string("Multi-buy:"))
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
                 Spacer()
                 Text(viewModel.user.isMultibuyEnabled ? L10n.string("On") : L10n.string("Off"))
-                    .font(Theme.Typography.subheadline)
+                    .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.primaryText)
             }
-            .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.md)
             .overlay(ContentDivider(), alignment: .bottom)
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text(L10n.string("Top brands"))
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
                     Spacer()
                     Button(action: {}) {
                         Image(systemName: "magnifyingglass")
-                            .font(.system(size: 16))
+                            .font(.system(size: 18))
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.sm)
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -290,40 +293,40 @@ struct UserProfileView: View {
                             )
                         }
                     }
-                    .padding(.horizontal, Theme.Spacing.md)
                 }
-                .padding(.vertical, Theme.Spacing.sm)
+                .padding(.vertical, Theme.Spacing.md)
             }
 
             HStack {
                 Button(action: { showFilterSheet = true }) {
-                    HStack(spacing: Theme.Spacing.xs) {
+                    HStack(spacing: Theme.Spacing.sm) {
                         Image(systemName: "line.3.horizontal.decrease")
-                            .font(.system(size: 14))
+                            .font(.system(size: 17))
                         Text(L10n.string("Filter"))
-                            .font(Theme.Typography.subheadline)
+                            .font(Theme.Typography.body)
                     }
-                    .foregroundColor(Theme.Colors.secondaryText)
+                    .foregroundColor(Theme.Colors.primaryText)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                 }
                 .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
+                .fixedSize(horizontal: true, vertical: false)
                 Spacer()
                 Button(action: { showSortSheet = true }) {
-                    HStack(spacing: Theme.Spacing.xs) {
+                    HStack(spacing: Theme.Spacing.sm) {
                         Text(L10n.string(profileSort.rawValue))
-                            .font(Theme.Typography.subheadline)
+                            .font(Theme.Typography.body)
                         Image(systemName: "arrow.up.arrow.down")
-                            .font(.system(size: 12))
+                            .font(.system(size: 16))
                     }
-                    .foregroundColor(Theme.Colors.secondaryText)
+                    .foregroundColor(Theme.Colors.primaryText)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                 }
                 .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
+                .fixedSize(horizontal: true, vertical: false)
             }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.vertical, Theme.Spacing.md)
         }
         .sheet(isPresented: $showSortSheet) { userProfileSortSheet }
         .sheet(isPresented: $showFilterSheet) { userProfileFilterSheet }
@@ -407,7 +410,7 @@ struct UserProfileView: View {
         }
     }
 
-    // MARK: - Items Grid (category + brand + filter + sort, matching Flutter)
+    // MARK: - Items Grid
     private var itemsGridSection: some View {
         var items = viewModel.items
         if let selectedBrand = selectedBrand { items = items.filter { $0.brand == selectedBrand } }
@@ -439,7 +442,6 @@ struct UserProfileView: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
     }
 }

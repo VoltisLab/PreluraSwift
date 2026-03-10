@@ -133,8 +133,11 @@ enum L10n {
 
         // Profile (Favourites used from Menu section)
         "Listings": "Αγγελίες",
+        "Listing": "Αγγελία",
         "Followings": "Ακόλουθοι",
+        "Following": "Ακόλουθοι",
         "Followers": "Οπαδοί",
+        "Follower": "Οπαδός",
         "Reviews": "Κριτικές",
         "Location": "Τοποθεσία",
         "N/A": "Μ/Δ",

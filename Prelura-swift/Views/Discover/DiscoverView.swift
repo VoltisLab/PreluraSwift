@@ -7,7 +7,6 @@ struct DiscoverView: View {
     @State private var searchText: String = ""
     @State private var showSearchMembersResults: Bool = false
     @State private var selectedBrand: String? = nil
-    @State private var selectedCategory: String? = nil
     @State private var scrollPosition: String? = "discover_top"
 
     private static let categories = ["Women", "Men", "Boys", "Girls"]
@@ -170,24 +169,44 @@ struct DiscoverView: View {
         .padding(.bottom, Theme.Spacing.sm)
     }
     
-    // MARK: - Category Buttons (primary style, 2×2 grid: left column Women/Men, right column Boys/Girls)
+    // MARK: - Category Buttons (navigate to filtered category page with filters)
     private var categoryCirclesSection: some View {
         HStack(alignment: .top, spacing: Theme.Spacing.sm) {
             VStack(spacing: Theme.Spacing.sm) {
-                CategoryPrimaryButton(title: L10n.string("Women"), isSelected: selectedCategory == "Women") {
-                    selectedCategory = selectedCategory == "Women" ? nil : "Women"
+                NavigationLink(destination: FilteredProductsView(
+                    title: L10n.string("Women"),
+                    filterType: .byParentCategory(categoryName: "Women"),
+                    authService: authService
+                )) {
+                    CategoryPrimaryButton(title: L10n.string("Women"), isSelected: false, action: {})
                 }
-                CategoryPrimaryButton(title: L10n.string("Men"), isSelected: selectedCategory == "Men") {
-                    selectedCategory = selectedCategory == "Men" ? nil : "Men"
+                .buttonStyle(PlainButtonStyle())
+                NavigationLink(destination: FilteredProductsView(
+                    title: L10n.string("Men"),
+                    filterType: .byParentCategory(categoryName: "Men"),
+                    authService: authService
+                )) {
+                    CategoryPrimaryButton(title: L10n.string("Men"), isSelected: false, action: {})
                 }
+                .buttonStyle(PlainButtonStyle())
             }
             VStack(spacing: Theme.Spacing.sm) {
-                CategoryPrimaryButton(title: L10n.string("Boys"), isSelected: selectedCategory == "Boys") {
-                    selectedCategory = selectedCategory == "Boys" ? nil : "Boys"
+                NavigationLink(destination: FilteredProductsView(
+                    title: L10n.string("Boys"),
+                    filterType: .byParentCategory(categoryName: "Boys"),
+                    authService: authService
+                )) {
+                    CategoryPrimaryButton(title: L10n.string("Boys"), isSelected: false, action: {})
                 }
-                CategoryPrimaryButton(title: L10n.string("Girls"), isSelected: selectedCategory == "Girls") {
-                    selectedCategory = selectedCategory == "Girls" ? nil : "Girls"
+                .buttonStyle(PlainButtonStyle())
+                NavigationLink(destination: FilteredProductsView(
+                    title: L10n.string("Girls"),
+                    filterType: .byParentCategory(categoryName: "Girls"),
+                    authService: authService
+                )) {
+                    CategoryPrimaryButton(title: L10n.string("Girls"), isSelected: false, action: {})
                 }
+                .buttonStyle(PlainButtonStyle())
             }
         }
         .padding(.vertical, Theme.Spacing.sm)

@@ -69,15 +69,12 @@ class ProfileViewModel: ObservableObject {
         }
         
         do {
-            // Load user profile
-            let fetchedUser = try await userService.getUser()
+            // Load user profile and products in parallel for faster display
+            async let userTask = userService.getUser()
+            async let productsTask = userService.getUserProducts()
+            let (fetchedUser, products) = try await (userTask, productsTask)
             await MainActor.run {
                 self.user = fetchedUser
-            }
-            
-            // Load user products
-            let products = try await userService.getUserProducts()
-            await MainActor.run {
                 self.userItems = products
                 self.isLoading = false
             }
@@ -90,8 +87,6 @@ class ProfileViewModel: ObservableObject {
                 if let graphQLError = error as? GraphQLError {
                     print("❌ GraphQL Error: \(graphQLError)")
                 }
-                // Don't fallback to sample data - show error instead
-                // self.userItems = Item.sampleItems.filter { $0.seller.id == self.user.id }
             }
         }
     }
