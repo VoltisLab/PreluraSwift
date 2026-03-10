@@ -2,65 +2,69 @@ import SwiftUI
 
 struct FeedShimmerView: View {
     var body: some View {
-        VStack(spacing: 0) {
-            // Header shimmer
-            HStack {
-                Spacer()
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 100, height: 28)
-                Spacer()
-                Circle()
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 44, height: 44)
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-            
-            // Search bar shimmer
-            RoundedRectangle(cornerRadius: 24)
-                .fill(Theme.Colors.secondaryBackground)
-                .frame(height: 44)
+        GeometryReader { geometry in
+            let minHeight = geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
+            VStack(spacing: 0) {
+                // Header shimmer
+                HStack {
+                    Spacer()
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(width: 100, height: 28)
+                    Spacer()
+                    Circle()
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(width: 44, height: 44)
+                }
                 .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm)
+                
+                // Search bar shimmer
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(height: 44)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.sm)
+                    .padding(.bottom, Theme.Spacing.xs)
+                
+                // Category filters shimmer
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        ForEach(0..<5) { _ in
+                            RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                                .fill(Theme.Colors.secondaryBackground)
+                                .frame(width: 60, height: 36)
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                }
                 .padding(.top, Theme.Spacing.sm)
                 .padding(.bottom, Theme.Spacing.xs)
-            
-            // Category filters shimmer
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.Spacing.sm) {
-                    ForEach(0..<5) { _ in
-                        RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                            .fill(Theme.Colors.secondaryBackground)
-                            .frame(width: 60, height: 36)
+                
+                // Product grid shimmer
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                        GridItem(.flexible(), spacing: Theme.Spacing.sm)
+                    ],
+                    spacing: Theme.Spacing.md
+                ) {
+                    ForEach(0..<6) { _ in
+                        FeedItemShimmer()
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
+                
+                Spacer(minLength: 0)
             }
-            .padding(.top, Theme.Spacing.sm)
-            .padding(.bottom, Theme.Spacing.xs)
-            
-            // Product grid shimmer
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                    GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                ],
-                spacing: Theme.Spacing.md
-            ) {
-                ForEach(0..<6) { _ in
-                    FeedItemShimmer()
-                }
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.md)
-            
-            Spacer(minLength: 0)
+            .frame(minHeight: minHeight)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .shimmer()
         }
         .frame(minHeight: UIScreen.main.bounds.height)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea(edges: .all)
-        .background(Theme.Colors.background)
-        .shimmer()
+        .background(Theme.Colors.background.ignoresSafeArea(edges: .all))
     }
 }
 

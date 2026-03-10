@@ -1,0 +1,16 @@
+# Always Build and Relaunch After Tasks
+
+**Do not skip this. After completing any coding task, always run a full build and then relaunch the app on iPhone 14.**
+
+1. **Build** from the iOS project root:
+   ```bash
+   xcodebuild -project Prelura-swift.xcodeproj -scheme Prelura-swift -destination 'platform=iOS Simulator,name=iPhone 14' -configuration Debug build
+   ```
+   Wait for the build to finish. If it fails, report the error and fix before continuing.
+
+2. **Relaunch** (terminate, install, launch):
+   - `xcrun simctl terminate "iPhone 14" com.prelura.preloved`
+   - `xcrun simctl install "iPhone 14" <path-to-Prelura-swift.app>` (DerivedData path: `~/Library/Developer/Xcode/DerivedData/Prelura-swift-hfvdtszijjrxklettzqdutnxwtdo/Build/Products/Debug-iphonesimulator/Prelura-swift.app`)
+   - `xcrun simctl launch "iPhone 14" com.prelura.preloved`
+
+3. **Report** build result and launch output (e.g. process ID). If the simulator is not booted, boot iPhone 14 first.

@@ -1,6 +1,9 @@
 # TestFlight credentials (never commit)
 scripts/testflight-credentials.json
 
+# GitHub token for /push (never commit)
+scripts/github-token
+
 # Build
 build/
 DerivedData/

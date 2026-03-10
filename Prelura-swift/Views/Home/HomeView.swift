@@ -10,46 +10,47 @@ struct HomeView: View {
     
     var body: some View {
         ScrollView {
-                VStack(spacing: 0) {
-                    headerSection
-                    DiscoverSearchField(
-                        text: $searchText,
-                        placeholder: "Search items, brands or styles",
-                        onSubmit: { viewModel.searchItems(query: searchText) },
-                        topPadding: Theme.Spacing.xs
-                    )
-                    .padding(.trailing, Theme.Spacing.sm)
-                    
-                    // Category Filters
-                    categoryFiltersSection
-                    
-                    // Product Grid or Shimmer
-                    if viewModel.isLoading && viewModel.filteredItems.isEmpty {
-                        FeedShimmerView()
-                    } else {
-                        productGridSection
-                    }
+            VStack(spacing: 0) {
+                DiscoverSearchField(
+                    text: $searchText,
+                    placeholder: "Search items, brands or styles",
+                    onSubmit: { viewModel.searchItems(query: searchText) },
+                    topPadding: Theme.Spacing.xs
+                )
+                .padding(.trailing, Theme.Spacing.sm)
+
+                categoryFiltersSection
+
+                if viewModel.isLoading && viewModel.filteredItems.isEmpty {
+                    FeedShimmerView()
+                } else {
+                    productGridSection
                 }
             }
-            .background(Theme.Colors.background)
-            .navigationBarHidden(true)
-            .refreshable {
-                await viewModel.refreshAsync()
-            }
-        .onAppear { }
-    }
-    
-    private var headerSection: some View {
-        HStack {
-            Image("PreluraLogo")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(height: 26)
-            Spacer()
-            GlassIconButton(icon: "bell", size: Theme.AppBar.buttonSize, iconColor: Theme.Colors.primaryText, action: {})
         }
-        .padding(.horizontal, Theme.AppBar.horizontalPadding)
-        .padding(.vertical, Theme.AppBar.verticalPadding)
+        .background(Theme.Colors.background)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Image("PreluraLogo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(height: 26)
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {}) {
+                    Image(systemName: "bell")
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .refreshable {
+            await viewModel.refreshAsync()
+        }
+        .onAppear { }
     }
 
     // MARK: - Category Filters

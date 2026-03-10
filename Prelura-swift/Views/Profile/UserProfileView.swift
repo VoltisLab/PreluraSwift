@@ -137,15 +137,19 @@ struct UserProfileView: View {
 
             HStack(spacing: Theme.Spacing.sm) {
                 Button(action: {}) {
-                    Image(systemName: "person.circle")
-                        .font(.system(size: 20))
+                    Image(systemName: "person.badge.plus")
                         .foregroundColor(Theme.Colors.primaryText)
+                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 Button(action: {}) {
                     Image(systemName: "arrowshape.turn.up.left")
-                        .font(.system(size: 20))
                         .foregroundColor(Theme.Colors.primaryText)
+                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, Theme.Spacing.md)
@@ -279,6 +283,7 @@ struct UserProfileView: View {
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.sm)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Theme.Spacing.sm) {

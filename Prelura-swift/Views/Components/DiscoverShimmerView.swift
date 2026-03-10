@@ -2,104 +2,107 @@ import SwiftUI
 
 struct DiscoverShimmerView: View {
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // Header shimmer
-                HStack {
-                    Spacer()
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Theme.Colors.secondaryBackground)
-                        .frame(width: 100, height: 28)
-                    Spacer()
-                    HStack(spacing: Theme.Spacing.md) {
-                        Circle()
+        GeometryReader { geometry in
+            let minHeight = geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Header shimmer
+                    HStack {
+                        Spacer()
+                        RoundedRectangle(cornerRadius: 8)
                             .fill(Theme.Colors.secondaryBackground)
-                            .frame(width: 24, height: 24)
-                        Circle()
-                            .fill(Theme.Colors.secondaryBackground)
-                            .frame(width: 44, height: 44)
+                            .frame(width: 100, height: 28)
+                        Spacer()
+                        HStack(spacing: Theme.Spacing.md) {
+                            Circle()
+                                .fill(Theme.Colors.secondaryBackground)
+                                .frame(width: 24, height: 24)
+                            Circle()
+                                .fill(Theme.Colors.secondaryBackground)
+                                .frame(width: 44, height: 44)
+                        }
                     }
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                
-                // Search bar shimmer
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(height: 44)
                     .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.top, Theme.Spacing.sm)
-                    .padding(.bottom, 0)
-                
-                VStack(spacing: Theme.Spacing.lg) {
-                    // Brand filters shimmer (single row)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: Theme.Spacing.sm) {
-                            ForEach(0..<10, id: \.self) { _ in
-                                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                                    .fill(Theme.Colors.secondaryBackground)
-                                    .frame(width: 80, height: 36)
+                    
+                    // Search bar shimmer
+                    RoundedRectangle(cornerRadius: 24)
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(height: 44)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.top, Theme.Spacing.sm)
+                        .padding(.bottom, 0)
+                    
+                    VStack(spacing: Theme.Spacing.lg) {
+                        // Brand filters shimmer (single row)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                ForEach(0..<10, id: \.self) { _ in
+                                    RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                                        .fill(Theme.Colors.secondaryBackground)
+                                        .frame(width: 80, height: 36)
+                                }
+                            }
+                            .padding(.horizontal, Theme.Spacing.md)
+                        }
+                        .padding(.top, 0)
+                        .padding(.bottom, Theme.Spacing.sm)
+                        
+                        // Category circles shimmer
+                        HStack(spacing: 0) {
+                            ForEach(0..<4, id: \.self) { index in
+                                VStack(spacing: Theme.Spacing.xs) {
+                                    Circle()
+                                        .fill(Theme.Colors.secondaryBackground)
+                                        .frame(width: 70, height: 70)
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Theme.Colors.secondaryBackground)
+                                        .frame(width: 50, height: 12)
+                                }
+                                .frame(width: 80)
+                                
+                                if index != 3 {
+                                    Spacer()
+                                }
                             }
                         }
                         .padding(.horizontal, Theme.Spacing.md)
-                    }
-                    .padding(.top, 0)
-                    .padding(.bottom, Theme.Spacing.sm)
-                    
-                    // Category circles shimmer
-                    HStack(spacing: 0) {
-                        ForEach(0..<4, id: \.self) { index in
-                            VStack(spacing: Theme.Spacing.xs) {
-                                Circle()
-                                    .fill(Theme.Colors.secondaryBackground)
-                                    .frame(width: 70, height: 70)
+                        .padding(.vertical, Theme.Spacing.md)
+                        
+                        // Section shimmer (Recently viewed)
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                            HStack {
                                 RoundedRectangle(cornerRadius: 4)
                                     .fill(Theme.Colors.secondaryBackground)
-                                    .frame(width: 50, height: 12)
-                            }
-                            .frame(width: 80)
-                            
-                            if index != 3 {
+                                    .frame(width: 120, height: 20)
                                 Spacer()
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Theme.Colors.secondaryBackground)
+                                    .frame(width: 60, height: 16)
                             }
-                        }
-                    }
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.md)
-                    
-                    // Section shimmer (Recently viewed)
-                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        HStack {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Theme.Colors.secondaryBackground)
-                                .frame(width: 120, height: 20)
-                            Spacer()
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Theme.Colors.secondaryBackground)
-                                .frame(width: 60, height: 16)
-                        }
-                        
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: Theme.Spacing.sm) {
-                                ForEach(0..<5) { _ in
-                                    DiscoverItemShimmer()
-                                        .frame(width: 160)
+                            
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: Theme.Spacing.sm) {
+                                    ForEach(0..<5) { _ in
+                                        DiscoverItemShimmer()
+                                            .frame(width: 160)
+                                    }
                                 }
                             }
                         }
                     }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.md)
+                    
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.md)
-                
-                Spacer(minLength: 0)
+                .frame(minHeight: minHeight)
+                .frame(maxWidth: .infinity)
             }
-            .frame(minHeight: UIScreen.main.bounds.height)
-            .frame(maxWidth: .infinity)
+            .shimmer()
         }
+        .frame(minHeight: UIScreen.main.bounds.height)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea(edges: .all)
-        .background(Theme.Colors.background)
-        .shimmer()
+        .background(Theme.Colors.background.ignoresSafeArea(edges: .all))
     }
 }
 

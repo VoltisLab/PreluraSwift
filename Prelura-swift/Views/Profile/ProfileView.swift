@@ -48,10 +48,6 @@ struct ProfileView: View {
                         ProfileShimmerView()
                     } else {
                         VStack(spacing: 0) {
-                            // Custom Header with username centered and menu on right
-                            customHeader
-                            
-                            // Profile Section
                             profileSection
                             
                             // Bio/Welcome Message
@@ -76,7 +72,24 @@ struct ProfileView: View {
                 }
                 
             }
-            .navigationBarHidden(true)
+            .navigationTitle(viewModel.user?.username ?? "Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink(value: AppRoute.menu(MenuContext(
+                        listingCount: viewModel.user?.listingsCount ?? 0,
+                        isMultiBuyEnabled: viewModel.user?.isMultibuyEnabled ?? isMultiBuyEnabled,
+                        isVacationMode: viewModel.user?.isVacationMode ?? isVacationMode,
+                        isStaff: viewModel.user?.isStaff ?? false
+                    ))) {
+                        Image(systemName: "line.3.horizontal")
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         .onAppear {
             if profileImage == nil, let saved = viewModel.loadLocalProfileImage() {
                 profileImage = saved
@@ -106,36 +119,7 @@ struct ProfileView: View {
             }
         }
     }
-    
-    // MARK: - Custom Header
-    private var customHeader: some View {
-        HStack {
-            Spacer()
-            Text(viewModel.user?.username ?? "")
-                .font(Theme.Typography.headline)
-                .foregroundColor(Theme.Colors.primaryText)
-            Spacer()
-            NavigationLink(value: AppRoute.menu(MenuContext(
-                listingCount: viewModel.user?.listingsCount ?? 0,
-                isMultiBuyEnabled: viewModel.user?.isMultibuyEnabled ?? isMultiBuyEnabled,
-                isVacationMode: viewModel.user?.isVacationMode ?? isVacationMode,
-                isStaff: viewModel.user?.isStaff ?? false
-            ))) {
-                GlassIconView(icon: "line.3.horizontal", size: Theme.AppBar.buttonSize, iconColor: Theme.Colors.primaryText, iconSize: 18)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, Theme.AppBar.horizontalPadding)
-        .padding(.vertical, Theme.AppBar.verticalPadding)
-        .background(Theme.Colors.background)
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Theme.Colors.glassBorder),
-            alignment: .bottom
-        )
-    }
-    
+
     // MARK: - Profile Section
     private var profileSection: some View {
         HStack(alignment: .top, spacing: Theme.Spacing.md) {
@@ -375,6 +359,7 @@ struct ProfileView: View {
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.sm)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Theme.Spacing.sm) {

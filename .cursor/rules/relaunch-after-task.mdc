@@ -1,8 +1,8 @@
 # Relaunch After Every Task
 
-**After completing any coding task, always run the full relaunch flow:**
+**After completing any coding task, always run a build (see `always-build-after-task.mdc`). Then, when doing a full relaunch:**
 
-1. **Rebuild** from iOS project root:
+1. **Rebuild** from iOS project root (required after any code change):
    `xcodebuild -project Prelura-swift.xcodeproj -scheme Prelura-swift -destination 'platform=iOS Simulator,name=iPhone 14' -configuration Debug build`
 
 2. **Terminate** any running instance:

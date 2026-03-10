@@ -66,10 +66,18 @@ struct DiscoverView: View {
                     HStack(spacing: Theme.Spacing.md) {
                         Button(action: {}) {
                             Image(systemName: "heart")
+                                .foregroundColor(Theme.Colors.primaryText)
+                                .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         Button(action: {}) {
                             Image(systemName: "bell")
+                                .foregroundColor(Theme.Colors.primaryText)
+                                .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -117,7 +125,6 @@ struct DiscoverView: View {
                         )
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.md)
             }
             
             // Second row (if needed)
@@ -134,7 +141,6 @@ struct DiscoverView: View {
                             )
                         }
                     }
-                    .padding(.horizontal, Theme.Spacing.md)
                 }
             }
         }
@@ -153,7 +159,6 @@ struct DiscoverView: View {
                     )
                 }
             }
-            .padding(.horizontal, Theme.Spacing.md)
         }
         .padding(.vertical, Theme.Spacing.md)
     }
@@ -185,7 +190,6 @@ struct DiscoverView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.md)
             }
         }
     }
@@ -223,7 +227,6 @@ struct DiscoverView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.md)
             }
         }
     }
@@ -339,7 +342,6 @@ struct DiscoverView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.md)
             }
         }
     }
@@ -377,7 +379,6 @@ struct DiscoverView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.md)
             }
         }
     }

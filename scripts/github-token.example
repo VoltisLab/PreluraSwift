@@ -1,0 +1,4 @@
+# GitHub Personal Access Token for /push
+# Copy this file to github-token and paste your token on a single line (no quotes).
+# Get a token: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
+# Scope needed: repo

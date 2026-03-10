@@ -2,20 +2,24 @@ import SwiftUI
 
 struct InboxShimmerView: View {
     var body: some View {
-        List {
-            ForEach(0..<8) { _ in
-                InboxRowShimmer()
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
+        GeometryReader { geometry in
+            let minHeight = geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
+            List {
+                ForEach(0..<8) { _ in
+                    InboxRowShimmer()
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                }
             }
+            .listStyle(PlainListStyle())
+            .frame(minHeight: minHeight)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .scrollContentBackground(.hidden)
+            .shimmer()
         }
-        .listStyle(PlainListStyle())
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minHeight: UIScreen.main.bounds.height)
-        .ignoresSafeArea(edges: .all)
-        .background(Theme.Colors.background)
-        .scrollContentBackground(.hidden)
-        .shimmer()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.Colors.background.ignoresSafeArea(edges: .all))
     }
 }
 

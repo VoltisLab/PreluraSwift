@@ -51,6 +51,9 @@ struct MenuView: View {
             NavigationLink(destination: AboutPreluraMenuView()) {
                 menuRow("About Prelura", icon: "info.circle")
             }
+            NavigationLink(destination: DebugMenuView()) {
+                menuRow("Debug", icon: "ladybug")
+            }
             Button(role: .destructive, action: { showLogoutConfirm = true }) {
                 HStack {
                     Image(systemName: "rectangle.portrait.and.arrow.right")

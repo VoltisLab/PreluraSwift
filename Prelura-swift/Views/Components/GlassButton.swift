@@ -82,42 +82,17 @@ struct GlassButton: View {
     }
 }
 
-// MARK: - Glassy liquid style for toolbar icons (single source of truth)
-private let glassIconShape = Circle()
+// MARK: - Toolbar/nav icons: system material only (same as tab bar), no custom glass.
+private let toolbarIconShape = Circle()
 
-/// Shared glassy circle styling: ultraThinMaterial + gradient border + shadow (matches PillTag inactive).
+/// System bar material only — same material as the tab bar. No custom opacity, border, or shadow.
 private struct GlassIconCircleStyle: ViewModifier {
     let size: CGFloat
 
     func body(content: Content) -> some View {
         content
             .frame(width: size, height: size)
-            .background(
-                glassIconShape
-                    .fill(.ultraThinMaterial)
-                    .opacity(Theme.Glass.opacity)
-            )
-            .overlay(
-                glassIconShape
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Theme.Colors.glassBorder.opacity(0.6),
-                                Theme.Colors.glassBorder,
-                                Theme.Colors.glassBorder.opacity(0.4)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            )
-            .shadow(
-                color: Color.black.opacity(Theme.Glass.shadowOpacity),
-                radius: Theme.Glass.shadowRadius,
-                x: 0,
-                y: 2
-            )
+            .background(toolbarIconShape.fill(.bar))
     }
 }
 
