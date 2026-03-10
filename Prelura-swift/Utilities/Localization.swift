@@ -35,6 +35,7 @@ enum L10n {
         "Sell": "Πώληση",
         "Inbox": "Εισερχόμενα",
         "Profile": "Προφίλ",
+        "Options": "Επιλογές",
 
         // Menu – profile drawer
         "Shop Value": "Αξία Καταστήματος",

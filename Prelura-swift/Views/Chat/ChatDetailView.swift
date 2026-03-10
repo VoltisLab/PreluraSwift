@@ -57,6 +57,9 @@ struct ChatDetailView: View {
     @State private var messages: [Message] = []
     @State private var newMessage: String = ""
     @State private var isLoading: Bool = false
+    @State private var webSocket: ChatWebSocketService?
+    /// UUID string for optimistic message so we can replace it when server echoes message_uuid.
+    @State private var pendingMessageUUID: String?
 
     private var recipientTitle: String {
         conversation.recipient.displayName.isEmpty ? conversation.recipient.username : conversation.recipient.displayName
@@ -136,12 +139,34 @@ struct ChatDetailView: View {
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
             loadMessages()
+            connectWebSocket()
+        }
+        .onDisappear {
+            webSocket?.disconnect()
+            webSocket = nil
         }
     }
-    
+
+    private func connectWebSocket() {
+        guard conversation.id != "0",
+              let token = authService.authToken, !token.isEmpty else { return }
+        let ws = ChatWebSocketService(conversationId: conversation.id, token: token)
+        ws.onNewMessage = { [self] msg, echoMessageUuid in
+            if let pending = pendingMessageUUID, echoMessageUuid == pending,
+               let idx = messages.firstIndex(where: { $0.id.uuidString == pending }) {
+                messages[idx] = msg
+                pendingMessageUUID = nil
+                return
+            }
+            if messages.contains(where: { $0.id == msg.id }) { return }
+            messages.append(msg)
+        }
+        webSocket = ws
+        ws.connect()
+    }
+
     private func loadMessages() {
         isLoading = true
-        
         Task {
             do {
                 let msgs = try await chatService.getMessages(conversationId: conversation.id)
@@ -149,23 +174,44 @@ struct ChatDetailView: View {
                 self.isLoading = false
             } catch {
                 self.isLoading = false
-                // Fallback to sample messages
                 self.messages = Message.sampleMessages
             }
         }
     }
-    
+
     private func sendMessage() {
-        guard !newMessage.isEmpty else { return }
-        
-        // For now, just add locally
-        // In a real implementation, you'd send via GraphQL mutation
-        let message = Message(
-            senderUsername: authService.username ?? "You",
-            content: newMessage
-        )
-        messages.append(message)
+        let text = newMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
         newMessage = ""
+        let messageUUID = UUID().uuidString
+        let optimistic = Message(
+            id: UUID(uuidString: messageUUID) ?? UUID(),
+            senderUsername: authService.username ?? "You",
+            content: text,
+            type: "text"
+        )
+        messages.append(optimistic)
+        pendingMessageUUID = messageUUID
+        if let ws = webSocket {
+            ws.send(message: text, messageUUID: messageUUID)
+        } else {
+            Task {
+                do {
+                    _ = try await chatService.sendMessage(conversationId: conversation.id, message: text, messageUuid: messageUUID)
+                    await MainActor.run {
+                        if let idx = messages.firstIndex(where: { $0.id.uuidString == messageUUID }) {
+                            pendingMessageUUID = nil
+                        }
+                        loadMessages()
+                    }
+                } catch {
+                    await MainActor.run {
+                        messages.removeAll { $0.id.uuidString == messageUUID }
+                        pendingMessageUUID = nil
+                    }
+                }
+            }
+        }
     }
 }
 

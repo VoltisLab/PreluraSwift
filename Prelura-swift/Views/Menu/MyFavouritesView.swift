@@ -13,7 +13,11 @@ struct MyFavouritesView: View {
 
     private let productService = ProductService()
     private let pageCount = 20
-    private let columns = [GridItem(.flexible(), spacing: Theme.Spacing.sm), GridItem(.flexible(), spacing: Theme.Spacing.sm)]
+    /// Same grid as feed: column and row spacing so products don’t bleed together.
+    private let columns = [
+        GridItem(.flexible(), spacing: Theme.Spacing.md),
+        GridItem(.flexible(), spacing: Theme.Spacing.md)
+    ]
 
     private var filteredItems: [Item] {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
@@ -62,10 +66,16 @@ struct MyFavouritesView: View {
                 Spacer()
             } else {
                 ScrollView {
-                    LazyVGrid(columns: columns, spacing: Theme.Spacing.sm) {
+                    LazyVGrid(
+                        columns: columns,
+                        alignment: .leading,
+                        spacing: Theme.Spacing.md,
+                        pinnedViews: []
+                    ) {
                         ForEach(filteredItems) { item in
                             NavigationLink(destination: ItemDetailView(item: item)) {
                                 FavouriteItemCard(item: item)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
                             }
                             .buttonStyle(.plain)
                             .onAppear {
@@ -76,6 +86,7 @@ struct MyFavouritesView: View {
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.md)
                     .padding(.bottom, Theme.Spacing.lg)
 
                     if isLoadingMore {

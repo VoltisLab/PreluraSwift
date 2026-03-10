@@ -14,6 +14,8 @@ struct Item: Identifiable, Hashable {
     let condition: String
     let size: String?
     let brand: String?
+    /// Product color names from API (e.g. ["Blue", "Navy"]); used for colour integration on detail.
+    let colors: [String]
     let likeCount: Int
     let views: Int
     let createdAt: Date
@@ -33,6 +35,7 @@ struct Item: Identifiable, Hashable {
         condition: String,
         size: String? = nil,
         brand: String? = nil,
+        colors: [String] = [],
         likeCount: Int = 0,
         views: Int = 0,
         createdAt: Date = Date(),
@@ -51,6 +54,7 @@ struct Item: Identifiable, Hashable {
         self.condition = condition
         self.size = size
         self.brand = brand
+        self.colors = colors
         self.likeCount = likeCount
         self.views = views
         self.createdAt = createdAt
@@ -82,6 +86,7 @@ struct Item: Identifiable, Hashable {
             condition: condition,
             size: size,
             brand: brand,
+            colors: self.colors,
             likeCount: likeCount ?? self.likeCount,
             views: views,
             createdAt: createdAt,

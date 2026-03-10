@@ -153,9 +153,9 @@ struct ProfileView: View {
 
     // MARK: - Profile Section
     private var profileSection: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-            // Left: Avatar + stars + location (unchanged)
-            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            // Row 1: Profile photo and stats on the same horizontal row
+            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                 PhotosPicker(selection: $selectedPhoto, matching: .images) {
                     Group {
                         if let profileImage = profileImage {
@@ -224,7 +224,12 @@ struct ProfileView: View {
                     }
                 }
 
-                // Stars and location under the profile photo
+                // Listings, Following, Followers on the same row as the profile photo
+                profileStatsRowCompact
+            }
+
+            // Row 2: Stars and location below
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .center, spacing: 4) {
                     ForEach(0..<5, id: \.self) { _ in
                         Image(systemName: "star.fill")
@@ -243,9 +248,6 @@ struct ProfileView: View {
                         .foregroundColor(Theme.Colors.primaryText)
                 }
             }
-
-            // Right: Compact stats (smaller fonts so layout stays within screen width)
-            profileStatsRowCompact
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.Spacing.md)
@@ -254,7 +256,7 @@ struct ProfileView: View {
 
     /// Stats row next to avatar — compact fonts so we don't increase effective screen width.
     private var profileStatsRowCompact: some View {
-        HStack(spacing: Theme.Spacing.lg) {
+        HStack(spacing: Theme.Spacing.sm) {
             StatColumn(value: "\(viewModel.user?.listingsCount ?? 0)", label: (viewModel.user?.listingsCount ?? 0) == 1 ? L10n.string("Listing") : L10n.string("Listings"), compact: true)
             if let u = viewModel.user {
                 NavigationLink(destination: FollowingListView(username: u.username)) {
@@ -271,7 +273,6 @@ struct ProfileView: View {
             }
         }
         .fixedSize(horizontal: true, vertical: false)
-        .padding(Theme.Spacing.sm)
     }
     
     // MARK: - Bio Section
@@ -367,7 +368,7 @@ struct ProfileView: View {
             }
             .overlay(ContentDivider(), alignment: .bottom)
             
-            // Multi-buy Toggle
+            // Multi-buy Toggle (extra trailing padding so switch right edge aligns with chevron/search icon)
             HStack {
                 Text(L10n.string("Multi-buy:"))
                     .font(Theme.Typography.subheadline)
@@ -378,7 +379,8 @@ struct ProfileView: View {
                     .frame(width: 50)
                     .onChange(of: isMultiBuyEnabled) { _, _ in HapticManager.toggle() }
             }
-            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.leading, Theme.Spacing.md)
+            .padding(.trailing, Theme.Spacing.md + 12)
             .padding(.vertical, Theme.Spacing.md)
             .overlay(ContentDivider(), alignment: .bottom)
             

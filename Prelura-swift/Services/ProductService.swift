@@ -56,6 +56,7 @@ class ProductService: ObservableObject {
               id
               name
             }
+            color
           }
           allProductsTotalNumber
         }
@@ -267,8 +268,9 @@ class ProductService: ObservableObject {
               likes
               views
               userLiked
-              seller { id username displayName profilePictureUrl isVacationMode }
-              category { id name }
+            seller { id username displayName profilePictureUrl isVacationMode }
+            category { id name }
+            color
             }
           }
           likedProductsTotalNumber
@@ -345,6 +347,7 @@ struct ProductData: Decodable {
     let size: SizeData?
     let brand: BrandData?
     let customBrand: String?
+    let color: [String]?
     let likes: Int?
     let views: Int?
     let userLiked: Bool?
@@ -397,6 +400,7 @@ extension ProductService {
             userLiked
             seller { id username displayName profilePictureUrl isVacationMode }
             category { id name }
+            color
           }
         }
         """
@@ -447,6 +451,7 @@ extension ProductService {
               id
               name
             }
+            color
           }
         }
         """
@@ -588,6 +593,7 @@ extension ProductService {
               id
               name
             }
+            color
           }
         }
         """
@@ -749,6 +755,7 @@ extension ProductService {
             condition: product.condition ?? "UNKNOWN",
             size: sizeName,
             brand: brandName,
+            colors: product.color ?? [],
             likeCount: product.likes ?? 0,
             views: product.views ?? 0,
             createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),

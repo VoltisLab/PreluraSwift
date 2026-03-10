@@ -96,6 +96,30 @@ struct Theme {
         static let footnote = Font.system(size: 13, weight: .regular, design: .default)
         static let caption = Font.system(size: 13, weight: .regular, design: .default)
     }
+
+    /// Product colour names to SwiftUI Color (matches Flutter colorsProvider for detail colour integration).
+    static func productColor(for name: String) -> Color? {
+        let key = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch key.lowercased() {
+        case "black": return .black
+        case "brown": return .brown
+        case "grey", "gray": return .gray
+        case "white": return .white
+        case "beige": return Color(hex: "F5F5DC")
+        case "pink": return .pink
+        case "purple": return .purple
+        case "red": return .red
+        case "yellow": return .yellow
+        case "blue": return .blue
+        case "green": return .green
+        case "orange": return .orange
+        case "tan": return Color(hex: "D2B48C")
+        case "silver": return Color(hex: "C0C0C0")
+        case "gold": return Color(hex: "D4AF37")
+        case "navy": return Color(hex: "000080")
+        default: return nil
+        }
+    }
 }
 
 // Color extension for hex support

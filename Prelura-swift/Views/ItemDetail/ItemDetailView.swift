@@ -21,7 +21,7 @@ struct ItemDetailView: View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(spacing: 0) {
-                    // Image Carousel (extends under status bar; back button in toolbar position)
+                    // Image Carousel (extends under status bar)
                     imageCarousel
                     
                     // Product Top Details
@@ -43,14 +43,15 @@ struct ItemDetailView: View {
             .background(Theme.Colors.background)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.hidden, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
 
             // Bottom Action Buttons
             if !isCurrentUser {
                 bottomActionButtons
             }
         }
-        .ignoresSafeArea(edges: .bottom)
+        .ignoresSafeArea(edges: [.top, .bottom])
         .onAppear {
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
@@ -90,8 +91,7 @@ struct ItemDetailView: View {
         false
     }
     
-    // MARK: - Image Carousel (aspect 585:826; height capped at 58% of screen)
-    private static let statusBarHeight: CGFloat = 54
+    // MARK: - Image Carousel (aspect 585:826; extends under status bar, no black bar)
     private static let imageAspectWidth: CGFloat = 585
     private static let imageAspectHeight: CGFloat = 826
     /// Max fraction of screen height the image area can use (60–65%).
@@ -101,7 +101,7 @@ struct ItemDetailView: View {
         GeometryReader { geo in
             let w = geo.size.width
             let screenH = UIScreen.main.bounds.height
-            let aspectH = w * (Self.imageAspectHeight / Self.imageAspectWidth) + Self.statusBarHeight
+            let aspectH = w * (Self.imageAspectHeight / Self.imageAspectWidth)
             let h = min(aspectH, screenH * Self.maxImageHeightFraction)
             
             ZStack(alignment: .top) {
@@ -192,7 +192,7 @@ struct ItemDetailView: View {
             .frame(width: w, height: h)
         }
         .frame(height: min(
-            (UIScreen.main.bounds.width * Self.imageAspectHeight / Self.imageAspectWidth) + Self.statusBarHeight,
+            UIScreen.main.bounds.width * Self.imageAspectHeight / Self.imageAspectWidth,
             UIScreen.main.bounds.height * Self.maxImageHeightFraction
         ))
     }
@@ -255,6 +255,26 @@ struct ItemDetailView: View {
                     Text(item.formattedPrice)
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
+                }
+            }
+            
+            // Colour integration (circles + labels, matches Flutter ProductTopDetails)
+            if !item.colors.isEmpty {
+                HStack(spacing: Theme.Spacing.sm) {
+                    ForEach(item.colors, id: \.self) { colorName in
+                        HStack(spacing: 4) {
+                            if let swatch = Theme.productColor(for: colorName) {
+                                Circle()
+                                    .fill(swatch)
+                                    .frame(width: 16, height: 16)
+                            }
+                            Text(colorName)
+                                .font(Theme.Typography.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(Theme.Colors.primaryText)
+                        }
+                        .padding(.trailing, Theme.Spacing.xs)
+                    }
                 }
             }
             

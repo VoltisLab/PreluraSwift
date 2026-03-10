@@ -784,6 +784,7 @@ class UserService: ObservableObject {
               id
               name
             }
+            color
           }
         }
         """
@@ -878,6 +879,7 @@ class UserService: ObservableObject {
                 condition: product.condition ?? "",
                 size: product.size?.name,
                 brand: product.brand?.name ?? product.customBrand,
+                colors: product.color ?? [],
                 likeCount: product.likes ?? 0,
                 views: product.views ?? 0,
                 createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),

@@ -219,6 +219,28 @@ class ChatService: ObservableObject {
         )
     }
     
+    /// Send a message (GraphQL fallback when WebSocket is unavailable).
+    /// conversationId: backend expects Int; we accept String and pass Int when possible.
+    func sendMessage(conversationId: String, message: String, messageUuid: String?) async throws -> Bool {
+        let convIdInt = Int(conversationId) ?? 0
+        let mutation = """
+        mutation SendMessage($conversationId: Int!, $message: String!, $messageUuid: String) {
+          sendMessage(conversationId: $conversationId, message: $message, messageUuid: $messageUuid) {
+            success
+            messageId
+          }
+        }
+        """
+        var variables: [String: Any] = ["conversationId": convIdInt, "message": message]
+        if let uuid = messageUuid { variables["messageUuid"] = uuid }
+        let response: SendMessageResponse = try await client.execute(
+            query: mutation,
+            variables: variables,
+            responseType: SendMessageResponse.self
+        )
+        return response.sendMessage?.success ?? false
+    }
+
     private func parseDate(_ dateString: String?) -> Date? {
         guard let dateString = dateString else { return nil }
         let formatter = ISO8601DateFormatter()
@@ -284,6 +306,15 @@ struct CreateChatData: Decodable {
 struct ChatData: Decodable {
     let id: String?
     let recipient: UserData?
+}
+
+struct SendMessageResponse: Decodable {
+    let sendMessage: SendMessagePayload?
+}
+
+struct SendMessagePayload: Decodable {
+    let success: Bool?
+    let messageId: Int?
 }
 
 // AnyCodable is defined in UserService.swift - reuse it
