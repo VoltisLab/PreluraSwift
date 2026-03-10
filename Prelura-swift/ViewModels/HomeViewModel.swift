@@ -12,6 +12,8 @@ class HomeViewModel: ObservableObject {
     @Published var isLoadingMore: Bool = false
     @Published var errorMessage: String?
     @Published var hasMorePages: Bool = true
+    /// When AI search mapped a colour alias (e.g. "camo" → "Green"), show this hint.
+    @Published var searchClosestMatchHint: String?
     
     private let productService = ProductService()
     private var currentPage = 1
@@ -110,19 +112,35 @@ class HomeViewModel: ObservableObject {
     
     func searchItems(query: String) {
         searchText = query
-        // Reload data with search and category filters
+        searchClosestMatchHint = nil
+        runSearch(search: query.isEmpty ? nil : query, category: selectedCategory)
+    }
+    
+    /// Run search using AI-parsed result (colours/categories resolved; hint for "closest to").
+    func searchWithParsed(_ parsed: ParsedSearch) {
+        searchText = parsed.searchText
+        searchClosestMatchHint = parsed.closestMatchHint
+        if let cat = parsed.categoryOverride, !cat.isEmpty {
+            selectedCategory = cat
+        }
+        let categoryFilter = selectedCategory == "All" ? nil : selectedCategory
+        runSearch(search: parsed.searchText.isEmpty ? nil : parsed.searchText, category: categoryFilter ?? selectedCategory)
+    }
+    
+    private func runSearch(search: String?, category: String?) {
         currentPage = 1
         hasMorePages = true
+        isLoading = true
+        errorMessage = nil
+        let categoryFilter = (category == "All" || category == nil) ? nil : category
+        
         Task {
-            isLoading = true
-            errorMessage = nil
-            
             do {
                 let products = try await productService.getAllProducts(
                     pageNumber: currentPage,
                     pageCount: pageSize,
-                    search: query.isEmpty ? nil : query,
-                    parentCategory: selectedCategory
+                    search: search,
+                    parentCategory: categoryFilter
                 )
                 await MainActor.run {
                     self.allItems = products

@@ -5,7 +5,6 @@ struct HomeView: View {
     @ObservedObject var tabCoordinator: TabCoordinator
     @StateObject private var viewModel = HomeViewModel()
     @State private var searchText: String = ""
-    @State private var selectedCategory: String = "All"
     @State private var scrollPosition: String? = "home_top"
 
     let categories = ["All", "Women", "Men", "Kids", "Toddlers"]
@@ -17,13 +16,27 @@ struct HomeView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     Color.clear.frame(height: 1).id(topId)
-                    DiscoverSearchField(
-                    text: $searchText,
-                    placeholder: L10n.string("Search items, brands or styles"),
-                    onSubmit: { viewModel.searchItems(query: searchText) },
-                    topPadding: Theme.Spacing.xs
-                )
-                .padding(.trailing, Theme.Spacing.sm)
+                    FeedSearchField(
+                        text: $searchText,
+                        placeholder: L10n.string("Search items, brands or colours"),
+                        onSubmit: { viewModel.searchWithParsed($0) },
+                        topPadding: Theme.Spacing.xs
+                    )
+                    .padding(.trailing, Theme.Spacing.sm)
+
+                    if let hint = viewModel.searchClosestMatchHint {
+                        HStack(spacing: Theme.Spacing.xs) {
+                            Image(systemName: "info.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(Theme.primaryColor)
+                            Text(hint)
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.xs)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
 
                 categoryFiltersSection
 
@@ -81,9 +94,8 @@ struct HomeView: View {
                 ForEach(categories, id: \.self) { category in
                     CategoryFilterButton(
                         title: L10n.string(category),
-                        isSelected: selectedCategory == category,
+                        isSelected: viewModel.selectedCategory == category,
                         action: {
-                            selectedCategory = category
                             viewModel.filterByCategory(category)
                         }
                     )
