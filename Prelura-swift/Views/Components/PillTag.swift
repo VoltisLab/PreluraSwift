@@ -6,7 +6,7 @@ struct PillTag: View {
 
     let title: String
     let isSelected: Bool
-    /// When true, unselected state uses primaryColor text; when false, secondaryText.
+    /// When true, unselected state shows icon (e.g. for brand row). Text colour: unselected = grey, selected = white.
     var accentWhenUnselected: Bool = false
     /// Optional leading icon (e.g. "message.fill" for brand row).
     var icon: String? = nil
@@ -52,7 +52,7 @@ struct PillTag: View {
     }
 
     private var foregroundColor: Color {
-        isSelected ? .white : (accentWhenUnselected ? Theme.primaryColor : Theme.Colors.secondaryText)
+        isSelected ? .white : Theme.Colors.secondaryText
     }
 
     @ViewBuilder

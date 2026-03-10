@@ -3,6 +3,7 @@ import PhotosUI
 
 struct SellView: View {
     @Binding var selectedTab: Int
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = SellViewModel()
     @State private var selectedImages: [UIImage] = []
     @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -87,14 +88,7 @@ struct SellView: View {
             .toolbar(.hidden, for: .tabBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { selectedTab = 0 }) {
-                        Text(L10n.string("Close"))
-                            .font(Theme.Typography.body)
-                            .fontWeight(.medium)
-                            .foregroundColor(Theme.primaryColor)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    .buttonStyle(HapticTapButtonStyle())
+                    CircleCloseButton(action: { dismiss() })
                 }
             }
     }

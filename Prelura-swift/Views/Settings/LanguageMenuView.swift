@@ -2,7 +2,7 @@
 //  LanguageMenuView.swift
 //  Prelura-swift
 //
-//  App language: English or Cypriot (Greek). Selection is stored and applied app-wide.
+//  App language: English or Greek. Selection is stored and applied app-wide.
 //
 
 import SwiftUI
@@ -12,7 +12,7 @@ struct LanguageMenuView: View {
 
     private let options: [(id: String, titleKey: String)] = [
         ("en", "English"),
-        ("el", "Cypriot")
+        ("el", "Greek")
     ]
 
     var body: some View {
@@ -35,7 +35,7 @@ struct LanguageMenuView: View {
                     .buttonStyle(.plain)
                 }
             } footer: {
-                Text(L10n.string("Cypriot displays the app in Greek."))
+                Text(L10n.string("Greek displays the app in Greek."))
             }
         }
         .listStyle(.insetGrouped)

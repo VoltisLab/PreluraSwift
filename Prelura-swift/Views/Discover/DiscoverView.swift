@@ -5,8 +5,12 @@ struct DiscoverView: View {
     @ObservedObject var tabCoordinator: TabCoordinator
     @StateObject private var viewModel: DiscoverViewModel
     @State private var searchText: String = ""
+    @State private var showSearchMembersResults: Bool = false
     @State private var selectedBrand: String? = nil
+    @State private var selectedCategory: String? = nil
     @State private var scrollPosition: String? = "discover_top"
+
+    private static let categories = ["Women", "Men", "Boys", "Girls"]
 
     init(tabCoordinator: TabCoordinator) {
         self.tabCoordinator = tabCoordinator
@@ -15,115 +19,111 @@ struct DiscoverView: View {
     
     let brands = ["New Look", "Nike", "Next", "adidas", "Bo", "Ralph Lauren", "Prettylittlething", "River Island", "Zara", "H&M", "ASOS", "Topshop", "Mango", "Bershka", "Pull & Bear", "Stradivarius", "Massimo Dutti", "COS", "Arket", "Weekday"]
     
-    // Category image URLs - these should come from API in real app
-    let categoryImages: [String: String] = [
-        "Women": "https://i.pravatar.cc/150?img=47",
-        "Men": "https://i.pravatar.cc/150?img=12",
-        "Boys": "https://i.pravatar.cc/150?img=33",
-        "Girls": "https://i.pravatar.cc/150?img=20"
-    ]
-    
     private let topId = "discover_top"
 
     var body: some View {
         GeometryReader { geometry in
-            ScrollViewReader { proxy in
-                ScrollView {
-                    if viewModel.isLoading && viewModel.discoverItems.isEmpty {
-                        DiscoverShimmerView()
-                            .frame(width: geometry.size.width)
-                    } else {
-                        VStack(spacing: 0) {
-                            Color.clear.frame(height: 1).id(topId)
-                            DiscoverSearchField(
-                                text: $searchText,
-                                placeholder: L10n.string("Search members"),
-                                topPadding: Theme.Spacing.xs
-                            )
-                            .padding(.trailing, Theme.Spacing.sm)
-                            VStack(spacing: 0) {
-                                brandFiltersSection
-                                ContentDivider().padding(.vertical, Theme.Spacing.lg)
-                                categoryCirclesSection
-                                ContentDivider().padding(.vertical, Theme.Spacing.lg)
-                                recentlyViewedSection
-                                ContentDivider().padding(.vertical, Theme.Spacing.lg)
-                                brandsYouLoveSection
-                                ContentDivider().padding(.vertical, Theme.Spacing.lg)
-                                topShopsSection
-                                ContentDivider().padding(.vertical, Theme.Spacing.lg)
-                                shopBargainsSection
-                                ContentDivider().padding(.vertical, Theme.Spacing.lg)
-                                onSaleSection
-                            }
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .padding(.top, Theme.Spacing.sm)
-                            .padding(.bottom, Theme.Spacing.lg)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-                .scrollPosition(id: $scrollPosition, anchor: .top)
-                .onAppear {
-                    tabCoordinator.reportAtTop(tab: 1, isAtTop: true)
-                    tabCoordinator.registerScrollToTop(tab: 1) {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            proxy.scrollTo(topId, anchor: .top)
-                        }
-                    }
-                    tabCoordinator.registerRefresh(tab: 1) {
-                        Task { await viewModel.refreshAsync() }
-                    }
-                }
-            }
-            .onChange(of: scrollPosition) { _, new in
-                tabCoordinator.reportAtTop(tab: 1, isAtTop: new == topId)
-            }
-            .background(Theme.Colors.background)
-            .navigationTitle(L10n.string("Discover"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: Theme.Spacing.md) {
-                        Button(action: {}) {
-                            Image(systemName: "heart")
-                                .foregroundColor(Theme.Colors.primaryText)
-                                .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
-                        Button(action: {}) {
-                            Image(systemName: "bell")
-                                .foregroundColor(Theme.Colors.primaryText)
-                                .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(HapticTapButtonStyle())
-                    }
-                }
-            }
-            .refreshable {
-                await viewModel.refreshAsync()
-            }
+            discoverScrollContent(geometry: geometry)
+        }
+        .onChange(of: scrollPosition) { _, new in
+            tabCoordinator.reportAtTop(tab: 1, isAtTop: new == topId)
+        }
+        .background(Theme.Colors.background)
+        .navigationTitle(L10n.string("Discover"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { discoverToolbar }
+        .refreshable { await viewModel.refreshAsync() }
         .onAppear {
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
                 viewModel.refresh()
             }
         }
-        .onChange(of: authService.isAuthenticated) { oldValue, isAuthenticated in
+        .onChange(of: authService.isAuthenticated) { _, isAuthenticated in
             if isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
                 viewModel.refresh()
             }
         }
-        .onChange(of: authService.authToken) { oldToken, newToken in
-            // Update token and refresh when token changes
+        .onChange(of: authService.authToken) { _, newToken in
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(newToken)
                 viewModel.refresh()
             }
         }
+        .fullScreenCover(isPresented: $showSearchMembersResults) {
+            SearchMembersView(query: searchText)
+        }
+    }
+
+    @ViewBuilder
+    private func discoverScrollContent(geometry: GeometryProxy) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                if viewModel.isLoading && viewModel.discoverItems.isEmpty {
+                    DiscoverShimmerView()
+                        .frame(width: geometry.size.width)
+                } else {
+                    discoverMainStack
+                }
+            }
+            .scrollPosition(id: $scrollPosition, anchor: .top)
+            .onAppear {
+                tabCoordinator.reportAtTop(tab: 1, isAtTop: true)
+                tabCoordinator.registerScrollToTop(tab: 1) {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(topId, anchor: .top)
+                    }
+                }
+                tabCoordinator.registerRefresh(tab: 1) {
+                    Task { await viewModel.refreshAsync() }
+                }
+            }
+        }
+    }
+
+    private var discoverMainStack: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: 1).id(topId)
+            DiscoverSearchField(
+                text: $searchText,
+                placeholder: L10n.string("Search members"),
+                onSubmit: { showSearchMembersResults = true },
+                topPadding: Theme.Spacing.xs
+            )
+            .padding(.trailing, Theme.Spacing.sm)
+            VStack(spacing: 0) {
+                brandFiltersSection
+                ContentDivider().padding(.vertical, Theme.Spacing.lg)
+                categoryCirclesSection
+                ContentDivider().padding(.vertical, Theme.Spacing.lg)
+                recentlyViewedSection
+                ContentDivider().padding(.vertical, Theme.Spacing.lg)
+                brandsYouLoveSection
+                ContentDivider().padding(.vertical, Theme.Spacing.lg)
+                topShopsSection
+                ContentDivider().padding(.vertical, Theme.Spacing.lg)
+                shopBargainsSection
+                ContentDivider().padding(.vertical, Theme.Spacing.lg)
+                onSaleSection
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.lg)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ToolbarContentBuilder
+    private var discoverToolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarTrailing) {
+            NavigationLink(destination: MyFavouritesView()) {
+                Image(systemName: "heart")
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
         }
     }
     
@@ -170,19 +170,27 @@ struct DiscoverView: View {
         .padding(.bottom, Theme.Spacing.sm)
     }
     
-    // MARK: - Category Circles
+    // MARK: - Category Buttons (primary style, 2×2 grid: left column Women/Men, right column Boys/Girls)
     private var categoryCirclesSection: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Spacing.lg) {
-                ForEach(["Women", "Men", "Boys", "Girls"], id: \.self) { category in
-                    CategoryCircle(
-                        category: category,
-                        imageURL: categoryImages[category]
-                    )
+        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+            VStack(spacing: Theme.Spacing.sm) {
+                CategoryPrimaryButton(title: L10n.string("Women"), isSelected: selectedCategory == "Women") {
+                    selectedCategory = selectedCategory == "Women" ? nil : "Women"
+                }
+                CategoryPrimaryButton(title: L10n.string("Men"), isSelected: selectedCategory == "Men") {
+                    selectedCategory = selectedCategory == "Men" ? nil : "Men"
+                }
+            }
+            VStack(spacing: Theme.Spacing.sm) {
+                CategoryPrimaryButton(title: L10n.string("Boys"), isSelected: selectedCategory == "Boys") {
+                    selectedCategory = selectedCategory == "Boys" ? nil : "Boys"
+                }
+                CategoryPrimaryButton(title: L10n.string("Girls"), isSelected: selectedCategory == "Girls") {
+                    selectedCategory = selectedCategory == "Girls" ? nil : "Girls"
                 }
             }
         }
-        .padding(.vertical, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
     }
     
     // MARK: - Recently Viewed Section (Products)
@@ -276,12 +284,9 @@ struct DiscoverView: View {
                                     switch phase {
                                     case .empty:
                                         Circle()
-                                            .fill(Theme.primaryColor)
+                                            .fill(Theme.Colors.secondaryBackground)
                                             .frame(width: 100, height: 100)
-                                            .overlay(
-                                                ProgressView()
-                                                    .tint(.white)
-                                            )
+                                            .shimmer()
                                     case .success(let image):
                                         image
                                             .resizable()
@@ -419,44 +424,6 @@ struct BrandFilterPill: View {
     }
 }
 
-/// Category button with fully glassy (clear) style, matching the Glass materials "Glass clear" button.
-struct CategoryCircle: View {
-    let category: String
-    let imageURL: String?
-    private let circleSize: CGFloat = 85
-    private let cornerRadius: CGFloat = 43 // half of circleSize for full circle
-
-    var body: some View {
-        Button(action: {}) {
-            VStack(spacing: Theme.Spacing.xs) {
-                ZStack {
-                    Image(systemName: categoryIcon(for: category))
-                        .font(.system(size: 28))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: circleSize, height: circleSize)
-                .glassEffect(.clear, in: .rect(cornerRadius: cornerRadius))
-
-                Text(category)
-                    .font(Theme.Typography.caption)
-                    .foregroundColor(Theme.Colors.primaryText)
-            }
-        }
-        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
-        .frame(width: 88)
-    }
-
-    private func categoryIcon(for category: String) -> String {
-        switch category {
-        case "Women": return "person.fill"
-        case "Men": return "person.fill"
-        case "Boys": return "person.2.fill"
-        case "Girls": return "person.2.fill"
-        default: return "person.fill"
-        }
-    }
-}
-
 struct DiscoverItemCard: View {
     let item: Item
     var onLikeTap: (() -> Void)? = nil
@@ -471,12 +438,8 @@ struct DiscoverItemCard: View {
                         switch phase {
                         case .empty:
                             Circle()
-                                .fill(Theme.primaryColor)
-                                .overlay(
-                                    Text(String((item.seller.username.isEmpty ? "U" : item.seller.username).prefix(1)).uppercased())
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundColor(.white)
-                                )
+                                .fill(Theme.Colors.secondaryBackground)
+                                .shimmer()
                         case .success(let image):
                             image
                                 .resizable()
@@ -491,12 +454,8 @@ struct DiscoverItemCard: View {
                                 )
                         @unknown default:
                             Circle()
-                                .fill(Theme.primaryColor)
-                                .overlay(
-                                    Text(String((item.seller.username.isEmpty ? "U" : item.seller.username).prefix(1)).uppercased())
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundColor(.white)
-                                )
+                                .fill(Theme.Colors.secondaryBackground)
+                                .shimmer()
                         }
                     }
                     .frame(width: 20, height: 20)
@@ -547,9 +506,7 @@ struct DiscoverItemCard: View {
                             AsyncImage(url: url) { phase in
                                 switch phase {
                                 case .empty:
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
                                         .frame(width: imageWidth, height: imageHeight)
                                 case .success(let image):
                                     image
@@ -563,9 +520,7 @@ struct DiscoverItemCard: View {
                                         .foregroundColor(Theme.primaryColor.opacity(0.5))
                                         .frame(width: imageWidth, height: imageHeight)
                                 @unknown default:
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
                                         .frame(width: imageWidth, height: imageHeight)
                                 }
                             }
@@ -652,6 +607,40 @@ struct DiscoverItemCard: View {
             }
             .padding(.horizontal, Theme.Spacing.xs)
             .padding(.bottom, Theme.Spacing.sm)
+        }
+    }
+}
+
+// MARK: - Category primary-style button (filled when selected, outline when not)
+private struct CategoryPrimaryButton: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    private let cornerRadius: CGFloat = 30
+
+    var body: some View {
+        Button(action: {
+            HapticManager.selection()
+            action()
+        }) {
+            Text(title)
+                .font(Theme.Typography.headline)
+                .foregroundStyle(isSelected ? .white : Theme.primaryColor)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.vertical, Theme.Spacing.md)
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(isSelected ? Theme.primaryColor : Color.clear)
+        )
+        .overlay {
+            if !isSelected {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(Theme.primaryColor, lineWidth: 2)
+            }
         }
     }
 }

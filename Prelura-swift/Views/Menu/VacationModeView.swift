@@ -68,12 +68,14 @@ struct VacationModeView: View {
     }
 
     private func updateVacationMode(_ value: Bool) async {
-        userService.updateAuthToken(authService.authToken)
-        isUpdating = true
-        errorMessage = nil
+        await MainActor.run { userService.updateAuthToken(authService.authToken) }
+        await MainActor.run { isUpdating = true; errorMessage = nil }
         do {
             try await userService.updateProfile(isVacationMode: value)
+            // Refetch so UI and profile menu stay in sync with server
+            let user = try await userService.getUser()
             await MainActor.run {
+                isOn = user.isVacationMode
                 isUpdating = false
                 NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
             }

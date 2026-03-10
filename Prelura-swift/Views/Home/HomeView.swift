@@ -150,12 +150,8 @@ struct HomeItemCard: View {
                         switch phase {
                         case .empty:
                             Circle()
-                                .fill(Theme.primaryColor)
-                                .overlay(
-                                    Text(String((item.seller.username.isEmpty ? "U" : item.seller.username).prefix(1)).uppercased())
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundColor(.white)
-                                )
+                                .fill(Theme.Colors.secondaryBackground)
+                                .shimmer()
                         case .success(let image):
                             image
                                 .resizable()
@@ -226,9 +222,7 @@ struct HomeItemCard: View {
                             AsyncImage(url: url) { phase in
                                 switch phase {
                                 case .empty:
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
                                         .frame(width: imageWidth, height: imageHeight)
                                 case .success(let image):
                                     image

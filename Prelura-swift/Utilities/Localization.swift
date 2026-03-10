@@ -2,7 +2,7 @@
 //  Localization.swift
 //  Prelura-swift
 //
-//  In-app language: English (en) or Cypriot/Greek (el). When "el" is selected, UI strings use Greek.
+//  In-app language: English (en) or Greek (el). When "el" is selected, UI strings use Greek.
 //
 
 import Foundation
@@ -12,7 +12,7 @@ let kAppLanguage = "app_language"
 
 enum L10n {
 
-    /// Returns the localized string for the current app language. English uses the key as text; Cypriot uses Greek.
+    /// Returns the localized string for the current app language. English uses the key as text; Greek uses translations.
     static func string(_ key: String) -> String {
         let lang = UserDefaults.standard.string(forKey: kAppLanguage) ?? "en"
         if lang == "el" {
@@ -78,8 +78,8 @@ enum L10n {
         "Your app's language": "Γλώσσα εφαρμογής",
         "Language": "Γλώσσα",
         "English": "Αγγλικά",
-        "Cypriot": "Κυπριακά",
-        "Cypriot displays the app in Greek.": "Τα Κυπριακά εμφανίζουν την εφαρμογή στα Ελληνικά.",
+        "Greek": "Ελληνικά",
+        "Greek displays the app in Greek.": "Η γλώσσα Ελληνικά εμφανίζει την εφαρμογή στα Ελληνικά.",
 
         // About Prelura
         "How to use Prelura": "Πώς να χρησιμοποιήσετε το Prelura",
@@ -112,6 +112,8 @@ enum L10n {
         "Men": "Άνδρες",
         "Kids": "Παιδικά",
         "Toddlers": "Νήπια",
+        "Girls": "Κορίτσια",
+        "Boys": "Αγόρια",
 
         // Discover
         "Search members": "Αναζήτηση μελών",
@@ -208,7 +210,6 @@ enum L10n {
         "Enter brand name": "Εισάγετε όνομα μάρκας",
 
         // Discover
-        "Discover": "Ανακάλυψη",
         "Recently viewed": "Πρόσφατα προβεβλημένα",
         "See All": "Δείτε όλα",
         "Brands You Love": "Οι αγαπημένες σας μάρκες",
@@ -222,7 +223,6 @@ enum L10n {
 
         // Notifications & Chat
         "No notifications": "Δεν υπάρχουν ειδοποιήσεις",
-        "Notifications": "Ειδοποιήσεις",
         "Messages": "Μηνύματα",
 
         // Auth (extra)
@@ -252,7 +252,6 @@ enum L10n {
         "Send an offer": "Αποστολή προσφοράς",
 
         // Vacation mode
-        "Vacation Mode": "Λειτουργία αργίας",
         "Note: Turning on vacation will hide your items from all catalogues": "Σημείωση: Η ενεργοποίηση της λειτουργίας αργίας θα αποκρύψει τα προϊόντα σας από όλους τους καταλόγους",
 
         // Shop value
@@ -275,14 +274,12 @@ enum L10n {
 
         // Reviews
         "No reviews yet": "Δεν υπάρχουν ακόμα κριτικές",
-        "Reviews": "Κριτικές",
         "Member reviews (%@)": "Κριτικές μελών (%@)",
         "Automatic reviews (0)": "Αυτόματες κριτικές (0)",
         "How reviews work": "Πώς λειτουργούν οι κριτικές",
 
         // Followers / Following
         "No followers yet": "Δεν υπάρχουν ακόμα οπαδοί",
-        "Followers": "Οπαδοί",
         "Not following anyone yet": "Δεν ακολουθείτε ακόμα κανέναν",
         "Following": "Ακόλουθοι",
 
@@ -290,7 +287,6 @@ enum L10n {
         "Saved": "Αποθηκεύτηκε",
         "Unlock your account": "Ξεκλειδώστε τον λογαριασμό σας",
         "Verify your identity to access all features and build trust with buyers.": "Επαληθεύστε την ταυτότητά σας για πρόσβαση σε όλες τις λειτουργίες και να δημιουργήσετε εμπιστοσύνη με αγοραστές.",
-        "Identity verification": "Επαλήθευση ταυτότητας",
         "Current Password": "Τρέχων κωδικός",
         "New Password": "Νέος κωδικός",
         "Confirm New Password": "Επιβεβαίωση νέου κωδικού",
@@ -329,10 +325,8 @@ enum L10n {
         "Delete Account": "Διαγραφή λογαριασμού",
         "This action cannot be undone. All your data will be permanently removed.": "Αυτή η ενέργεια δεν μπορεί να αναιρεθεί. Όλα τα δεδομένα σας θα αφαιρεθούν μόνιμα.",
         "Delete All Conversations": "Διαγραφή όλων των συνομιλιών",
-        "Admin Actions": "Ενέργειες διαχειριστή",
         "Royal Mail": "Royal Mail",
         "DPD": "DPD",
-        "Postage": "Ταχυδρομικά",
         "Bio": "Βιογραφικό",
         "No blocked users": "Δεν υπάρχουν αποκλεισμένοι χρήστες",
         "Do you want to unblock %@?": "Θέλετε να ξεμπλοκάρετε τον %@;",

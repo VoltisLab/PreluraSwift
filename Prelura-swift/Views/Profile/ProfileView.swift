@@ -139,6 +139,12 @@ struct ProfileView: View {
                 isVacationMode = u.isVacationMode
             }
         }
+        .onChange(of: viewModel.user?.isVacationMode) { _, new in
+            if let v = new { isVacationMode = v }
+        }
+        .onChange(of: viewModel.user?.isMultibuyEnabled) { _, new in
+            if let v = new { isMultiBuyEnabled = v }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .preluraUserProfileDidUpdate)) { _ in
             viewModel.refresh()
         }
@@ -705,9 +711,7 @@ struct WardrobeItemCard: View {
                             AsyncImage(url: url) { phase in
                                 switch phase {
                                 case .empty:
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                    ImageShimmerPlaceholderFilled(cornerRadius: Theme.Glass.cornerRadius)
                                         .frame(width: imageWidth, height: imageHeight)
                                 case .success(let image):
                                     image

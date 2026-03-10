@@ -40,9 +40,11 @@ struct ItemDetailView: View {
                     tabContent
                 }
             }
-            .contentMargins(.top, -Self.statusBarHeight, for: .scrollContent)
             .background(Theme.Colors.background)
-            .navigationBarHidden(true)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
 
             // Bottom Action Buttons
             if !isCurrentUser {
@@ -106,10 +108,7 @@ struct ItemDetailView: View {
                         case .empty:
                             Rectangle()
                                 .fill(Theme.Colors.secondaryBackground)
-                                .overlay(
-                                    ProgressView()
-                                        .tint(Theme.primaryColor)
-                                )
+                                .shimmer()
                         case .success(let image):
                             image
                                 .resizable()
@@ -137,23 +136,6 @@ struct ItemDetailView: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 showFullScreenImages = true
-            }
-            
-                // Back button (same horizontal position as all app bar back buttons)
-                HStack {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(.white)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .background(Color.black.opacity(0.2))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(HapticTapButtonStyle())
-                .padding(.leading, Theme.AppBar.horizontalPadding)
-                .padding(.top, Self.statusBarHeight + Theme.AppBar.verticalPadding)
-                
-                Spacer()
             }
             
             // Heart Icon Overlay (bottom right) - tappable
@@ -280,13 +262,9 @@ struct ItemDetailView: View {
                             switch phase {
                             case .empty:
                                 Circle()
-                                    .fill(Theme.primaryColor.opacity(0.3))
+                                    .fill(Theme.Colors.secondaryBackground)
                                     .frame(width: 50, height: 50)
-                                    .overlay(
-                                        Text(String(item.seller.username.prefix(1)).uppercased())
-                                            .font(.system(size: 20, weight: .semibold))
-                                            .foregroundColor(Theme.primaryColor)
-                                    )
+                                    .shimmer()
                             case .success(let image):
                                 image
                                     .resizable()
@@ -596,8 +574,9 @@ struct FullScreenImageViewer: View {
                     AsyncImage(url: URL(string: imageURLs[index])) { phase in
                         switch phase {
                         case .empty:
-                            ProgressView()
-                                .tint(.white)
+                            Rectangle()
+                                .fill(Theme.Colors.secondaryBackground)
+                                .shimmer()
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                         case .success(let image):
                             image

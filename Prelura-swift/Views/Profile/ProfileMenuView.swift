@@ -104,7 +104,6 @@ struct MenuItemRow: View {
 // MARK: - Submenu: Settings (Flutter SettingScreen). Presented as pushed destination; no own NavigationView.
 struct SettingsMenuView: View {
     @EnvironmentObject var authService: AuthService
-    @State private var showLogoutConfirm = false
     var isStaff: Bool = false
 
     var body: some View {
@@ -162,33 +161,12 @@ struct SettingsMenuView: View {
                     settingsRow(L10n.string("Invite Friend"), icon: "person.badge.plus")
                 }
             }
-            Section {
-                Button(role: .destructive, action: { showLogoutConfirm = true }) {
-                    HStack(spacing: Theme.Spacing.md) {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .foregroundColor(.red)
-                            .frame(width: 24)
-                        Text(L10n.string("Log out"))
-                            .foregroundColor(.red)
-                    }
-                }
-            }
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Settings"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .alert(L10n.string("Logout"), isPresented: $showLogoutConfirm) {
-            Button(L10n.string("Cancel"), role: .cancel) {}
-            Button(L10n.string("Logout"), role: .destructive) {
-                Task {
-                    try? await authService.logout()
-                }
-            }
-        } message: {
-            Text(L10n.string("Are you sure you want to logout?"))
-        }
     }
     
     private func settingsRow(_ title: String, icon: String) -> some View {

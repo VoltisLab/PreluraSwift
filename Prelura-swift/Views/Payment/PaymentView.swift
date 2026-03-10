@@ -171,13 +171,7 @@ struct PaymentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    .buttonStyle(HapticTapButtonStyle())
+                    CircleCloseButton(action: { dismiss() })
                 }
             }
             .fullScreenCover(isPresented: $showPaymentSuccess) {

@@ -142,7 +142,8 @@ private struct FavouriteItemCard: View {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .empty:
-                            ProgressView()
+                            ImageShimmerPlaceholderFilled(cornerRadius: Theme.Glass.cornerRadius)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         case .success(let image):
                             image
                                 .resizable()

@@ -9,9 +9,9 @@ struct Theme {
 
     // Adaptive Colors (UIKit semantic colors follow system; glass colors use effectiveColorScheme)
     struct Colors {
-        // Background colors
+        // Background colors (dark mode uses #0C0C0C for all pages)
         static var background: Color {
-            Color(uiColor: UIColor.systemBackground)
+            effectiveColorScheme == .dark ? Color(hex: "0C0C0C") : Color(uiColor: UIColor.systemBackground)
         }
 
         static var secondaryBackground: Color {

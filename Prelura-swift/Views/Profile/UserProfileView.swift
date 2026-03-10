@@ -89,13 +89,9 @@ struct UserProfileView: View {
                 switch phase {
                 case .empty:
                     Circle()
-                        .fill(Theme.primaryColor)
+                        .fill(Theme.Colors.secondaryBackground)
                         .frame(width: 70, height: 70)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 35))
-                                .foregroundColor(.white)
-                        )
+                        .shimmer()
                 case .success(let image):
                     image
                         .resizable()
