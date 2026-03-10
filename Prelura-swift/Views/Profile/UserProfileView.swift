@@ -38,7 +38,14 @@ struct UserProfileView: View {
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
                 Spacer()
-                Color.clear.frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                NavigationLink(destination: ReportUserView(username: viewModel.user.username)) {
+                    Image(systemName: "flag")
+                        .font(.system(size: 18))
+                        .foregroundColor(Theme.primaryColor)
+                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, Theme.AppBar.horizontalPadding)
             .padding(.vertical, Theme.AppBar.verticalPadding)
@@ -176,8 +183,14 @@ struct UserProfileView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.md) {
                 StatColumn(value: "\(viewModel.items.count)", label: "Listings")
-                StatColumn(value: "\(viewModel.user.followingsCount)", label: "Followings")
-                StatColumn(value: "\(viewModel.user.followersCount)", label: "Followers")
+                NavigationLink(destination: FollowingListView(username: viewModel.user.username)) {
+                    StatColumn(value: "\(viewModel.user.followingsCount)", label: "Followings")
+                }
+                .buttonStyle(.plain)
+                NavigationLink(destination: FollowersListView(username: viewModel.user.username)) {
+                    StatColumn(value: "\(viewModel.user.followersCount)", label: "Followers")
+                }
+                .buttonStyle(.plain)
                 StatColumn(value: "\(viewModel.user.reviewCount)", label: "Reviews")
                 StatColumn(value: viewModel.user.locationAbbreviation ?? "N/A", label: "Location")
             }

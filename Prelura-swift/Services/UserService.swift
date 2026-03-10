@@ -218,6 +218,29 @@ class UserService: ObservableObject {
         )
     }
 
+    /// Update only profile picture (and thumbnail). Matches Flutter updateProfile(profilePicture: Input$ProfilePictureInputType(...)).
+    /// Call after uploading image via FileUploadService.uploadProfileImage.
+    func updateProfilePicture(profilePictureUrl: String, thumbnailUrl: String) async throws {
+        let mutation = """
+        mutation UpdateProfilePicture($profilePicture: ProfilePictureInputType) {
+          updateProfile(profilePicture: $profilePicture) {
+            message
+          }
+        }
+        """
+        let variables: [String: Any] = [
+            "profilePicture": [
+                "profilePictureUrl": profilePictureUrl,
+                "thumbnailUrl": thumbnailUrl
+            ]
+        ]
+        _ = try await client.execute(
+            query: mutation,
+            variables: variables,
+            responseType: UpdateProfileResponse.self
+        )
+    }
+
     /// Change email (backend sends verification). Matches Flutter changeEmail mutation.
     func changeEmail(_ email: String) async throws {
         let mutation = """

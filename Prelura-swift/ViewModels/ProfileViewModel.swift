@@ -31,8 +31,12 @@ class ProfileViewModel: ObservableObject {
     
     private var userService: UserService
     private var productService: ProductService
+    private var fileUploadService: FileUploadService
     private var client: GraphQLClient
-    
+
+    @Published var isUploadingProfilePhoto: Bool = false
+    @Published var profilePhotoUploadError: String?
+
     init(authService: AuthService? = nil) {
         // Create services with shared client that has auth token
         self.client = GraphQLClient()
@@ -44,13 +48,18 @@ class ProfileViewModel: ObservableObject {
         }
         self.userService = UserService(client: self.client)
         self.productService = ProductService(client: self.client)
+        self.fileUploadService = FileUploadService()
+        if let token = UserDefaults.standard.string(forKey: "AUTH_TOKEN") {
+            self.fileUploadService.setAuthToken(token)
+        }
         // Don't load in init - will be called from view
     }
-    
+
     func updateAuthToken(_ token: String?) {
         client.setAuthToken(token)
         userService.updateAuthToken(token)
         productService.updateAuthToken(token)
+        fileUploadService.setAuthToken(token)
     }
     
     func loadUserData() async {
@@ -128,9 +137,28 @@ class ProfileViewModel: ObservableObject {
         return image
     }
     
+    /// Uploads profile photo to backend (GraphQL UploadFile + updateProfile), then saves locally and refreshes user. Matches Flutter updateProfilePicture flow.
     func uploadProfileImage(_ image: UIImage) {
+        guard let jpegData = image.jpegData(compressionQuality: 0.85) else {
+            profilePhotoUploadError = "Could not prepare image"
+            return
+        }
         saveProfileImageLocally(image)
-        // TODO: Implement image upload to backend when endpoint is available
-        // and then update the user's profilePictureUrl
+        profilePhotoUploadError = nil
+        isUploadingProfilePhoto = true
+        Task {
+            do {
+                let (url, thumbnail) = try await fileUploadService.uploadProfileImage(jpegData)
+                try await userService.updateProfilePicture(profilePictureUrl: url, thumbnailUrl: thumbnail)
+                await loadUserData()
+            } catch {
+                await MainActor.run {
+                    profilePhotoUploadError = error.localizedDescription
+                }
+            }
+            await MainActor.run {
+                isUploadingProfilePhoto = false
+            }
+        }
     }
 }

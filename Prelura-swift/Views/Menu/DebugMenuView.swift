@@ -28,6 +28,14 @@ struct DebugMenuView: View {
                         Text("Glass materials")
                     }
                 }
+                NavigationLink(destination: GlassEffectTransitionView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Glass effect transition")
+                    }
+                }
             }
         }
         .listStyle(.insetGrouped)

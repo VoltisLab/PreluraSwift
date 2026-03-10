@@ -167,13 +167,31 @@ struct ProfileView: View {
                        let image = UIImage(data: data) {
                         await MainActor.run {
                             profileImage = image
-                            // TODO: Upload to backend
                             viewModel.uploadProfileImage(image)
                         }
                     }
                 }
             }
-            
+            .overlay {
+                if viewModel.isUploadingProfilePhoto {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(width: 70, height: 70)
+                        .background(Color.black.opacity(0.4))
+                        .clipShape(Circle())
+                }
+            }
+            .alert("Profile photo", isPresented: Binding(
+                get: { viewModel.profilePhotoUploadError != nil },
+                set: { if !$0 { viewModel.profilePhotoUploadError = nil } }
+            )) {
+                Button("OK") { viewModel.profilePhotoUploadError = nil }
+            } message: {
+                if let err = viewModel.profilePhotoUploadError {
+                    Text(err)
+                }
+            }
+
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 // Username
                 Text(viewModel.user?.username ?? "")
@@ -238,8 +256,19 @@ struct ProfileView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.md) {
                 StatColumn(value: "\(viewModel.user?.listingsCount ?? 0)", label: "Listings")
-                StatColumn(value: "\(viewModel.user?.followingsCount ?? 0)", label: "Followings")
-                StatColumn(value: "\(viewModel.user?.followersCount ?? 0)", label: "Followers")
+                if let u = viewModel.user {
+                    NavigationLink(destination: FollowingListView(username: u.username)) {
+                        StatColumn(value: "\(u.followingsCount)", label: "Followings")
+                    }
+                    .buttonStyle(.plain)
+                    NavigationLink(destination: FollowersListView(username: u.username)) {
+                        StatColumn(value: "\(u.followersCount)", label: "Followers")
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    StatColumn(value: "\(viewModel.user?.followingsCount ?? 0)", label: "Followings")
+                    StatColumn(value: "\(viewModel.user?.followersCount ?? 0)", label: "Followers")
+                }
                 StatColumn(value: "\(viewModel.user?.reviewCount ?? 0)", label: "Reviews")
                 StatColumn(value: viewModel.user?.locationAbbreviation ?? "N/A", label: "Location")
             }

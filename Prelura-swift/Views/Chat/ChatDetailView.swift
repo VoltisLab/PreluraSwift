@@ -79,7 +79,14 @@ struct ChatDetailView: View {
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
                 Spacer()
-                Color.clear.frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: conversation.id)) {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 20))
+                        .foregroundColor(Theme.primaryColor)
+                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, Theme.AppBar.horizontalPadding)
             .padding(.vertical, Theme.AppBar.verticalPadding)

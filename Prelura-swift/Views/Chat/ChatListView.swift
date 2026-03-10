@@ -183,7 +183,7 @@ struct ChatRowView: View {
                 }
                 
                 if let lastMessage = conversation.lastMessage {
-                    Text(lastMessage)
+                    Text(ChatRowView.previewText(for: lastMessage))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .lineLimit(1)
@@ -208,6 +208,22 @@ struct ChatRowView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    /// Human-readable preview for list: parses order_issue/order/offer JSON or returns plain text.
+    static func previewText(for raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = json["type"] as? String else {
+            return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
+        }
+        switch type {
+        case "order_issue": return "Order issue"
+        case "order": return "Order update"
+        case "offer": return "New offer"
+        default: return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
+        }
     }
 }
 

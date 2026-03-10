@@ -7,9 +7,10 @@ struct LoginView: View {
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
     @State private var showSignup: Bool = false
-    
+    @State private var showForgotPassword: Bool = false
+
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: Theme.Spacing.lg) {
                 // Header
                 VStack(spacing: Theme.Spacing.sm) {
@@ -68,9 +69,14 @@ struct LoginView: View {
                         isLoading: isLoading,
                         action: handleLogin
                     )
+                    Button("Forgot password?") {
+                        showForgotPassword = true
+                    }
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.primaryColor)
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
-                
+
                 Spacer()
                 
                 // Signup link
@@ -91,6 +97,12 @@ struct LoginView: View {
             .navigationBarHidden(true)
             .sheet(isPresented: $showSignup) {
                 SignupView()
+            }
+            .sheet(isPresented: $showForgotPassword) {
+                NavigationStack {
+                    ForgotPasswordView()
+                        .environmentObject(authService)
+                }
             }
         }
     }

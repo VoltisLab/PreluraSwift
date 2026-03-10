@@ -12,12 +12,20 @@ let kAppearanceMode = "appearance_mode"
 
 @main
 struct Prelura_swiftApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var authService = AuthService()
+    @StateObject private var appRouter = AppRouter()
 
     var body: some Scene {
         WindowGroup {
             AppearanceRootView()
                 .environmentObject(authService)
+                .environmentObject(appRouter)
+                .onOpenURL { url in
+                    Task { @MainActor in
+                        appRouter.handle(url: url)
+                    }
+                }
         }
     }
 }
@@ -25,6 +33,7 @@ struct Prelura_swiftApp: App {
 /// Applies preferredColorScheme from stored preference and syncs Theme.effectiveColorScheme for light/dark across all screens.
 struct AppearanceRootView: View {
     @EnvironmentObject var authService: AuthService
+    @EnvironmentObject var appRouter: AppRouter
     @AppStorage(kAppearanceMode) private var appearanceMode: String = "system"
     @Environment(\.colorScheme) private var colorScheme
 
@@ -53,6 +62,16 @@ struct AppearanceRootView: View {
         .onAppear { syncThemeScheme() }
         .onChange(of: appearanceMode) { _, _ in syncThemeScheme() }
         .onChange(of: colorScheme) { _, _ in syncThemeScheme() }
+        .fullScreenCover(item: $appRouter.pendingItem) { item in
+            DeepLinkOverlayView(item: item, onDismiss: { appRouter.clearPending() })
+                .environmentObject(authService)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .preluraNotificationTapped)) { notification in
+            guard let payload = notification.userInfo?[kNotificationTapPayloadKey] as? [AnyHashable: Any] else { return }
+            Task { @MainActor in
+                appRouter.handle(notificationPayload: payload)
+            }
+        }
     }
 
     private func syncThemeScheme() {

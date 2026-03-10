@@ -351,6 +351,42 @@ struct CategoryData: Decodable {
 }
 
 extension ProductService {
+    /// Fetch a single product by ID (for deep links / notification navigation). Matches GraphQL query product(id: Int!).
+    func getProduct(id: Int) async throws -> Item? {
+        let query = """
+        query ProductDetail($id: Int!) {
+          product(id: $id) {
+            id
+            name
+            description
+            price
+            discountPrice
+            imagesUrl
+            condition
+            createdAt
+            size { id name }
+            brand { id name }
+            customBrand
+            likes
+            views
+            userLiked
+            seller { id username displayName profilePictureUrl }
+            category { id name }
+          }
+        }
+        """
+        struct ProductDetailResponse: Decodable {
+            let product: ProductData?
+        }
+        let response: ProductDetailResponse = try await client.execute(
+            query: query,
+            variables: ["id": id],
+            responseType: ProductDetailResponse.self
+        )
+        guard let product = response.product else { return nil }
+        return mapProductToItem(product: product)
+    }
+
     func getRecentlyViewedProducts() async throws -> [Item] {
         let query = """
         query RecentlyViewedProducts {

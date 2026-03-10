@@ -8,6 +8,7 @@ struct ItemDetailView: View {
     @State private var selectedTab: Int = 0
     @State private var showFullScreenImages: Bool = false
     @State private var showSendOfferSheet: Bool = false
+    @State private var showPaymentSheet: Bool = false
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authService: AuthService
     
@@ -70,6 +71,10 @@ struct ItemDetailView: View {
                 selectedIndex: $selectedImageIndex,
                 onDismiss: { showFullScreenImages = false }
             )
+        }
+        .fullScreenCover(isPresented: $showPaymentSheet) {
+            PaymentView(products: [item], totalPrice: item.price)
+                .environmentObject(authService)
         }
         .toolbar(.hidden, for: .tabBar)
     }
@@ -584,7 +589,7 @@ struct ItemDetailView: View {
             })
             
             PrimaryGlassButton("Buy now", action: {
-                // Buy now
+                showPaymentSheet = true
             })
         }
         .padding(.horizontal, Theme.Spacing.md)

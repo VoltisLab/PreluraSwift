@@ -141,7 +141,50 @@ class AuthService: ObservableObject {
         // Call logout mutation if needed
         clearTokens()
     }
-    
+
+    /// Request password reset: sends OTP/code to email (matches Flutter resetPassword(email)).
+    func requestPasswordReset(email: String) async throws {
+        let query = """
+        mutation ResetPassword($email: String) {
+          resetPassword(email: $email) {
+            message
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let resetPassword: ResetPasswordResult?
+        }
+        struct ResetPasswordResult: Decodable {
+            let message: String?
+        }
+        let response: Payload = try await client.execute(query: query, variables: ["email": email], responseType: Payload.self)
+        if response.resetPassword == nil {
+            throw AuthError.invalidResponse
+        }
+    }
+
+    /// Set new password with code from email (matches Flutter passwordReset).
+    func resetPasswordWithCode(email: String, code: String, newPassword: String) async throws {
+        let query = """
+        mutation PasswordReset($email: String!, $code: String!, $password: String!) {
+          passwordReset(email: $email, code: $code, password: $password) {
+            message
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let passwordReset: PasswordResetResult?
+        }
+        struct PasswordResetResult: Decodable {
+            let message: String?
+        }
+        let variables: [String: Any] = ["email": email, "code": code, "password": newPassword]
+        let response: Payload = try await client.execute(query: query, variables: variables, responseType: Payload.self)
+        if response.passwordReset == nil {
+            throw AuthError.invalidResponse
+        }
+    }
+
     private func clearTokens() {
         UserDefaults.standard.removeObject(forKey: "AUTH_TOKEN")
         UserDefaults.standard.removeObject(forKey: "REFRESH_TOKEN")

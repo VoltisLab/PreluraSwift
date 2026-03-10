@@ -113,6 +113,12 @@ struct SettingsMenuView: View {
                 NavigationLink(destination: AccountSettingsView()) {
                     settingsRow("Account Settings", icon: "person.crop.circle")
                 }
+                NavigationLink(destination: CurrencySettingsView()) {
+                    settingsRow("Currency", icon: "dollarsign.circle")
+                }
+                NavigationLink(destination: PrivacySettingsView()) {
+                    settingsRow("Privacy", icon: "hand.raised")
+                }
                 NavigationLink(destination: ShippingAddressView()) {
                     settingsRow("Shipping Address", icon: "location")
                 }

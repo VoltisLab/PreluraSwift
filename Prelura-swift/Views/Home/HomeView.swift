@@ -38,7 +38,7 @@ struct HomeView: View {
                     .frame(height: 26)
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {}) {
+                NavigationLink(destination: NotificationsListView()) {
                     Image(systemName: "bell")
                         .foregroundColor(Theme.Colors.primaryText)
                         .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
