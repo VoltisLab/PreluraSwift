@@ -60,6 +60,40 @@ struct FilteredProductsView: View {
             )
             .padding(.trailing, Theme.Spacing.sm)
 
+            // Pill tags for main categories (Women, Men, Boys, Girls): Condition, Style, Colour, Price
+            if case .byParentCategory = filterType {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        PillTag(
+                            title: L10n.string("Condition"),
+                            isSelected: viewModel.filterCondition != nil,
+                            accentWhenUnselected: true,
+                            action: { showFilterSheet = true }
+                        )
+                        PillTag(
+                            title: L10n.string("Style"),
+                            isSelected: false,
+                            accentWhenUnselected: true,
+                            action: { showFilterSheet = true }
+                        )
+                        PillTag(
+                            title: L10n.string("Colour"),
+                            isSelected: false,
+                            accentWhenUnselected: true,
+                            action: { showFilterSheet = true }
+                        )
+                        PillTag(
+                            title: L10n.string("Price"),
+                            isSelected: !viewModel.filterMinPrice.isEmpty || !viewModel.filterMaxPrice.isEmpty,
+                            accentWhenUnselected: true,
+                            action: { showFilterSheet = true }
+                        )
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                }
+                .padding(.vertical, Theme.Spacing.sm)
+            }
+
             // Filter / Sort row (match profile: glass pills, secondary text, same icons)
             HStack {
                 Button(action: { showFilterSheet = true }) {

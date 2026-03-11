@@ -95,20 +95,25 @@ struct DiscoverView: View {
             )
             .padding(.trailing, Theme.Spacing.sm)
             brandFiltersSection
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(L10n.string("Shop Categories"))
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, 24)
+                    .padding(.bottom, Theme.Spacing.sm)
                 Rectangle()
                     .frame(height: 0.3)
                     .foregroundColor(Theme.Colors.glassBorder)
-                    .padding(.vertical, Theme.Spacing.sm)
                 categoryCirclesSection
                 Rectangle()
                     .frame(height: 0.3)
                     .foregroundColor(Theme.Colors.glassBorder)
-                    .padding(.vertical, Theme.Spacing.sm)
+                    .padding(.top, Theme.Spacing.sm - 5)
+                    .padding(.bottom, 30)
                 recentlyViewedSection
-                Rectangle()
-                    .frame(height: 0.3)
-                    .foregroundColor(Theme.Colors.glassBorder)
+                ContentDivider()
+                    .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.lg)
                 brandsYouLoveSection
                 Rectangle()
@@ -223,7 +228,6 @@ struct DiscoverView: View {
                 }
             }
         }
-        .padding(.vertical, Theme.Spacing.sm)
     }
     
     // MARK: - Recently Viewed Section (Products)

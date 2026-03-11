@@ -1280,11 +1280,22 @@ final class AISearchService {
         return q
     }
 
-    /// True if the query is only a greeting/salutation or a social question (e.g. "hi", "good morning", "Hi, how are you?"). Matches 100 salutations + 100 social phrases; AI responds with a greeting reply instead of searching.
+    /// True if the query is only a greeting/salutation or a social question (e.g. "hi", "good morning", "Hi Lenny", "Hey there Lenny"). Matches 100 salutations + 100 social phrases; also treats any message that contains "lenny" and is otherwise just a greeting (or nothing) as a greeting so "Hi Lenny", "Hey Lenny", "Hello Lenny" etc. get a greeting reply.
     func isGreetingOnly(_ query: String) -> Bool {
         let normalized = normalizedForSalutation(query)
         guard !normalized.isEmpty else { return false }
-        return Self.salutations.contains(normalized) || Self.socialGreetingPhrases.contains(normalized)
+        if Self.salutations.contains(normalized) || Self.socialGreetingPhrases.contains(normalized) {
+            return true
+        }
+        // User addressed the AI by name: "Hi Lenny", "Hey Lenny", "Hello Lenny", "Hey there Lenny", etc.
+        guard normalized.contains("lenny") else { return false }
+        let withoutLenny = normalized
+            .replacingOccurrences(of: "lenny", with: " ")
+            .split(separator: " ", omittingEmptySubsequences: true)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+        if withoutLenny.isEmpty { return true }
+        return Self.salutations.contains(withoutLenny) || Self.socialGreetingPhrases.contains(withoutLenny)
     }
 
     /// Greeting replies when user says "hi", "hello", or social questions like "how are you?". Picked at random so Lenny feels natural. 55+ variants with Lenny introducing himself and welcoming the user. Used for both salutations and social Q&A.

@@ -39,6 +39,7 @@ enum L10n {
 
         // Menu – profile drawer
         "Shop Value": "Αξία Καταστήματος",
+        "Shop Categories": "Κατηγορίες Καταστήματος",
         "Orders": "Παραγγελίες",
         "Favourites": "Αγαπημένα",
         "Multi-buy discounts": "Εκπτώσεις πολλαπλών αγορών",
@@ -195,6 +196,7 @@ enum L10n {
         "Category": "Κατηγορία",
         "Brand": "Μάρκα",
         "Colours": "Χρώματα",
+        "Colour": "Χρώμα",
         "Additional Details": "Επιπλέον στοιχεία",
         "Measurements (Optional)": "Διαστάσεις (προαιρετικό)",
         "Material (Optional)": "Υλικό (προαιρετικό)",
