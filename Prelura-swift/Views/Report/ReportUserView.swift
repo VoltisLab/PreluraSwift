@@ -49,7 +49,6 @@ struct ReportUserView: View {
                     }
                     .padding(.vertical, Theme.Spacing.sm)
                 }
-                .listRowBackground(Theme.Colors.background)
                 .buttonStyle(.plain)
             }
             if submitted {
@@ -59,7 +58,6 @@ struct ReportUserView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle("Report")
         .navigationBarTitleDisplayMode(.inline)

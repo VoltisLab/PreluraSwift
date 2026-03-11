@@ -54,7 +54,6 @@ struct PaymentSettingsView: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                         }
                     }
-                    .listRowBackground(Theme.Colors.background)
                     Section {
                         NavigationLink(destination: AddPaymentCardView(onAdded: { Task { await load() } })) {
                             Label("Add Payment Card", systemImage: "creditcard")
@@ -65,20 +64,17 @@ struct PaymentSettingsView: View {
                                 .foregroundColor(Theme.Colors.primaryText)
                         }
                     }
-                    .listRowBackground(Theme.Colors.background)
                     if let err = errorMessage {
                         Section {
                             Text(err)
                                 .font(Theme.Typography.caption)
                                 .foregroundColor(Theme.Colors.error)
                         }
-                        .listRowBackground(Theme.Colors.background)
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Payments"))
         .navigationBarTitleDisplayMode(.inline)

@@ -117,13 +117,6 @@ struct DiscoverView: View {
     private var discoverToolbar: some ToolbarContent {
         ToolbarItem(placement: .navigationBarTrailing) {
             HStack(spacing: Theme.Spacing.sm) {
-                NavigationLink(destination: NotificationsListView()) {
-                    Image(systemName: "bell")
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(HapticTapButtonStyle())
                 NavigationLink(destination: MyFavouritesView()) {
                     Image(systemName: "heart")
                         .foregroundColor(Theme.Colors.primaryText)
@@ -359,7 +352,7 @@ struct DiscoverView: View {
                         }
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.trailing, Theme.Spacing.md)
             }
         }
     }

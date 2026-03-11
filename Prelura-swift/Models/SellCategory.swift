@@ -56,3 +56,9 @@ struct APICategory: Decodable {
         fullPath = try c.decodeIfPresent(String.self, forKey: .fullPath)
     }
 }
+
+/// Material from GraphQL materials() query (backend returns BrandType: id, name).
+struct APIMaterial: Decodable {
+    let id: Int
+    let name: String
+}

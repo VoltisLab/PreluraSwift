@@ -15,7 +15,7 @@ struct UserProfileView: View {
     @State private var filterMaxPrice: String = ""
     @State private var showSortSheet: Bool = false
     @State private var showFilterSheet: Bool = false
-    @State private var showPriceFilterSheet: Bool = false
+    @State private var topBrandsScrollId: String? = nil
     init(seller: User, authService: AuthService?) {
         self.seller = seller
         _viewModel = StateObject(wrappedValue: UserProfileViewModel(seller: seller, authService: authService))
@@ -291,9 +291,12 @@ struct UserProfileView: View {
                                 isSelected: selectedBrand == brand,
                                 action: { selectedBrand = selectedBrand == brand ? nil : brand }
                             )
+                            .id(brand)
                         }
                     }
                 }
+                .scrollPosition(id: $topBrandsScrollId, anchor: .leading)
+                .id("user_profile_top_brands_pills")
                 .padding(.vertical, Theme.Spacing.md)
             }
 
@@ -330,27 +333,42 @@ struct UserProfileView: View {
         }
         .sheet(isPresented: $showSortSheet) { userProfileSortSheet }
         .sheet(isPresented: $showFilterSheet) { userProfileFilterSheet }
-        .sheet(isPresented: $showPriceFilterSheet) { userProfilePriceFilterSheet }
     }
 
     private var userProfileSortSheet: some View {
         NavigationStack {
             List {
-                ForEach(ProfileSortOption.allCases, id: \.self) { option in
-                    Button(action: { profileSort = option; showSortSheet = false }) {
-                        HStack {
-                            Text(L10n.string(option.rawValue)).foregroundColor(Theme.Colors.primaryText)
-                            Spacer()
-                            if profileSort == option { Image(systemName: "checkmark").foregroundColor(Theme.primaryColor) }
+                Section {
+                    ForEach(ProfileSortOption.allCases, id: \.self) { option in
+                        Button(action: { profileSort = option; showSortSheet = false }) {
+                            HStack {
+                                Text(L10n.string(option.rawValue)).foregroundColor(Theme.Colors.primaryText)
+                                Spacer()
+                                if profileSort == option { Image(systemName: "checkmark").foregroundColor(Theme.primaryColor) }
+                            }
                         }
                     }
                     .listRowBackground(Theme.Colors.background)
                 }
                 Section {
-                    Button(role: .destructive, action: { profileSort = .relevance; showSortSheet = false }) { Text(L10n.string("Clear")).frame(maxWidth: .infinity) }
+                    Button(action: { profileSort = .relevance; showSortSheet = false }) {
+                        Text(L10n.string("Clear"))
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Theme.Colors.background)
+                    Divider()
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.Colors.background)
+                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Spacing.md, bottom: 0, trailing: Theme.Spacing.md))
+                    Color.clear
+                        .frame(height: 50)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.Colors.background)
                 }
-                .listRowBackground(Theme.Colors.background)
             }
+            .scrollDisabled(true)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
@@ -366,8 +384,9 @@ struct UserProfileView: View {
                 }
             }
         }
-        .presentationDetents([.height(300)])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .presentationBackground(Theme.Colors.background)
     }
 
     private var userProfileFilterSheet: some View {
@@ -382,28 +401,38 @@ struct UserProfileView: View {
                                 if filterCondition == option.raw { Image(systemName: "checkmark").foregroundColor(Theme.primaryColor) }
                             }
                         }
-                        .listRowBackground(Theme.Colors.background)
-                    }
-                }
-                Section(header: Text(L10n.string("Price range"))) {
-                    Button(action: { showFilterSheet = false; showPriceFilterSheet = true }) {
-                        HStack {
-                            Text(L10n.string("Price")).foregroundColor(Theme.Colors.primaryText)
-                            Spacer()
-                            if !filterMinPrice.isEmpty || !filterMaxPrice.isEmpty {
-                                Text([filterMinPrice, filterMaxPrice].filter { !$0.isEmpty }.joined(separator: " – "))
-                                    .font(Theme.Typography.caption).foregroundColor(Theme.Colors.secondaryText)
-                            }
-                            Image(systemName: "chevron.right").font(.caption).foregroundColor(Theme.Colors.secondaryText)
-                        }
                     }
                     .listRowBackground(Theme.Colors.background)
                 }
-                Section {
-                    Button(role: .destructive, action: { filterCondition = nil; filterMinPrice = ""; filterMaxPrice = ""; showFilterSheet = false }) { Text(L10n.string("Clear")).frame(maxWidth: .infinity) }
+                Section(header: Text(L10n.string("Price range"))) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        SettingsTextField(placeholder: L10n.string("Min. Price"), text: $filterMinPrice)
+                            .keyboardType(.decimalPad)
+                        SettingsTextField(placeholder: L10n.string("Max. Price"), text: $filterMaxPrice)
+                            .keyboardType(.decimalPad)
+                    }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Theme.Colors.background)
                 }
-                .listRowBackground(Theme.Colors.background)
+                Section {
+                    Button(action: { filterCondition = nil; filterMinPrice = ""; filterMaxPrice = ""; showFilterSheet = false }) {
+                        Text(L10n.string("Clear"))
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Theme.Colors.background)
+                    Divider()
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.Colors.background)
+                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Spacing.md, bottom: 0, trailing: Theme.Spacing.md))
+                    Color.clear
+                        .frame(height: 50)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.Colors.background)
+                }
             }
+            .scrollDisabled(true)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
@@ -419,28 +448,9 @@ struct UserProfileView: View {
                 }
             }
         }
-        .presentationDetents([.height(360)])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-    }
-
-    private var userProfilePriceFilterSheet: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    SettingsTextField(placeholder: L10n.string("Min. Price"), text: $filterMinPrice)
-                        .keyboardType(.decimalPad)
-                    SettingsTextField(placeholder: L10n.string("Max. Price"), text: $filterMaxPrice)
-                        .keyboardType(.decimalPad)
-                }
-                Section {
-                    Button(L10n.string("Clear")) { filterMinPrice = ""; filterMaxPrice = ""; showPriceFilterSheet = false }
-                    Button(L10n.string("Apply")) { showPriceFilterSheet = false }.fontWeight(.semibold)
-                }
-            }
-            .navigationTitle(L10n.string("Price"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(L10n.string("Done")) { showPriceFilterSheet = false } } }
-        }
+        .presentationBackground(Theme.Colors.background)
     }
 
     // MARK: - Items Grid

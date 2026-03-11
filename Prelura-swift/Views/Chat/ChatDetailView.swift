@@ -68,29 +68,18 @@ struct ChatDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Custom header (same position as all app bar icons/back buttons)
+            // Toolbar: default liquid glass icon buttons (same as rest of app)
             HStack {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(Theme.primaryColor)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                GlassIconButton(icon: "chevron.left", action: { dismiss() })
                 Spacer()
                 Text(recipientTitle)
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
                 Spacer()
                 NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: conversation.id)) {
-                    Image(systemName: "questionmark.circle")
-                        .font(.system(size: 20))
-                        .foregroundColor(Theme.primaryColor)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
+                    GlassIconView(icon: "questionmark.circle")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HapticTapButtonStyle())
             }
             .padding(.horizontal, Theme.AppBar.horizontalPadding)
             .padding(.vertical, Theme.AppBar.verticalPadding)

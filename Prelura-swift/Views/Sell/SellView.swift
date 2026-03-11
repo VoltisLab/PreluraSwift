@@ -20,6 +20,7 @@ struct SellView: View {
     @State private var discountPrice: Double? = nil
     @State private var parcelSize: String? = nil
     @State private var draftCount: Int = 5 // TODO: Fetch from backend
+    @State private var showPhotoPicker: Bool = false
 
     private var discountPercentText: String {
         guard let price = price, let discountPrice = discountPrice, price > 0 else { return "0%" }
@@ -88,7 +89,15 @@ struct SellView: View {
             .toolbar(.hidden, for: .tabBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    CircleCloseButton(action: { selectedTab = 0 })
+                    Button(action: {
+                        HapticManager.tap()
+                        selectedTab = 0
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
     }
@@ -122,103 +131,160 @@ struct SellView: View {
         .overlay(ContentDivider(), alignment: .bottom)
     }
     
-    // MARK: - Photo Upload Section
+    // MARK: - Photo Upload Section (grid with natural aspect ratio, no slider)
     private var photoUploadSection: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            PhotosPicker(
-                selection: $selectedPhotos,
-                maxSelectionCount: 20,
-                matching: .images
-            ) {
-                VStack(spacing: Theme.Spacing.md) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Theme.Colors.background)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .strokeBorder(Theme.Colors.glassBorder, lineWidth: 1)
-                            )
-                            .frame(height: 200)
-                        
-                        if selectedImages.isEmpty {
-                            VStack(spacing: Theme.Spacing.sm) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Theme.primaryColor.opacity(0.1))
-                                        .frame(width: 72, height: 72)
-                                    Image(systemName: "photo.badge.plus")
-                                        .font(.system(size: 36))
-                                        .foregroundColor(Theme.primaryColor)
-                                }
-                                Text(L10n.string("Add up to 20 photos"))
-                                    .font(Theme.Typography.headline)
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                Text(L10n.string("Tap to select photos from your gallery"))
-                                    .font(Theme.Typography.caption)
-                                    .foregroundColor(Theme.Colors.secondaryText)
-                            }
-                        } else {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: Theme.Spacing.sm) {
-                                    ForEach(Array(selectedImages.enumerated()), id: \.offset) { index, image in
-                                        ZStack(alignment: .topTrailing) {
-                                            Image(uiImage: image)
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 180, height: 180)
-                                                .clipped()
-                                                .cornerRadius(8)
-                                            
-                                            Button(action: {
-                                                selectedImages.remove(at: index)
-                                                selectedPhotos.remove(at: index)
-                                            }) {
-                                                Image(systemName: "xmark.circle.fill")
-                                                    .foregroundColor(.white)
-                                                    .background(Color.black.opacity(0.6))
-                                                    .clipShape(Circle())
-                                            }
-                                            .padding(4)
-                                        }
-                                    }
-                                    
-                                    // Add more button
-                                    if selectedImages.count < 20 {
-                                        Button(action: {}) {
-                                            VStack {
-                                                Image(systemName: "plus")
-                                                    .font(.system(size: 30))
-                                                    .foregroundColor(Theme.primaryColor)
-                                            }
-                                            .frame(width: 180, height: 180)
-                                            .background(Theme.Colors.secondaryBackground)
-                                            .cornerRadius(8)
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal, Theme.Spacing.sm)
-                            }
-                        }
-                    }
-                }
-            }
-            .onChange(of: selectedPhotos) { newItems in
-                Task {
-                    selectedImages = []
-                    for item in newItems {
-                        if let data = try? await item.loadTransferable(type: Data.self),
-                           let image = UIImage(data: data) {
-                            selectedImages.append(image)
-                        }
-                    }
-                }
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            if selectedImages.isEmpty {
+                emptyPhotoState
+            } else {
+                photoGrid
             }
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
         .overlay(ContentDivider(), alignment: .bottom)
+        .photosPicker(
+            isPresented: $showPhotoPicker,
+            selection: $selectedPhotos,
+            maxSelectionCount: 20,
+            matching: .images
+        )
+        .onChange(of: selectedPhotos) { _, newItems in
+            Task {
+                selectedImages = []
+                for item in newItems {
+                    if let data = try? await item.loadTransferable(type: Data.self),
+                       let image = UIImage(data: data) {
+                        selectedImages.append(image)
+                    }
+                }
+            }
+        }
     }
-    
+
+    private var emptyPhotoState: some View {
+        Button(action: { showPhotoPicker = true }) {
+            VStack(spacing: Theme.Spacing.sm) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.primaryColor.opacity(0.1))
+                        .frame(width: 72, height: 72)
+                    Image(systemName: "photo.badge.plus")
+                        .font(.system(size: 36))
+                        .foregroundColor(Theme.primaryColor)
+                }
+                Text(L10n.string("Add up to 20 photos"))
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.primaryText)
+                Text(L10n.string("Tap to select photos from your gallery"))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Theme.Spacing.xl)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .strokeBorder(Theme.Colors.glassBorder, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(HapticTapButtonStyle())
+    }
+
+    private var photoGrid: some View {
+        let columnCount = 3
+        let spacing = Theme.Spacing.sm
+        let horizontalPadding = Theme.Spacing.md * 2
+        let totalGaps = spacing * CGFloat(columnCount - 1)
+        let approximateWidth = UIScreen.main.bounds.width - horizontalPadding - totalGaps
+        let cellWidth = max(60, approximateWidth / CGFloat(columnCount))
+        let cellHeight = cellWidth * 13 // 1:13 width:height
+        let itemCount = selectedImages.count + (selectedImages.count < 20 ? 1 : 0)
+        let rowCount = max(1, (itemCount + columnCount - 1) / columnCount)
+        let totalHeight = CGFloat(rowCount) * cellHeight + CGFloat(max(0, rowCount - 1)) * spacing
+
+        return GeometryReader { geo in
+            let w = geo.size.width
+            let actualCellWidth = max(60, (w - totalGaps) / CGFloat(columnCount))
+            let actualCellHeight = actualCellWidth * 13
+            let columns = (0..<columnCount).map { _ in GridItem(.fixed(actualCellWidth), spacing: spacing) }
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: spacing) {
+                ForEach(Array(selectedImages.enumerated()), id: \.offset) { index, image in
+                    SellPhotoGridCell(
+                        image: image,
+                        cellWidth: actualCellWidth,
+                        cellHeight: actualCellHeight,
+                        onRemove: {
+                            selectedImages.remove(at: index)
+                            selectedPhotos.remove(at: index)
+                        }
+                    )
+                }
+                if selectedImages.count < 20 {
+                    addPhotoCell(cellWidth: actualCellWidth, cellHeight: actualCellHeight)
+                }
+            }
+            .frame(width: w, height: totalHeight, alignment: .topLeading)
+        }
+        .frame(height: totalHeight)
+    }
+
+    private func addPhotoCell(cellWidth: CGFloat, cellHeight: CGFloat) -> some View {
+        Button(action: { showPhotoPicker = true }) {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Theme.Colors.secondaryBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Theme.Colors.glassBorder, lineWidth: 1)
+                )
+                .overlay(
+                    VStack(spacing: Theme.Spacing.xs) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(Theme.primaryColor)
+                        Text(L10n.string("Add photo"))
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                    }
+                )
+        }
+        .buttonStyle(HapticTapButtonStyle())
+        .frame(width: cellWidth, height: cellHeight)
+    }
+}
+
+// MARK: - Sell photo grid cell (1:13 width:height thumbnail)
+private struct SellPhotoGridCell: View {
+    let image: UIImage
+    let cellWidth: CGFloat
+    let cellHeight: CGFloat
+    let onRemove: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: cellWidth, height: cellHeight)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.white)
+                    .background(Circle().fill(.black.opacity(0.5)))
+            }
+            .padding(6)
+        }
+        .frame(width: cellWidth, height: cellHeight, alignment: .topLeading)
+    }
+}
+
+extension SellView {
     // MARK: - Item Details Section (Flutter: header + Title + Describe your item only)
     private var itemDetailsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -343,7 +409,7 @@ struct SellView: View {
                 .background(Theme.Colors.background)
             
             // Price Field
-            NavigationLink(destination: PriceInputView(price: $price)) {
+            NavigationLink(destination: PriceInputView(price: $price, categoryId: category?.id)) {
                 SellFormRow(
                     title: L10n.string("Price"),
                     value: price.map { "£\(String(format: "%.0f", $0))" }
@@ -515,7 +581,6 @@ struct CategorySelectionView: View {
                                 categoryRow(cat.name, isSelected: false)
                             }
                             .buttonStyle(.plain)
-                            .listRowBackground(Theme.Colors.background)
                         } else {
                             Button(action: {
                                 selectedCategory = SellCategory(id: cat.id, name: cat.name, pathNames: [cat.name], pathIds: [cat.id])
@@ -523,9 +588,9 @@ struct CategorySelectionView: View {
                             }) {
                                 categoryRow(cat.name, isSelected: selectedCategory?.id == cat.id)
                             }
-                            .listRowBackground(Theme.Colors.background)
                         }
                     }
+                    .listRowBackground(Theme.Colors.background)
                 }
                 .listStyle(PlainListStyle())
                 .scrollContentBackground(.hidden)
@@ -618,7 +683,6 @@ struct SubCategoryView: View {
                                 subCategoryRow(cat)
                             }
                             .buttonStyle(.plain)
-                            .listRowBackground(Theme.Colors.background)
                         } else {
                             Button(action: {
                                 selectedCategory = SellCategory(
@@ -631,9 +695,9 @@ struct SubCategoryView: View {
                             }) {
                                 subCategoryRow(cat)
                             }
-                            .listRowBackground(Theme.Colors.background)
                         }
                     }
+                    .listRowBackground(Theme.Colors.background)
                 }
                 .listStyle(PlainListStyle())
                 .scrollContentBackground(.hidden)
@@ -725,9 +789,9 @@ struct ConditionSelectionView: View {
                         }
                     }
                     .padding(.vertical, Theme.Spacing.xs)
-                    .listRowBackground(Theme.Colors.background)
                 }
             }
+            .listRowBackground(Theme.Colors.background)
         }
         .listStyle(PlainListStyle())
         .scrollContentBackground(.hidden)
@@ -769,11 +833,16 @@ struct ColoursSelectionView: View {
                         }
 
                         colourSwatch(colour: colour, isSelected: selectedColours.contains(colour))
+
+                        if selectedColours.contains(colour) {
+                            Image(systemName: "checkmark")
+                                .foregroundColor(Theme.primaryColor)
+                        }
                     }
                 }
-                .listRowBackground(Theme.Colors.background)
                 .disabled(!selectedColours.contains(colour) && selectedColours.count >= Self.maxSelections)
             }
+            .listRowBackground(Theme.Colors.background)
         }
         .listStyle(PlainListStyle())
         .scrollContentBackground(.hidden)
@@ -1019,42 +1088,76 @@ struct MeasurementsView: View {
     }
 }
 
-// MARK: - Material Selection View
+// MARK: - Material Selection View (materials fetched from backend)
 struct MaterialSelectionView: View {
     @Binding var selectedMaterial: String?
     @Environment(\.presentationMode) var presentationMode
-    
-    let materials = ["Cotton", "Polyester", "Wool", "Silk", "Leather", "Denim", "Linen", "Cashmere", "Synthetic", "Other"]
-    
+    @EnvironmentObject private var authService: AuthService
+    @State private var materials: [APIMaterial] = []
+    @State private var isLoading = true
+    @State private var loadError: String?
+    private let service = MaterialsService()
+
     var body: some View {
-        List {
-            ForEach(materials, id: \.self) { material in
-                Button(action: {
-                    selectedMaterial = material
-                    presentationMode.wrappedValue.dismiss()
-                }) {
-                    HStack {
-                        Text(material)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                        
-                        Spacer()
-                        
-                        if selectedMaterial == material {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(Theme.primaryColor)
+        Group {
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .tint(Theme.primaryColor)
+            } else if let err = loadError {
+                VStack(spacing: Theme.Spacing.md) {
+                    Text(err)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(materials, id: \.id) { material in
+                        Button(action: {
+                            selectedMaterial = material.name
+                            presentationMode.wrappedValue.dismiss()
+                        }) {
+                            HStack {
+                                Text(material.name)
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.Colors.primaryText)
+
+                                Spacer()
+
+                                if selectedMaterial == material.name {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(Theme.primaryColor)
+                                }
+                            }
                         }
                     }
+                    .listRowBackground(Theme.Colors.background)
                 }
-                .listRowBackground(Theme.Colors.background)
+                .listStyle(PlainListStyle())
+                .scrollContentBackground(.hidden)
             }
         }
-        .listStyle(PlainListStyle())
-        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Select Material"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .task {
+            service.setAuthToken(authService.authToken)
+            await loadMaterials()
+        }
+    }
+
+    private func loadMaterials() async {
+        isLoading = true
+        loadError = nil
+        do {
+            materials = try await service.fetchMaterials()
+        } catch {
+            loadError = L10n.userFacingError(error)
+        }
+        isLoading = false
     }
 }
 
@@ -1142,16 +1245,16 @@ struct StyleSelectionView: View {
             }
         }) {
             HStack(alignment: .center, spacing: Theme.Spacing.md) {
-                Image(systemName: isSelected ? "checkmark.square" : "square")
-                    .font(.system(size: 20))
-                    .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.secondaryText)
-
                 Text(Self.displayName(for: rawValue))
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.primaryText)
                     .multilineTextAlignment(.leading)
 
                 Spacer(minLength: 0)
+
+                Image(systemName: isSelected ? "checkmark.square" : "square")
+                    .font(.system(size: 20))
+                    .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.secondaryText)
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.md)
@@ -1163,30 +1266,84 @@ struct StyleSelectionView: View {
     }
 }
 
-// MARK: - Price Input View (simple price field)
+// MARK: - Price Input View (price field + similar items price comparison, matches Flutter price screen)
 struct PriceInputView: View {
     @Binding var price: Double?
+    var categoryId: String? = nil
     @Environment(\.presentationMode) var presentationMode
     @State private var priceText: String = ""
     @FocusState private var isFocused: Bool
+    @State private var similarItems: [Item] = []
+    @State private var similarLoading = false
+    @State private var similarError: String?
+    private let productService = ProductService()
 
     var body: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            Text("£")
-                .font(Theme.Typography.title2)
-                .foregroundColor(Theme.Colors.primaryText)
-            TextField(L10n.string("0"), text: $priceText)
-                .font(Theme.Typography.title2)
-                .foregroundColor(Theme.Colors.primaryText)
-                .keyboardType(.decimalPad)
-                .focused($isFocused)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                // Price field — same styling as SettingsTextField (single rounded container, no extra bg)
+                HStack(spacing: Theme.Spacing.sm) {
+                    Text("£")
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
+                    TextField(L10n.string("0"), text: $priceText)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .keyboardType(.decimalPad)
+                        .focused($isFocused)
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
+                .background(Theme.Colors.secondaryBackground)
+                .cornerRadius(30)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.sm)
+
+                Text(L10n.string("Tip: similar price range is recommended based on similar items sold on Prelura."))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .padding(.horizontal, Theme.Spacing.md)
+
+                // Similar sold items (feed-style grid)
+                if let catId = categoryId, Int(catId) != nil {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Similar sold items"))
+                            .font(Theme.Typography.body)
+                            .fontWeight(.medium)
+                            .foregroundColor(Theme.primaryColor)
+                            .padding(.horizontal, Theme.Spacing.md)
+
+                        if similarLoading {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                    .tint(Theme.primaryColor)
+                                    .padding(.vertical, Theme.Spacing.xl)
+                                Spacer()
+                            }
+                        } else if let err = similarError {
+                            Text(err)
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                                .padding(.horizontal, Theme.Spacing.md)
+                        } else if !similarItems.isEmpty {
+                            LazyVGrid(columns: [
+                                GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                                GridItem(.flexible(), spacing: Theme.Spacing.sm)
+                            ], spacing: Theme.Spacing.sm) {
+                                ForEach(similarItems.prefix(10), id: \.id) { item in
+                                    PriceSimilarItemCard(item: item)
+                                }
+                            }
+                            .padding(.horizontal, Theme.Spacing.md)
+                        }
+                    }
+                    .padding(.top, Theme.Spacing.md)
+                }
+            }
+            .padding(.bottom, Theme.Spacing.xxl)
         }
-        .padding(Theme.Spacing.md)
-        .background(Theme.Colors.secondaryBackground)
-        .cornerRadius(30)
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.top, Theme.Spacing.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .scrollDismissesKeyboard(.immediately)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Price"))
         .navigationBarTitleDisplayMode(.inline)
@@ -1204,6 +1361,77 @@ struct PriceInputView: View {
                 priceText = String(format: "%.0f", p)
             }
             isFocused = true
+            if categoryId != nil {
+                Task { await loadSimilarItems() }
+            }
+        }
+    }
+
+    private func loadSimilarItems() async {
+        guard let catId = categoryId, let catIdInt = Int(catId) else { return }
+        similarLoading = true
+        similarError = nil
+        do {
+            similarItems = try await productService.getAllProducts(pageNumber: 1, pageCount: 10, categoryId: catIdInt)
+        } catch {
+            similarError = L10n.userFacingError(error)
+        }
+        similarLoading = false
+    }
+}
+
+// Compact card for similar-item in price screen (feed-style, no like button)
+private struct PriceSimilarItemCard: View {
+    let item: Item
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            if let avatarURL = item.seller.avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        Circle().fill(Theme.Colors.secondaryBackground)
+                    }
+                }
+                .frame(width: 16, height: 16)
+                .clipShape(Circle())
+            }
+            Text(item.seller.username.isEmpty ? "User" : item.seller.username)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(Theme.Colors.secondaryText)
+                .lineLimit(1)
+            GeometryReader { geo in
+                let w = geo.size.width
+                let h = w * 1.3
+                ZStack(alignment: .bottomLeading) {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Theme.primaryColor.opacity(0.15))
+                        .frame(width: w, height: h)
+                    if let first = item.imageURLs.first, let imageUrl = URL(string: first) {
+                        AsyncImage(url: imageUrl) { phase in
+                            if case .success(let img) = phase {
+                                img.resizable().aspectRatio(contentMode: .fill)
+                            } else {
+                                Color.clear
+                            }
+                        }
+                        .frame(width: w, height: h)
+                        .clipped()
+                        .cornerRadius(8)
+                    }
+                    Text(item.formattedPrice)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
+                        .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 0)
+                        .padding(6)
+                }
+                .frame(width: w, height: h)
+            }
+            .aspectRatio(1.0 / 1.3, contentMode: .fit)
+            Text(item.title)
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.primaryText)
+                .lineLimit(2)
         }
     }
 }
@@ -1310,8 +1538,8 @@ struct ParcelSizeSelectionView: View {
                         }
                     }
                 }
-                .listRowBackground(Theme.Colors.background)
             }
+            .listRowBackground(Theme.Colors.background)
         }
         .listStyle(PlainListStyle())
         .scrollContentBackground(.hidden)
@@ -1365,12 +1593,19 @@ struct BrandInputView: View {
                                 selectedBrand = brand
                                 presentationMode.wrappedValue.dismiss()
                             } label: {
-                                Text(brand)
-                                    .font(Theme.Typography.body)
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, Theme.Spacing.md)
-                                    .padding(.vertical, Theme.Spacing.md)
+                                HStack {
+                                    Text(brand)
+                                        .font(Theme.Typography.body)
+                                        .foregroundColor(Theme.Colors.primaryText)
+                                    Spacer(minLength: 0)
+                                    if selectedBrand == brand {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(Theme.primaryColor)
+                                    }
+                                }
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.vertical, Theme.Spacing.md)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             if brand != filteredBrands.last {

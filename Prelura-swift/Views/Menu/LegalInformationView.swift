@@ -7,22 +7,17 @@ struct LegalInformationView: View {
             NavigationLink(destination: TermsAndConditionsView()) {
                 menuRow("Terms & Conditions", icon: "doc.text")
             }
-            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: PrivacyPolicyView()) {
                 menuRow("Privacy Policy", icon: "lock.shield")
             }
-            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: AcknowledgementsView()) {
                 menuRow("Acknowledgements", icon: "checkmark.circle")
             }
-            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: HMRCReportingView()) {
                 menuRow("HMRC reporting centre", icon: "building.2")
             }
-            .listRowBackground(Theme.Colors.background)
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle("Legal Information")
         .navigationBarTitleDisplayMode(.inline)

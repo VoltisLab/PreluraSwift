@@ -7,22 +7,17 @@ struct SecurityMenuView: View {
             NavigationLink(destination: BlocklistView()) {
                 securityRow("Blocklist", icon: "person.slash")
             }
-            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: ResetPasswordView()) {
                 securityRow("Reset Password", icon: "key")
             }
-            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: DeleteAccountView()) {
                 securityRow("Delete Account", icon: "trash")
             }
-            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: PauseAccountView()) {
                 securityRow("Pause Account", icon: "pause.circle")
             }
-            .listRowBackground(Theme.Colors.background)
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Security & Privacy"))
         .navigationBarTitleDisplayMode(.inline)

@@ -39,6 +39,7 @@ struct ItemDetailView: View {
                     // Tab Content
                     tabContent
                 }
+                .padding(.bottom, isCurrentUser ? 0 : 100)
             }
             .background(Theme.Colors.background)
             .navigationTitle("")
@@ -51,7 +52,7 @@ struct ItemDetailView: View {
                 bottomActionButtons
             }
         }
-        .ignoresSafeArea(edges: [.top, .bottom])
+        .ignoresSafeArea(edges: .top)
         .onAppear {
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
@@ -87,8 +88,8 @@ struct ItemDetailView: View {
     }
     
     private var isCurrentUser: Bool {
-        // TODO: Check if current user is the seller
-        false
+        guard let currentUsername = authService.username else { return false }
+        return currentUsername.lowercased() == item.seller.username.lowercased()
     }
     
     // MARK: - Image Carousel (aspect 585:826; extends under status bar, no black bar)
@@ -258,22 +259,26 @@ struct ItemDetailView: View {
                 }
             }
             
-            // Colour integration (circles + labels, matches Flutter ProductTopDetails)
-            if !item.colors.isEmpty {
-                HStack(spacing: Theme.Spacing.sm) {
+            // Colour field: round swatch then text (e.g. 🔵 Blue), always shown just above seller
+            HStack(spacing: Theme.Spacing.sm) {
+                if item.colors.isEmpty {
+                    Text("—")
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                } else {
                     ForEach(item.colors, id: \.self) { colorName in
-                        HStack(spacing: 4) {
+                        HStack(spacing: 6) {
                             if let swatch = Theme.productColor(for: colorName) {
                                 Circle()
                                     .fill(swatch)
-                                    .frame(width: 16, height: 16)
+                                    .frame(width: 18, height: 18)
+                                    .overlay(Circle().stroke(Theme.Colors.secondaryText.opacity(0.3), lineWidth: 1))
                             }
                             Text(colorName)
-                                .font(Theme.Typography.subheadline)
-                                .fontWeight(.semibold)
+                                .font(Theme.Typography.body)
                                 .foregroundColor(Theme.Colors.primaryText)
                         }
-                        .padding(.trailing, Theme.Spacing.xs)
+                        .padding(.trailing, Theme.Spacing.sm)
                     }
                 }
             }
@@ -575,9 +580,11 @@ struct ItemDetailView: View {
                 BorderGlassButton("Send an Offer", action: {
                     showSendOfferSheet = true
                 })
+                .frame(maxWidth: .infinity)
                 PrimaryGlassButton("Buy now", action: {
                     showPaymentSheet = true
                 })
+                .frame(maxWidth: .infinity)
             }
         }
     }

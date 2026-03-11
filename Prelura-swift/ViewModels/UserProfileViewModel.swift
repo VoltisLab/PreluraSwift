@@ -13,7 +13,10 @@ class UserProfileViewModel: ObservableObject {
     var topBrands: [String] {
         let brandCounts = Dictionary(grouping: items.compactMap { $0.brand }, by: { $0 })
             .mapValues { $0.count }
-            .sorted { $0.value > $1.value }
+            .sorted { a, b in
+                if a.value != b.value { return a.value > b.value }
+                return a.key.localizedCompare(b.key) == .orderedAscending
+            }
         return Array(brandCounts.prefix(10).map { $0.key })
     }
 

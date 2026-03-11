@@ -60,8 +60,21 @@ final class FileUploadService {
         request.httpBody = body
 
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw NSError(domain: "FileUploadService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Upload failed"])
+        let http = response as? HTTPURLResponse
+        let statusCode = http?.statusCode ?? -1
+
+        /// Extract first GraphQL error message from JSON body for user-facing message.
+        func graphQLErrorMessage(from data: Data) -> String? {
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let errors = json["errors"] as? [[String: Any]],
+                  let first = errors.first,
+                  let message = first["message"] as? String else { return nil }
+            return message
+        }
+
+        guard (200...299).contains(statusCode) else {
+            let msg = graphQLErrorMessage(from: data) ?? "Upload failed (HTTP \(statusCode))"
+            throw NSError(domain: "FileUploadService", code: statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
         }
 
         struct UploadResponse: Decodable {
@@ -84,7 +97,8 @@ final class FileUploadService {
               let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
               let imagePath = obj["image"] as? String,
               let thumbPath = obj["thumbnail"] as? String else {
-            throw NSError(domain: "FileUploadService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid upload response"])
+            let msg = graphQLErrorMessage(from: data) ?? "Invalid upload response"
+            throw NSError(domain: "FileUploadService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
         }
 
         let fullUrl = baseUrl.hasSuffix("/") ? baseUrl + imagePath : baseUrl + "/" + imagePath

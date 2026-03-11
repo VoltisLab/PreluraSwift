@@ -188,6 +188,7 @@ enum L10n {
         "Upload": "Μεταφόρτωση",
         "Upload from drafts": "Μεταφόρτωση από πρόχειρα",
         "Add up to 20 photos": "Προσθήκη έως 20 φωτογραφιών",
+        "Add photo": "Προσθήκη φωτογραφίας",
         "Tap to select photos from your gallery": "Αγγίξτε για να επιλέξετε φωτογραφίες από τη συλλογή σας",
         "Item Details": "Στοιχεία προϊόντος",
         "Item Information": "Πληροφορίες προϊόντος",
@@ -222,6 +223,8 @@ enum L10n {
         "Discount Price": "Εκπτωτική τιμή",
         "Loading brands...": "Φόρτωση μαρκών...",
         "Enter brand name": "Εισάγετε όνομα μάρκας",
+        "Tip: similar price range is recommended based on similar items sold on Prelura.": "Συμβουλή: συνιστάται παρόμοιο εύρος τιμών με βάση παρόμοια αντικείμενα που πωλήθηκαν στο Prelura.",
+        "Similar sold items": "Παρόμοια πωλημένα αντικείμενα",
 
         // Discover
         "Recently viewed": "Πρόσφατα προβεβλημένα",

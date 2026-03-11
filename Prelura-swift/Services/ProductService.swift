@@ -21,7 +21,7 @@ class ProductService: ObservableObject {
         client.setAuthToken(token)
     }
     
-    func getAllProducts(pageNumber: Int = 1, pageCount: Int = 20, search: String? = nil, parentCategory: String? = nil, discountPrice: Bool? = nil, maxPrice: Double? = nil) async throws -> [Item] {
+    func getAllProducts(pageNumber: Int = 1, pageCount: Int = 20, search: String? = nil, parentCategory: String? = nil, categoryId: Int? = nil, discountPrice: Bool? = nil, maxPrice: Double? = nil) async throws -> [Item] {
         let query = """
         query AllProducts($pageNumber: Int, $pageCount: Int, $search: String, $filters: ProductFiltersInput) {
           allProducts(pageNumber: $pageNumber, pageCount: $pageCount, search: $search, filters: $filters) {
@@ -78,6 +78,9 @@ class ProductService: ObservableObject {
             if let categoryEnum = mapCategoryToEnum(parentCategory) {
                 filters["parentCategory"] = categoryEnum
             }
+        }
+        if let categoryId = categoryId {
+            filters["category"] = categoryId
         }
         
         // Add discountPrice filter if specified (like Flutter app)

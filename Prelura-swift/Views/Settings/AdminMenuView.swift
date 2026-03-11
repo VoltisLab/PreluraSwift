@@ -13,10 +13,8 @@ struct AdminMenuView: View {
                         .foregroundColor(.red)
                 }
             }
-            .listRowBackground(Theme.Colors.background)
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Admin Actions"))
         .navigationBarTitleDisplayMode(.inline)

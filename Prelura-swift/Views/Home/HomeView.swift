@@ -72,13 +72,6 @@ struct HomeView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: Theme.Spacing.sm) {
-                    NavigationLink(destination: MyFavouritesView()) {
-                        Image(systemName: "heart")
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
                     NavigationLink(destination: NotificationsListView()) {
                         Image(systemName: "bell")
                             .foregroundColor(Theme.Colors.primaryText)

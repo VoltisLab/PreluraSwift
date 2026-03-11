@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import UIKit
 
 @MainActor
 class ProfileViewModel: ObservableObject {
@@ -11,11 +12,13 @@ class ProfileViewModel: ObservableObject {
     @Published var errorMessage: String?
     
     var topBrands: [String] {
-        // Extract unique brands from userItems, sorted by frequency
+        // Extract unique brands from userItems, sorted by frequency then by name so order is stable when view re-renders.
         let brandCounts = Dictionary(grouping: userItems.compactMap { $0.brand }, by: { $0 })
             .mapValues { $0.count }
-            .sorted { $0.value > $1.value }
-        
+            .sorted { a, b in
+                if a.value != b.value { return a.value > b.value }
+                return a.key.localizedCompare(b.key) == .orderedAscending
+            }
         return Array(brandCounts.prefix(10).map { $0.key })
     }
     
@@ -129,13 +132,16 @@ class ProfileViewModel: ObservableObject {
     }
     
     /// Uploads profile photo to backend (GraphQL UploadFile + updateProfile) and refreshes user. No local storage — avatar is always from backend.
-    func uploadProfileImage(_ image: UIImage) {
-        guard let jpegData = image.jpegData(compressionQuality: 0.85) else {
+    /// Pass current authToken so the upload uses the latest token (e.g. after refresh).
+    func uploadProfileImage(_ image: UIImage, authToken: String?) {
+        let resized = Self.resizeForProfileUpload(image, maxLongSide: 1200)
+        guard let jpegData = resized.jpegData(compressionQuality: 0.85) else {
             profilePhotoUploadError = "Could not prepare image"
             return
         }
         profilePhotoUploadError = nil
         isUploadingProfilePhoto = true
+        fileUploadService.setAuthToken(authToken)
         Task {
             do {
                 let (url, thumbnail) = try await fileUploadService.uploadProfileImage(jpegData)
@@ -149,6 +155,18 @@ class ProfileViewModel: ObservableObject {
             await MainActor.run {
                 isUploadingProfilePhoto = false
             }
+        }
+    }
+
+    /// Resize image so longest side is at most maxLongSide; avoids oversized uploads and backend rejections.
+    private static func resizeForProfileUpload(_ image: UIImage, maxLongSide: CGFloat) -> UIImage {
+        let size = image.size
+        guard size.width > maxLongSide || size.height > maxLongSide else { return image }
+        let scale = min(maxLongSide / size.width, maxLongSide / size.height)
+        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: newSize))
         }
     }
 }

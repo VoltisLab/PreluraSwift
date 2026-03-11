@@ -28,7 +28,6 @@ struct AppearanceMenuView: View {
                             }
                         }
                     }
-                    .listRowBackground(Theme.Colors.background)
                 }
             } header: {
                 Text(L10n.string("Theme"))
@@ -37,7 +36,6 @@ struct AppearanceMenuView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Appearance"))
         .navigationBarTitleDisplayMode(.inline)

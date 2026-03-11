@@ -73,13 +73,13 @@ struct ChatListView: View {
                                     ChatRowView(conversation: conversation)
                                 }
                                 .id(index == 0 ? "inbox_top" : conversation.id)
-                                .listRowSeparator(.hidden)
                                 .listRowBackground(Theme.Colors.background)
-                                .overlay(ContentDivider(), alignment: .bottom)
+                                .listRowInsets(EdgeInsets(top: 8, leading: Theme.Spacing.md, bottom: 8, trailing: Theme.Spacing.md))
                             }
                         }
-                        .listStyle(PlainListStyle())
+                        .listStyle(.plain)
                         .scrollContentBackground(.hidden)
+                        .navigationLinkIndicatorVisibility(.hidden)
                         .scrollPosition(id: $scrollPosition, anchor: .top)
                         .onAppear {
                             tabCoordinator.reportAtTop(tab: 3, isAtTop: filteredConversations.isEmpty || scrollPosition == "inbox_top")

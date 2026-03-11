@@ -16,7 +16,6 @@ struct PostageSettingsView: View {
                     .keyboardType(.decimalPad)
                     .disabled(!royalMailEnabled)
             }
-            .listRowBackground(Theme.Colors.background)
             Section(header: Text(L10n.string("DPD"))) {
                 Toggle("Enable DPD", isOn: $dpdEnabled)
                     .tint(Theme.primaryColor)
@@ -24,10 +23,8 @@ struct PostageSettingsView: View {
                     .keyboardType(.decimalPad)
                     .disabled(!dpdEnabled)
             }
-            .listRowBackground(Theme.Colors.background)
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Postage"))
         .navigationBarTitleDisplayMode(.inline)

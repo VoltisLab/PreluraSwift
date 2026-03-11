@@ -36,7 +36,8 @@ struct ProfileView: View {
     @State private var filterMaxPrice: String = ""
     @State private var showSortSheet: Bool = false
     @State private var showFilterSheet: Bool = false
-    @State private var showPriceFilterSheet: Bool = false
+    /// Tracks horizontal scroll position in Top brands so it doesn't reset when Multi-buy or selection changes.
+    @State private var topBrandsScrollId: String? = nil
 
     private let topId = "profile_top"
     
@@ -198,7 +199,7 @@ struct ProfileView: View {
                            let image = UIImage(data: data) {
                             await MainActor.run {
                                 profileImage = image
-                                viewModel.uploadProfileImage(image)
+                                viewModel.uploadProfileImage(image, authToken: authService.authToken)
                             }
                         }
                     }
@@ -402,8 +403,10 @@ struct ProfileView: View {
             .padding(.trailing, Theme.Spacing.md + 12)
             .padding(.vertical, Theme.Spacing.md)
             .overlay(ContentDivider(), alignment: .bottom)
+            .animation(.none, value: isMultiBuyEnabled)
             
             // Top Brands (same component and placement as Home filter tags)
+            // Stable id so toggling Multi-buy or selecting a pill doesn't recreate this scroll view and reset scroll position.
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text(L10n.string("Top brands"))
@@ -428,12 +431,16 @@ struct ProfileView: View {
                                 isSelected: selectedBrand == brand,
                                 action: { selectedBrand = selectedBrand == brand ? nil : brand }
                             )
+                            .id(brand)
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.md)
                 }
+                .scrollPosition(id: $topBrandsScrollId, anchor: .leading)
+                .id("profile_top_brands_pills")
                 .padding(.vertical, Theme.Spacing.sm)
             }
+            .animation(.none, value: selectedBrand)
             
             // Filter and Sort (matches Flutter FilterAndSort: bottom sheets + Clear)
             HStack {
@@ -472,43 +479,55 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showSortSheet) { profileSortSheet }
         .sheet(isPresented: $showFilterSheet) { profileFilterSheet }
-        .sheet(isPresented: $showPriceFilterSheet) { profilePriceFilterSheet }
     }
     
     // MARK: - Sort sheet
     private var profileSortSheet: some View {
         NavigationStack {
             List {
-                ForEach(ProfileSortOption.allCases, id: \.self) { option in
-                    Button(action: {
-                        profileSort = option
-                        showSortSheet = false
-                    }) {
-                        HStack {
-                            Text(L10n.string(option.rawValue))
-                                .foregroundColor(Theme.Colors.primaryText)
-                            Spacer()
-                            if profileSort == option {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(Theme.primaryColor)
+                Section {
+                    ForEach(ProfileSortOption.allCases, id: \.self) { option in
+                        Button(action: {
+                            profileSort = option
+                            showSortSheet = false
+                        }) {
+                            HStack {
+                                Text(L10n.string(option.rawValue))
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                Spacer()
+                                if profileSort == option {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(Theme.primaryColor)
+                                }
                             }
                         }
+                        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                     }
                     .listRowBackground(Theme.Colors.background)
-                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                 }
                 Section {
-                    Button(role: .destructive, action: {
+                    Button(action: {
                         profileSort = .relevance
                         showSortSheet = false
                     }) {
                         Text(L10n.string("Clear"))
+                            .foregroundColor(.red)
                             .frame(maxWidth: .infinity)
                     }
-                    .listRowBackground(Theme.Colors.background)
                     .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.destructive() }))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Theme.Colors.background)
+                    Divider()
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.Colors.background)
+                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Spacing.md, bottom: 0, trailing: Theme.Spacing.md))
+                    Color.clear
+                        .frame(height: 50)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.Colors.background)
                 }
             }
+            .scrollDisabled(true)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
@@ -525,8 +544,9 @@ struct ProfileView: View {
                 }
             }
         }
-        .presentationDetents([.height(300)])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .presentationBackground(Theme.Colors.background)
     }
     
     // MARK: - Filter sheet
@@ -548,43 +568,45 @@ struct ProfileView: View {
                                 }
                             }
                         }
-                        .listRowBackground(Theme.Colors.background)
                         .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                     }
+                    .listRowBackground(Theme.Colors.background)
                 } header: { Text(L10n.string("Condition")) }
                 Section {
-                    Button(action: { showFilterSheet = false; showPriceFilterSheet = true }) {
-                        HStack {
-                            Text(L10n.string("Price"))
-                                .foregroundColor(Theme.Colors.primaryText)
-                            Spacer()
-                            if !filterMinPrice.isEmpty || !filterMaxPrice.isEmpty {
-                                Text([filterMinPrice, filterMaxPrice].filter { !$0.isEmpty }.joined(separator: " – "))
-                                    .font(Theme.Typography.caption)
-                                    .foregroundColor(Theme.Colors.secondaryText)
-                            }
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                        }
+                    HStack(spacing: Theme.Spacing.sm) {
+                        SettingsTextField(placeholder: L10n.string("Min. Price"), text: $filterMinPrice)
+                            .keyboardType(.decimalPad)
+                        SettingsTextField(placeholder: L10n.string("Max. Price"), text: $filterMaxPrice)
+                            .keyboardType(.decimalPad)
                     }
+                    .listRowSeparator(.hidden)
                     .listRowBackground(Theme.Colors.background)
-                    .buttonStyle(HapticTapButtonStyle())
                 } header: { Text(L10n.string("Price range")) }
                 Section {
-                    Button(role: .destructive, action: {
+                    Button(action: {
                         filterCondition = nil
                         filterMinPrice = ""
                         filterMaxPrice = ""
                         showFilterSheet = false
                     }) {
                         Text(L10n.string("Clear"))
+                            .foregroundColor(.red)
                             .frame(maxWidth: .infinity)
                     }
-                    .listRowBackground(Theme.Colors.background)
                     .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.destructive() }))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Theme.Colors.background)
+                    Divider()
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.Colors.background)
+                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Spacing.md, bottom: 0, trailing: Theme.Spacing.md))
+                    Color.clear
+                        .frame(height: 50)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.Colors.background)
                 }
             }
+            .scrollDisabled(true)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
@@ -601,42 +623,9 @@ struct ProfileView: View {
                 }
             }
         }
-        .presentationDetents([.height(360)])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-    }
-    
-    private var profilePriceFilterSheet: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    SettingsTextField(placeholder: L10n.string("Min. Price"), text: $filterMinPrice)
-                        .keyboardType(.decimalPad)
-                    SettingsTextField(placeholder: L10n.string("Max. Price"), text: $filterMaxPrice)
-                        .keyboardType(.decimalPad)
-                }
-                Section {
-                    Button(L10n.string("Clear")) {
-                        filterMinPrice = ""
-                        filterMaxPrice = ""
-                        showPriceFilterSheet = false
-                    }
-                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.secondaryAction() }))
-                    Button(L10n.string("Apply")) {
-                        showPriceFilterSheet = false
-                    }
-                    .fontWeight(.semibold)
-                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.primaryAction() }))
-                }
-            }
-            .navigationTitle(L10n.string("Price"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(L10n.string("Done")) { showPriceFilterSheet = false }
-                        .buttonStyle(HapticTapButtonStyle())
-                }
-            }
-        }
+        .presentationBackground(Theme.Colors.background)
     }
     
     // MARK: - Items Grid Section

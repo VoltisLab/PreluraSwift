@@ -26,24 +26,20 @@ struct VacationModeView: View {
                     Task { await updateVacationMode(newValue) }
                 }
             }
-            .listRowBackground(Theme.Colors.background)
             if let msg = errorMessage {
                 Section {
                     Text(msg)
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.error)
                 }
-                .listRowBackground(Theme.Colors.background)
             }
             Section {
                 Text(L10n.string("Note: Turning on vacation will hide your items from all catalogues"))
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
-            .listRowBackground(Theme.Colors.background)
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Vacation Mode"))
         .navigationBarTitleDisplayMode(.inline)

@@ -398,6 +398,88 @@ class UserService: ObservableObject {
         return (reviews, total)
     }
 
+    /// Fetch list of followers for a user. Uses existing backend query if available.
+    func getFollowers(username: String, pageNumber: Int = 1, pageCount: Int = 50) async throws -> [User] {
+        let query = """
+        query Followers($username: String!, $pageNumber: Int, $pageCount: Int) {
+          followers(username: $username, pageNumber: $pageNumber, pageCount: $pageCount) {
+            id
+            username
+            displayName
+            profilePictureUrl
+          }
+        }
+        """
+        struct FollowersPayload: Decodable {
+            let followers: [FollowersListRow]?
+        }
+        struct FollowersListRow: Decodable {
+            let id: AnyCodable?
+            let username: String?
+            let displayName: String?
+            let profilePictureUrl: String?
+        }
+        let variables: [String: Any] = ["username": username, "pageNumber": pageNumber, "pageCount": pageCount]
+        let response: FollowersPayload = try await client.execute(query: query, variables: variables, responseType: FollowersPayload.self)
+        return (response.followers ?? []).compactMap { row -> User? in
+            let idString: String = {
+                guard let any = row.id else { return UUID().uuidString }
+                if let i = any.value as? Int { return String(i) }
+                if let s = any.value as? String { return s }
+                return String(describing: any.value)
+            }()
+            return User(
+                id: UUID(uuidString: idString) ?? UUID(),
+                username: row.username ?? "",
+                displayName: row.displayName ?? row.username ?? "",
+                avatarURL: row.profilePictureUrl,
+                followingsCount: 0,
+                followersCount: 0
+            )
+        }
+    }
+
+    /// Fetch list of users that the given user follows.
+    func getFollowing(username: String, pageNumber: Int = 1, pageCount: Int = 50) async throws -> [User] {
+        let query = """
+        query Following($username: String!, $pageNumber: Int, $pageCount: Int) {
+          following(username: $username, pageNumber: $pageNumber, pageCount: $pageCount) {
+            id
+            username
+            displayName
+            profilePictureUrl
+          }
+        }
+        """
+        struct FollowingPayload: Decodable {
+            let following: [FollowingListRow]?
+        }
+        struct FollowingListRow: Decodable {
+            let id: AnyCodable?
+            let username: String?
+            let displayName: String?
+            let profilePictureUrl: String?
+        }
+        let variables: [String: Any] = ["username": username, "pageNumber": pageNumber, "pageCount": pageCount]
+        let response: FollowingPayload = try await client.execute(query: query, variables: variables, responseType: FollowingPayload.self)
+        return (response.following ?? []).compactMap { row -> User? in
+            let idString: String = {
+                guard let any = row.id else { return UUID().uuidString }
+                if let i = any.value as? Int { return String(i) }
+                if let s = any.value as? String { return s }
+                return String(describing: any.value)
+            }()
+            return User(
+                id: UUID(uuidString: idString) ?? UUID(),
+                username: row.username ?? "",
+                displayName: row.displayName ?? row.username ?? "",
+                avatarURL: row.profilePictureUrl,
+                followingsCount: 0,
+                followersCount: 0
+            )
+        }
+    }
+
     /// Unblock user. Matches Flutter blockUnblockUser(action: false) → blockUser: false.
     func unblockUser(userId: Int) async throws {
         let mutation = """

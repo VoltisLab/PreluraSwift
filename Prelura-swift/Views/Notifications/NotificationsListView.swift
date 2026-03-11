@@ -50,9 +50,9 @@ struct NotificationsListView: View {
                         NavigationLink(destination: NotificationDestinationView(notification: notification)) {
                             NotificationRowView(notification: notification)
                         }
-                        .listRowBackground(Theme.Colors.background)
                         .buttonStyle(.plain)
                     }
+                    .listRowBackground(Theme.Colors.background)
                     if notifications.count < totalNumber {
                         HStack {
                             Spacer()

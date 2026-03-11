@@ -17,7 +17,6 @@ struct FilteredProductsView: View {
     @StateObject private var viewModel: FilteredProductsViewModel
     @State private var showSortSheet = false
     @State private var showFilterSheet = false
-    @State private var showPriceFilterSheet = false
     
     let title: String
     let filterType: ProductFilterType
@@ -163,40 +162,54 @@ struct FilteredProductsView: View {
         }
         .sheet(isPresented: $showSortSheet) { filteredProductsSortSheet }
         .sheet(isPresented: $showFilterSheet) { filteredProductsFilterSheet }
-        .sheet(isPresented: $showPriceFilterSheet) { filteredProductsPriceSheet }
     }
 
     private var filteredProductsSortSheet: some View {
         NavigationStack {
             List {
-                ForEach(FilteredProductsSortOption.allCases, id: \.self) { option in
-                    Button(action: {
-                        viewModel.sortOption = option
-                        showSortSheet = false
-                    }) {
-                        HStack {
-                            Text(L10n.string(option.rawValue))
-                                .foregroundColor(Theme.Colors.primaryText)
-                            Spacer()
-                            if viewModel.sortOption == option {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(Theme.primaryColor)
+                Section {
+                    ForEach(FilteredProductsSortOption.allCases, id: \.self) { option in
+                        Button(action: {
+                            viewModel.sortOption = option
+                            showSortSheet = false
+                        }) {
+                            HStack {
+                                Text(L10n.string(option.rawValue))
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                Spacer()
+                                if viewModel.sortOption == option {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(Theme.primaryColor)
+                                }
                             }
                         }
+                        .buttonStyle(HapticTapButtonStyle())
                     }
                     .listRowBackground(Theme.Colors.background)
+                }
+                Section {
+                    Button(action: {
+                        viewModel.sortOption = .relevance
+                        showSortSheet = false
+                    }) {
+                        Text(L10n.string("Clear"))
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity)
+                    }
                     .buttonStyle(HapticTapButtonStyle())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Theme.Colors.background)
+                    Divider()
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.Colors.background)
+                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Spacing.md, bottom: 0, trailing: Theme.Spacing.md))
+                    Color.clear
+                        .frame(height: 50)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.Colors.background)
                 }
-                Button(role: .destructive, action: {
-                    viewModel.sortOption = .relevance
-                    showSortSheet = false
-                }) {
-                    Text(L10n.string("Clear"))
-                        .frame(maxWidth: .infinity)
-                }
-                .listRowBackground(Theme.Colors.background)
-                .buttonStyle(HapticTapButtonStyle())
             }
+            .scrollDisabled(true)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
@@ -212,8 +225,9 @@ struct FilteredProductsView: View {
                 }
             }
         }
-        .presentationDetents([.height(300)])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .presentationBackground(Theme.Colors.background)
     }
 
     private var filteredProductsFilterSheet: some View {
@@ -234,46 +248,51 @@ struct FilteredProductsView: View {
                                 }
                             }
                         }
-                        .listRowBackground(Theme.Colors.background)
                         .buttonStyle(HapticTapButtonStyle())
                     }
+                    .listRowBackground(Theme.Colors.background)
                 }
                 Section(header: Text(L10n.string("Price range"))) {
-                    Button(action: {
-                        showFilterSheet = false
-                        showPriceFilterSheet = true
-                    }) {
-                        HStack {
-                            Text(L10n.string("Price"))
-                                .foregroundColor(Theme.Colors.primaryText)
-                            Spacer()
-                            if !viewModel.filterMinPrice.isEmpty || !viewModel.filterMaxPrice.isEmpty {
-                                Text([viewModel.filterMinPrice, viewModel.filterMaxPrice].filter { !$0.isEmpty }.joined(separator: " – "))
-                                    .font(Theme.Typography.caption)
-                                    .foregroundColor(Theme.Colors.secondaryText)
-                            }
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                        }
+                    HStack(spacing: Theme.Spacing.sm) {
+                        SettingsTextField(
+                            placeholder: L10n.string("Min. Price"),
+                            text: Binding(get: { viewModel.filterMinPrice }, set: { viewModel.filterMinPrice = $0 })
+                        )
+                        .keyboardType(.decimalPad)
+                        SettingsTextField(
+                            placeholder: L10n.string("Max. Price"),
+                            text: Binding(get: { viewModel.filterMaxPrice }, set: { viewModel.filterMaxPrice = $0 })
+                        )
+                        .keyboardType(.decimalPad)
                     }
+                    .listRowSeparator(.hidden)
                     .listRowBackground(Theme.Colors.background)
-                    .buttonStyle(HapticTapButtonStyle())
                 }
                 Section {
-                    Button(role: .destructive, action: {
+                    Button(action: {
                         viewModel.filterCondition = nil
                         viewModel.filterMinPrice = ""
                         viewModel.filterMaxPrice = ""
                         showFilterSheet = false
                     }) {
                         Text(L10n.string("Clear"))
+                            .foregroundColor(.red)
                             .frame(maxWidth: .infinity)
                     }
-                    .listRowBackground(Theme.Colors.background)
                     .buttonStyle(HapticTapButtonStyle())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Theme.Colors.background)
+                    Divider()
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.Colors.background)
+                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Spacing.md, bottom: 0, trailing: Theme.Spacing.md))
+                    Color.clear
+                        .frame(height: 50)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.Colors.background)
                 }
             }
+            .scrollDisabled(true)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
@@ -289,51 +308,8 @@ struct FilteredProductsView: View {
                 }
             }
         }
-        .presentationDetents([.height(380)])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-    }
-
-    private var filteredProductsPriceSheet: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    SettingsTextField(
-                        placeholder: L10n.string("Min. Price"),
-                        text: Binding(get: { viewModel.filterMinPrice }, set: { viewModel.filterMinPrice = $0 })
-                    )
-                    .keyboardType(.decimalPad)
-                    SettingsTextField(
-                        placeholder: L10n.string("Max. Price"),
-                        text: Binding(get: { viewModel.filterMaxPrice }, set: { viewModel.filterMaxPrice = $0 })
-                    )
-                    .keyboardType(.decimalPad)
-                }
-                Section {
-                    Button(L10n.string("Clear")) {
-                        viewModel.filterMinPrice = ""
-                        viewModel.filterMaxPrice = ""
-                        showPriceFilterSheet = false
-                    }
-                    .foregroundColor(Theme.Colors.primaryText)
-                    Button(L10n.string("Apply")) {
-                        showPriceFilterSheet = false
-                    }
-                    .fontWeight(.semibold)
-                    .foregroundColor(Theme.primaryColor)
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(Theme.Colors.background)
-            .navigationTitle(L10n.string("Price"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(L10n.string("Done")) {
-                        showPriceFilterSheet = false
-                    }
-                    .foregroundColor(Theme.primaryColor)
-                }
-            }
-        }
+        .presentationBackground(Theme.Colors.background)
     }
 }
