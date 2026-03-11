@@ -707,9 +707,13 @@ struct SubCategoryView: View {
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle(parentName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                categoryBreadcrumbTitle
+            }
+        }
         .task {
             let id = Int(parentId)
             await loadCategories(parentId: id)
@@ -727,6 +731,24 @@ struct SubCategoryView: View {
                     .foregroundColor(Theme.primaryColor)
             }
         }
+    }
+
+    /// Breadcrumb title: parent path in grey, current category in white (e.g. "Clothing" grey + " > Knitwear" white).
+    private var categoryBreadcrumbTitle: some View {
+        Group {
+            if pathNames.count > 1, let current = pathNames.last {
+                let parentPath = pathNames.dropLast().joined(separator: " > ")
+                (Text(parentPath)
+                    .foregroundColor(Theme.Colors.secondaryText))
+                + Text(" > " + current)
+                    .foregroundColor(Theme.Colors.primaryText)
+            } else {
+                Text(parentName)
+                    .foregroundColor(Theme.Colors.primaryText)
+            }
+        }
+        .font(Theme.Typography.headline)
+        .lineLimit(1)
     }
 
     private func loadCategories(parentId: Int?) async {
@@ -1164,7 +1186,7 @@ struct MaterialSelectionView: View {
     }
 }
 
-// MARK: - Style Selection View (checkboxes, multi-select max 2, list from GraphQL StyleEnum)
+// MARK: - Style Selection View (tick when selected, multi-select max 2, list from GraphQL StyleEnum)
 struct StyleSelectionView: View {
     @Binding var selectedStyles: [String]
     @Environment(\.presentationMode) var presentationMode
@@ -1255,9 +1277,10 @@ struct StyleSelectionView: View {
 
                 Spacer(minLength: 0)
 
-                Image(systemName: isSelected ? "checkmark.square" : "square")
-                    .font(.system(size: 20))
-                    .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.secondaryText)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(Theme.primaryColor)
+                }
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.md)

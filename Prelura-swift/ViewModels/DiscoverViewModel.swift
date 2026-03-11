@@ -83,8 +83,8 @@ class DiscoverViewModel: ObservableObject {
                     return
                 }
                 
-                // Recently viewed - use actual recently viewed products from backend
-                self.recentlyViewedItems = Array(recentlyViewedVisible.prefix(10))
+                // Recently viewed - newest first (match full page order)
+                self.recentlyViewedItems = Array(recentlyViewedVisible.sorted { $0.createdAt > $1.createdAt }.prefix(10))
                 
                 var usedProductIds: Set<UUID> = Set(self.recentlyViewedItems.map { $0.id })
                 
@@ -163,12 +163,13 @@ class DiscoverViewModel: ObservableObject {
         loadData()
     }
 
-    /// Refetches only recently viewed from the backend (e.g. after user views a product). Keeps rest of discover data unchanged.
+    /// Refetches only recently viewed from the backend (e.g. after user views a product). Keeps rest of discover data unchanged. Order: newest first.
     func refreshRecentlyViewedSection() {
         Task {
             do {
                 let recentlyViewedProducts = try await productService.getRecentlyViewedProducts()
                 let recentlyViewedVisible = recentlyViewedProducts.excludingVacationModeSellers()
+                    .sorted { $0.createdAt > $1.createdAt }
                 await MainActor.run {
                     self.recentlyViewedItems = Array(recentlyViewedVisible.prefix(10))
                 }
@@ -252,8 +253,8 @@ class DiscoverViewModel: ObservableObject {
                     return
                 }
                 
-                // Recently viewed - use actual recently viewed products from backend
-                self.recentlyViewedItems = Array(recentlyViewedVisible.prefix(10))
+                // Recently viewed - newest first (match full page order)
+                self.recentlyViewedItems = Array(recentlyViewedVisible.sorted { $0.createdAt > $1.createdAt }.prefix(10))
                 
                 var usedProductIds: Set<UUID> = Set(self.recentlyViewedItems.map { $0.id })
                 

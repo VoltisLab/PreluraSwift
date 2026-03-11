@@ -32,12 +32,18 @@ struct DiscoverView: View {
         .navigationTitle(L10n.string("Discover"))
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(viewModel.isLoading && viewModel.discoverItems.isEmpty)
+        .toolbarBackground(Theme.Colors.background, for: .navigationBar)
         .toolbar { discoverToolbar }
         .refreshable { await viewModel.refreshAsync() }
         .onAppear {
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
-                viewModel.refresh()
+                if viewModel.discoverItems.isEmpty {
+                    viewModel.refresh()
+                } else {
+                    // Returning to Discover (e.g. from product detail): refresh only recently viewed so the slider updates
+                    viewModel.refreshRecentlyViewedSection()
+                }
             }
         }
         .onChange(of: authService.isAuthenticated) { _, isAuthenticated in
