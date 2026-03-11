@@ -96,6 +96,17 @@ class ItemDetailViewModel: ObservableObject {
             currentUserAvatarURL = nil
         }
     }
+
+    /// Record this product as recently viewed (fire-and-forget). Call when product detail is shown.
+    func recordRecentlyViewed(productId: String?) {
+        guard let productId = productId, let productIdInt = Int(productId) else { return }
+        Task {
+            await productService.addToRecentlyViewed(productId: productIdInt)
+            await MainActor.run {
+                NotificationCenter.default.post(name: .preluraRecentlyViewedDidUpdate, object: nil)
+            }
+        }
+    }
     
     func toggleLike(productId: String) {
         Task {

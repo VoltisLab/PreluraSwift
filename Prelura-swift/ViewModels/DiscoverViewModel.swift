@@ -163,6 +163,21 @@ class DiscoverViewModel: ObservableObject {
         loadData()
     }
 
+    /// Refetches only recently viewed from the backend (e.g. after user views a product). Keeps rest of discover data unchanged.
+    func refreshRecentlyViewedSection() {
+        Task {
+            do {
+                let recentlyViewedProducts = try await productService.getRecentlyViewedProducts()
+                let recentlyViewedVisible = recentlyViewedProducts.excludingVacationModeSellers()
+                await MainActor.run {
+                    self.recentlyViewedItems = Array(recentlyViewedVisible.prefix(10))
+                }
+            } catch {
+                // Keep existing list on error
+            }
+        }
+    }
+
     /// Toggle like for a product and update it in all relevant arrays.
     func toggleLike(productId: String) {
         guard !productId.isEmpty else { return }

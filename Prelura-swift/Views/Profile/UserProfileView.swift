@@ -111,7 +111,7 @@ struct UserProfileView: View {
 
                 Spacer(minLength: Theme.Spacing.xl)
 
-                HStack(spacing: Theme.Spacing.sm) {
+                HStack(spacing: Theme.Spacing.md) {
                     StatColumn(value: "\(viewModel.items.count)", label: viewModel.items.count == 1 ? L10n.string("Listing") : L10n.string("Listings"), compact: true)
                     NavigationLink(destination: FollowingListView(username: viewModel.user.username)) {
                         StatColumn(value: "\(viewModel.user.followingsCount)", label: L10n.string("Following"), compact: true)
@@ -157,7 +157,7 @@ struct UserProfileView: View {
             if let location = viewModel.user.location, !location.isEmpty {
                 Text(location)
                     .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.primaryText)
+                    .foregroundColor(Theme.Colors.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.bottom, Theme.Spacing.md)

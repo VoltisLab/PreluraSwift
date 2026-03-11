@@ -49,9 +49,15 @@ struct FollowersListView: View {
                         }
                         .padding(.vertical, Theme.Spacing.xs)
                         .contentShape(Rectangle())
+                        .overlay(
+                            ContentDivider()
+                                .padding(.horizontal, -Theme.Spacing.md),
+                            alignment: .bottom
+                        )
                     }
                     .listRowBackground(Theme.Colors.background)
                     .listRowInsets(EdgeInsets(top: 8, leading: Theme.Spacing.md, bottom: 8, trailing: Theme.Spacing.md))
+                    .listRowSeparator(.hidden)
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)

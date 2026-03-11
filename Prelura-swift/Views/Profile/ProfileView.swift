@@ -267,7 +267,7 @@ struct ProfileView: View {
                 if let location = viewModel.user?.location {
                     Text(location)
                         .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.primaryText)
+                        .foregroundColor(Theme.Colors.secondaryText)
                 }
             }
         }
@@ -278,7 +278,7 @@ struct ProfileView: View {
 
     /// Stats row next to avatar — compact fonts so we don't increase effective screen width.
     private var profileStatsRowCompact: some View {
-        HStack(spacing: Theme.Spacing.sm) {
+        HStack(spacing: Theme.Spacing.md) {
             StatColumn(value: "\(viewModel.user?.listingsCount ?? 0)", label: (viewModel.user?.listingsCount ?? 0) == 1 ? L10n.string("Listing") : L10n.string("Listings"), compact: true)
             if let u = viewModel.user {
                 NavigationLink(destination: FollowingListView(username: u.username)) {
@@ -679,7 +679,7 @@ struct StatColumn: View {
     var body: some View {
         VStack(spacing: compact ? 2 : Theme.Spacing.xs) {
             Text(value)
-                .font(compact ? .system(size: 18, weight: .regular) : Theme.Typography.title2)
+                .font(compact ? .system(size: 20, weight: .semibold) : Theme.Typography.title2)
                 .foregroundColor(Theme.Colors.primaryText)
             
             Text(label)

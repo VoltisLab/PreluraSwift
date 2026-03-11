@@ -131,13 +131,13 @@ struct SellView: View {
         .overlay(ContentDivider(), alignment: .bottom)
     }
     
-    // MARK: - Photo Upload Section (grid with natural aspect ratio, no slider)
+    // MARK: - Photo Upload Section (horizontal slider of thumbnails)
     private var photoUploadSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             if selectedImages.isEmpty {
                 emptyPhotoState
             } else {
-                photoGrid
+                photoSlider
             }
         }
         .padding(.horizontal, Theme.Spacing.md)
@@ -151,15 +151,45 @@ struct SellView: View {
         )
         .onChange(of: selectedPhotos) { _, newItems in
             Task {
-                selectedImages = []
+                var loaded: [UIImage] = []
                 for item in newItems {
                     if let data = try? await item.loadTransferable(type: Data.self),
                        let image = UIImage(data: data) {
-                        selectedImages.append(image)
+                        loaded.append(image)
                     }
                 }
+                await MainActor.run { selectedImages = loaded }
             }
         }
+    }
+
+    /// Horizontal slider: thumbnails + Add photo cell; container height matches cell height so nothing is clipped.
+    private var photoSlider: some View {
+        GeometryReader { geo in
+            let cellWidth = min(118, (geo.size.width - Theme.Spacing.md) / 2.6)
+            let cellHeight = cellWidth / SellPhotoSliderCell.aspectRatio
+            let spacing = Theme.Spacing.sm
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: spacing) {
+                    ForEach(Array(selectedImages.enumerated()), id: \.offset) { index, image in
+                        SellPhotoSliderCell(
+                            image: image,
+                            cellWidth: cellWidth,
+                            onRemove: {
+                                selectedImages.remove(at: index)
+                                selectedPhotos.remove(at: index)
+                            }
+                        )
+                    }
+                    if selectedImages.count < 20 {
+                        SellAddPhotoSliderCell(cellWidth: cellWidth, action: { showPhotoPicker = true })
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.xs)
+            }
+            .frame(height: cellHeight)
+        }
+        .frame(height: 155)
     }
 
     private var emptyPhotoState: some View {
@@ -193,66 +223,47 @@ struct SellView: View {
         }
         .buttonStyle(HapticTapButtonStyle())
     }
-
-    /// Photo grid: 3 columns, square cells, intrinsic height. Rebuilt to avoid layout breakage.
-    private var photoGrid: some View {
-        let spacing = Theme.Spacing.sm
-        let columns = [
-            GridItem(.flexible(), spacing: spacing),
-            GridItem(.flexible(), spacing: spacing),
-            GridItem(.flexible(), spacing: spacing)
-        ]
-        return LazyVGrid(columns: columns, alignment: .leading, spacing: spacing) {
-            ForEach(Array(selectedImages.enumerated()), id: \.offset) { index, image in
-                SellPhotoGridCell(
-                    image: image,
-                    onRemove: {
-                        selectedImages.remove(at: index)
-                        selectedPhotos.remove(at: index)
-                    }
-                )
-            }
-            if selectedImages.count < 20 {
-                SellAddPhotoCell(action: { showPhotoPicker = true })
-            }
-        }
-    }
 }
 
-// MARK: - Sell photo grid cell (square thumbnail, remove button)
-private struct SellPhotoGridCell: View {
+// MARK: - Sell photo slider cell (fixed width, aspect 1:1.3, remove button)
+private struct SellPhotoSliderCell: View {
+    static let aspectRatio: CGFloat = 1.0 / 1.3
     let image: UIImage
+    let cellWidth: CGFloat
     let onRemove: () -> Void
 
     var body: some View {
-        GeometryReader { geo in
-            let side = min(geo.size.width, geo.size.height)
-            ZStack(alignment: .topTrailing) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: side, height: side)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                Button(action: onRemove) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(.white)
-                        .background(Circle().fill(.black.opacity(0.5)))
-                }
-                .padding(6)
+        let cellHeight = cellWidth / Self.aspectRatio
+        ZStack(alignment: .topTrailing) {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Theme.Colors.secondaryBackground)
+                .frame(width: cellWidth, height: cellHeight)
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: cellWidth, height: cellHeight)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.white)
+                    .background(Circle().fill(.black.opacity(0.5)))
             }
-            .frame(width: side, height: side, alignment: .topLeading)
+            .buttonStyle(.plain)
+            .padding(6)
         }
-        .aspectRatio(1, contentMode: .fit)
+        .frame(width: cellWidth, height: cellHeight)
     }
 }
 
-// MARK: - Sell add-photo cell (square, + and label)
-private struct SellAddPhotoCell: View {
+// MARK: - Sell add-photo slider cell (same width & aspect as thumbnails)
+private struct SellAddPhotoSliderCell: View {
+    let cellWidth: CGFloat
     let action: () -> Void
 
     var body: some View {
+        let cellHeight = cellWidth / SellPhotoSliderCell.aspectRatio
         Button(action: action) {
             RoundedRectangle(cornerRadius: 10)
                 .fill(Theme.Colors.secondaryBackground)
@@ -272,7 +283,7 @@ private struct SellAddPhotoCell: View {
                 )
         }
         .buttonStyle(HapticTapButtonStyle())
-        .aspectRatio(1, contentMode: .fit)
+        .frame(width: cellWidth, height: cellHeight)
     }
 }
 

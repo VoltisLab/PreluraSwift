@@ -61,6 +61,7 @@ struct ItemDetailView: View {
             viewModel.syncLikeState(isLiked: item.isLiked, likeCount: item.likeCount)
             if let productId = item.productId {
                 viewModel.loadSimilarProducts(productId: productId, categoryId: nil)
+                viewModel.recordRecentlyViewed(productId: productId)
             }
             viewModel.loadMemberItems(username: item.seller.username, excludeProductId: item.id)
             if isCurrentUser, item.seller.avatarURL == nil || item.seller.avatarURL?.isEmpty == true {

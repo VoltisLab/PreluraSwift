@@ -52,6 +52,9 @@ struct DiscoverView: View {
                 viewModel.refresh()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .preluraRecentlyViewedDidUpdate)) { _ in
+            viewModel.refreshRecentlyViewedSection()
+        }
         .fullScreenCover(isPresented: $showSearchMembersResults) {
             SearchMembersView(query: searchText)
         }

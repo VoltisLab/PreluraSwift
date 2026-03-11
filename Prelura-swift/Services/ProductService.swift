@@ -582,7 +582,25 @@ extension ProductService {
             )
         }
     }
-    
+
+    /// Record product view for recently viewed. Call when user opens product detail. Matches backend mutation used by Flutter. Ignores errors so missing/different schema does not break the app.
+    func addToRecentlyViewed(productId: Int) async {
+        let mutation = """
+        mutation AddToRecentlyViewed($productId: Int!) {
+          addToRecentlyViewed(productId: $productId) {
+            success
+          }
+        }
+        """
+        struct Payload: Decodable { let addToRecentlyViewed: AddToRecentlyViewedPayload? }
+        struct AddToRecentlyViewedPayload: Decodable { let success: Bool? }
+        do {
+            _ = try await client.execute(query: mutation, variables: ["productId": productId], responseType: Payload.self)
+        } catch {
+            // Backend may use different mutation name or record view via product(id:) query; ignore so UI is unaffected
+        }
+    }
+
     func getSimilarProducts(productId: String, categoryId: Int? = nil, pageNumber: Int = 1, pageCount: Int = 20) async throws -> [Item] {
         let query = """
         query SimilarProducts($productId: Int, $categoryId: Int, $pageNumber: Int, $pageCount: Int) {
