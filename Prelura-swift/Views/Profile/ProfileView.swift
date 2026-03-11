@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import Shimmer
 
 // MARK: - Profile sort
 enum ProfileSortOption: String, CaseIterable {
@@ -62,7 +63,10 @@ struct ProfileView: View {
                             if let bio = viewModel.user?.bio {
                                 bioSection(bio)
                             }
-                            
+                            // Location (below bio, with grey icon)
+                            if let location = viewModel.user?.location, !location.isEmpty {
+                                profileLocationRow(location)
+                            }
                             // When vacation mode is on, hide products and show holiday message (matches Flutter)
                             if viewModel.user?.isVacationMode == true {
                                 vacationModeSection
@@ -153,6 +157,18 @@ struct ProfileView: View {
 
     private static let profilePhotoSize: CGFloat = 88
 
+    /// Placeholder when no photo or load failed (circle + person icon).
+    private var profilePhotoPlaceholder: some View {
+        Circle()
+            .fill(Theme.primaryColor)
+            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+            .overlay(
+                Image(systemName: "person.fill")
+                    .font(.system(size: 44))
+                    .foregroundColor(.white)
+            )
+    }
+
     // MARK: - Profile Section
     private var profileSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -166,31 +182,30 @@ struct ProfileView: View {
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
                                 .clipShape(Circle())
-                        } else if let user = viewModel.user, let avatarURL = user.avatarURL, let url = URL(string: avatarURL) {
-                            AsyncImage(url: url) { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            } placeholder: {
-                                Circle()
-                                    .fill(Theme.primaryColor)
-                                    .overlay(
-                                        Image(systemName: "person.fill")
-                                            .font(.system(size: 44))
-                                            .foregroundColor(.white)
-                                    )
+                        } else if let user = viewModel.user, let avatarURL = user.avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .empty:
+                                    Circle()
+                                        .fill(Theme.Colors.secondaryBackground)
+                                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                                        .shimmering()
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                                        .clipShape(Circle())
+                                case .failure:
+                                    profilePhotoPlaceholder
+                                @unknown default:
+                                    profilePhotoPlaceholder
+                                }
                             }
                             .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
                             .clipShape(Circle())
                         } else {
-                            Circle()
-                                .fill(Theme.primaryColor)
-                                .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                                .overlay(
-                                    Image(systemName: "person.fill")
-                                        .font(.system(size: 44))
-                                        .foregroundColor(.white)
-                                )
+                            profilePhotoPlaceholder
                         }
                     }
                 }
@@ -232,7 +247,7 @@ struct ProfileView: View {
                 Spacer(minLength: Theme.Spacing.xl)
             }
 
-            // Row 2: Stars (tappable → Reviews) and location below
+            // Row 2: Stars (tappable → Reviews) only; location is shown below bio
             VStack(alignment: .leading, spacing: 2) {
                 if let u = viewModel.user {
                     NavigationLink(value: AppRoute.reviews(username: u.username, rating: u.rating)) {
@@ -264,16 +279,12 @@ struct ProfileView: View {
                             .fixedSize(horizontal: true, vertical: true)
                     }
                 }
-                if let location = viewModel.user?.location {
-                    Text(location)
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.md)
+        .padding(.top, Theme.Spacing.md)
+        .padding(.bottom, Theme.Spacing.xs)
     }
 
     /// Stats row next to avatar — compact fonts so we don't increase effective screen width.
@@ -304,7 +315,23 @@ struct ProfileView: View {
             .foregroundColor(Theme.Colors.primaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.top, Theme.Spacing.xs)
+            .padding(.bottom, Theme.Spacing.sm)
+    }
+
+    /// Location row: grey location icon + text, shown below bio.
+    private func profileLocationRow(_ location: String) -> some View {
+        HStack(alignment: .center, spacing: 6) {
+            Image(systemName: "location.fill")
+                .font(.system(size: 12))
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text(location)
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.secondaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.bottom, Theme.Spacing.sm)
     }
 
     /// Shown when vacation mode is on: products and filters are hidden (matches Flutter HolidayModeWidget).

@@ -46,9 +46,11 @@ struct UserProfileView: View {
                 } else {
                     VStack(spacing: 0) {
                         profileHeaderSection
-                        profileLocationSection
                         if let bio = viewModel.user.bio, !bio.isEmpty {
                             bioSection(bio)
+                        }
+                        if let location = viewModel.user.location, !location.isEmpty {
+                            profileLocationRow(location)
                         }
                         if viewModel.user.isVacationMode {
                             vacationModeSection(isLoggedInUser: false)
@@ -81,33 +83,32 @@ struct UserProfileView: View {
     private var profileHeaderSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack(alignment: .center, spacing: 0) {
-                AsyncImage(url: URL(string: viewModel.user.avatarURL ?? "")) { phase in
-                    switch phase {
-                    case .empty:
-                        Circle()
-                            .fill(Theme.Colors.secondaryBackground)
-                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                            .shimmering()
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                            .clipShape(Circle())
-                    case .failure:
-                        Circle()
-                            .fill(Theme.primaryColor)
-                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                            .overlay(
-                                Text(String(viewModel.user.username.prefix(1)).uppercased())
-                                    .font(.system(size: 28, weight: .semibold))
-                                    .foregroundColor(.white)
-                            )
-                    @unknown default:
-                        EmptyView()
+                Group {
+                    if let urlString = viewModel.user.avatarURL, !urlString.isEmpty, let url = URL(string: urlString) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .empty:
+                                Circle()
+                                    .fill(Theme.Colors.secondaryBackground)
+                                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                                    .shimmering()
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                                    .clipShape(Circle())
+                            case .failure:
+                                profilePhotoPlaceholder
+                            @unknown default:
+                                profilePhotoPlaceholder
+                            }
+                        }
+                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                    } else {
+                        profilePhotoPlaceholder
                     }
                 }
-                .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
 
                 Spacer(minLength: Theme.Spacing.xl)
 
@@ -152,17 +153,31 @@ struct UserProfileView: View {
         .overlay(ContentDivider(), alignment: .bottom)
     }
 
-    private var profileLocationSection: some View {
-        Group {
-            if let location = viewModel.user.location, !location.isEmpty {
-                Text(location)
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.bottom, Theme.Spacing.md)
-            }
+    /// Placeholder when no photo or load failed (matches profile placeholder: circle + initial).
+    private var profilePhotoPlaceholder: some View {
+        Circle()
+            .fill(Theme.primaryColor)
+            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+            .overlay(
+                Text(String(viewModel.user.username.prefix(1)).uppercased())
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundColor(.white)
+            )
+    }
+
+    /// Location row: grey location icon + text, shown below bio.
+    private func profileLocationRow(_ location: String) -> some View {
+        HStack(alignment: .center, spacing: 6) {
+            Image(systemName: "location.fill")
+                .font(.system(size: 12))
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text(location)
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.secondaryText)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.bottom, Theme.Spacing.sm)
     }
 
     private func bioSection(_ bio: String) -> some View {
@@ -171,7 +186,8 @@ struct UserProfileView: View {
             .foregroundColor(Theme.Colors.primaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.top, Theme.Spacing.xs)
+            .padding(.bottom, Theme.Spacing.sm)
     }
 
     /// When the profile user has vacation mode on, show message and hide products (matches Flutter).

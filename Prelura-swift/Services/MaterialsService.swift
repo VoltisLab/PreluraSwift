@@ -43,4 +43,12 @@ final class MaterialsService {
         )
         return body.materials ?? []
     }
+
+    /// Resolve material name to backend material id (for CreateProduct). Fetches one page and finds first match by name.
+    func getMaterialId(byName name: String) async throws -> Int? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let list = try await fetchMaterials(pageCount: 100, search: trimmed)
+        return list.first { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == trimmed.lowercased() }?.id
+    }
 }

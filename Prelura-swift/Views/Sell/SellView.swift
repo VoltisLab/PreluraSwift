@@ -4,6 +4,7 @@ import PhotosUI
 struct SellView: View {
     @Binding var selectedTab: Int
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var authService: AuthService
     @StateObject private var viewModel = SellViewModel()
     @State private var selectedImages: [UIImage] = []
     @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -41,6 +42,7 @@ struct SellView: View {
             && parcelSize != nil
     }
 
+
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
@@ -68,23 +70,45 @@ struct SellView: View {
                 PrimaryGlassButton(
                     L10n.string("Upload"),
                     isEnabled: canUpload,
+                    isLoading: viewModel.isSubmitting,
                     action: {
                         viewModel.submitListing(
+                            authToken: authService.authToken,
                             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                             description: description.trimmingCharacters(in: .whitespacesAndNewlines),
                             price: price ?? 0.0,
                             brand: brand ?? "",
                             condition: condition ?? "",
-                            size: "",
+                            size: measurements ?? "",
                             categoryId: category?.id,
                             categoryName: category?.name,
-                            images: selectedImages
+                            images: selectedImages,
+                            discountPrice: discountPrice,
+                            parcelSize: parcelSize,
+                            colours: colours,
+                            measurements: measurements,
+                            material: material,
+                            styles: styles
                         )
                     }
                 )
             }
         }
         .navigationTitle(L10n.string("Sell an item"))
+        .onChange(of: viewModel.submissionSuccess) { _, success in
+            if success {
+                HapticManager.success()
+                selectedTab = 0
+            }
+        }
+        .alert(L10n.string("Upload failed"), isPresented: Binding(
+            get: { viewModel.submissionError != nil },
+            set: { if !$0 { viewModel.submissionError = nil } }
+        )) {
+            Button(L10n.string("OK")) { viewModel.submissionError = nil }
+        } message: {
+            if let err = viewModel.submissionError { Text(err) }
+        }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             .toolbar {
@@ -1406,63 +1430,134 @@ struct PriceInputView: View {
     }
 }
 
-// Compact card for similar-item in price screen (feed-style, no like button)
+// Same product format as feed (HomeItemCard): seller above, image only, then brand/title/condition/price below. No price on image, no like button.
 private struct PriceSimilarItemCard: View {
     let item: Item
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            if let avatarURL = item.seller.avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } else {
-                        Circle().fill(Theme.Colors.secondaryBackground)
+            // Seller row (avatar + username) above image — matches feed
+            HStack(spacing: Theme.Spacing.xs) {
+                if let avatarURL = item.seller.avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        default:
+                            Circle()
+                                .fill(Theme.primaryColor)
+                                .overlay(
+                                    Text(String((item.seller.username.isEmpty ? "U" : item.seller.username).prefix(1)).uppercased())
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(.white)
+                                )
+                        }
                     }
+                    .frame(width: 20, height: 20)
+                    .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(Theme.primaryColor)
+                        .frame(width: 20, height: 20)
+                        .overlay(
+                            Text(String((item.seller.username.isEmpty ? "U" : item.seller.username).prefix(1)).uppercased())
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white)
+                        )
                 }
-                .frame(width: 16, height: 16)
-                .clipShape(Circle())
+                Text(item.seller.username.isEmpty ? "User" : item.seller.username)
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .lineLimit(1)
             }
-            Text(item.seller.username.isEmpty ? "User" : item.seller.username)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(Theme.Colors.secondaryText)
-                .lineLimit(1)
+            .padding(.horizontal, Theme.Spacing.xs)
+            .padding(.bottom, Theme.Spacing.xs * 1.5)
+
+            // Image only (no price overlay) — matches feed
             GeometryReader { geo in
                 let w = geo.size.width
                 let h = w * 1.3
-                ZStack(alignment: .bottomLeading) {
+                ZStack {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Theme.primaryColor.opacity(0.15))
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Theme.primaryColor.opacity(0.3),
+                                    Theme.primaryColor.opacity(0.1)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                         .frame(width: w, height: h)
                     if let first = item.imageURLs.first, let imageUrl = URL(string: first) {
                         AsyncImage(url: imageUrl) { phase in
-                            if case .success(let img) = phase {
+                            switch phase {
+                            case .success(let img):
                                 img.resizable().aspectRatio(contentMode: .fill)
-                            } else {
-                                Color.clear
+                            case .empty:
+                                ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                                    .frame(width: w, height: h)
+                            default:
+                                Image(systemName: "photo")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                    .frame(width: w, height: h)
                             }
                         }
                         .frame(width: w, height: h)
                         .clipped()
                         .cornerRadius(8)
+                    } else {
+                        Image(systemName: "photo")
+                            .font(.system(size: 40))
+                            .foregroundColor(Theme.primaryColor.opacity(0.5))
+                            .frame(width: w, height: h)
                     }
-                    Text(item.formattedPrice)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.white)
-                        .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 0)
-                        .padding(6)
                 }
                 .frame(width: w, height: h)
             }
             .aspectRatio(1.0 / 1.3, contentMode: .fit)
-            Text(item.title)
-                .font(Theme.Typography.caption)
-                .foregroundColor(Theme.Colors.primaryText)
-                .lineLimit(2)
+
+            // Product details below image — matches feed (brand, title, condition, price)
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                if let brand = item.brand {
+                    Text(brand)
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.primaryColor)
+                        .padding(.top, Theme.Spacing.sm)
+                }
+                Text(item.title)
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .lineLimit(1)
+                Text(item.formattedCondition)
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                HStack(spacing: Theme.Spacing.xs) {
+                    if let originalPrice = item.originalPrice {
+                        Text(item.formattedOriginalPrice)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .strikethrough()
+                    }
+                    Text(item.formattedPrice)
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.Colors.primaryText)
+                    if let discount = item.discountPercentage {
+                        Text("\(discount)% Off")
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, Theme.Spacing.xs)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.red))
+                    }
+                }
+            }
         }
     }
 }
 
-// MARK: - Discount Price Input View
+// MARK: - Discount Price Input View (same UI as Price screen: scroll, single field, tip, Done)
 struct DiscountPriceInputView: View {
     @Binding var price: Double?
     @Binding var discountPrice: Double?
@@ -1470,68 +1565,75 @@ struct DiscountPriceInputView: View {
     @State private var discountPriceText: String = ""
     @FocusState private var isFocused: Bool
     
-    var discountPercent: Int {
+    private var discountPercent: Int {
         guard let price = price, let discountPrice = discountPrice, price > 0 else { return 0 }
         return Int(((price - discountPrice) / price) * 100)
     }
     
     var body: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            if let price = price, price > 0 {
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Original Price: £\(String(format: "%.0f", price))")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    
-                    HStack {
-                        Text("£")
-                            .font(Theme.Typography.title)
-                            .foregroundColor(Theme.Colors.primaryText)
-                        
-                        TextField("0", text: $discountPriceText)
-                            .font(Theme.Typography.title)
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .keyboardType(.decimalPad)
-                            .focused($isFocused)
-                    }
-                    .padding(Theme.Spacing.md)
-                    .background(Theme.Colors.secondaryBackground)
-                    .cornerRadius(30)
-                    
-                    if discountPercent > 0 {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                // Discount price field — same styling as Price screen (rounded container)
+                HStack(spacing: Theme.Spacing.sm) {
+                    Text("£")
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
+                    TextField(L10n.string("0"), text: $discountPriceText)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .keyboardType(.decimalPad)
+                        .focused($isFocused)
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
+                .background(Theme.Colors.secondaryBackground)
+                .cornerRadius(30)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.sm)
+
+                // Tip / state message
+                if let p = price, p > 0 {
+                    if let discount = Double(discountPriceText.replacingOccurrences(of: ",", with: ".")), discount > 0, discountPercent > 0 {
                         Text(String(format: L10n.string("Discount: %d%%"), discountPercent))
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.primaryColor)
+                            .padding(.horizontal, Theme.Spacing.md)
+                    } else {
+                        Text(L10n.string("Optional. Enter the discounted price; the discount % is calculated from the main price."))
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .padding(.horizontal, Theme.Spacing.md)
                     }
+                } else {
+                    Text(L10n.string("Please set the price first"))
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .padding(.horizontal, Theme.Spacing.md)
                 }
-                .padding(Theme.Spacing.md)
-            } else {
-                Text(L10n.string("Please set the price first"))
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .padding(Theme.Spacing.md)
             }
-            
-            Spacer()
+            .padding(.bottom, Theme.Spacing.xxl)
         }
+        .scrollDismissesKeyboard(.immediately)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Discount Price"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .onAppear {
-            if let discountPrice = discountPrice {
-                discountPriceText = String(format: "%.0f", discountPrice)
-            }
-            if price != nil {
-                isFocused = true
-            }
-        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Done") {
-                    discountPrice = Double(discountPriceText)
+                Button(L10n.string("Done")) {
+                    let parsed = Double(discountPriceText.replacingOccurrences(of: ",", with: "."))
+                    discountPrice = parsed
                     presentationMode.wrappedValue.dismiss()
                 }
+                .foregroundColor(Theme.primaryColor)
+            }
+        }
+        .onAppear {
+            if let d = discountPrice, d > 0 {
+                discountPriceText = String(format: "%.0f", d)
+            }
+            if price != nil && (price ?? 0) > 0 {
+                isFocused = true
             }
         }
     }

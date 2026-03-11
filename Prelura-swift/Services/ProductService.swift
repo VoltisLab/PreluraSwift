@@ -272,7 +272,156 @@ class ProductService: ObservableObject {
         return (names, response.brandsTotalNumber)
     }
 
-    /// Favourites: fetch liked products. Matches Flutter getMyFavouriteProduct (query likedProducts).
+    /// Resolve brand name to backend brand id (for CreateProduct). Fetches one page of brands and finds first match by name.
+    func getBrandId(byName name: String) async throws -> Int? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        struct BrandsResponse: Decodable {
+            let brands: [BrandRow]?
+        }
+        struct BrandRow: Decodable {
+            let id: Int?
+            let name: String?
+        }
+        let query = """
+        query Brands($search: String, $pageCount: Int, $pageNumber: Int) {
+          brands(search: $search, pageCount: $pageCount, pageNumber: $pageNumber) {
+            id
+            name
+          }
+        }
+        """
+        let response: BrandsResponse = try await client.execute(
+            query: query,
+            variables: ["search": trimmed, "pageCount": 50, "pageNumber": 1],
+            responseType: BrandsResponse.self
+        )
+        let match = (response.brands ?? []).first { ($0.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == trimmed.lowercased() }
+        return match?.id
+    }
+
+    /// Create a product (listing). Upload images first via FileUploadService.uploadProductImages, then call this with the returned imageUrl list.
+    /// Matches Flutter CreateProduct mutation and Variables$Mutation$CreateProduct.
+    func createProduct(
+        name: String,
+        description: String,
+        price: Double,
+        imageUrl: [(url: String, thumbnail: String)],
+        categoryId: Int,
+        condition: String? = nil,
+        parcelSize: String? = nil,
+        discount: Double? = nil,
+        color: [String]? = nil,
+        brandId: Int? = nil,
+        customBrand: String? = nil,
+        materialIds: [Int]? = nil,
+        style: String? = nil,
+        styles: [String]? = nil,
+        sizeId: Int? = nil,
+        status: String = "ACTIVE"
+    ) async throws -> Int {
+        let mutation = """
+        mutation CreateProduct(
+          $category: Int!
+          $condition: ConditionEnum
+          $description: String!
+          $imageUrl: [ImagesInputType]!
+          $price: Float!
+          $size: Int
+          $name: String!
+          $parcelSize: ParcelSizeEnum
+          $discount: Float
+          $color: [String]
+          $brand: Int
+          $materials: [Int]
+          $style: StyleEnum
+          $styles: [StyleEnum]
+          $customBrand: String
+          $isFeatured: Boolean
+          $status: ProductStatusEnum
+        ) {
+          createProduct(
+            category: $category
+            condition: $condition
+            description: $description
+            imagesUrl: $imageUrl
+            price: $price
+            size: $size
+            name: $name
+            parcelSize: $parcelSize
+            discount: $discount
+            color: $color
+            brand: $brand
+            materials: $materials
+            style: $style
+            styles: $styles
+            customBrand: $customBrand
+            isFeatured: $isFeatured
+            status: $status
+          ) {
+            success
+            message
+            product {
+              id
+            }
+          }
+        }
+        """
+        var variables: [String: Any] = [
+            "category": categoryId,
+            "description": description,
+            "imageUrl": imageUrl.map { ["url": $0.url, "thumbnail": $0.thumbnail] },
+            "price": price,
+            "name": name,
+            "status": status
+        ]
+        if let c = condition, !c.isEmpty { variables["condition"] = c }
+        if let ps = parcelSize, !ps.isEmpty { variables["parcelSize"] = ps }
+        if let d = discount, d > 0 { variables["discount"] = d }
+        if let col = color, !col.isEmpty { variables["color"] = col }
+        if let bid = brandId { variables["brand"] = bid }
+        if let cb = customBrand, !cb.isEmpty { variables["customBrand"] = cb }
+        if let mat = materialIds, !mat.isEmpty { variables["materials"] = mat }
+        if let s = style, !s.isEmpty { variables["style"] = s }
+        if let st = styles, !st.isEmpty { variables["styles"] = st }
+        if let sid = sizeId { variables["size"] = sid }
+
+        struct CreateProductResponse: Decodable {
+            let createProduct: CreateProductPayload?
+        }
+        struct CreateProductPayload: Decodable {
+            let success: Bool?
+            let message: String?
+            let product: ProductIdPayload?
+        }
+        struct ProductIdPayload: Decodable {
+            let id: AnyCodable?
+        }
+
+        let response: CreateProductResponse = try await client.execute(
+            query: mutation,
+            variables: variables,
+            operationName: "CreateProduct",
+            responseType: CreateProductResponse.self
+        )
+        guard let payload = response.createProduct, payload.success == true else {
+            let msg = response.createProduct?.message ?? "Create product failed"
+            throw NSError(domain: "ProductService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+        guard let product = payload.product else {
+            throw NSError(domain: "ProductService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No product id returned"])
+        }
+        let idVal: Int
+        if let v = product.id?.value as? Int {
+            idVal = v
+        } else if let s = product.id?.value as? String, let v = Int(s) {
+            idVal = v
+        } else {
+            throw NSError(domain: "ProductService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No product id returned"])
+        }
+        return idVal
+    }
+
     func getLikedProducts(pageNumber: Int = 1, pageCount: Int = 50) async throws -> (items: [Item], totalNumber: Int) {
         let query = """
         query LikedProducts($pageCount: Int, $pageNumber: Int) {
