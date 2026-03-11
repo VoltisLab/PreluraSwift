@@ -81,7 +81,7 @@ class ProfileViewModel: ObservableObject {
         } catch {
             await MainActor.run {
                 self.isLoading = false
-                self.errorMessage = error.localizedDescription
+                self.errorMessage = L10n.userFacingError(error)
                 print("❌ Profile load error: \(error.localizedDescription)")
                 print("❌ Error details: \(error)")
                 if let graphQLError = error as? GraphQLError {
@@ -111,7 +111,7 @@ class ProfileViewModel: ObservableObject {
                     userItems = userItems.replacingItem(productId: productId, with: item.with(likeCount: likeCount, isLiked: isLiked))
                 }
             } catch {
-                await MainActor.run { errorMessage = error.localizedDescription }
+                await MainActor.run { errorMessage = L10n.userFacingError(error) }
             }
         }
     }
@@ -128,32 +128,12 @@ class ProfileViewModel: ObservableObject {
         }
     }
     
-    private static let localProfileImageFilename = "ProfilePhoto.jpg"
-    
-    /// Saves profile image to app Documents so it persists across launches. Call after user picks a new photo.
-    func saveProfileImageLocally(_ image: UIImage) {
-        guard let data = image.jpegData(compressionQuality: 0.85) else { return }
-        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            .appendingPathComponent(Self.localProfileImageFilename)
-        try? data.write(to: url)
-        UserDefaults.standard.set(url.path, forKey: "LOCAL_PROFILE_IMAGE_PATH")
-    }
-    
-    /// Loads the locally saved profile image if any (used so profile photo persists).
-    func loadLocalProfileImage() -> UIImage? {
-        guard let path = UserDefaults.standard.string(forKey: "LOCAL_PROFILE_IMAGE_PATH"),
-              FileManager.default.fileExists(atPath: path),
-              let image = UIImage(contentsOfFile: path) else { return nil }
-        return image
-    }
-    
-    /// Uploads profile photo to backend (GraphQL UploadFile + updateProfile), then saves locally and refreshes user. Matches Flutter updateProfilePicture flow.
+    /// Uploads profile photo to backend (GraphQL UploadFile + updateProfile) and refreshes user. No local storage — avatar is always from backend.
     func uploadProfileImage(_ image: UIImage) {
         guard let jpegData = image.jpegData(compressionQuality: 0.85) else {
             profilePhotoUploadError = "Could not prepare image"
             return
         }
-        saveProfileImageLocally(image)
         profilePhotoUploadError = nil
         isUploadingProfilePhoto = true
         Task {
@@ -163,7 +143,7 @@ class ProfileViewModel: ObservableObject {
                 await loadUserData()
             } catch {
                 await MainActor.run {
-                    profilePhotoUploadError = error.localizedDescription
+                    profilePhotoUploadError = L10n.userFacingError(error)
                 }
             }
             await MainActor.run {

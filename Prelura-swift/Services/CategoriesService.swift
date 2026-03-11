@@ -37,4 +37,25 @@ final class CategoriesService {
         )
         return body.categories ?? []
     }
+
+    /// Recursively fetch all categories and return leaf categories with full path (for search).
+    func fetchAllCategoriesFlattened() async throws -> [CategoryPathEntry] {
+        var result: [CategoryPathEntry] = []
+        let root = try await fetchCategories(parentId: nil)
+        for cat in root {
+            try await collectLeaves(category: cat, pathNames: [cat.name], pathIds: [cat.id], into: &result)
+        }
+        return result
+    }
+
+    private func collectLeaves(category: APICategory, pathNames: [String], pathIds: [String], into result: inout [CategoryPathEntry]) async throws {
+        if category.hasChildren != true {
+            result.append(CategoryPathEntry(id: category.id, name: category.name, pathNames: pathNames, pathIds: pathIds))
+            return
+        }
+        let children = try await fetchCategories(parentId: Int(category.id))
+        for child in children {
+            try await collectLeaves(category: child, pathNames: pathNames + [child.name], pathIds: pathIds + [child.id], into: &result)
+        }
+    }
 }

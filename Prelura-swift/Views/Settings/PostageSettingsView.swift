@@ -12,19 +12,22 @@ struct PostageSettingsView: View {
             Section(header: Text(L10n.string("Royal Mail"))) {
                 Toggle("Enable Royal Mail", isOn: $royalMailEnabled)
                     .tint(Theme.primaryColor)
-                TextField("Price (£)", text: $royalMailPrice)
+                SettingsTextField(placeholder: "Price (£)", text: $royalMailPrice)
                     .keyboardType(.decimalPad)
                     .disabled(!royalMailEnabled)
             }
+            .listRowBackground(Theme.Colors.background)
             Section(header: Text(L10n.string("DPD"))) {
                 Toggle("Enable DPD", isOn: $dpdEnabled)
                     .tint(Theme.primaryColor)
-                TextField("Price (£)", text: $dpdPrice)
+                SettingsTextField(placeholder: "Price (£)", text: $dpdPrice)
                     .keyboardType(.decimalPad)
                     .disabled(!dpdEnabled)
             }
+            .listRowBackground(Theme.Colors.background)
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Postage"))
         .navigationBarTitleDisplayMode(.inline)

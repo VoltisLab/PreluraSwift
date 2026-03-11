@@ -32,9 +32,8 @@ struct FeedSearchField: View {
             if let onAITap = onAITap {
                 Button(action: onAITap) {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: 16, weight: .medium))
                         .foregroundColor(Theme.primaryColor)
-                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(HapticTapButtonStyle())
             }

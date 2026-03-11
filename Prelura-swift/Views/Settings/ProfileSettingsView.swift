@@ -11,14 +11,14 @@ struct ProfileSettingsView: View {
     var body: some View {
         Form {
             Section {
-                TextField("Location", text: $location)
-                TextField("Name", text: $name)
-                TextField("Username", text: $username)
-                TextField("Email", text: $email)
+                SettingsTextField(placeholder: "Location", text: $location)
+                SettingsTextField(placeholder: "Name", text: $name)
+                SettingsTextField(placeholder: "Username", text: $username)
+                SettingsTextField(placeholder: "Email", text: $email)
                     .keyboardType(.emailAddress)
             }
             Section(header: Text(L10n.string("Bio"))) {
-                TextEditor(text: $bio)
+                SettingsTextEditor(placeholder: "Bio", text: $bio)
                     .frame(minHeight: 80)
             }
             Section {

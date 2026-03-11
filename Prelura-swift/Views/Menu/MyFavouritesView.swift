@@ -124,7 +124,7 @@ struct MyFavouritesView: View {
             }
             totalNumber = total
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 

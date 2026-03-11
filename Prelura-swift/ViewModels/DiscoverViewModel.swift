@@ -153,7 +153,7 @@ class DiscoverViewModel: ObservableObject {
                 self.isLoading = false
             } catch {
                 self.isLoading = false
-                self.errorMessage = error.localizedDescription
+                self.errorMessage = L10n.userFacingError(error)
                 print("❌ Discover load error: \(error.localizedDescription)")
             }
         }
@@ -184,7 +184,7 @@ class DiscoverViewModel: ObservableObject {
                     onSaleItems = onSaleItems.replacingItem(productId: productId, with: updated)
                 }
             } catch {
-                await MainActor.run { errorMessage = error.localizedDescription }
+                await MainActor.run { errorMessage = L10n.userFacingError(error) }
             }
         }
     }
@@ -293,7 +293,7 @@ class DiscoverViewModel: ObservableObject {
         } catch {
             await MainActor.run {
                 self.isLoading = false
-                self.errorMessage = error.localizedDescription
+                self.errorMessage = L10n.userFacingError(error)
             }
         }
     }

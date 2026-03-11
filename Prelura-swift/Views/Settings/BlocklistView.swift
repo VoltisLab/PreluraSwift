@@ -80,8 +80,10 @@ struct BlocklistView: View {
                         }
                         .padding(.vertical, Theme.Spacing.sm)
                     }
+                    .listRowBackground(Theme.Colors.background)
                 }
                 .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
             }
         }
         .background(Theme.Colors.background)

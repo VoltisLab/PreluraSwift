@@ -11,6 +11,7 @@ struct DebugMenuView: View {
             } header: {
                 Text("Info")
             }
+            .listRowBackground(Theme.Colors.background)
             Section {
                 NavigationLink(destination: ProfileCardsComponentsView()) {
                     HStack(spacing: Theme.Spacing.md) {
@@ -20,6 +21,7 @@ struct DebugMenuView: View {
                         Text("Profile cards, and components")
                     }
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: GlassMaterialsView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "drop.fill")
@@ -28,6 +30,7 @@ struct DebugMenuView: View {
                         Text("Glass materials")
                     }
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: GlassEffectTransitionView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "arrow.triangle.2.circlepath")
@@ -36,6 +39,7 @@ struct DebugMenuView: View {
                         Text("Glass effect transition")
                     }
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: BlackScreensMenuView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "square.fill")
@@ -44,9 +48,12 @@ struct DebugMenuView: View {
                         Text("Black screens")
                     }
                 }
+                .listRowBackground(Theme.Colors.background)
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Theme.Colors.background)
         .navigationTitle("Debug")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)

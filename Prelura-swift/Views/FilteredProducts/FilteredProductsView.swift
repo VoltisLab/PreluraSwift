@@ -184,6 +184,7 @@ struct FilteredProductsView: View {
                             }
                         }
                     }
+                    .listRowBackground(Theme.Colors.background)
                     .buttonStyle(HapticTapButtonStyle())
                 }
                 Button(role: .destructive, action: {
@@ -193,21 +194,26 @@ struct FilteredProductsView: View {
                     Text(L10n.string("Clear"))
                         .frame(maxWidth: .infinity)
                 }
+                .listRowBackground(Theme.Colors.background)
                 .buttonStyle(HapticTapButtonStyle())
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(L10n.string("Done")) {
-                        showSortSheet = false
+                    Button(action: { showSortSheet = false }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Theme.Colors.primaryText)
                     }
-                    .foregroundColor(Theme.primaryColor)
                 }
             }
         }
+        .presentationDetents([.height(300)])
+        .presentationDragIndicator(.visible)
     }
 
     private var filteredProductsFilterSheet: some View {
@@ -228,6 +234,7 @@ struct FilteredProductsView: View {
                                 }
                             }
                         }
+                        .listRowBackground(Theme.Colors.background)
                         .buttonStyle(HapticTapButtonStyle())
                     }
                 }
@@ -250,6 +257,7 @@ struct FilteredProductsView: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                         }
                     }
+                    .listRowBackground(Theme.Colors.background)
                     .buttonStyle(HapticTapButtonStyle())
                 }
                 Section {
@@ -262,32 +270,43 @@ struct FilteredProductsView: View {
                         Text(L10n.string("Clear"))
                             .frame(maxWidth: .infinity)
                     }
+                    .listRowBackground(Theme.Colors.background)
                     .buttonStyle(HapticTapButtonStyle())
                 }
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Filter"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(L10n.string("Done")) {
-                        showFilterSheet = false
+                    Button(action: { showFilterSheet = false }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Theme.Colors.primaryText)
                     }
-                    .foregroundColor(Theme.primaryColor)
                 }
             }
         }
+        .presentationDetents([.height(380)])
+        .presentationDragIndicator(.visible)
     }
 
     private var filteredProductsPriceSheet: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(L10n.string("Min. Price"), text: Binding(get: { viewModel.filterMinPrice }, set: { viewModel.filterMinPrice = $0 }))
-                        .keyboardType(.decimalPad)
-                    TextField(L10n.string("Max. Price"), text: Binding(get: { viewModel.filterMaxPrice }, set: { viewModel.filterMaxPrice = $0 }))
-                        .keyboardType(.decimalPad)
+                    SettingsTextField(
+                        placeholder: L10n.string("Min. Price"),
+                        text: Binding(get: { viewModel.filterMinPrice }, set: { viewModel.filterMinPrice = $0 })
+                    )
+                    .keyboardType(.decimalPad)
+                    SettingsTextField(
+                        placeholder: L10n.string("Max. Price"),
+                        text: Binding(get: { viewModel.filterMaxPrice }, set: { viewModel.filterMaxPrice = $0 })
+                    )
+                    .keyboardType(.decimalPad)
                 }
                 Section {
                     Button(L10n.string("Clear")) {

@@ -112,57 +112,73 @@ struct SettingsMenuView: View {
                 NavigationLink(destination: AccountSettingsView()) {
                     settingsRow(L10n.string("Account Settings"), icon: "person.crop.circle")
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: CurrencySettingsView()) {
                     settingsRow(L10n.string("Currency"), icon: "dollarsign.circle")
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: PrivacySettingsView()) {
                     settingsRow(L10n.string("Privacy"), icon: "hand.raised")
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: ShippingAddressView()) {
                     settingsRow(L10n.string("Shipping Address"), icon: "location")
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: AppearanceMenuView()) {
                     settingsRow(L10n.string("Appearance"), icon: "paintbrush")
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: LanguageMenuView()) {
                     settingsRow(L10n.string("Language"), icon: "globe")
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: ProfileSettingsView()) {
                     settingsRow(L10n.string("Profile details"), icon: "person.text.rectangle")
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: PaymentSettingsView()) {
                     settingsRow(L10n.string("Payments"), icon: "creditcard")
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: PostageSettingsView()) {
                     settingsRow(L10n.string("Postage"), icon: "shippingbox")
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: SecurityMenuView()) {
                     settingsRow(L10n.string("Security & Privacy"), icon: "lock.shield")
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: VerifyIdentityView()) {
                     settingsRow(L10n.string("Identity verification"), icon: "checkmark.shield")
                 }
+                .listRowBackground(Theme.Colors.background)
                 if isStaff {
                     NavigationLink(destination: AdminMenuView()) {
                         settingsRow(L10n.string("Admin Actions"), icon: "shield")
                     }
+                    .listRowBackground(Theme.Colors.background)
                 }
             }
             Section(L10n.string("Notifications")) {
                 NavigationLink(destination: NotificationSettingsView(title: L10n.string("Push notifications"))) {
                     settingsRow(L10n.string("Push notifications"), icon: "bell")
                 }
+                .listRowBackground(Theme.Colors.background)
                 NavigationLink(destination: NotificationSettingsView(title: L10n.string("Email notifications"))) {
                     settingsRow(L10n.string("Email notifications"), icon: "envelope")
                 }
+                .listRowBackground(Theme.Colors.background)
             }
             Section {
                 NavigationLink(destination: InviteFriendView()) {
                     settingsRow(L10n.string("Invite Friend"), icon: "person.badge.plus")
                 }
+                .listRowBackground(Theme.Colors.background)
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Settings"))
         .navigationBarTitleDisplayMode(.inline)
@@ -188,11 +204,14 @@ struct AboutPreluraMenuView: View {
             NavigationLink(destination: HowToUsePreluraView()) {
                 aboutRow(L10n.string("How to use Prelura"), icon: "book")
             }
+            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: LegalInformationView()) {
                 aboutRow(L10n.string("Legal Information"), icon: "doc.text")
             }
+            .listRowBackground(Theme.Colors.background)
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("About Prelura"))
         .navigationBarTitleDisplayMode(.inline)

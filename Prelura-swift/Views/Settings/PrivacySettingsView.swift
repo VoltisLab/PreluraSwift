@@ -8,12 +8,15 @@ struct PrivacySettingsView: View {
                 Label("Delete Account", systemImage: "trash")
                     .foregroundColor(Theme.Colors.primaryText)
             }
+            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: PauseAccountView()) {
                 Label("Pause Account", systemImage: "pause.circle")
                     .foregroundColor(Theme.Colors.primaryText)
             }
+            .listRowBackground(Theme.Colors.background)
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Privacy"))
         .navigationBarTitleDisplayMode(.inline)

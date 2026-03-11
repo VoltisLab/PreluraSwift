@@ -59,7 +59,7 @@ struct ItemNotAsDescribedHelpView: View {
                     .font(Theme.Typography.body)
                     .padding(Theme.Spacing.md)
                     .background(Theme.Colors.secondaryBackground)
-                    .cornerRadius(Theme.Glass.cornerRadius)
+                    .cornerRadius(30)
 
                 NavigationLink(destination: HelpChatView()) {
                     HStack {

@@ -44,7 +44,7 @@ class HomeViewModel: ObservableObject {
                     }
                 }
             } catch {
-                await MainActor.run { errorMessage = error.localizedDescription }
+                await MainActor.run { errorMessage = L10n.userFacingError(error) }
             }
         }
     }
@@ -74,7 +74,7 @@ class HomeViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.isLoading = false
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = L10n.userFacingError(error)
                     print("❌ Error loading products: \(error.localizedDescription)")
                 }
             }
@@ -154,7 +154,7 @@ class HomeViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.isLoading = false
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = L10n.userFacingError(error)
                 }
             }
         }
@@ -187,7 +187,7 @@ class HomeViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.isLoading = false
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = L10n.userFacingError(error)
                     print("❌ Error filtering by category '\(category)': \(error.localizedDescription)")
                 }
             }
@@ -225,7 +225,7 @@ class HomeViewModel: ObservableObject {
         } catch {
             await MainActor.run {
                 self.isLoading = false
-                self.errorMessage = error.localizedDescription
+                self.errorMessage = L10n.userFacingError(error)
             }
         }
     }

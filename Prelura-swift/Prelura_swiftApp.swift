@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// Storage key for appearance: "system" | "light" | "dark"
 let kAppearanceMode = "appearance_mode"
@@ -97,6 +98,16 @@ struct ContentView: View {
 // Root tab controller: TabView at root with custom tab bar for tap-to-refresh. Each tab has its own NavigationStack.
 struct MainTabView: View {
     @StateObject private var tabCoordinator = TabCoordinator()
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(kAppearanceMode) private var appearanceMode: String = "system"
+
+    private var isDark: Bool {
+        switch appearanceMode {
+        case "light": return false
+        case "dark": return true
+        default: return colorScheme == .dark
+        }
+    }
 
     var body: some View {
         TabView(selection: Binding(
@@ -127,13 +138,23 @@ struct MainTabView: View {
                 .tag(4)
         }
         .accentColor(Theme.primaryColor)
-        .onAppear {
-            let appearance = UITabBarAppearance()
+        .onAppear { applyTabBarAppearance() }
+        .onChange(of: appearanceMode) { _, _ in applyTabBarAppearance() }
+        .onChange(of: colorScheme) { _, _ in applyTabBarAppearance() }
+    }
+
+    private func applyTabBarAppearance() {
+        let appearance = UITabBarAppearance()
+        if isDark {
+            appearance.configureWithTransparentBackground()
+            appearance.backgroundColor = UIColor(red: 12/255, green: 12/255, blue: 12/255, alpha: 1) // #0C0C0C
+        } else {
             appearance.configureWithDefaultBackground()
-            UITabBar.appearance().standardAppearance = appearance
-            if #available(iOS 15.0, *) {
-                UITabBar.appearance().scrollEdgeAppearance = appearance
-            }
+            appearance.backgroundColor = UIColor.systemBackground
+        }
+        UITabBar.appearance().standardAppearance = appearance
+        if #available(iOS 15.0, *) {
+            UITabBar.appearance().scrollEdgeAppearance = appearance
         }
     }
 }

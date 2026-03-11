@@ -42,11 +42,7 @@ struct HomeView: View {
 
                 categoryFiltersSection
 
-                if viewModel.isLoading && viewModel.filteredItems.isEmpty {
-                    FeedShimmerView()
-                } else {
-                    productGridSection
-                }
+                productGridSection
             }
             }
             .scrollPosition(id: $scrollPosition, anchor: .top)
@@ -75,13 +71,22 @@ struct HomeView: View {
                     .frame(height: 26)
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink(destination: NotificationsListView()) {
-                    Image(systemName: "bell")
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
+                HStack(spacing: Theme.Spacing.sm) {
+                    NavigationLink(destination: MyFavouritesView()) {
+                        Image(systemName: "heart")
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
+                    NavigationLink(destination: NotificationsListView()) {
+                        Image(systemName: "bell")
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(HapticTapButtonStyle())
                 }
-                .buttonStyle(HapticTapButtonStyle())
             }
         }
         .refreshable {

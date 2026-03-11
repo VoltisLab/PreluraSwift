@@ -14,6 +14,8 @@ struct DiscoverSearchField: View {
     var outerPadding: Bool = true
     /// Top padding above the search field. Default nil uses Theme.Spacing.sm. Set to Theme.Spacing.xs (or 0) for a tighter layout under the header (e.g. Home).
     var topPadding: CGFloat? = nil
+    /// When set, uses this as the search field background instead of secondaryBackground (e.g. Theme.Colors.background to match the page).
+    var fieldBackground: Color? = nil
 
     private let cornerRadius: CGFloat = 30
 
@@ -47,7 +49,7 @@ struct DiscoverSearchField: View {
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
-        .background(Theme.Colors.secondaryBackground)
+        .background(fieldBackground ?? Theme.Colors.secondaryBackground)
         .cornerRadius(cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius)

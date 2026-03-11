@@ -50,6 +50,7 @@ struct NotificationsListView: View {
                         NavigationLink(destination: NotificationDestinationView(notification: notification)) {
                             NotificationRowView(notification: notification)
                         }
+                        .listRowBackground(Theme.Colors.background)
                         .buttonStyle(.plain)
                     }
                     if notifications.count < totalNumber {
@@ -59,9 +60,11 @@ struct NotificationsListView: View {
                             Spacer()
                         }
                         .onAppear { Task { await loadMore() } }
+                        .listRowBackground(Theme.Colors.background)
                     }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
         .background(Theme.Colors.background)
@@ -99,7 +102,7 @@ struct NotificationsListView: View {
                 }
             }
         } catch {
-            await MainActor.run { errorMessage = error.localizedDescription }
+            await MainActor.run { errorMessage = L10n.userFacingError(error) }
         }
     }
 
@@ -191,7 +194,7 @@ struct NotificationDestinationView: View {
                     isLoading = false
                 }
             } catch {
-                await MainActor.run { loadError = error.localizedDescription; isLoading = false }
+                await MainActor.run { loadError = L10n.userFacingError(error); isLoading = false }
             }
         case "UserProfile":
             guard let username = notification.sender?.username, !username.isEmpty else {
@@ -205,7 +208,7 @@ struct NotificationDestinationView: View {
                     isLoading = false
                 }
             } catch {
-                await MainActor.run { loadError = error.localizedDescription; isLoading = false }
+                await MainActor.run { loadError = L10n.userFacingError(error); isLoading = false }
             }
         case "Chat", "Offer", "Order":
             let convId = notification.meta?["conversation_id"] ?? ""

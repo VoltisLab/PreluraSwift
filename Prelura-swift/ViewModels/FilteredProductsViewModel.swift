@@ -80,7 +80,7 @@ class FilteredProductsViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.isLoading = false
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = L10n.userFacingError(error)
                 }
             }
         }
@@ -126,7 +126,7 @@ class FilteredProductsViewModel: ObservableObject {
         } catch {
             await MainActor.run {
                 self.isLoading = false
-                self.errorMessage = error.localizedDescription
+                self.errorMessage = L10n.userFacingError(error)
             }
         }
     }

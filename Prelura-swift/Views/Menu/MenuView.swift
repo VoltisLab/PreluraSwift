@@ -20,17 +20,21 @@ struct MenuView: View {
             NavigationLink(destination: DebugMenuView()) {
                 menuRow(L10n.string("Debug"), icon: "ladybug")
             }
+            .listRowBackground(Theme.Colors.background)
             if listingCount > 0 {
                 NavigationLink(destination: ShopValueView(listingCount: listingCount)) {
                     menuRow(L10n.string("Shop Value"), icon: "chart.bar")
                 }
+                .listRowBackground(Theme.Colors.background)
             }
             NavigationLink(destination: MyOrdersView()) {
                 menuRow(L10n.string("Orders"), icon: "bag")
             }
+            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: MyFavouritesView()) {
                 menuRow(L10n.string("Favourites"), icon: "heart")
             }
+            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: MultiBuyDiscountView()) {
                 HStack {
                     menuRow(L10n.string("Multi-buy discounts"), icon: "tag")
@@ -40,6 +44,7 @@ struct MenuView: View {
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
             }
+            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: VacationModeView(initialIsOn: displayedVacation)) {
                 HStack {
                     menuRow(L10n.string("Vacation Mode"), icon: "umbrella")
@@ -49,15 +54,19 @@ struct MenuView: View {
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
             }
+            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: InviteFriendView()) {
                 menuRow(L10n.string("Invite Friend"), icon: "person.badge.plus")
             }
+            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: HelpCentreView()) {
                 menuRow(L10n.string("Help Centre"), icon: "questionmark.circle")
             }
+            .listRowBackground(Theme.Colors.background)
             NavigationLink(destination: AboutPreluraMenuView()) {
                 menuRow(L10n.string("About Prelura"), icon: "info.circle")
             }
+            .listRowBackground(Theme.Colors.background)
             Button(role: .destructive, action: {
                 showLogoutConfirm = true
             }) {
@@ -70,6 +79,7 @@ struct MenuView: View {
                     Spacer()
                 }
             }
+            .listRowBackground(Theme.Colors.background)
             .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.destructive() }))
             Section {
                 EmptyView()
@@ -91,6 +101,8 @@ struct MenuView: View {
             Task { await refreshUserState() }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Menu"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

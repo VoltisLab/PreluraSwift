@@ -124,34 +124,16 @@ struct ReviewsView: View {
     private var filterSection: some View {
         HStack(spacing: Theme.Spacing.sm) {
             ForEach(ReviewFilter.allCases, id: \.self) { filter in
-                filterButton(filter)
+                PillTag(
+                    title: filter.rawValue,
+                    isSelected: selectedFilter == filter,
+                    accentWhenUnselected: true,
+                    action: { selectedFilter = filter }
+                )
             }
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
-    }
-
-    private func filterButton(_ filter: ReviewFilter) -> some View {
-        let isSelected = selectedFilter == filter
-        return Button(action: {
-            HapticManager.selection()
-            selectedFilter = filter
-        }) {
-            Text(filter.rawValue)
-                .font(Theme.Typography.subheadline)
-                .foregroundColor(Theme.Colors.primaryText)
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.sm)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(isSelected ? Theme.primaryColor.opacity(0.4) : Color.clear)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(isSelected ? Theme.primaryColor.opacity(0.4) : Theme.Colors.glassBorder, lineWidth: 1)
-                )
-        }
-        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
     }
 
     private func reviewCard(_ review: UserReview) -> some View {
@@ -230,7 +212,7 @@ struct ReviewsView: View {
             }
         } catch {
             await MainActor.run {
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
                 reviews = []
             }
         }

@@ -21,6 +21,7 @@ struct BlackScreensMenuView: View {
             } header: {
                 Text("Preview")
             }
+            .listRowBackground(Theme.Colors.background)
             Section {
                 ForEach(Self.colorCodes, id: \.self) { hex in
                     NavigationLink(destination: BlackScreenProfileView(hex: hex)) {
@@ -37,12 +38,15 @@ struct BlackScreensMenuView: View {
                                 .foregroundColor(Theme.Colors.primaryText)
                         }
                     }
+                    .listRowBackground(Theme.Colors.background)
                 }
             } header: {
                 Text("Colour codes")
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Theme.Colors.background)
         .navigationTitle("Black screens")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)

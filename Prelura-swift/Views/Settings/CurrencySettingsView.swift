@@ -30,6 +30,7 @@ struct CurrencySettingsView: View {
                         }
                     }
                 }
+                .listRowBackground(Theme.Colors.background)
                 .buttonStyle(.plain)
             }
             if saved {
@@ -39,6 +40,7 @@ struct CurrencySettingsView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Currency"))
         .navigationBarTitleDisplayMode(.inline)

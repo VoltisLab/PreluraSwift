@@ -591,7 +591,7 @@ struct FullScreenImageViewer: View {
     
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Theme.Colors.background.ignoresSafeArea()
             
             TabView(selection: $selectedIndex) {
                 ForEach(0..<imageURLs.count, id: \.self) { index in

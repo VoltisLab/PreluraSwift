@@ -18,7 +18,7 @@ struct ChatMessage: Identifiable {
 
 // MARK: - Out-of-scope copy
 
-private let botOutOfScopeMessage = "I don’t understand that. I can help you find items by colour, category, or style—try something like “red dress” or “blue shoes”."
+private let botOutOfScopeMessage = "I don't understand that. I can help you find items by colour, category, or style—try something like “red dress” or “blue shoes”."
 
 // MARK: - AI Chat View (conversational chatbot)
 
@@ -117,7 +117,11 @@ struct AIChatView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.sm)
                 .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(20)
+                .cornerRadius(30)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 30)
+                        .stroke(isInputFocused ? Theme.primaryColor : Color.clear, lineWidth: 2)
+                )
 
             Button(action: sendMessage) {
                 Image(systemName: "arrow.up.circle.fill")
@@ -153,27 +157,85 @@ struct AIChatView: View {
     }
 
     private func respondToUserMessage(_ raw: String) async {
+        if aiSearch.isGreetingOnly(raw) {
+            await MainActor.run {
+                messages.append(ChatMessage(isFromUser: false, text: "Hi! What are you looking for? Try something like a dress, jacket, or shoes.", items: []))
+            }
+            return
+        }
         let parsed = aiSearch.parse(query: raw)
         let inScope = isParsedInScope(parsed)
 
         if inScope {
             let categoryFilter = (parsed.categoryOverride == nil || parsed.categoryOverride == "All") ? nil : parsed.categoryOverride
             do {
-                let products = try await productService.getAllProducts(
+                // When user specified colour(s), fetch more candidates then filter by colour client-side so we show all matches (backend search often returns too few).
+                let colourSet = Set(parsed.appliedColourNames.map { $0.lowercased() })
+                let searchWithoutColour = parsed.searchText
+                    .split(separator: " ")
+                    .map(String.init)
+                    .filter { !colourSet.contains($0.lowercased()) }
+                    .joined(separator: " ")
+                let useBroadSearch = !parsed.appliedColourNames.isEmpty
+                let searchForApi = useBroadSearch ? (searchWithoutColour.isEmpty ? nil : String(searchWithoutColour)) : (parsed.searchText.isEmpty ? nil : parsed.searchText)
+                let fetchCount = useBroadSearch ? 50 : pageSize
+
+                var products = try await productService.getAllProducts(
                     pageNumber: 1,
-                    pageCount: pageSize,
-                    search: parsed.searchText.isEmpty ? nil : parsed.searchText,
-                    parentCategory: categoryFilter
+                    pageCount: fetchCount,
+                    search: searchForApi,
+                    parentCategory: categoryFilter,
+                    maxPrice: parsed.priceMax
                 )
-                let visible = products.excludingVacationModeSellers()
-                let replyText: String
-                if visible.isEmpty {
-                    replyText = L10n.string("I couldn’t find anything matching that. Try different colours or categories.")
-                } else if let hint = parsed.closestMatchHint {
-                    replyText = hint
-                } else {
-                    replyText = L10n.string("Here are some items that might work.")
+                var visible = products.excludingVacationModeSellers()
+                if useBroadSearch && !parsed.appliedColourNames.isEmpty {
+                    visible = visible.filter { item in
+                        item.colors.contains { c in
+                            parsed.appliedColourNames.contains { $0.caseInsensitiveCompare(c) == .orderedSame }
+                        }
+                    }
+                    // If no items match the colour, use backend search with full query (e.g. "black shirt") instead of showing unfiltered results
+                    if visible.isEmpty {
+                        let fullQueryProducts = try await productService.getAllProducts(
+                            pageNumber: 1,
+                            pageCount: pageSize,
+                            search: parsed.searchText.isEmpty ? nil : parsed.searchText,
+                            parentCategory: categoryFilter,
+                            maxPrice: parsed.priceMax
+                        )
+                        visible = fullQueryProducts.excludingVacationModeSellers()
+                    }
                 }
+                var replyText: String
+
+                if visible.isEmpty, !parsed.searchText.isEmpty, parsed.searchText.contains(" ") {
+                    let colourSet = Set(parsed.appliedColourNames.map { $0.lowercased() })
+                    let words = parsed.searchText.split(separator: " ").map(String.init)
+                    let fallbackTerm = words.last(where: { !colourSet.contains($0.lowercased()) })
+                        ?? words.last
+                        ?? parsed.searchText
+                    if aiSearch.isFallbackTermValid(fallbackTerm) {
+                        let fallbackProducts = try await productService.getAllProducts(
+                            pageNumber: 1,
+                            pageCount: pageSize,
+                            search: fallbackTerm,
+                            parentCategory: categoryFilter,
+                            maxPrice: parsed.priceMax
+                        )
+                        let fallbackVisible = fallbackProducts.excludingVacationModeSellers()
+                        if !fallbackVisible.isEmpty {
+                            visible = fallbackVisible
+                            replyText = aiSearch.replyForFallbackResults(fallbackTerm: fallbackTerm)
+                        } else {
+                            replyText = aiSearch.replyForNoResults()
+                        }
+                    } else {
+                        replyText = aiSearch.replyForNoResults()
+                    }
+                } else {
+                    replyText = aiSearch.replyForResults(parsed: parsed, hasItems: !visible.isEmpty, query: raw)
+                }
+
                 await MainActor.run {
                     messages.append(ChatMessage(isFromUser: false, text: replyText, items: visible))
                 }
@@ -193,6 +255,7 @@ struct AIChatView: View {
         if !parsed.searchText.trimmingCharacters(in: .whitespaces).isEmpty { return true }
         if let cat = parsed.categoryOverride, !cat.isEmpty, cat != "All" { return true }
         if !parsed.appliedColourNames.isEmpty { return true }
+        if parsed.priceMax != nil { return true }
         return false
     }
 }
@@ -217,32 +280,74 @@ struct ChatBubbleView: View {
                         RoundedRectangle(cornerRadius: 18)
                             .fill(message.isFromUser ? Theme.primaryColor : Theme.Colors.secondaryBackground)
                     )
+                    .frame(maxWidth: 280, alignment: message.isFromUser ? .trailing : .leading)
 
                 if let items = message.items, !items.isEmpty {
-                    LazyVGrid(
-                        columns: [
-                            GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                            GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                        ],
-                        spacing: Theme.Spacing.sm
-                    ) {
-                        ForEach(items) { item in
-                            NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
-                                HomeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
-                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                ForEach(Array(items.prefix(20))) { item in
+                                    NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
+                                        HomeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+                                            .frame(width: 140, alignment: .topLeading)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .padding(.horizontal, Theme.Spacing.lg)
+                        }
+                        .frame(maxWidth: .infinity)
+                        if items.count >= 3 {
+                            NavigationLink(destination: AIResultsView(items: items, viewModel: viewModel)) {
+                                Text(L10n.string("See All"))
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.primaryColor)
+                            }
+                            .buttonStyle(HapticTapButtonStyle())
+                            .padding(.top, Theme.Spacing.xs)
                         }
                     }
-                    .padding(.top, Theme.Spacing.xs)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, Theme.Spacing.xs)
                 }
             }
-            .frame(maxWidth: 280, alignment: message.isFromUser ? .trailing : .leading)
+            .frame(maxWidth: .infinity, alignment: message.isFromUser ? .trailing : .leading)
             if !message.isFromUser { Spacer(minLength: 60) }
         }
         .padding(.horizontal, Theme.Spacing.md)
         .id(message.id)
+    }
+}
+
+// MARK: - AI Results (full-page results from AI, no search)
+
+struct AIResultsView: View {
+    let items: [Item]
+    @ObservedObject var viewModel: HomeViewModel
+    @EnvironmentObject private var authService: AuthService
+
+    private let columns = [
+        GridItem(.flexible(), spacing: Theme.Spacing.sm),
+        GridItem(.flexible(), spacing: Theme.Spacing.sm)
+    ]
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: Theme.Spacing.md) {
+                ForEach(items) { item in
+                    NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
+                        HomeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.md)
+        }
+        .background(Theme.Colors.background)
+        .navigationTitle(L10n.string("Results"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

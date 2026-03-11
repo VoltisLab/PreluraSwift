@@ -52,27 +52,29 @@ struct PillTag: View {
     }
 
     private var foregroundColor: Color {
-        isSelected ? .white : Theme.Colors.secondaryText
+        if isSelected { return .white }
+        return colorScheme == .light ? Theme.Colors.primaryText : Theme.Colors.secondaryText
     }
 
     @ViewBuilder
     private var backgroundView: some View {
         if isSelected {
             shape.fill(Theme.primaryColor)
+        } else if colorScheme == .light {
+            shape.fill(Theme.Colors.background)
         } else {
             shape.fill(Theme.Colors.secondaryBackground)
         }
     }
 
     /// Inactive: subtle stroke for card edge. Selected: no border.
-    /// Use a stronger border in light mode so the pill stays visible on white (glassBorder at 0.5 is too faint).
     @ViewBuilder
     private var overlayView: some View {
         if isSelected {
             EmptyView()
         } else {
             shape
-                .strokeBorder(inactiveBorderColor, lineWidth: 1)
+                .strokeBorder(inactiveBorderColor, lineWidth: 0.5)
         }
     }
 

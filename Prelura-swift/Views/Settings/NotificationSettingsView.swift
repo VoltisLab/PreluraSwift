@@ -27,12 +27,14 @@ struct NotificationSettingsView: View {
                         .tint(Theme.primaryColor)
                         .disabled(viewModel.isUpdating)
                     }
+                    .listRowBackground(Theme.Colors.background)
 
                     Section {
                         Text(L10n.string("General"))
                             .font(Theme.Typography.headline)
                             .foregroundColor(Theme.primaryColor)
                     }
+                    .listRowBackground(Theme.Colors.background)
 
                     Section {
                         toggleRow("Likes", keyPath: \.likes)
@@ -40,6 +42,7 @@ struct NotificationSettingsView: View {
                         toggleRow("New Followers", keyPath: \.newFollowers)
                         toggleRow("Profile View", keyPath: \.profileView)
                     }
+                    .listRowBackground(Theme.Colors.background)
 
                     if let err = viewModel.errorMessage {
                         Section {
@@ -47,11 +50,13 @@ struct NotificationSettingsView: View {
                                 .font(Theme.Typography.caption)
                                 .foregroundColor(Theme.Colors.error)
                         }
+                        .listRowBackground(Theme.Colors.background)
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle("\(title) \(L10n.string("Notification Settings"))")
         .navigationBarTitleDisplayMode(.inline)

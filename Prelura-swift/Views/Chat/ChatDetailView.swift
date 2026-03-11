@@ -56,6 +56,7 @@ struct ChatDetailView: View {
     @StateObject private var chatService = ChatService()
     @State private var messages: [Message] = []
     @State private var newMessage: String = ""
+    @FocusState private var isMessageFieldFocused: Bool
     @State private var isLoading: Bool = false
     @State private var webSocket: ChatWebSocketService?
     /// UUID string for optimistic message so we can replace it when server echoes message_uuid.
@@ -119,9 +120,14 @@ struct ChatDetailView: View {
             HStack(spacing: Theme.Spacing.sm) {
                 TextField("Type a message...", text: $newMessage)
                     .textFieldStyle(PlainTextFieldStyle())
+                    .focused($isMessageFieldFocused)
                     .padding(Theme.Spacing.md)
                     .background(Theme.Colors.secondaryBackground)
-                    .cornerRadius(20)
+                    .cornerRadius(30)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 30)
+                            .stroke(isMessageFieldFocused ? Theme.primaryColor : Color.clear, lineWidth: 2)
+                    )
                     .foregroundColor(Theme.Colors.primaryText)
                 
                 Button(action: sendMessage) {

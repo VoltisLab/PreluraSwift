@@ -1,10 +1,17 @@
 import Foundation
 import UIKit
 
-/// Result of parsing a search query for colours, categories, and free text.
-/// Used to build API search/filters and to show "closest to" hints.
+/// Detected event from query for response tone (happy → cheerful, sad → neutral).
+enum DetectedEvent {
+    case none
+    case happy   // birthday, wedding, festival, holiday
+    case sad     // funeral, breakup
+}
+
+/// Result of parsing a search query for colours, categories, price, and free text.
+/// Used to build API search/filters and to show conversational replies.
 struct ParsedSearch {
-    /// Search string to send to the API (includes colour/category terms for backend to match).
+    /// Search string to send to the API (includes colour/category/synonym terms for backend to match).
     var searchText: String
     /// Resolved parent category if detected from query (e.g. "Women", "Men").
     var categoryOverride: String?
@@ -12,14 +19,25 @@ struct ParsedSearch {
     var appliedColourNames: [String]
     /// When we mapped an alias (e.g. "camo" → "Green"), show this message.
     var closestMatchHint: String?
+    /// When we corrected a likely typo (e.g. "derss" → "Dress"), show "Do you mean 'Dress'?" in the reply.
+    var spellingCorrectionHint: (original: String, corrected: String)?
+    /// Max price when user says "under £X", "cheap", etc.
+    var priceMax: Double?
+    /// Detected event for response tone (birthday → cheerful, funeral → neutral).
+    var detectedEvent: DetectedEvent = .none
 }
 
 /// Lightweight "learning" search: parses natural language for colours and categories,
 /// supports typos (fuzzy match) and maps common colour names to app colours.
 /// Backend is not modified; we only produce a search string and optional category.
+///
+/// Training data: Prelura AI Training Dataset — Category & Colour Detection (100 Query Types).
+/// Covers: Basic + Conversational colour+category, Multi-colour, Relative colour, Style+colour,
+/// Price+colour, Material+colour, Size+colour, Event, Casual/messy queries.
 final class AISearchService {
-    
-    // MARK: - App vocabulary (same as Sell flow)
+
+    // MARK: - App vocabulary (training doc + Sell flow)
+
     
     static let appColours: [String] = [
         "Black", "White", "Red", "Blue", "Green", "Yellow", "Pink", "Purple",
@@ -35,22 +53,28 @@ final class AISearchService {
         "Home", "Beauty", "Books", "Sports"
     ]
     
-    /// Map common colour names / aliases to our app colour names.
-    /// Expand this over time to "train" the search.
+    /// Multi-word colour phrases (checked before single-word matching; training doc: "sky blue", "light blue").
+    private static let colourPhrases: [(phrase: String, appColour: String)] = [
+        ("sky blue", "Blue"), ("light blue", "Blue"), ("dark blue", "Navy"), ("navy blue", "Navy"), ("royal blue", "Blue"),
+        ("dark green", "Green"), ("light green", "Green"), ("burgundy red", "Maroon"), ("off white", "White")
+    ]
+
+    /// Map common colour names / aliases to our app colour names (training doc: navy→dark blue, cream→off white, etc.).
     static let colourAliases: [String: String] = [
-        // Greens
+        // Greens (doc: mint→pale green, olive→muted green)
         "camo": "Green", "camouflage": "Green", "olive": "Green", "forest": "Green",
         "mint": "Green", "sage": "Green", "lime": "Green", "emerald": "Green",
         "dark green": "Green", "light green": "Green", "army": "Green",
-        // Reds / wine
+        "greed": "Green",
+        // Reds / wine (doc: wine→burgundy)
         "wine": "Maroon", "burgundy": "Maroon", "burgundy red": "Maroon",
         "claret": "Maroon", "bordeaux": "Maroon",
         "crimson": "Red", "scarlet": "Red", "dark red": "Maroon", "cherry": "Red",
-        // Blues
+        // Blues (doc: navy→dark blue, royal blue→bright blue, sky blue→light blue)
         "navy": "Navy", "navy blue": "Navy", "midnight": "Navy", "royal blue": "Blue",
-        "sky blue": "Blue", "light blue": "Blue", "dark blue": "Navy",
-        // Neutrals / browns
-        "tan": "Beige", "sand": "Beige", "cream": "Beige", "ivory": "White",
+        "sky blue": "Blue", "light blue": "Blue", "dark blue": "Navy", "cobalt": "Blue",
+        // Neutrals (doc: cream→off white, sand→beige)
+        "tan": "Beige", "sand": "Beige", "cream": "White", "ivory": "White", "off white": "White",
         "charcoal": "Grey", "silver": "Grey", "gray": "Grey", "slate": "Grey",
         "taupe": "Brown", "khaki": "Beige", "mocha": "Brown", "chocolate": "Brown",
         // Pinks / purples
@@ -58,7 +82,79 @@ final class AISearchService {
         "violet": "Purple", "plum": "Purple", "mauve": "Purple",
         // Yellows / oranges
         "gold": "Yellow", "mustard": "Yellow", "amber": "Orange", "coral": "Orange",
-        "peach": "Orange", "terracotta": "Orange", "rust": "Orange"
+        "peach": "Orange", "terracotta": "Orange", "rust": "Orange",
+        // Multi-colour expansion (doc: blue and green → teal, turquoise, aqua)
+        "teal": "Teal", "turquoise": "Teal", "aqua": "Teal"
+    ]
+
+    /// Category / product term synonyms (training doc: jumper→sweater, trainers→sneakers; query 63 "cotton white t shirt").
+    static let categorySynonyms: [String: String] = [
+        "jumper": "sweater", "jumpers": "sweater", "sweaters": "sweater",
+        "trainers": "sneakers", "sneaker": "sneakers", "trainer": "sneakers",
+        "coat": "jacket", "coats": "jacket",
+        "tshirt": "tee", "t-shirt": "tee", "t shirt": "tee", "tshirts": "tee",
+        "bag": "handbag", "bags": "handbag", "handbags": "handbag",
+        "hoody": "hoodie", "hoodies": "hoodie",
+        "trouser": "trousers", "pant": "trousers", "pants": "trousers",
+        "heel": "heels", "boot": "boots"
+    ]
+
+    /// Greetings / non-product words — don't use as fallback term (avoids "here are some hellos").
+    static let nonProductWords: Set<String> = [
+        "hello", "hi", "hey", "thanks", "thank", "bye", "ok", "okay",
+        "world", "there", "help", "please", "yes", "no"
+    ]
+
+    /// Category keywords for matching (training doc + Batch 3: dress, scarf, cargo trousers, cardigan, blazer, joggers, etc.); fuzzy-matched for typos.
+    static let categoryKeywords: [String] = [
+        "dress", "dresses", "hoodie", "hoodies", "jacket", "jackets", "coat", "coats",
+        "jeans", "trousers", "skirt", "skirts", "heels", "boots", "trainers", "sneakers",
+        "bag", "handbag", "handbags", "jumper", "sweater", "sweaters", "tee", "tshirt", "shirt", "shirts", "top", "tops",
+        "blouse", "blouses", "scarf", "scarves", "outfit", "outfits",
+        "cardigan", "cardigans", "blazer", "blazers", "joggers", "jogger", "cargo",
+        "flannel", "bomber"
+    ]
+
+    /// Conversational prefixes/suffixes to strip (training doc §100: queries 11–20, 91–100).
+    private static let conversationalStrippers: [String] = [
+        "do you have", "do you have a", "do you have any", "do u have", "do u have a",
+        "im looking for", "i'm looking for", "i am looking for", "looking for", "looking for a",
+        "im searching for", "i'm searching for", "i am searching for", "searching for", "searching for a",
+        "i want", "i want a", "i need", "i need a", "show me", "show me a", "show me some",
+        "can i get", "can you show", "got any", "have you got", "need a", "want a",
+        "asap", "pls", "please", "thanks", "thank you"
+    ]
+
+    /// Words to drop from the final search string (articles, conjunctions, filler, colour modifiers).
+    private static let searchStopwords: Set<String> = [
+        "a", "an", "the", "do", "you", "have", "has", "get", "got", "for", "to", "of",
+        "im", "i'm", "me", "and", "or", "but", "that", "this", "is", "it", "in", "on",
+        "lighter", "darker", "light", "dark", "almost", "soft", "pale", "faded", "bright", "not",
+        "than", "something", "close"
+    ]
+
+    /// Happy events → cheerful response (training doc §Event Queries 81–90: wedding, party, graduation, holiday, birthday, date night, travel).
+    static let happyEventWords: [String] = [
+        "birthday", "wedding", "festival", "holiday", "holidays", "celebration", "party", "vacation", "trip",
+        "graduation", "date night", "travel"
+    ]
+
+    /// Sad events → neutral response; doc: funeral, breakup.
+    static let sadEventWords: [String] = ["funeral", "breakup", "break up", "memorial"]
+
+    /// Season terms kept in search (training doc: "yellow scarf for winter"; queries 89–90 winter, autumn).
+    static let seasonKeywords: [String] = ["winter", "summer", "autumn", "spring"]
+
+    /// Material terms kept in search (training doc §Material + Colour 61–70: leather, denim, cotton, wool, silk, linen).
+    static let materialKeywords: [String] = ["leather", "denim", "cotton", "wool", "silk", "linen"]
+
+    /// Style terms kept in search (training doc §Style + Colour 41–50: vintage, minimalist, oversized, streetwear, Y2K, casual, elegant, sporty, retro, relaxed).
+    static let styleKeywords: [String] = ["vintage", "minimalist", "oversized", "streetwear", "y2k", "casual", "elegant", "sporty", "retro", "relaxed"]
+
+    /// Price patterns (training doc §Price + Colour 51–60: "under £20", "under £50", "cheap", etc.).
+    private static let pricePattern = try? NSRegularExpression(pattern: #"under\s*[£$]?\s*(\d+)"#, options: .caseInsensitive)
+    private static let budgetWords: [(word: String, max: Double)] = [
+        ("cheap", 30), ("budget", 35), ("affordable", 40)
     ]
     
     /// Max Levenshtein distance to consider a typo match (e.g. "gren" → "Green")
@@ -68,86 +164,1082 @@ final class AISearchService {
     private let minLengthForFuzzy = 3
     
     // MARK: - Parse query
-    
-    /// Parses the raw query: extracts colours (with alias mapping and fuzzy match),
-    /// category keywords, and builds a search string. Sets closestMatchHint when an alias was used.
+
+    /// Strip conversational phrasing so "do you have a green dress" still yields category: dress, colour: green (training doc).
+    private func normalizeConversational(_ query: String) -> String {
+        var q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        for phrase in Self.conversationalStrippers {
+            if q.hasPrefix(phrase) {
+                q = String(q.dropFirst(phrase.count)).trimmingCharacters(in: .whitespaces)
+            }
+            if q.hasSuffix(phrase) {
+                q = String(q.dropLast(phrase.count)).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return q.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Expand synonyms in the query (jumper→sweater, etc.) for better search.
+    private func expandSynonyms(_ query: String) -> String {
+        var q = query.lowercased()
+        for (from, to) in Self.categorySynonyms {
+            let pattern = "\\b" + NSRegularExpression.escapedPattern(for: from) + "\\b"
+            if let regex = try? NSRegularExpression(pattern: pattern) {
+                q = regex.stringByReplacingMatches(in: q, range: NSRange(q.startIndex..., in: q), withTemplate: to)
+            }
+        }
+        return q
+    }
+
+    /// Extract size from "size M", "size 32", "size 6", "size L", etc. (training doc: size + colour queries).
+    private func extractSizeTerm(from query: String) -> String? {
+        let lower = query.lowercased()
+        let pattern = #"size\s+([a-z0-9]+)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)),
+              let range = Range(match.range(at: 1), in: lower) else { return nil }
+        let size = String(lower[range])
+        let validSizes = ["xs", "s", "m", "l", "xl", "xxl", "small", "medium", "large"]
+        if validSizes.contains(size) || size.allSatisfy(\.isNumber) { return size }
+        return nil
+    }
+
+    /// Extract max price from "under £40", "cheap", "budget", etc.
+    private func extractPriceMax(from query: String) -> Double? {
+        let lower = query.lowercased()
+        if let pattern = Self.pricePattern,
+           let match = pattern.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)),
+           let range = Range(match.range(at: 1), in: lower),
+           let value = Double(lower[range]) {
+            return value
+        }
+        for (word, max) in Self.budgetWords where lower.contains(word) {
+            return max
+        }
+        return nil
+    }
+
+    /// Detect event for response tone.
+    private func detectEvent(from query: String) -> DetectedEvent {
+        let lower = query.lowercased()
+        if Self.sadEventWords.contains(where: { lower.contains($0) }) { return .sad }
+        if Self.happyEventWords.contains(where: { lower.contains($0) }) { return .happy }
+        return .none
+    }
+
+    /// Fuzzy match a word to a category keyword (dres→dress, jaket→jacket).
+    private func fuzzyMatchCategory(word: String) -> String? {
+        guard word.count >= minLengthForFuzzy else { return nil }
+        var best: (match: String, distance: Int)?
+        for keyword in Self.categoryKeywords {
+            let d = Self.levenshtein(word, keyword)
+            if d <= maxTypoDistance, best == nil || d < best!.distance {
+                best = (keyword, d)
+            }
+        }
+        return best?.match
+    }
+
+    /// Parses the raw query: normalize conversational phrasing, synonym expansion, colours, category, price, event; builds search string (training doc: always detect category/colour).
     func parse(query: String) -> ParsedSearch {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            return ParsedSearch(searchText: "", categoryOverride: nil, appliedColourNames: [], closestMatchHint: nil)
+            return ParsedSearch(searchText: "", categoryOverride: nil, appliedColourNames: [], closestMatchHint: nil, spellingCorrectionHint: nil, priceMax: nil, detectedEvent: .none)
         }
-        
-        let words = trimmed
-            .lowercased()
+
+        let normalized = normalizeConversational(trimmed)
+        var expandedQuery = expandSynonyms(normalized.isEmpty ? trimmed : normalized)
+        for (phrase, appColour) in Self.colourPhrases {
+            let pattern = "\\b" + NSRegularExpression.escapedPattern(for: phrase) + "\\b"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                expandedQuery = regex.stringByReplacingMatches(in: expandedQuery, range: NSRange(expandedQuery.startIndex..., in: expandedQuery), withTemplate: appColour)
+            }
+        }
+        let priceMax = extractPriceMax(from: expandedQuery)
+        let detectedEvent = detectEvent(from: expandedQuery)
+
+        let words = expandedQuery
             .components(separatedBy: .whitespaces)
             .map { $0.trimmingCharacters(in: .punctuationCharacters) }
             .filter { !$0.isEmpty }
-        
+
         var appliedColours: [String] = []
         var appliedCategory: String? = nil
         var remainingWords: [String] = []
         var usedAlias: (requested: String, mapped: String)? = nil
-        
+        var spellingHint: (original: String, corrected: String)? = nil
+
         for word in words {
-            // 1) Check colour alias first (multi-word: "dark green", "navy blue" handled via joined later)
-            if let mapped = Self.colourAliases[word] {
+            let lower = word.lowercased()
+
+            // 1) Colour alias
+            if let mapped = Self.colourAliases[lower] {
                 appliedColours.append(mapped)
                 if usedAlias == nil { usedAlias = (word, mapped) }
                 continue
             }
-            
-            // 2) Exact match on app colour (case-insensitive)
-            if let match = Self.appColours.first(where: { $0.lowercased() == word }) {
+
+            // 2) Exact app colour
+            if let match = Self.appColours.first(where: { $0.lowercased() == lower }) {
                 appliedColours.append(match)
                 remainingWords.append(word)
                 continue
             }
-            
-            // 3) Fuzzy match on app colour (typos)
-            if word.count >= minLengthForFuzzy,
-               let match = fuzzyMatchColour(word: word) {
+
+            // 3) Fuzzy match colour (typos) — track correction for "Do you mean?"
+            if lower.count >= minLengthForFuzzy, let match = fuzzyMatchColour(word: lower) {
                 appliedColours.append(match)
                 remainingWords.append(word)
+                if spellingHint == nil && match.lowercased() != lower {
+                    spellingHint = (word, match)
+                }
                 continue
             }
-            
+
             // 4) Parent category
-            if let cat = Self.parentCategories.first(where: { $0.lowercased() == word && $0.lowercased() != "all" }) {
+            if let cat = Self.parentCategories.first(where: { $0.lowercased() == lower && $0.lowercased() != "all" }) {
                 appliedCategory = cat
                 remainingWords.append(word)
                 continue
             }
-            
-            // 5) Subcategory
-            if Self.subCategories.contains(where: { $0.lowercased() == word }) {
+
+            // 5) Category keyword (with fuzzy: dres→dress, jaket→jacket) — track correction for "Do you mean?"
+            if let match = fuzzyMatchCategory(word: lower) {
+                remainingWords.append(match)
+                if spellingHint == nil && match.lowercased() != lower {
+                    let corrected = match.prefix(1).uppercased() + match.dropFirst()
+                    spellingHint = (word, corrected)
+                }
+                continue
+            }
+
+            // 6) Subcategory
+            if Self.subCategories.contains(where: { $0.lowercased() == lower }) {
                 remainingWords.append(word)
                 continue
             }
-            
+
             remainingWords.append(word)
         }
-        
-        // Build search string: remaining words + colour names (so backend can match in title/description)
+
         var searchParts = remainingWords
-        for c in appliedColours where !searchParts.contains(c.lowercased()) {
+            .filter { !Self.searchStopwords.contains($0.lowercased()) }
+        for c in appliedColours where !searchParts.contains(where: { $0.lowercased() == c.lowercased() }) {
             searchParts.append(c)
         }
+        if let sizeTerm = extractSizeTerm(from: expandedQuery) {
+            searchParts.append(sizeTerm)
+        }
         let searchText = searchParts.joined(separator: " ")
-        
-        // Hint when we mapped an alias
+
         let hint: String?
         if let (req, mapped) = usedAlias, !appliedColours.isEmpty {
             hint = "Showing results closest to \"\(req)\" (\(mapped))"
         } else {
             hint = nil
         }
-        
+
         return ParsedSearch(
             searchText: searchText,
             categoryOverride: appliedCategory,
             appliedColourNames: appliedColours,
-            closestMatchHint: hint
+            closestMatchHint: hint,
+            spellingCorrectionHint: spellingHint,
+            priceMax: priceMax,
+            detectedEvent: detectedEvent
         )
+    }
+
+    // MARK: - Realistic response sets (Batch 1: 20 query types × 5 responses)
+
+    /// Response sets for contextual replies (Prelura AI Training Dataset — Realistic User Queries Batch 1).
+    private static let responseBatch1: [(name: String, responses: [String])] = [
+        ("birthday_party", [
+            "Happy birthday! Let's find some great green dresses for your celebration.",
+            "That sounds fun! Here are some green dresses that could work perfectly for a birthday party.",
+            "Let's explore some green dress options for your birthday.",
+            "Here are some green dresses that might be great for a birthday outfit.",
+            "I'll show you some green dresses that could be perfect for celebrating."
+        ]),
+        ("boots_under_price", [
+            "Here are some black boots under £50 you might like.",
+            "These black boots match your budget.",
+            "Let's explore some affordable black boot options.",
+            "I've found some black boots within your price range.",
+            "Here are some budget-friendly black boots."
+        ]),
+        ("lighter_than_navy", [
+            "Let's explore some shades lighter than navy, like cobalt or royal blue.",
+            "Here are some blue options slightly lighter than navy.",
+            "You might like these bright navy and royal blue items.",
+            "These items sit between navy and bright blue.",
+            "Here are some lighter blue pieces close to navy."
+        ]),
+        ("comfy_travel", [
+            "Here are some comfortable hoodies that could be great for travel.",
+            "Let's find a cosy hoodie perfect for travelling.",
+            "These relaxed hoodies might be ideal for your trip.",
+            "Here are some hoodies designed for comfort.",
+            "You might like these soft travel-friendly hoodies."
+        ]),
+        ("vintage_denim", [
+            "Here are some vintage denim jackets you might like.",
+            "Let's explore some retro denim jacket styles.",
+            "These jackets have a vintage denim look.",
+            "Here are some classic denim jackets.",
+            "You might like these vintage-inspired denim jackets."
+        ]),
+        ("night_out_dress", [
+            "Here are some short black dresses perfect for a night out.",
+            "Let's find a stylish black dress for your night out.",
+            "These short black dresses could work well.",
+            "You might like these sleek black dress options.",
+            "Here are some great night-out dresses."
+        ]),
+        ("everyday_trainers", [
+            "Here are some white trainers great for everyday use.",
+            "Let's explore some versatile white trainers.",
+            "These white trainers are perfect for daily wear.",
+            "You might like these comfortable white sneakers.",
+            "Here are some casual white trainer options.",
+            "Here are some white trainers under £40.",
+            "Let's explore some budget-friendly white trainer options.",
+            "These trainers stay within your price range.",
+            "You might like these affordable white sneakers.",
+            "Here are some everyday trainers under £40."
+        ]),
+        ("beige_minimalist", [
+            "Here are some minimalist beige pieces.",
+            "Let's explore some clean beige styles.",
+            "These neutral beige items might match that look.",
+            "You might like these simple beige designs.",
+            "Here are some understated beige options."
+        ]),
+        ("oversized_hoodies", [
+            "Here are some oversized hoodies you might like.",
+            "Let's explore some relaxed-fit hoodies.",
+            "These hoodies have an oversized style.",
+            "You might like these baggy hoodie options.",
+            "Here are some loose-fit hoodies.",
+            "Here are some oversized hoodies with a streetwear vibe.",
+            "Let's explore some relaxed streetwear hoodie styles.",
+            "These hoodies have an oversized streetwear look.",
+            "You might like these baggy hoodie designs.",
+            "Here are some casual streetwear hoodies.",
+            "Here are some comfy oversized hoodies.",
+            "Let's explore some relaxed hoodie styles.",
+            "These hoodies focus on comfort and fit.",
+            "You might like these loose hoodie options.",
+            "Here are some cosy hoodie picks."
+        ]),
+        ("festival_colourful", [
+            "Let's find some colourful outfits perfect for a festival.",
+            "Here are some vibrant pieces you might like.",
+            "These colourful items could be great for a festival.",
+            "You might enjoy these bright festival outfits.",
+            "Here are some fun and colourful styles."
+        ]),
+        ("jeans_not_skinny", [
+            "Here are some relaxed-fit blue jeans.",
+            "Let's explore some straight-leg denim options.",
+            "These looser jeans might suit you.",
+            "You might like these wide-leg jeans.",
+            "Here are some comfortable denim styles."
+        ]),
+        ("winter_coat", [
+            "Here are some warm coats perfect for winter.",
+            "Let's explore some winter coat options.",
+            "These coats could keep you warm.",
+            "You might like these thick winter jackets.",
+            "Here are some cosy outerwear choices.",
+            "Here are some beige winter coats.",
+            "Let's explore some warm neutral coats.",
+            "These coats could work well for winter.",
+            "You might like these cosy beige styles.",
+            "Here are some elegant coats."
+        ]),
+        ("leather_jackets", [
+            "Here are some leather jackets you might like.",
+            "Let's explore some leather jacket styles.",
+            "These jackets have a leather finish.",
+            "You might like these biker-style jackets.",
+            "Here are some leather outerwear options."
+        ]),
+        ("dresses_under_price", [
+            "Here are some dresses under £30.",
+            "Let's explore some budget-friendly dresses.",
+            "These dresses fit within your price range.",
+            "You might like these affordable styles.",
+            "Here are some low-cost dress options."
+        ]),
+        ("party_dress", [
+            "Here are some red dresses perfect for a party.",
+            "Let's explore some bold red dress options.",
+            "These red dresses could be great for a party.",
+            "You might like these vibrant red styles.",
+            "Here are some festive red dresses.",
+            "Here are some red dresses perfect for a party.",
+            "Let's explore some bold party dress options.",
+            "These dresses could work well for a party.",
+            "You might like these vibrant red styles.",
+            "Here are some festive dress options."
+        ]),
+        ("green_hoodies", [
+            "Here are some green hoodies you might like.",
+            "Let's explore some green hoodie styles.",
+            "These hoodies come in green shades.",
+            "You might like these casual green hoodies.",
+            "Here are some comfortable green hoodie options.",
+            "Here are some dark green hoodies that stay within a lower budget.",
+            "Let's explore some affordable dark green hoodies.",
+            "These green hoodies might match what you're looking for.",
+            "I've found some budget-friendly dark green hoodie options.",
+            "Here are some green hoodies that shouldn't break the bank."
+        ]),
+        ("wedding_classy", [
+            "Let's explore some elegant wedding outfit options.",
+            "Here are some classy styles that might suit a wedding.",
+            "These outfits could work well for a wedding.",
+            "You might like these refined pieces.",
+            "Here are some sophisticated options."
+        ]),
+        ("yellow_sweaters", [
+            "Here are some yellow sweaters.",
+            "Let's explore some bright sweater options.",
+            "These sweaters come in yellow tones.",
+            "You might like these warm yellow knits.",
+            "Here are some colourful sweater options."
+        ]),
+        ("casual_everyday_jacket", [
+            "Here are some casual jackets you might like.",
+            "Let's explore some everyday jacket styles.",
+            "These jackets are great for daily wear.",
+            "You might like these relaxed outerwear options.",
+            "Here are some comfortable jackets."
+        ]),
+        ("stylish_cheap", [
+            "Let's explore some stylish budget options.",
+            "Here are some affordable fashion pieces.",
+            "These items combine style and value.",
+            "You might like these trendy affordable picks.",
+            "Here are some stylish items within a lower budget.",
+            "Let's explore some stylish pieces that are still budget-friendly.",
+            "Here are some affordable options that could work for dinner.",
+            "These items combine elegance and value.",
+            "You might like these classy yet affordable styles.",
+            "Here are some stylish pieces within a lower price range.",
+            "Let's explore some trendy pieces that are still affordable.",
+            "Here are some fashionable budget options.",
+            "These items combine style and value.",
+            "You might like these trendy picks within a lower budget.",
+            "Here are some affordable fashion pieces."
+        ]),
+        // Batch 2 (new query types)
+        ("light_blue_jeans", [
+            "Here are some light blue jeans you might like.",
+            "Let's explore some lighter denim styles.",
+            "These jeans come in light blue shades.",
+            "You might like these faded blue denim options.",
+            "Here are some casual light blue jeans."
+        ]),
+        ("yellow_scarf_winter", [
+            "Here are some yellow scarves that could work well for winter.",
+            "Let's explore some warm yellow scarf options.",
+            "These yellow scarves might match what you're looking for.",
+            "You might like these cosy winter scarves.",
+            "Here are some bright scarf options."
+        ]),
+        ("between_blue_green", [
+            "Let's explore colours between blue and green like teal or turquoise.",
+            "Here are some teal and aqua coloured items.",
+            "These pieces blend blue and green tones.",
+            "You might like these turquoise styles.",
+            "Here are some items in that colour range."
+        ]),
+        ("heels_under_price", [
+            "Here are some red heels under £40.",
+            "Let's explore some affordable red heel options.",
+            "These heels match your budget.",
+            "You might like these red shoe styles.",
+            "Here are some budget-friendly heels."
+        ]),
+        ("holiday_light_dresses", [
+            "Let's find some lightweight dresses perfect for a holiday.",
+            "Here are some breezy dress options.",
+            "These dresses might work well for warm weather.",
+            "You might like these summer dresses.",
+            "Here are some relaxed holiday dresses."
+        ]),
+        ("brown_leather_boots", [
+            "Here are some brown leather boots you might like.",
+            "Let's explore some leather boot styles.",
+            "These boots come in brown leather.",
+            "You might like these classic boot designs.",
+            "Here are some stylish leather boots."
+        ]),
+        ("neutral_work", [
+            "Let's explore some neutral outfits suitable for work.",
+            "Here are some simple office-friendly pieces.",
+            "These neutral styles might work well.",
+            "You might like these professional outfits.",
+            "Here are some understated workwear options."
+        ]),
+        ("black_handbags", [
+            "Here are some black handbags you might like.",
+            "Let's explore some stylish bag options.",
+            "These handbags come in black.",
+            "You might like these classic bag styles.",
+            "Here are some everyday handbags."
+        ]),
+        ("trainers_gym", [
+            "Here are some trainers that could work well for the gym.",
+            "Let's explore some sporty trainer options.",
+            "These shoes might be good for workouts.",
+            "You might like these athletic trainers.",
+            "Here are some comfortable gym shoes."
+        ]),
+        ("vintage_dresses", [
+            "Here are some vintage-style dresses.",
+            "Let's explore some retro dress options.",
+            "These dresses have a vintage look.",
+            "You might like these classic styles.",
+            "Here are some timeless dresses."
+        ]),
+        ("muted_green_jacket", [
+            "Here are some muted green jackets.",
+            "Let's explore some darker green outerwear.",
+            "These jackets have subtle green tones.",
+            "You might like these olive green jackets.",
+            "Here are some softer green options."
+        ]),
+        ("cheap_hoodies", [
+            "Here are some budget-friendly hoodies.",
+            "Let's explore some affordable hoodie options.",
+            "These hoodies stay within a lower price range.",
+            "You might like these casual hoodies.",
+            "Here are some inexpensive styles."
+        ]),
+        ("pink_skirts", [
+            "Here are some pink skirts you might like.",
+            "Let's explore some skirt styles in pink.",
+            "These skirts come in pink shades.",
+            "You might like these colourful skirts.",
+            "Here are some casual skirt options."
+        ]),
+        ("cute_date", [
+            "Let's explore some cute outfit options.",
+            "Here are some styles that might work well for a date.",
+            "These outfits might match that vibe.",
+            "You might like these flattering looks.",
+            "Here are some stylish pieces."
+        ]),
+        ("grey_hoodies", [
+            "Here are some grey hoodies.",
+            "Let's explore some hoodie styles in grey.",
+            "These hoodies come in grey tones.",
+            "You might like these casual hoodies.",
+            "Here are some relaxed hoodie options."
+        ]),
+        ("warm_stylish", [
+            "Let's explore some warm and stylish pieces.",
+            "Here are some cosy outfit options.",
+            "These items combine comfort and style.",
+            "You might like these winter-ready styles.",
+            "Here are some warm fashion picks."
+        ]),
+        ("blue_jackets", [
+            "Here are some blue jackets.",
+            "Let's explore some jacket styles in blue.",
+            "These jackets come in blue shades.",
+            "You might like these casual jackets.",
+            "Here are some outerwear options."
+        ]),
+        // Batch 3 (queries 21–40)
+        ("olive_cargo_trousers", [
+            "Here are some olive green cargo trousers you might like.",
+            "Let's explore some cargo trousers in olive green.",
+            "These trousers match the olive green cargo style.",
+            "You might like these relaxed cargo trousers.",
+            "Here are some casual olive green cargo options."
+        ]),
+        ("pastel_pink_cardigans", [
+            "Here are some pastel pink cardigans you might like.",
+            "Let's explore some soft pink cardigan styles.",
+            "These cardigans come in pastel pink shades.",
+            "You might like these light pink knitwear options.",
+            "Here are some cosy pastel cardigans."
+        ]),
+        ("navy_blazer_work", [
+            "Here are some navy blue blazers suitable for work.",
+            "Let's explore some professional navy blazer options.",
+            "These blazers could work well for office wear.",
+            "You might like these classic navy styles.",
+            "Here are some smart blazer options."
+        ]),
+        ("oversized_grey_sweaters", [
+            "Here are some oversized grey sweaters you might like.",
+            "Let's explore some relaxed grey knitwear.",
+            "These sweaters have an oversized fit.",
+            "You might like these cosy grey styles.",
+            "Here are some comfortable oversized sweaters."
+        ]),
+        ("brown_suede_jackets", [
+            "Here are some brown suede jackets you might like.",
+            "Let's explore some suede outerwear options.",
+            "These jackets come in brown suede.",
+            "You might like these classic suede styles.",
+            "Here are some stylish suede jackets."
+        ]),
+        ("dark_blue_skinny_jeans", [
+            "Here are some dark blue skinny jeans you might like.",
+            "Let's explore some fitted denim styles.",
+            "These jeans come in dark blue shades.",
+            "You might like these slim-fit denim options.",
+            "Here are some classic skinny jeans."
+        ]),
+        ("cream_sweater_winter", [
+            "Here are some cream knit sweaters perfect for winter.",
+            "Let's explore some warm knitwear options.",
+            "These sweaters come in cream tones.",
+            "You might like these cosy winter knits.",
+            "Here are some soft cream sweaters."
+        ]),
+        ("yellow_summer_dress", [
+            "Here are some yellow summer dresses.",
+            "Let's explore some bright summer styles.",
+            "These dresses come in yellow shades.",
+            "You might like these warm-weather dresses.",
+            "Here are some light and colourful dress options."
+        ]),
+        ("muted_purple_hoodie", [
+            "Here are some hoodies in muted purple tones.",
+            "Let's explore some soft purple hoodie styles.",
+            "These hoodies come in subtle purple shades.",
+            "You might like these relaxed hoodie options.",
+            "Here are some understated purple hoodies."
+        ]),
+        ("vintage_leather_bags", [
+            "Here are some vintage brown leather bags.",
+            "Let's explore some classic leather bag styles.",
+            "These bags have a vintage leather look.",
+            "You might like these timeless leather designs.",
+            "Here are some retro-inspired handbags."
+        ]),
+        ("oversized_black_tees", [
+            "Here are some oversized black t-shirts you might like.",
+            "Let's explore some relaxed-fit black tees.",
+            "These t-shirts have an oversized style.",
+            "You might like these streetwear-style shirts.",
+            "Here are some loose black t-shirts."
+        ]),
+        ("minimalist_white_shirts", [
+            "Here are some minimalist white shirts.",
+            "Let's explore some clean and simple shirt designs.",
+            "These shirts follow a minimalist style.",
+            "You might like these classic white shirts.",
+            "Here are some understated shirt options."
+        ]),
+        ("green_dress_graduation", [
+            "Congratulations on graduating! Let's find a great green dress.",
+            "Here are some green dresses that could work for graduation.",
+            "Let's explore some elegant green dress options.",
+            "You might like these graduation-ready dresses.",
+            "Here are some stylish green dresses."
+        ]),
+        ("light_grey_joggers", [
+            "Here are some light grey joggers.",
+            "Let's explore some comfortable jogger options.",
+            "These joggers come in light grey shades.",
+            "You might like these casual joggers.",
+            "Here are some relaxed-fit joggers."
+        ]),
+        ("comfy_travel_generic", [
+            "Let's explore some comfortable travel outfits.",
+            "Here are some relaxed clothing options for travelling.",
+            "These pieces focus on comfort.",
+            "You might like these easygoing styles.",
+            "Here are some comfy travel picks."
+        ]),
+        ("black_stylish_trainers", [
+            "Here are some stylish black trainers.",
+            "Let's explore some fashionable trainer options.",
+            "These trainers combine style and comfort.",
+            "You might like these sleek black sneakers.",
+            "Here are some trendy trainer options."
+        ]),
+        ("vintage_denim_jeans", [
+            "Here are some vintage denim jeans.",
+            "Let's explore some retro denim styles.",
+            "These jeans have a vintage look.",
+            "You might like these classic denim options.",
+            "Here are some old-school denim styles."
+        ]),
+        ("casual_weekend", [
+            "Let's explore some casual weekend outfits.",
+            "Here are some relaxed styles perfect for weekends.",
+            "These pieces are great for everyday wear.",
+            "You might like these comfortable outfits.",
+            "Here are some easygoing clothing options."
+        ]),
+        // Batch 4 (queries 41–60)
+        ("bold_colourful", [
+            "Let's explore some bold and colourful fashion pieces.",
+            "Here are some vibrant items you might like.",
+            "These pieces feature bright colours and standout designs.",
+            "You might enjoy these colourful styles.",
+            "Here are some eye-catching outfits."
+        ]),
+        ("pastel_blue_hoodie", [
+            "Here are some hoodies in pastel blue.",
+            "Let's explore some soft blue hoodie styles.",
+            "These hoodies come in light blue shades.",
+            "You might like these relaxed pastel hoodies.",
+            "Here are some cosy pastel blue options."
+        ]),
+        ("elegant_heels_wedding", [
+            "Here are some elegant heels suitable for a wedding.",
+            "Let's explore some sophisticated shoe options.",
+            "These heels could work well for a wedding outfit.",
+            "You might like these classy footwear styles.",
+            "Here are some stylish wedding heels."
+        ]),
+        ("smart_jacket_work", [
+            "Here are some smart jackets suitable for work.",
+            "Let's explore some professional outerwear.",
+            "These jackets might work well for the office.",
+            "You might like these tailored jacket styles.",
+            "Here are some polished jacket options."
+        ]),
+        ("cosy_cardigans_winter", [
+            "Here are some cosy winter cardigans.",
+            "Let's explore some warm knitwear.",
+            "These cardigans could keep you warm in winter.",
+            "You might like these comfortable knit styles.",
+            "Here are some soft cardigan options."
+        ]),
+        ("neutral_simple", [
+            "Let's explore some neutral and minimalist styles.",
+            "Here are some simple clothing options.",
+            "These pieces focus on clean and neutral tones.",
+            "You might like these understated outfits.",
+            "Here are some minimalist wardrobe pieces."
+        ]),
+        ("oversized_flannel_shirts", [
+            "Here are some oversized flannel shirts.",
+            "Let's explore some relaxed flannel styles.",
+            "These shirts feature an oversized fit.",
+            "You might like these casual flannel options.",
+            "Here are some cosy flannel shirts."
+        ]),
+        ("light_brown_boots", [
+            "Here are some light brown boots.",
+            "Let's explore some brown boot styles.",
+            "These boots come in lighter brown shades.",
+            "You might like these classic boot options.",
+            "Here are some casual brown boots."
+        ]),
+        ("black_skirts_work", [
+            "Here are some black skirts suitable for work.",
+            "Let's explore some office-friendly skirt styles.",
+            "These skirts could work well for professional outfits.",
+            "You might like these classic skirt options.",
+            "Here are some simple black skirts."
+        ]),
+        ("lightweight_summer_jacket", [
+            "Here are some lightweight jackets perfect for summer.",
+            "Let's explore some breathable outerwear.",
+            "These jackets could work well for warm weather.",
+            "You might like these casual summer styles.",
+            "Here are some light jacket options."
+        ]),
+        ("blue_hoodies_everyday", [
+            "Here are some blue hoodies for everyday wear.",
+            "Let's explore some casual hoodie options.",
+            "These hoodies come in blue shades.",
+            "You might like these comfortable styles.",
+            "Here are some relaxed hoodie picks."
+        ]),
+        ("stylish_handbag_under_price", [
+            "Here are some stylish handbags under £50.",
+            "Let's explore some fashionable bag options within your budget.",
+            "These handbags stay under £50.",
+            "You might like these affordable bag styles.",
+            "Here are some budget-friendly handbags."
+        ]),
+        ("beige_trousers_office", [
+            "Here are some beige trousers suitable for office wear.",
+            "Let's explore some professional trouser styles.",
+            "These trousers could work well for work outfits.",
+            "You might like these neutral trouser options.",
+            "Here are some office-ready trousers."
+        ]),
+        ("vintage_bomber_jacket", [
+            "Here are some vintage bomber jackets.",
+            "Let's explore some retro bomber styles.",
+            "These jackets have a vintage bomber look.",
+            "You might like these classic bomber designs.",
+            "Here are some stylish bomber jackets."
+        ]),
+        ("pastel_sweaters", [
+            "Here are some sweaters in pastel colours.",
+            "Let's explore some soft-toned knitwear.",
+            "These sweaters feature pastel shades.",
+            "You might like these light coloured sweaters.",
+            "Here are some gentle pastel styles."
+        ]),
+        ("lightweight_scarf_spring", [
+            "Here are some lightweight scarves perfect for spring.",
+            "Let's explore some breathable scarf styles.",
+            "These scarves are ideal for warmer weather.",
+            "You might like these soft scarf options.",
+            "Here are some spring-ready scarves."
+        ]),
+        ("stylish_boots_winter", [
+            "Here are some stylish boots suitable for winter.",
+            "Let's explore some winter boot options.",
+            "These boots combine warmth and style.",
+            "You might like these fashionable winter boots.",
+            "Here are some cosy boot picks."
+        ])
+    ]
+
+    /// Warm, friendly lead-in phrases for successful results (picked at random so the AI feels personable).
+    private static let warmLeadInPhrases: [String] = [
+        "I can certainly help you with that.",
+        "Of course!",
+        "Let me have a look…",
+        "Happy to help!",
+        "I'd be glad to.",
+        "Sure thing!",
+        "Absolutely!",
+        "Let me find something for you.",
+        "I'm on it!",
+        "No problem at all.",
+        "Consider it done.",
+        "I've got you covered.",
+        "Here we go!",
+        "Let me see what I can find.",
+        "I'd love to help.",
+        "Of course I can!",
+        "Glad to help!",
+        "One moment…",
+        "Coming right up!",
+        "I'll see what's available."
+    ]
+
+    /// Picks the best-matching response set from Batch 1, 2, 3 & 4, or falls back to event-based generic replies.
+    private func selectResponseSet(parsed: ParsedSearch, query: String?) -> [String]? {
+        let q = (query ?? "").lowercased()
+        let search = parsed.searchText.lowercased()
+        let colours = Set(parsed.appliedColourNames.map { $0.lowercased() })
+        let hasPrice = parsed.priceMax != nil
+        let isHappy = parsed.detectedEvent == .happy
+
+        if (q.contains("bold") && (q.contains("colourful") || q.contains("colorful"))) || (q.contains("eye-catching") && q.contains("colourful")) {
+            return Self.responseBatch1.first(where: { $0.name == "bold_colourful" })?.responses
+        }
+        if (q.contains("pastel") && colours.contains("blue")) && (search.contains("hoodie") || q.contains("hoodies")) {
+            return Self.responseBatch1.first(where: { $0.name == "pastel_blue_hoodie" })?.responses
+        }
+        if (q.contains("elegant") || search.contains("elegant")) && (search.contains("heel") || q.contains("heels")) && (q.contains("wedding") || search.contains("wedding")) {
+            return Self.responseBatch1.first(where: { $0.name == "elegant_heels_wedding" })?.responses
+        }
+        if (q.contains("smart") || search.contains("smart")) && (search.contains("jacket") || q.contains("jacket")) && (q.contains("work") || search.contains("work") || q.contains("office")) {
+            return Self.responseBatch1.first(where: { $0.name == "smart_jacket_work" })?.responses
+        }
+        if (q.contains("cosy") || q.contains("cozy")) && (search.contains("cardigan") || q.contains("cardigans")) && (q.contains("winter") || search.contains("winter")) {
+            return Self.responseBatch1.first(where: { $0.name == "cosy_cardigans_winter" })?.responses
+        }
+        if (q.contains("neutral") && q.contains("simple")) || (search.contains("neutral") && q.contains("simple")) {
+            return Self.responseBatch1.first(where: { $0.name == "neutral_simple" })?.responses
+        }
+        if (search.contains("oversized") || q.contains("oversized")) && (q.contains("flannel") || search.contains("flannel")) && (search.contains("shirt") || q.contains("shirts")) {
+            return Self.responseBatch1.first(where: { $0.name == "oversized_flannel_shirts" })?.responses
+        }
+        if (colours.contains("brown") && (q.contains("light") || q.contains("lighter"))) && (search.contains("boot") || q.contains("boots")) {
+            return Self.responseBatch1.first(where: { $0.name == "light_brown_boots" })?.responses
+        }
+        if colours.contains("black") && (search.contains("skirt") || q.contains("skirts")) && (q.contains("work") || search.contains("work") || q.contains("office")) {
+            return Self.responseBatch1.first(where: { $0.name == "black_skirts_work" })?.responses
+        }
+        if (q.contains("lightweight") || search.contains("lightweight")) && (q.contains("summer") || search.contains("summer")) && (search.contains("jacket") || q.contains("jacket")) {
+            return Self.responseBatch1.first(where: { $0.name == "lightweight_summer_jacket" })?.responses
+        }
+        if colours.contains("blue") && (search.contains("hoodie") || q.contains("hoodies")) && (q.contains("everyday") || q.contains("every day")) {
+            return Self.responseBatch1.first(where: { $0.name == "blue_hoodies_everyday" })?.responses
+        }
+        if (q.contains("stylish") || q.contains("fashionable")) && (search.contains("handbag") || search.contains("bag") || q.contains("handbag")) && hasPrice {
+            return Self.responseBatch1.first(where: { $0.name == "stylish_handbag_under_price" })?.responses
+        }
+        if colours.contains("beige") && (search.contains("trouser") || q.contains("trousers")) && (q.contains("office") || search.contains("office") || q.contains("work")) {
+            return Self.responseBatch1.first(where: { $0.name == "beige_trousers_office" })?.responses
+        }
+        if (search.contains("vintage") || q.contains("vintage")) && (q.contains("bomber") || search.contains("bomber")) && (search.contains("jacket") || q.contains("jacket")) {
+            return Self.responseBatch1.first(where: { $0.name == "vintage_bomber_jacket" })?.responses
+        }
+        if (q.contains("pastel") || search.contains("pastel")) && (search.contains("sweater") || search.contains("jumper") || q.contains("sweaters")) {
+            return Self.responseBatch1.first(where: { $0.name == "pastel_sweaters" })?.responses
+        }
+        if (q.contains("lightweight") || search.contains("lightweight")) && (search.contains("scarf") || q.contains("scarves")) && (q.contains("spring") || search.contains("spring")) {
+            return Self.responseBatch1.first(where: { $0.name == "lightweight_scarf_spring" })?.responses
+        }
+        if (q.contains("stylish") || search.contains("stylish")) && (search.contains("boot") || q.contains("boots")) && (q.contains("winter") || search.contains("winter")) {
+            return Self.responseBatch1.first(where: { $0.name == "stylish_boots_winter" })?.responses
+        }
+        if (q.contains("graduation") || search.contains("graduation")) && colours.contains("green") && (search.contains("dress") || q.contains("dress")) {
+            return Self.responseBatch1.first(where: { $0.name == "green_dress_graduation" })?.responses
+        }
+        if (search.contains("vintage") || q.contains("vintage")) && (search.contains("jeans") || q.contains("jeans")) && !(search.contains("jacket") || q.contains("jacket")) {
+            return Self.responseBatch1.first(where: { $0.name == "vintage_denim_jeans" })?.responses
+        }
+        if (q.contains("olive") || (colours.contains("green") && q.contains("cargo"))) && (search.contains("trouser") || search.contains("cargo") || q.contains("cargo") || q.contains("trousers")) {
+            return Self.responseBatch1.first(where: { $0.name == "olive_cargo_trousers" })?.responses
+        }
+        if (q.contains("pastel") && colours.contains("pink")) && (q.contains("cardigan") || search.contains("cardigan")) {
+            return Self.responseBatch1.first(where: { $0.name == "pastel_pink_cardigans" })?.responses
+        }
+        if colours.contains("navy") && (q.contains("blazer") || search.contains("blazer")) && (q.contains("work") || search.contains("work")) {
+            return Self.responseBatch1.first(where: { $0.name == "navy_blazer_work" })?.responses
+        }
+        if (search.contains("oversized") || q.contains("oversized")) && colours.contains("grey") && (search.contains("sweater") || search.contains("jumper") || q.contains("sweaters")) {
+            return Self.responseBatch1.first(where: { $0.name == "oversized_grey_sweaters" })?.responses
+        }
+        if colours.contains("brown") && (q.contains("suede") || search.contains("suede")) && (search.contains("jacket") || q.contains("jackets")) {
+            return Self.responseBatch1.first(where: { $0.name == "brown_suede_jackets" })?.responses
+        }
+        if (colours.contains("navy") || (colours.contains("blue") && q.contains("dark"))) && (q.contains("skinny") || search.contains("skinny")) && (search.contains("jeans") || q.contains("jeans")) {
+            return Self.responseBatch1.first(where: { $0.name == "dark_blue_skinny_jeans" })?.responses
+        }
+        if (colours.contains("white") || q.contains("cream")) && (search.contains("sweater") || search.contains("jumper") || q.contains("sweater")) && (q.contains("winter") || search.contains("winter")) {
+            return Self.responseBatch1.first(where: { $0.name == "cream_sweater_winter" })?.responses
+        }
+        if colours.contains("yellow") && (q.contains("summer") || search.contains("summer")) && (search.contains("dress") || q.contains("dresses")) {
+            return Self.responseBatch1.first(where: { $0.name == "yellow_summer_dress" })?.responses
+        }
+        if colours.contains("purple") && (q.contains("muted") || q.contains("subtle")) && (search.contains("hoodie") || q.contains("hoodies")) {
+            return Self.responseBatch1.first(where: { $0.name == "muted_purple_hoodie" })?.responses
+        }
+        if (search.contains("vintage") || q.contains("vintage")) && (search.contains("leather") || q.contains("leather")) && (search.contains("bag") || search.contains("handbag") || q.contains("bags")) {
+            return Self.responseBatch1.first(where: { $0.name == "vintage_leather_bags" })?.responses
+        }
+        if (search.contains("oversized") || q.contains("oversized")) && colours.contains("black") && (search.contains("tee") || search.contains("tshirt") || q.contains("t-shirt") || q.contains("t-shirts")) {
+            return Self.responseBatch1.first(where: { $0.name == "oversized_black_tees" })?.responses
+        }
+        if (q.contains("minimalist") || search.contains("minimalist")) && colours.contains("white") && (search.contains("shirt") || q.contains("shirts")) {
+            return Self.responseBatch1.first(where: { $0.name == "minimalist_white_shirts" })?.responses
+        }
+        if (search.contains("jogger") || q.contains("joggers")) && (colours.contains("grey") || q.contains("light grey")) {
+            return Self.responseBatch1.first(where: { $0.name == "light_grey_joggers" })?.responses
+        }
+        if (q.contains("comfy") || q.contains("comfortable")) && (q.contains("travelling") || q.contains("travel")) && !(search.contains("hoodie") || q.contains("hoodie")) {
+            return Self.responseBatch1.first(where: { $0.name == "comfy_travel_generic" })?.responses
+        }
+        if colours.contains("black") && (search.contains("trainer") || search.contains("sneaker") || q.contains("trainers")) && (q.contains("stylish") || q.contains("fashionable")) {
+            return Self.responseBatch1.first(where: { $0.name == "black_stylish_trainers" })?.responses
+        }
+        if (q.contains("weekend") || search.contains("weekend")) && (q.contains("casual") || search.contains("casual")) {
+            return Self.responseBatch1.first(where: { $0.name == "casual_weekend" })?.responses
+        }
+        if (q.contains("between") && (q.contains("blue") && q.contains("green"))) || (search.contains("teal") && colours.contains("blue")) {
+            return Self.responseBatch1.first(where: { $0.name == "between_blue_green" })?.responses
+        }
+        if (q.contains("light blue") || (colours.contains("blue") && q.contains("light"))) && (search.contains("jeans") || q.contains("jeans")) {
+            return Self.responseBatch1.first(where: { $0.name == "light_blue_jeans" })?.responses
+        }
+        if colours.contains("yellow") && (search.contains("scarf") || q.contains("scarf")) && (q.contains("winter") || search.contains("winter")) {
+            return Self.responseBatch1.first(where: { $0.name == "yellow_scarf_winter" })?.responses
+        }
+        if (search.contains("heel") || q.contains("heels")) && hasPrice {
+            return Self.responseBatch1.first(where: { $0.name == "heels_under_price" })?.responses
+        }
+        if (q.contains("holiday") || q.contains("vacation")) && (search.contains("dress") || q.contains("dresses")) {
+            return Self.responseBatch1.first(where: { $0.name == "holiday_light_dresses" })?.responses
+        }
+        if colours.contains("brown") && (search.contains("leather") || q.contains("leather")) && (search.contains("boot") || q.contains("boots")) {
+            return Self.responseBatch1.first(where: { $0.name == "brown_leather_boots" })?.responses
+        }
+        if (q.contains("neutral") || search.contains("neutral")) && (q.contains("work") || search.contains("work")) {
+            return Self.responseBatch1.first(where: { $0.name == "neutral_work" })?.responses
+        }
+        if colours.contains("black") && (search.contains("handbag") || search.contains("bag") || q.contains("handbag") || q.contains("handbags")) {
+            return Self.responseBatch1.first(where: { $0.name == "black_handbags" })?.responses
+        }
+        if (search.contains("trainer") || search.contains("sneaker") || q.contains("trainers")) && (q.contains("gym") || search.contains("gym")) {
+            return Self.responseBatch1.first(where: { $0.name == "trainers_gym" })?.responses
+        }
+        if (search.contains("vintage") || q.contains("vintage")) && (search.contains("dress") || q.contains("dresses")) {
+            return Self.responseBatch1.first(where: { $0.name == "vintage_dresses" })?.responses
+        }
+        if colours.contains("green") && (search.contains("jacket") || q.contains("jacket")) && (q.contains("not too bright") || q.contains("muted") || q.contains("subtle")) {
+            return Self.responseBatch1.first(where: { $0.name == "muted_green_jacket" })?.responses
+        }
+        if (search.contains("hoodie") || q.contains("hoodies")) && (q.contains("cheap") || (hasPrice && !colours.contains("green"))) {
+            if colours.contains("grey") { return Self.responseBatch1.first(where: { $0.name == "grey_hoodies" })?.responses }
+            return Self.responseBatch1.first(where: { $0.name == "cheap_hoodies" })?.responses
+        }
+        if colours.contains("pink") && (search.contains("skirt") || q.contains("skirts")) {
+            return Self.responseBatch1.first(where: { $0.name == "pink_skirts" })?.responses
+        }
+        if (q.contains("cute") || q.contains("flattering")) && (q.contains("date") || search.contains("date")) {
+            return Self.responseBatch1.first(where: { $0.name == "cute_date" })?.responses
+        }
+        if colours.contains("grey") && (search.contains("hoodie") || q.contains("hoodies")) {
+            return Self.responseBatch1.first(where: { $0.name == "grey_hoodies" })?.responses
+        }
+        if (q.contains("warm") && q.contains("stylish")) || (search.contains("warm") && search.contains("stylish")) {
+            return Self.responseBatch1.first(where: { $0.name == "warm_stylish" })?.responses
+        }
+        if colours.contains("blue") && (search.contains("jacket") || q.contains("jackets")) && !search.contains("leather") {
+            return Self.responseBatch1.first(where: { $0.name == "blue_jackets" })?.responses
+        }
+        if q.contains("birthday") && (search.contains("dress") || search.contains("green")) && isHappy {
+            return Self.responseBatch1.first(where: { $0.name == "birthday_party" })?.responses
+        }
+        if (search.contains("boot") || q.contains("boots")) && hasPrice {
+            return Self.responseBatch1.first(where: { $0.name == "boots_under_price" })?.responses
+        }
+        if q.contains("lighter than") || q.contains("lighter than navy") || (q.contains("lighter") && colours.contains("navy")) {
+            return Self.responseBatch1.first(where: { $0.name == "lighter_than_navy" })?.responses
+        }
+        if (q.contains("comfy") || q.contains("travelling") || q.contains("travel")) && (search.contains("hoodie") || q.contains("hoodie")) {
+            return Self.responseBatch1.first(where: { $0.name == "comfy_travel" })?.responses
+        }
+        if (search.contains("vintage") || q.contains("vintage")) && (search.contains("denim") || search.contains("jacket")) {
+            return Self.responseBatch1.first(where: { $0.name == "vintage_denim" })?.responses
+        }
+        if (q.contains("night out") || q.contains("night out")) && (search.contains("dress") || colours.contains("black")) {
+            return Self.responseBatch1.first(where: { $0.name == "night_out_dress" })?.responses
+        }
+        if (search.contains("trainer") || search.contains("sneaker") || q.contains("trainers")) && (q.contains("everyday") || q.contains("daily") || (hasPrice && colours.contains("white"))) {
+            return Self.responseBatch1.first(where: { $0.name == "everyday_trainers" })?.responses
+        }
+        if colours.contains("beige") && (q.contains("minimalist") || search.contains("minimalist")) {
+            return Self.responseBatch1.first(where: { $0.name == "beige_minimalist" })?.responses
+        }
+        if (search.contains("oversized") || q.contains("oversized")) && (search.contains("hoodie") || q.contains("hoodies")) {
+            return Self.responseBatch1.first(where: { $0.name == "oversized_hoodies" })?.responses
+        }
+        if (q.contains("festival") || isHappy) && (q.contains("colourful") || q.contains("colorful") || search.contains("colourful")) {
+            return Self.responseBatch1.first(where: { $0.name == "festival_colourful" })?.responses
+        }
+        if (search.contains("jeans") || q.contains("jeans")) && (q.contains("not skinny") || q.contains("but not")) {
+            return Self.responseBatch1.first(where: { $0.name == "jeans_not_skinny" })?.responses
+        }
+        if (search.contains("coat") || search.contains("jacket") || q.contains("coat")) && (q.contains("winter") || search.contains("winter")) {
+            return Self.responseBatch1.first(where: { $0.name == "winter_coat" })?.responses
+        }
+        if (search.contains("leather") || q.contains("leather")) && (search.contains("jacket") || q.contains("jackets")) {
+            return Self.responseBatch1.first(where: { $0.name == "leather_jackets" })?.responses
+        }
+        if search.contains("dress") && hasPrice && !search.contains("boot") {
+            return Self.responseBatch1.first(where: { $0.name == "dresses_under_price" })?.responses
+        }
+        if colours.contains("red") && (search.contains("dress") || q.contains("dress")) && (q.contains("party") || isHappy) {
+            return Self.responseBatch1.first(where: { $0.name == "party_dress" })?.responses
+        }
+        if colours.contains("green") && (search.contains("hoodie") || q.contains("hoodies")) {
+            return Self.responseBatch1.first(where: { $0.name == "green_hoodies" })?.responses
+        }
+        if (q.contains("wedding") || search.contains("wedding")) && (q.contains("classy") || q.contains("elegant") || search.contains("classy")) {
+            return Self.responseBatch1.first(where: { $0.name == "wedding_classy" })?.responses
+        }
+        if colours.contains("yellow") && (search.contains("sweater") || search.contains("jumper") || q.contains("sweaters")) {
+            return Self.responseBatch1.first(where: { $0.name == "yellow_sweaters" })?.responses
+        }
+        if (search.contains("casual") || q.contains("casual")) && (search.contains("jacket") || q.contains("jackets")) && (q.contains("everyday") || q.contains("daily")) {
+            return Self.responseBatch1.first(where: { $0.name == "casual_everyday_jacket" })?.responses
+        }
+        if (q.contains("stylish") || q.contains("style") || q.contains("classy")) && (q.contains("cheap") || hasPrice) {
+            return Self.responseBatch1.first(where: { $0.name == "stylish_cheap" })?.responses
+        }
+        return nil
+    }
+
+    /// Possible reply strings when we have results. Uses Batch 1 response sets when matched, else event-aware generic replies. When a typo was corrected, prepends "Do you mean 'X'?".
+    /// Warm, helpful no-results messages so the AI still feels trained when nothing matches.
+    private static let noResultsPhrases: [String] = [
+        "I couldn't find anything matching that right now. Try different colours or categories, or a simpler search like just the item type.",
+        "Nothing came up for that. I'd try searching for just the item (e.g. dress or jacket) or a different colour.",
+        "No matches at the moment. Try dropping the colour and search for the item, or switch the colour or style.",
+        "I had a look but didn't find that exact combo. Try a different colour or just the category — we might have something close.",
+        "Nothing matching that right now. Try a simpler search or different options; I'm here to help.",
+        "I couldn't find that combination. Try searching for just the item type, or change the colour or filters.",
+        "No results for that search. Try different colours or categories, or a broader term.",
+        "I looked but didn't find anything for that. Try the item on its own or another colour — new stuff is added often."
+    ]
+
+    /// Reply when the main search returned no items. Picks a warm, helpful no-results message.
+    func replyForNoResults() -> String {
+        (Self.noResultsPhrases.randomElement() ?? Self.noResultsPhrases[0])
+    }
+
+    /// True if the query is only a greeting (e.g. "Hello") — show a friendly prompt instead of search.
+    func isGreetingOnly(_ query: String) -> Bool {
+        let words = query.trimmingCharacters(in: .whitespaces).lowercased()
+            .components(separatedBy: .whitespaces)
+            .filter { !$0.isEmpty }
+        return words.count == 1 && Self.nonProductWords.contains(words[0])
+    }
+
+    /// True if the term is a valid product category for fallback (avoids "here are some hellos" for greetings).
+    func isFallbackTermValid(_ term: String) -> Bool {
+        let lower = term.lowercased()
+        if Self.nonProductWords.contains(lower) { return false }
+        return Self.categoryKeywords.contains(where: { $0.lowercased() == lower })
+    }
+
+    /// Reply when we fell back to a broader search (e.g. "dress" when "blue dress" had no results). Feels trained and helpful.
+    func replyForFallbackResults(fallbackTerm: String) -> String {
+        let warm = Self.warmLeadInPhrases.randomElement() ?? Self.warmLeadInPhrases[0]
+        let plural = fallbackTerm.hasSuffix("s") ? fallbackTerm : fallbackTerm + "s"
+        return "\(warm) I couldn't find that exact match right now, but here are some \(plural) you might like."
+    }
+
+    func replyForResults(parsed: ParsedSearch, hasItems: Bool, query: String? = nil) -> String {
+        if !hasItems {
+            return replyForNoResults()
+        }
+        let baseReply: String
+        if let hint = parsed.closestMatchHint {
+            baseReply = hint
+        } else if let batch = selectResponseSet(parsed: parsed, query: query), let pick = batch.randomElement() {
+            baseReply = pick
+        } else {
+            let options: [String]
+            switch parsed.detectedEvent {
+            case .happy:
+                options = [
+                    L10n.string("Happy to help! Here are some options you might like."),
+                    L10n.string("Sounds exciting! Here are some picks for you."),
+                    L10n.string("Let's find something great. Here are some options."),
+                    L10n.string("Here are some items that could work perfectly."),
+                    L10n.string("Hope you find something you love. Here are some options.")
+                ]
+            case .sad:
+                options = [
+                    L10n.string("I understand. Here are some appropriate options."),
+                    L10n.string("I'll help you find something suitable."),
+                    L10n.string("Here are some options that might work."),
+                    L10n.string("Let me show you some suitable options.")
+                ]
+            case .none:
+                options = [
+                    L10n.string("Here are some items that might work."),
+                    L10n.string("Here are some options for you."),
+                    L10n.string("These might match what you're looking for."),
+                    L10n.string("Here are some picks based on your search.")
+                ]
+            }
+            baseReply = options.randomElement() ?? options[0]
+        }
+        let warmLeadIn = Self.warmLeadInPhrases.randomElement() ?? Self.warmLeadInPhrases[0]
+        var reply = "\(warmLeadIn) \(baseReply)"
+        if let (_, corrected) = parsed.spellingCorrectionHint {
+            let template = L10n.string("Do you mean \"%@\"?")
+            let spellingPrefix = String(format: template, corrected)
+            reply = "\(warmLeadIn) \(spellingPrefix) \(baseReply)"
+        }
+        return reply
     }
     
     /// Fuzzy match a single word against app colours and aliases.

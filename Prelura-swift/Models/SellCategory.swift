@@ -1,9 +1,34 @@
 import Foundation
 
-/// Category selected in the sell flow (backend id + name). Replaces flat Category for sell form.
+/// Category selected in the sell flow (backend id + name + full path for tracing back).
 struct SellCategory: Equatable {
     let id: String
     let name: String
+    /// Full path from root to this category (e.g. ["Men", "Accessories", "Gloves"]) so user can trace back.
+    let pathNames: [String]
+    /// Full path of IDs for each level.
+    let pathIds: [String]
+
+    init(id: String, name: String, pathNames: [String]? = nil, pathIds: [String]? = nil) {
+        self.id = id
+        self.name = name
+        self.pathNames = pathNames ?? [name]
+        self.pathIds = pathIds ?? [id]
+    }
+
+    /// Display string for the sell form (e.g. "Men > Accessories > Gloves").
+    var displayPath: String {
+        pathNames.joined(separator: " > ")
+    }
+}
+
+/// A category with its full path (for search results).
+struct CategoryPathEntry: Equatable {
+    let id: String
+    let name: String
+    let pathNames: [String]
+    let pathIds: [String]
+    var displayPath: String { pathNames.joined(separator: " > ") }
 }
 
 /// Category node from GraphQL categories(parentId) query (matches Flutter Categoriess / CategoryTypes).

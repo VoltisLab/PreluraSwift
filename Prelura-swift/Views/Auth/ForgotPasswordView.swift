@@ -31,7 +31,7 @@ struct ForgotPasswordView: View {
                                     .textFieldStyle(PlainTextFieldStyle())
                                     .padding(Theme.Spacing.md)
                                     .background(Theme.Colors.secondaryBackground)
-                                    .cornerRadius(16)
+                                    .cornerRadius(30)
                                     .foregroundColor(Theme.Colors.primaryText)
                             }
                             if let err = errorMessage {

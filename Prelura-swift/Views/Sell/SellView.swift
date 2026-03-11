@@ -15,7 +15,7 @@ struct SellView: View {
     @State private var colours: [String] = []
     @State private var measurements: String? = nil
     @State private var material: String? = nil
-    @State private var style: String? = nil
+    @State private var styles: [String] = []
     @State private var price: Double? = nil
     @State private var discountPrice: Double? = nil
     @State private var parcelSize: String? = nil
@@ -88,7 +88,7 @@ struct SellView: View {
             .toolbar(.hidden, for: .tabBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    CircleCloseButton(action: { dismiss() })
+                    CircleCloseButton(action: { selectedTab = 0 })
                 }
             }
     }
@@ -263,7 +263,7 @@ struct SellView: View {
                 .background(Theme.Colors.background)
 
             NavigationLink(destination: CategorySelectionView(selectedCategory: $category)) {
-                SellFormRow(title: L10n.string("Category"), value: category?.name)
+                SellFormRow(title: L10n.string("Category"), value: category?.displayPath)
             }
             .buttonStyle(.plain)
             .overlay(ContentDivider(), alignment: .bottom)
@@ -319,8 +319,11 @@ struct SellView: View {
             .overlay(ContentDivider(), alignment: .bottom)
 
             // Style Field
-            NavigationLink(destination: StyleSelectionView(selectedStyle: $style)) {
-                SellFormRow(title: L10n.string("Style (Optional)"), value: style)
+            NavigationLink(destination: StyleSelectionView(selectedStyles: $styles)) {
+                SellFormRow(
+                    title: L10n.string("Style (Optional)"),
+                    value: styles.isEmpty ? nil : styles.map { StyleSelectionView.displayName(for: $0) }.joined(separator: ", ")
+                )
             }
             .buttonStyle(.plain)
             .overlay(ContentDivider(), alignment: .bottom)
@@ -387,18 +390,104 @@ struct SellView: View {
     
 }
 
-// MARK: - Category Selection View (hierarchical, matches Flutter: root → children → leaf)
+// MARK: - Category Selection View (hierarchical + search all categories/subs)
 struct CategorySelectionView: View {
     @Binding var selectedCategory: SellCategory?
     @Environment(\.presentationMode) var presentationMode
     @State private var categories: [APICategory] = []
     @State private var isLoading = true
     @State private var loadError: String?
+    @State private var searchText = ""
+    @State private var allCategories: [CategoryPathEntry] = []
+    @State private var isLoadingSearch = false
     private let service = CategoriesService()
 
     private static let rootOrder = ["Men", "Women", "Boys", "Girls", "Toddlers"]
 
+    private var filteredSearchResults: [CategoryPathEntry] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty { return [] }
+        return allCategories.filter {
+            $0.displayPath.lowercased().contains(q) || $0.name.lowercased().contains(q)
+        }
+    }
+
     var body: some View {
+        VStack(spacing: 0) {
+            DiscoverSearchField(
+                text: $searchText,
+                placeholder: L10n.string("Search categories"),
+                outerPadding: true,
+                topPadding: Theme.Spacing.sm
+            )
+            .padding(.trailing, Theme.Spacing.sm)
+
+            if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                searchResultsContent
+            } else {
+                browseContent
+            }
+        }
+        .background(Theme.Colors.background)
+        .navigationTitle(L10n.string("Select Category"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .task {
+            await loadCategories(parentId: nil)
+        }
+        .task {
+            await loadAllCategories()
+        }
+    }
+
+    @ViewBuilder
+    private var searchResultsContent: some View {
+        if isLoadingSearch {
+            ProgressView()
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Spacing.xl)
+                .tint(Theme.primaryColor)
+        } else {
+            let results = filteredSearchResults
+            if results.isEmpty {
+                Text(L10n.string("No categories found"))
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Theme.Spacing.xl)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(results, id: \.id) { entry in
+                            Button(action: {
+                                selectedCategory = SellCategory(
+                                    id: entry.id,
+                                    name: entry.name,
+                                    pathNames: entry.pathNames,
+                                    pathIds: entry.pathIds
+                                )
+                                presentationMode.wrappedValue.dismiss()
+                            }) {
+                                Text(entry.displayPath)
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.vertical, Theme.Spacing.md)
+                            }
+                            .buttonStyle(.plain)
+                            if entry.id != results.last?.id {
+                                ContentDivider()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var browseContent: some View {
         Group {
             if isLoading {
                 ProgressView()
@@ -419,30 +508,28 @@ struct CategorySelectionView: View {
                             NavigationLink(destination: SubCategoryView(
                                 parentId: cat.id,
                                 parentName: cat.name,
+                                pathNames: [cat.name],
+                                pathIds: [cat.id],
                                 selectedCategory: $selectedCategory
                             )) {
                                 categoryRow(cat.name, isSelected: false)
                             }
                             .buttonStyle(.plain)
+                            .listRowBackground(Theme.Colors.background)
                         } else {
                             Button(action: {
-                                selectedCategory = SellCategory(id: cat.id, name: cat.name)
+                                selectedCategory = SellCategory(id: cat.id, name: cat.name, pathNames: [cat.name], pathIds: [cat.id])
                                 presentationMode.wrappedValue.dismiss()
                             }) {
                                 categoryRow(cat.name, isSelected: selectedCategory?.id == cat.id)
                             }
+                            .listRowBackground(Theme.Colors.background)
                         }
                     }
                 }
                 .listStyle(PlainListStyle())
+                .scrollContentBackground(.hidden)
             }
-        }
-        .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("Select Category"))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
-        .task {
-            await loadCategories(parentId: nil)
         }
     }
 
@@ -474,9 +561,19 @@ struct CategorySelectionView: View {
         do {
             categories = try await service.fetchCategories(parentId: parentId)
         } catch {
-            loadError = error.localizedDescription
+            loadError = L10n.userFacingError(error)
         }
         isLoading = false
+    }
+
+    private func loadAllCategories() async {
+        isLoadingSearch = true
+        do {
+            allCategories = try await service.fetchAllCategoriesFlattened()
+        } catch {
+            allCategories = []
+        }
+        isLoadingSearch = false
     }
 }
 
@@ -484,6 +581,8 @@ struct CategorySelectionView: View {
 struct SubCategoryView: View {
     let parentId: String
     let parentName: String
+    let pathNames: [String]
+    let pathIds: [String]
     @Binding var selectedCategory: SellCategory?
     @Environment(\.presentationMode) var presentationMode
     @State private var categories: [APICategory] = []
@@ -512,22 +611,32 @@ struct SubCategoryView: View {
                             NavigationLink(destination: SubCategoryView(
                                 parentId: cat.id,
                                 parentName: cat.name,
+                                pathNames: pathNames + [cat.name],
+                                pathIds: pathIds + [cat.id],
                                 selectedCategory: $selectedCategory
                             )) {
                                 subCategoryRow(cat)
                             }
                             .buttonStyle(.plain)
+                            .listRowBackground(Theme.Colors.background)
                         } else {
                             Button(action: {
-                                selectedCategory = SellCategory(id: cat.id, name: cat.name)
+                                selectedCategory = SellCategory(
+                                    id: cat.id,
+                                    name: cat.name,
+                                    pathNames: pathNames + [cat.name],
+                                    pathIds: pathIds + [cat.id]
+                                )
                                 presentationMode.wrappedValue.dismiss()
                             }) {
                                 subCategoryRow(cat)
                             }
+                            .listRowBackground(Theme.Colors.background)
                         }
                     }
                 }
                 .listStyle(PlainListStyle())
+                .scrollContentBackground(.hidden)
             }
         }
         .background(Theme.Colors.background)
@@ -559,7 +668,7 @@ struct SubCategoryView: View {
         do {
             categories = try await service.fetchCategories(parentId: parentId)
         } catch {
-            loadError = error.localizedDescription
+            loadError = L10n.userFacingError(error)
         }
         isLoading = false
     }
@@ -571,11 +680,11 @@ struct ConditionSelectionView: View {
     @Environment(\.presentationMode) var presentationMode
 
     private static let conditions: [(key: String, title: String, subtitle: String, icon: String)] = [
-        ("BRAND_NEW_WITH_TAGS", "Brand New With Tags", "Never worn, with original tags", "tag.fill"),
+        ("BRAND_NEW_WITH_TAGS", "Brand New With Tags", "Never worn, with original tags", "tag"),
         ("BRAND_NEW_WITHOUT_TAGS", "Brand new Without Tags", "Never worn, tags removed", "sparkles"),
-        ("EXCELLENT_CONDITION", "Excellent Condition", "Like new, minimal wear", "star.fill"),
-        ("GOOD_CONDITION", "Good Condition", "Light wear, fully functional", "checkmark.circle.fill"),
-        ("HEAVILY_USED", "Heavily Used", "Visible wear, still usable", "clock.fill")
+        ("EXCELLENT_CONDITION", "Excellent Condition", "Like new, minimal wear", "star"),
+        ("GOOD_CONDITION", "Good Condition", "Light wear, fully functional", "checkmark.circle"),
+        ("HEAVILY_USED", "Heavily Used", "Visible wear, still usable", "clock")
     ]
 
     /// Human-readable label for the condition key (for display in form after selection).
@@ -593,8 +702,8 @@ struct ConditionSelectionView: View {
                 }) {
                     HStack(alignment: .center, spacing: Theme.Spacing.md) {
                         Image(systemName: item.icon)
-                            .font(.system(size: 22))
-                            .foregroundColor(Theme.primaryColor)
+                            .font(.system(size: 22, weight: .regular))
+                            .foregroundColor(Theme.Colors.secondaryText)
                             .frame(width: 32, alignment: .center)
 
                         VStack(alignment: .leading, spacing: 2) {
@@ -610,16 +719,18 @@ struct ConditionSelectionView: View {
                         Spacer()
 
                         if selectedCondition == item.key {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 22))
+                            Image(systemName: "checkmark.circle")
+                                .font(.system(size: 22, weight: .medium))
                                 .foregroundColor(Theme.primaryColor)
                         }
                     }
                     .padding(.vertical, Theme.Spacing.xs)
+                    .listRowBackground(Theme.Colors.background)
                 }
             }
         }
         .listStyle(PlainListStyle())
+        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Select Condition"))
         .navigationBarTitleDisplayMode(.inline)
@@ -651,23 +762,21 @@ struct ColoursSelectionView: View {
 
                         Spacer()
 
-                        Circle()
-                            .fill(ColoursSelectionView.sampleColor(for: colour))
-                            .frame(width: 24, height: 24)
-                            .overlay(
-                                Circle()
-                                    .strokeBorder(Theme.Colors.glassBorder, lineWidth: colour == "White" || colour == "Black" ? 1 : 0)
-                            )
-                            .overlay(
-                                Circle()
-                                    .strokeBorder(Theme.primaryColor, lineWidth: selectedColours.contains(colour) ? 3 : 0)
-                            )
+                        if selectedColours.contains(colour) {
+                            Text(L10n.string("Selected"))
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        }
+
+                        colourSwatch(colour: colour, isSelected: selectedColours.contains(colour))
                     }
                 }
+                .listRowBackground(Theme.Colors.background)
                 .disabled(!selectedColours.contains(colour) && selectedColours.count >= Self.maxSelections)
             }
         }
         .listStyle(PlainListStyle())
+        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Select Colours"))
         .navigationBarTitleDisplayMode(.inline)
@@ -680,6 +789,28 @@ struct ColoursSelectionView: View {
                 .foregroundColor(Theme.primaryColor)
             }
         }
+    }
+
+    private func colourSwatch(colour: String, isSelected: Bool) -> some View {
+        let innerSize: CGFloat = 24
+        let ringGap: CGFloat = 4
+        let ringStroke: CGFloat = 2
+        let outerSize = innerSize + ringGap * 2 + ringStroke * 2
+        return ZStack {
+            Circle()
+                .fill(ColoursSelectionView.sampleColor(for: colour))
+                .frame(width: innerSize, height: innerSize)
+                .overlay(
+                    Circle()
+                        .strokeBorder(Theme.Colors.glassBorder, lineWidth: colour == "White" || colour == "Black" ? 1 : 0)
+                )
+            if isSelected {
+                Circle()
+                    .strokeBorder(Theme.primaryColor, lineWidth: ringStroke)
+                    .frame(width: outerSize, height: outerSize)
+            }
+        }
+        .frame(width: outerSize, height: outerSize)
     }
 
     private static func sampleColor(for name: String) -> Color {
@@ -704,39 +835,187 @@ struct ColoursSelectionView: View {
     }
 }
 
-// MARK: - Measurements View
+// MARK: - Measurement entry for structured UI
+private struct MeasurementRow: Identifiable {
+    var id = UUID()
+    var label: String
+    var value: String
+    var unit: String // "" for none, "in", "cm"
+}
+
+// MARK: - Measurements View (structured: label + value + unit; presets + custom)
 struct MeasurementsView: View {
     @Binding var measurements: String?
     @Environment(\.presentationMode) var presentationMode
-    @State private var measurementsText: String = ""
-    
+    @State private var entries: [MeasurementRow] = []
+    @FocusState private var focusedRowId: UUID?
+
+    private static let presetLabels = [
+        "Chest", "Waist", "Hip", "Length", "Sleeve", "Inseam", "Shoulder", "Neck", "Size"
+    ]
+    private static let unitOptions = ["", "in", "cm"]
+
     var body: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            TextEditor(text: $measurementsText)
-                .font(Theme.Typography.body)
-                .foregroundColor(Theme.Colors.primaryText)
-                .frame(minHeight: 200)
-                .padding(Theme.Spacing.md)
-                .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(8)
-                .padding(Theme.Spacing.md)
-            
-            Spacer()
+        VStack(spacing: 0) {
+            if entries.isEmpty {
+                emptyState
+            } else {
+                List {
+                    ForEach(entries) { entry in
+                        measurementRowView(entry)
+                    }
+                    .onDelete(perform: deleteEntries)
+                    .listRowBackground(Theme.Colors.background)
+                }
+                .listStyle(PlainListStyle())
+                .scrollContentBackground(.hidden)
+            }
+            addButton
         }
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Measurements"))
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            measurementsText = measurements ?? ""
-        }
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Done") {
-                    measurements = measurementsText.isEmpty ? nil : measurementsText
+                Button(L10n.string("Done")) {
+                    commitToBinding()
                     presentationMode.wrappedValue.dismiss()
                 }
+                .foregroundColor(Theme.primaryColor)
             }
         }
+        .onAppear {
+            parseFromBinding()
+        }
+        .onDisappear {
+            commitToBinding()
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: "ruler")
+                .font(.system(size: 44))
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text(L10n.string("Add measurements like chest, waist, length"))
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.xxl)
+    }
+
+    private func measurementRowView(_ entry: MeasurementRow) -> some View {
+        let binding = binding(for: entry)
+        return HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+            Menu {
+                ForEach(Self.presetLabels, id: \.self) { preset in
+                    Button(preset) { binding.label.wrappedValue = preset }
+                }
+                Button(L10n.string("Custom…")) { binding.label.wrappedValue = "" }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(entry.label.isEmpty ? L10n.string("Label") : entry.label)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(entry.label.isEmpty ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+                .frame(width: 100, alignment: .leading)
+            }
+            TextField(L10n.string("Value"), text: binding.value)
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.primaryText)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: .infinity)
+            Picker("", selection: binding.unit) {
+                ForEach(Self.unitOptions, id: \.self) { opt in
+                    Text(unitDisplay(opt)).tag(opt)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 56)
+        }
+        .padding(.vertical, Theme.Spacing.xs)
+    }
+
+    private func binding(for entry: MeasurementRow) -> (label: Binding<String>, value: Binding<String>, unit: Binding<String>) {
+        let i = entries.firstIndex(where: { $0.id == entry.id }) ?? 0
+        return (
+            Binding(get: { entries[i].label }, set: { entries[i].label = $0 }),
+            Binding(get: { entries[i].value }, set: { entries[i].value = $0 }),
+            Binding(get: { entries[i].unit }, set: { entries[i].unit = $0 })
+        )
+    }
+
+    private func unitDisplay(_ unit: String) -> String {
+        if unit.isEmpty { return "—" }
+        return unit
+    }
+
+    private var addButton: some View {
+        Button(action: addEntry) {
+            HStack {
+                Image(systemName: "plus.circle.fill")
+                Text(L10n.string("Add measurement"))
+            }
+            .font(Theme.Typography.body)
+            .foregroundColor(Theme.primaryColor)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Theme.Spacing.md)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.bottom, Theme.Spacing.md)
+    }
+
+    private func addEntry() {
+        entries.append(MeasurementRow(label: "", value: "", unit: ""))
+    }
+
+    private func deleteEntries(at offsets: IndexSet) {
+        entries.remove(atOffsets: offsets)
+    }
+
+    private static func parseLine(_ line: String) -> (label: String, value: String, unit: String)? {
+        let line = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !line.isEmpty, let colon = line.firstIndex(of: ":") else { return nil }
+        let label = String(line[..<colon]).trimmingCharacters(in: .whitespaces)
+        let rest = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+        let parts = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false)
+        let value = parts.isEmpty ? "" : String(parts[0])
+        let unit = parts.count > 1 ? String(parts[1]) : ""
+        return (label, value, unit)
+    }
+
+    private func parseFromBinding() {
+        guard let raw = measurements, !raw.isEmpty else {
+            entries = []
+            return
+        }
+        let lines = raw.components(separatedBy: .newlines)
+        entries = lines.compactMap { line -> MeasurementRow? in
+            guard let t = Self.parseLine(line) else { return nil }
+            return MeasurementRow(label: t.label, value: t.value, unit: t.unit)
+        }
+        if entries.isEmpty && !raw.isEmpty {
+            entries = [MeasurementRow(label: "", value: raw, unit: "")]
+        }
+    }
+
+    private func commitToBinding() {
+        let lines = entries
+            .filter { !$0.label.isEmpty && !$0.value.trimmingCharacters(in: .whitespaces).isEmpty }
+            .map { row in
+                let u = row.unit.trimmingCharacters(in: .whitespaces)
+                return u.isEmpty ? "\(row.label): \(row.value)" : "\(row.label): \(row.value) \(u)"
+            }
+        measurements = lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 }
 
@@ -767,9 +1046,11 @@ struct MaterialSelectionView: View {
                         }
                     }
                 }
+                .listRowBackground(Theme.Colors.background)
             }
         }
         .listStyle(PlainListStyle())
+        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Select Material"))
         .navigationBarTitleDisplayMode(.inline)
@@ -777,86 +1058,152 @@ struct MaterialSelectionView: View {
     }
 }
 
-// MARK: - Style Selection View
+// MARK: - Style Selection View (checkboxes, multi-select max 2, list from GraphQL StyleEnum)
 struct StyleSelectionView: View {
-    @Binding var selectedStyle: String?
+    @Binding var selectedStyles: [String]
     @Environment(\.presentationMode) var presentationMode
-    
-    let styles = ["Casual", "Formal", "Vintage", "Streetwear", "Bohemian", "Minimalist", "Sporty", "Elegant", "Edgy", "Classic", "Trendy", "Other"]
-    
+    @State private var searchText = ""
+
+    /// Backend StyleEnum values (matches GraphQL schema; not fetched, enum is fixed).
+    private static let styleEnumRawValues: [String] = [
+        "WORKWEAR", "WORKOUT", "CASUAL", "PARTY_DRESS", "PARTY_OUTFIT", "FORMAL_WEAR", "EVENING_WEAR",
+        "WEDDING_GUEST", "LOUNGEWEAR", "VACATION_RESORT_WEAR", "FESTIVAL_WEAR", "ACTIVEWEAR", "NIGHTWEAR",
+        "VINTAGE", "Y2K", "BOHO", "MINIMALIST", "GRUNGE", "CHIC", "STREETWEAR", "PREPPY", "RETRO",
+        "COTTAGECORE", "GLAM", "SUMMER_STYLES", "WINTER_ESSENTIALS", "SPRING_FLORALS", "AUTUMN_LAYERS",
+        "RAINY_DAY_WEAR", "DENIM_JEANS", "DRESSES_GOWNS", "JACKETS_COATS", "KNITWEAR_SWEATERS",
+        "SKIRTS_SHORTS", "SUITS_BLAZERS", "TOPS_BLOUSES", "SHOES_FOOTWEAR", "TRAVEL_FRIENDLY",
+        "MATERNITY_WEAR", "ATHLEISURE", "ECO_FRIENDLY", "FESTIVAL_READY", "DATE_NIGHT", "ETHNIC_WEAR",
+        "OFFICE_PARTY_OUTFIT", "COCKTAIL_ATTIRE", "PROM_DRESSES", "MUSIC_CONCERT_WEAR", "OVERSIZED",
+        "SLIM_FIT", "RELAXED_FIT", "CHRISTMAS", "SCHOOL_UNIFORMS"
+    ]
+
+    private static let maxSelections = 2
+
+    private var filteredStyles: [String] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty {
+            return Self.styleEnumRawValues
+        }
+        return Self.styleEnumRawValues.filter {
+            Self.displayName(for: $0).lowercased().contains(q)
+        }
+    }
+
+    /// Human-readable label for a StyleEnum raw value (e.g. FORMAL_WEAR → "Formal wear").
+    static func displayName(for rawValue: String) -> String {
+        let lower = rawValue.replacingOccurrences(of: "_", with: " ").lowercased()
+        guard !lower.isEmpty else { return rawValue }
+        return lower.prefix(1).uppercased() + lower.dropFirst()
+    }
+
     var body: some View {
-        List {
-            ForEach(styles, id: \.self) { style in
-                Button(action: {
-                    selectedStyle = style
-                    presentationMode.wrappedValue.dismiss()
-                }) {
-                    HStack {
-                        Text(style)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                        
-                        Spacer()
-                        
-                        if selectedStyle == style {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(Theme.primaryColor)
+        VStack(spacing: 0) {
+            DiscoverSearchField(
+                text: $searchText,
+                placeholder: L10n.string("Find a style"),
+                outerPadding: true,
+                topPadding: Theme.Spacing.sm
+            )
+            .padding(.trailing, Theme.Spacing.sm)
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(filteredStyles, id: \.self) { raw in
+                        styleRow(rawValue: raw)
+                        if raw != filteredStyles.last {
+                            ContentDivider()
                         }
                     }
                 }
             }
         }
-        .listStyle(PlainListStyle())
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Select Style"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(L10n.string("Done")) {
+                    presentationMode.wrappedValue.dismiss()
+                }
+                .foregroundColor(Theme.primaryColor)
+            }
+        }
+    }
+
+    private func styleRow(rawValue: String) -> some View {
+        let isSelected = selectedStyles.contains(rawValue)
+        let canSelect = selectedStyles.count < Self.maxSelections || isSelected
+        return Button(action: {
+            if isSelected {
+                selectedStyles.removeAll { $0 == rawValue }
+            } else if selectedStyles.count < Self.maxSelections {
+                selectedStyles.append(rawValue)
+            }
+        }) {
+            HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                Image(systemName: isSelected ? "checkmark.square" : "square")
+                    .font(.system(size: 20))
+                    .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.secondaryText)
+
+                Text(Self.displayName(for: rawValue))
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .multilineTextAlignment(.leading)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.md)
+            .contentShape(Rectangle())
+            .opacity(canSelect ? 1 : 0.6)
+        }
+        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
+        .disabled(!canSelect)
     }
 }
 
-// MARK: - Price Input View
+// MARK: - Price Input View (simple price field)
 struct PriceInputView: View {
     @Binding var price: Double?
     @Environment(\.presentationMode) var presentationMode
     @State private var priceText: String = ""
     @FocusState private var isFocused: Bool
-    
+
     var body: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            HStack {
-                Text("£")
-                    .font(Theme.Typography.title)
-                    .foregroundColor(Theme.Colors.primaryText)
-                
-                TextField("0", text: $priceText)
-                    .font(Theme.Typography.title)
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .keyboardType(.decimalPad)
-                    .focused($isFocused)
-            }
-            .padding(Theme.Spacing.md)
-            .background(Theme.Colors.secondaryBackground)
-            .cornerRadius(8)
-            .padding(Theme.Spacing.md)
-            
-            Spacer()
+        HStack(spacing: Theme.Spacing.sm) {
+            Text("£")
+                .font(Theme.Typography.title2)
+                .foregroundColor(Theme.Colors.primaryText)
+            TextField(L10n.string("0"), text: $priceText)
+                .font(Theme.Typography.title2)
+                .foregroundColor(Theme.Colors.primaryText)
+                .keyboardType(.decimalPad)
+                .focused($isFocused)
         }
+        .padding(Theme.Spacing.md)
+        .background(Theme.Colors.secondaryBackground)
+        .cornerRadius(30)
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.top, Theme.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Price"))
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            if let price = price {
-                priceText = String(format: "%.0f", price)
-            }
-            isFocused = true
-        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Done") {
-                    price = Double(priceText)
+                Button(L10n.string("Done")) {
+                    price = Double(priceText.replacingOccurrences(of: ",", with: "."))
                     presentationMode.wrappedValue.dismiss()
                 }
+                .foregroundColor(Theme.primaryColor)
             }
+        }
+        .onAppear {
+            if let p = price, p > 0 {
+                priceText = String(format: "%.0f", p)
+            }
+            isFocused = true
         }
     }
 }
@@ -895,7 +1242,7 @@ struct DiscountPriceInputView: View {
                     }
                     .padding(Theme.Spacing.md)
                     .background(Theme.Colors.secondaryBackground)
-                    .cornerRadius(8)
+                    .cornerRadius(30)
                     
                     if discountPercent > 0 {
                         Text(String(format: L10n.string("Discount: %d%%"), discountPercent))
@@ -963,9 +1310,11 @@ struct ParcelSizeSelectionView: View {
                         }
                     }
                 }
+                .listRowBackground(Theme.Colors.background)
             }
         }
         .listStyle(PlainListStyle())
+        .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Parcel Size"))
         .navigationBarTitleDisplayMode(.inline)
@@ -1020,19 +1369,15 @@ struct BrandInputView: View {
                                     .font(Theme.Typography.body)
                                     .foregroundColor(Theme.Colors.primaryText)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.vertical, Theme.Spacing.sm)
                                     .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.vertical, Theme.Spacing.md)
                             }
                             .buttonStyle(.plain)
                             if brand != filteredBrands.last {
                                 ContentDivider()
-                                    .padding(.leading, Theme.Spacing.md)
                             }
                         }
                     }
-                    .background(Theme.Colors.secondaryBackground)
-                    .cornerRadius(Theme.Glass.cornerRadius)
-                    .padding(.horizontal, Theme.Spacing.md)
                     .padding(.top, Theme.Spacing.md)
                 }
             }
@@ -1068,15 +1413,20 @@ struct BrandInputView: View {
     }
 
     private func loadBrands() async {
-        isLoadingBrands = true
+        await MainActor.run { isLoadingBrands = true }
         productService.updateAuthToken(authService.authToken)
         do {
             let brands = try await productService.getBrandNames()
-            fetchedBrands = brands
+            await MainActor.run {
+                fetchedBrands = brands
+                isLoadingBrands = false
+            }
         } catch {
-            fetchedBrands = []
+            await MainActor.run {
+                fetchedBrands = []
+                isLoadingBrands = false
+            }
         }
-        isLoadingBrands = false
     }
 }
 

@@ -116,13 +116,22 @@ struct DiscoverView: View {
     @ToolbarContentBuilder
     private var discoverToolbar: some ToolbarContent {
         ToolbarItem(placement: .navigationBarTrailing) {
-            NavigationLink(destination: MyFavouritesView()) {
-                Image(systemName: "heart")
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                    .contentShape(Rectangle())
+            HStack(spacing: Theme.Spacing.sm) {
+                NavigationLink(destination: NotificationsListView()) {
+                    Image(systemName: "bell")
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(HapticTapButtonStyle())
+                NavigationLink(destination: MyFavouritesView()) {
+                    Image(systemName: "heart")
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
             }
-            .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
         }
     }
     
@@ -534,9 +543,7 @@ struct DiscoverItemCard: View {
                                         .frame(width: imageWidth, height: imageHeight)
                                         .clipped()
                                 case .failure:
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
                                         .frame(width: imageWidth, height: imageHeight)
                                 @unknown default:
                                     ImageShimmerPlaceholderFilled(cornerRadius: 8)
@@ -544,9 +551,7 @@ struct DiscoverItemCard: View {
                                 }
                             }
                         } else {
-                            Image(systemName: "photo")
-                                .font(.system(size: 40))
-                                .foregroundColor(Theme.primaryColor.opacity(0.5))
+                            ImageShimmerPlaceholderFilled(cornerRadius: 8)
                                 .frame(width: imageWidth, height: imageHeight)
                         }
                     }

@@ -36,16 +36,21 @@ struct MultiBuyDiscountView: View {
                     .tint(Theme.primaryColor)
                     .disabled(isSaving)
                 }
+                .listRowBackground(Theme.Colors.background)
                 if isEnabled {
                     Section(header: Text("Discount tiers").font(Theme.Typography.caption).foregroundColor(Theme.Colors.secondaryText)) {
                         tierRow(label: "2+ items", value: $tier2Percent)
                         tierRow(label: "5+ items", value: $tier5Percent)
                         tierRow(label: "10+ items", value: $tier10Percent)
                     }
+                    .listRowBackground(Theme.Colors.background)
                     if let err = errorMessage {
-                        Text(err)
-                            .font(Theme.Typography.caption)
-                            .foregroundColor(Theme.Colors.error)
+                        Section {
+                            Text(err)
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.error)
+                        }
+                        .listRowBackground(Theme.Colors.background)
                     }
                 }
             }

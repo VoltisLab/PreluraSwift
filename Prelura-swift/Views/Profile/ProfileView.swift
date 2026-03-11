@@ -113,9 +113,6 @@ struct ProfileView: View {
             }
         }
         .onAppear {
-            if profileImage == nil, let saved = viewModel.loadLocalProfileImage() {
-                profileImage = saved
-            }
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
                 viewModel.refresh()
@@ -151,18 +148,20 @@ struct ProfileView: View {
         }
     }
 
+    private static let profilePhotoSize: CGFloat = 88
+
     // MARK: - Profile Section
     private var profileSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            // Row 1: Profile photo and stats on the same horizontal row
-            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+            // Row 1: Profile photo and stats centered in remaining space
+            HStack(alignment: .center, spacing: 0) {
                 PhotosPicker(selection: $selectedPhoto, matching: .images) {
                     Group {
                         if let profileImage = profileImage {
                             Image(uiImage: profileImage)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: 70, height: 70)
+                                .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
                                 .clipShape(Circle())
                         } else if let user = viewModel.user, let avatarURL = user.avatarURL, let url = URL(string: avatarURL) {
                             AsyncImage(url: url) { image in
@@ -174,19 +173,19 @@ struct ProfileView: View {
                                     .fill(Theme.primaryColor)
                                     .overlay(
                                         Image(systemName: "person.fill")
-                                            .font(.system(size: 35))
+                                            .font(.system(size: 44))
                                             .foregroundColor(.white)
                                     )
                             }
-                            .frame(width: 70, height: 70)
+                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
                             .clipShape(Circle())
                         } else {
                             Circle()
                                 .fill(Theme.primaryColor)
-                                .frame(width: 70, height: 70)
+                                .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
                                 .overlay(
                                     Image(systemName: "person.fill")
-                                        .font(.system(size: 35))
+                                        .font(.system(size: 44))
                                         .foregroundColor(.white)
                                 )
                         }
@@ -208,7 +207,7 @@ struct ProfileView: View {
                     if viewModel.isUploadingProfilePhoto {
                         ProgressView()
                             .tint(.white)
-                            .frame(width: 70, height: 70)
+                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
                             .background(Color.black.opacity(0.4))
                             .clipShape(Circle())
                     }
@@ -224,23 +223,43 @@ struct ProfileView: View {
                     }
                 }
 
+                Spacer(minLength: Theme.Spacing.xl)
                 // Listings, Following, Followers on the same row as the profile photo
                 profileStatsRowCompact
+                Spacer(minLength: Theme.Spacing.xl)
             }
 
-            // Row 2: Stars and location below
+            // Row 2: Stars (tappable → Reviews) and location below
             VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .center, spacing: 4) {
-                    ForEach(0..<5, id: \.self) { _ in
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(.yellow)
+                if let u = viewModel.user {
+                    NavigationLink(value: AppRoute.reviews(username: u.username, rating: u.rating)) {
+                        HStack(alignment: .center, spacing: 4) {
+                            ForEach(0..<5, id: \.self) { _ in
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.yellow)
+                            }
+                            Text("(\(u.reviewCount))")
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: true)
+                        }
                     }
-                    Text("(\(viewModel.user?.reviewCount ?? 0))")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: true)
+                    .buttonStyle(HapticTapButtonStyle())
+                } else {
+                    HStack(alignment: .center, spacing: 4) {
+                        ForEach(0..<5, id: \.self) { _ in
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 13))
+                                .foregroundColor(.yellow)
+                        }
+                        Text("(\(viewModel.user?.reviewCount ?? 0))")
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: true)
+                    }
                 }
                 if let location = viewModel.user?.location {
                     Text(location)
@@ -475,6 +494,7 @@ struct ProfileView: View {
                             }
                         }
                     }
+                    .listRowBackground(Theme.Colors.background)
                     .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                 }
                 Section {
@@ -485,18 +505,28 @@ struct ProfileView: View {
                         Text(L10n.string("Clear"))
                             .frame(maxWidth: .infinity)
                     }
+                    .listRowBackground(Theme.Colors.background)
                     .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.destructive() }))
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(L10n.string("Done")) { showSortSheet = false }
-                        .buttonStyle(HapticTapButtonStyle())
+                    Button(action: { showSortSheet = false }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                    .buttonStyle(HapticTapButtonStyle())
                 }
             }
         }
+        .presentationDetents([.height(300)])
+        .presentationDragIndicator(.visible)
     }
     
     // MARK: - Filter sheet
@@ -518,6 +548,7 @@ struct ProfileView: View {
                                 }
                             }
                         }
+                        .listRowBackground(Theme.Colors.background)
                         .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                     }
                 } header: { Text(L10n.string("Condition")) }
@@ -537,6 +568,7 @@ struct ProfileView: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                         }
                     }
+                    .listRowBackground(Theme.Colors.background)
                     .buttonStyle(HapticTapButtonStyle())
                 } header: { Text(L10n.string("Price range")) }
                 Section {
@@ -549,27 +581,37 @@ struct ProfileView: View {
                         Text(L10n.string("Clear"))
                             .frame(maxWidth: .infinity)
                     }
+                    .listRowBackground(Theme.Colors.background)
                     .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.destructive() }))
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Filter"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(L10n.string("Done")) { showFilterSheet = false }
-                        .buttonStyle(HapticTapButtonStyle())
+                    Button(action: { showFilterSheet = false }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                    .buttonStyle(HapticTapButtonStyle())
                 }
             }
         }
+        .presentationDetents([.height(360)])
+        .presentationDragIndicator(.visible)
     }
     
     private var profilePriceFilterSheet: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(L10n.string("Min. Price"), text: $filterMinPrice)
+                    SettingsTextField(placeholder: L10n.string("Min. Price"), text: $filterMinPrice)
                         .keyboardType(.decimalPad)
-                    TextField(L10n.string("Max. Price"), text: $filterMaxPrice)
+                    SettingsTextField(placeholder: L10n.string("Max. Price"), text: $filterMaxPrice)
                         .keyboardType(.decimalPad)
                 }
                 Section {

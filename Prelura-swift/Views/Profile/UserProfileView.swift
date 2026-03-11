@@ -344,15 +344,30 @@ struct UserProfileView: View {
                             if profileSort == option { Image(systemName: "checkmark").foregroundColor(Theme.primaryColor) }
                         }
                     }
+                    .listRowBackground(Theme.Colors.background)
                 }
                 Section {
                     Button(role: .destructive, action: { profileSort = .relevance; showSortSheet = false }) { Text(L10n.string("Clear")).frame(maxWidth: .infinity) }
                 }
+                .listRowBackground(Theme.Colors.background)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Sort"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(L10n.string("Done")) { showSortSheet = false } } }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: { showSortSheet = false }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                }
+            }
         }
+        .presentationDetents([.height(300)])
+        .presentationDragIndicator(.visible)
     }
 
     private var userProfileFilterSheet: some View {
@@ -367,6 +382,7 @@ struct UserProfileView: View {
                                 if filterCondition == option.raw { Image(systemName: "checkmark").foregroundColor(Theme.primaryColor) }
                             }
                         }
+                        .listRowBackground(Theme.Colors.background)
                     }
                 }
                 Section(header: Text(L10n.string("Price range"))) {
@@ -381,23 +397,40 @@ struct UserProfileView: View {
                             Image(systemName: "chevron.right").font(.caption).foregroundColor(Theme.Colors.secondaryText)
                         }
                     }
+                    .listRowBackground(Theme.Colors.background)
                 }
                 Section {
                     Button(role: .destructive, action: { filterCondition = nil; filterMinPrice = ""; filterMaxPrice = ""; showFilterSheet = false }) { Text(L10n.string("Clear")).frame(maxWidth: .infinity) }
                 }
+                .listRowBackground(Theme.Colors.background)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Filter"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(L10n.string("Done")) { showFilterSheet = false } } }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: { showFilterSheet = false }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                }
+            }
         }
+        .presentationDetents([.height(360)])
+        .presentationDragIndicator(.visible)
     }
 
     private var userProfilePriceFilterSheet: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(L10n.string("Min. Price"), text: $filterMinPrice).keyboardType(.decimalPad)
-                    TextField(L10n.string("Max. Price"), text: $filterMaxPrice).keyboardType(.decimalPad)
+                    SettingsTextField(placeholder: L10n.string("Min. Price"), text: $filterMinPrice)
+                        .keyboardType(.decimalPad)
+                    SettingsTextField(placeholder: L10n.string("Max. Price"), text: $filterMaxPrice)
+                        .keyboardType(.decimalPad)
                 }
                 Section {
                     Button(L10n.string("Clear")) { filterMinPrice = ""; filterMaxPrice = ""; showPriceFilterSheet = false }

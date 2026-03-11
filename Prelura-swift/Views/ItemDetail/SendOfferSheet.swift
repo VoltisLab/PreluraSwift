@@ -40,7 +40,7 @@ struct SendOfferSheet: View {
                                     }
                                 }
                                 .frame(width: 64, height: 64)
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                                .clipShape(RoundedRectangle(cornerRadius: 30))
                             }
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(item.title)
@@ -54,7 +54,7 @@ struct SendOfferSheet: View {
                         }
                         .padding(Theme.Spacing.md)
                         .background(Theme.Colors.secondaryBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                        .clipShape(RoundedRectangle(cornerRadius: 30))
 
                         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                             Text("Your offer")
@@ -72,7 +72,7 @@ struct SendOfferSheet: View {
                             }
                             .padding(Theme.Spacing.md)
                             .background(Theme.Colors.secondaryBackground)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                            .clipShape(RoundedRectangle(cornerRadius: 30))
                         }
 
                         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -85,7 +85,7 @@ struct SendOfferSheet: View {
                                 .foregroundColor(Theme.Colors.primaryText)
                                 .padding(Theme.Spacing.md)
                                 .background(Theme.Colors.secondaryBackground)
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                                .clipShape(RoundedRectangle(cornerRadius: 30))
                         }
                     }
                     .padding(Theme.Spacing.lg)

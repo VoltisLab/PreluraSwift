@@ -21,6 +21,7 @@ struct ChatListView: View {
                 InboxShimmerView()
                     .navigationTitle(L10n.string("Messages"))
                     .navigationBarTitleDisplayMode(.inline)
+                    .toolbarBackground(Theme.Colors.background, for: .navigationBar)
             } else if conversations.isEmpty && !isLoading {
                 ZStack(alignment: .bottom) {
                     VStack(spacing: Theme.Spacing.lg) {
@@ -55,12 +56,13 @@ struct ChatListView: View {
                 }
                 .navigationTitle(L10n.string("Messages"))
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(Theme.Colors.background, for: .navigationBar)
             } else {
                 ScrollViewReader { proxy in
                     VStack(spacing: 0) {
                         DiscoverSearchField(
                             text: $searchText,
-                            placeholder: "Search conversations",
+                            placeholder: L10n.string("Search conversations"),
                             topPadding: Theme.Spacing.xs
                         )
                         .padding(.trailing, Theme.Spacing.sm)
@@ -71,9 +73,13 @@ struct ChatListView: View {
                                     ChatRowView(conversation: conversation)
                                 }
                                 .id(index == 0 ? "inbox_top" : conversation.id)
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Theme.Colors.background)
+                                .overlay(ContentDivider(), alignment: .bottom)
                             }
                         }
                         .listStyle(PlainListStyle())
+                        .scrollContentBackground(.hidden)
                         .scrollPosition(id: $scrollPosition, anchor: .top)
                         .onAppear {
                             tabCoordinator.reportAtTop(tab: 3, isAtTop: filteredConversations.isEmpty || scrollPosition == "inbox_top")
@@ -90,6 +96,7 @@ struct ChatListView: View {
                     .background(Theme.Colors.background)
                     .navigationTitle(L10n.string("Messages"))
                     .navigationBarTitleDisplayMode(.inline)
+                    .toolbarBackground(Theme.Colors.background, for: .navigationBar)
                     .refreshable {
                         await loadConversationsAsync()
                     }

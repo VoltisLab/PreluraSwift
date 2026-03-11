@@ -33,14 +33,14 @@ struct SellLabeledField: View {
                         .frame(minHeight: minLines > 1 ? CGFloat(minLines) * 24 : 44)
                 }
                 .background(Theme.Colors.secondaryBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                .clipShape(RoundedRectangle(cornerRadius: 30))
             } else {
                 TextField(placeholder, text: $text)
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.primaryText)
                     .padding(Theme.Spacing.md)
                     .background(Theme.Colors.secondaryBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                    .clipShape(RoundedRectangle(cornerRadius: 30))
             }
         }
     }

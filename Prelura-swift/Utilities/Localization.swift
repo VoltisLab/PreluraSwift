@@ -118,6 +118,7 @@ enum L10n {
 
         // Discover
         "Search members": "Αναζήτηση μελών",
+        "Search conversations": "Αναζήτηση συνομιλιών",
 
         // Browse
         "Browse": "Περιήγηση",
@@ -202,11 +203,20 @@ enum L10n {
         "Parcel Size": "Μέγεθος δέματος",
         "The buyer always pays for postage.": "Ο αγοραστής πληρώνει πάντα την αποστολή.",
         "Select Category": "Επιλογή κατηγορίας",
+        "Search categories": "Αναζήτηση κατηγοριών",
+        "No categories found": "Δεν βρέθηκαν κατηγορίες",
+        "Selected": "Επιλεγμένο",
         "Select Condition": "Επιλογή κατάστασης",
         "Select Colours": "Επιλογή χρωμάτων",
         "Measurements": "Διαστάσεις",
+        "Add measurements like chest, waist, length": "Προσθέστε διαστάσεις π.χ. στήθος, μέση, μήκος",
+        "Label": "Ετικέτα",
+        "Value": "Τιμή",
+        "Add measurement": "Προσθήκη μέτρησης",
+        "Custom…": "Προσαρμογή…",
         "Select Material": "Επιλογή υλικού",
         "Select Style": "Επιλογή στυλ",
+        "Find a style": "Βρείτε στυλ",
         "Discount: %d%%": "Έκπτωση: %d%%",
         "Please set the price first": "Ορίστε πρώτα την τιμή",
         "Discount Price": "Εκπτωτική τιμή",
@@ -216,6 +226,7 @@ enum L10n {
         // Discover
         "Recently viewed": "Πρόσφατα προβεβλημένα",
         "See All": "Δείτε όλα",
+        "Results": "Αποτελέσματα",
         "Brands You Love": "Οι αγαπημένες σας μάρκες",
         "Recommended from your favorite brands": "Προτεινόμενα από τις αγαπημένες σας μάρκες",
         "Top Shops": "Κορυφαία καταστήματα",
@@ -340,5 +351,49 @@ enum L10n {
         "This card will be removed from your account.": "Αυτή η κάρτα θα αφαιρεθεί από τον λογαριασμό σας.",
         "General": "Γενικά",
         "Notification Settings": "Ρυθμίσεις ειδοποιήσεων",
+
+        // Network / connection errors
+        "Unable to connect. Please check your internet connection.": "Αδυναμία σύνδεσης. Ελέγξτε τη σύνδεσή σας στο διαδίκτυο.",
+        "Connection timed out. Please try again.": "Λήξη χρόνου σύνδεσης. Δοκιμάστε ξανά.",
+
+        // AI chat – empty results
+        "I couldn't find anything matching that. Try different colours or categories.": "Δεν βρήκα τίποτα που να ταιριάζει. Δοκιμάστε άλλα χρώματα ή κατηγορίες.",
+        "Do you mean \"%@\"?": "Εννοείτε \"%@\";",
+        // AI chat – reply variations (happy event)
+        "Happy to help! Here are some options you might like.": "Χαίρομαι να βοηθάω! Ορίστε μερικές επιλογές που μπορεί να σας αρέσουν.",
+        "Sounds exciting! Here are some picks for you.": "Ακούγεται συναρπαστικό! Ορίστε μερικές επιλογές για εσάς.",
+        "Let's find something great. Here are some options.": "Ας βρούμε κάτι ωραίο. Ορίστε μερικές επιλογές.",
+        "Here are some items that could work perfectly.": "Ορίστε μερικά αντικείμενα που μπορεί να ταιριάξουν τέλεια.",
+        "Hope you find something you love. Here are some options.": "Ελπίζω να βρείτε κάτι που σας αρέσει. Ορίστε μερικές επιλογές.",
+        // AI chat – reply variations (sad event, neutral tone)
+        "I understand. Here are some appropriate options.": "Κατανοώ. Ορίστε μερικές κατάλληλες επιλογές.",
+        "I'll help you find something suitable.": "Θα σας βοηθήσω να βρείτε κάτι κατάλληλο.",
+        "Here are some options that might work.": "Ορίστε μερικές επιλογές που μπορεί να ταιριάξουν.",
+        "Let me show you some suitable options.": "Επιτρέψτε μου να σας δείξω μερικές κατάλληλες επιλογές.",
+        // AI chat – reply variations (neutral)
+        "Here are some items that might work.": "Ορίστε μερικά αντικείμενα που μπορεί να ταιριάξουν.",
+        "Here are some options for you.": "Ορίστε μερικές επιλογές για εσάς.",
+        "These might match what you're looking for.": "Αυτά μπορεί να ταιριάζουν με αυτό που ψάχνετε.",
+        "Here are some picks based on your search.": "Ορίστε μερικές επιλογές βάσει της αναζήτησής σας.",
     ]
+}
+
+// MARK: - User-facing error messages
+extension L10n {
+    /// Returns a short, user-friendly message for API/network errors (e.g. connection error).
+    static func userFacingError(_ error: Error) -> String {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
+                return L10n.string("Unable to connect. Please check your internet connection.")
+            case .timedOut:
+                return L10n.string("Connection timed out. Please try again.")
+            case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
+                return L10n.string("Unable to connect. Please check your internet connection.")
+            default:
+                break
+            }
+        }
+        return error.localizedDescription
+    }
 }

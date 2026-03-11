@@ -230,22 +230,42 @@ class ProductService: ObservableObject {
         return try await getAllProducts(pageNumber: pageNumber, pageCount: pageCount, search: query)
     }
 
-    /// Fetch unique brand names from the catalog (for sell flow brand picker). Uses existing allProducts and extracts brand/customBrand.
+    /// Fetch brand names for the sell-flow brand picker. Uses the same GraphQL query as Flutter. Loads first page only for fast display; user can search for other brands.
     func getBrandNames() async throws -> [String] {
-        var all: [String] = []
-        var seen = Set<String>()
-        for page in 1...3 {
-            let products = try await getAllProducts(pageNumber: page, pageCount: 50)
-            for item in products {
-                let name = item.brand ?? ""
-                if !name.isEmpty, !seen.contains(name) {
-                    seen.insert(name)
-                    all.append(name)
-                }
-            }
-            if products.count < 50 { break }
+        let (names, _) = try await fetchBrandsPage(search: nil, pageNumber: 1, pageCount: 100)
+        return names.sorted()
+    }
+
+    /// Fetch a single page of brands (for search). Matches Flutter getBrands(search: query).
+    func getBrandNames(search: String, pageNumber: Int = 1, pageCount: Int = 50) async throws -> [String] {
+        let (names, _) = try await fetchBrandsPage(search: search, pageNumber: pageNumber, pageCount: pageCount)
+        return names
+    }
+
+    /// Single page of brands — matches Flutter ProductRepo.getBrands / query Brands (search, pageNumber, pageCount).
+    private func fetchBrandsPage(search: String?, pageNumber: Int, pageCount: Int) async throws -> (names: [String], totalNumber: Int?) {
+        let query = """
+        query Brands($search: String, $pageCount: Int, $pageNumber: Int) {
+          brands(search: $search, pageCount: $pageCount, pageNumber: $pageNumber) {
+            id
+            name
+          }
+          brandsTotalNumber
         }
-        return all.sorted()
+        """
+        var variables: [String: Any] = ["pageCount": pageCount, "pageNumber": pageNumber]
+        if let search = search, !search.isEmpty { variables["search"] = search }
+        struct BrandsResponse: Decodable {
+            let brands: [BrandRow]?
+            let brandsTotalNumber: Int?
+        }
+        struct BrandRow: Decodable {
+            let id: Int?
+            let name: String?
+        }
+        let response: BrandsResponse = try await client.execute(query: query, variables: variables, responseType: BrandsResponse.self)
+        let names = (response.brands ?? []).compactMap { $0.name }.filter { !$0.isEmpty }
+        return (names, response.brandsTotalNumber)
     }
 
     /// Favourites: fetch liked products. Matches Flutter getMyFavouriteProduct (query likedProducts).

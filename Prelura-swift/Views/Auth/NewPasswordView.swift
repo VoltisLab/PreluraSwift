@@ -29,7 +29,7 @@ struct NewPasswordView: View {
                             .textFieldStyle(PlainTextFieldStyle())
                             .padding(Theme.Spacing.md)
                             .background(Theme.Colors.secondaryBackground)
-                            .cornerRadius(16)
+                            .cornerRadius(30)
                             .foregroundColor(Theme.Colors.primaryText)
                     }
                     VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -40,7 +40,7 @@ struct NewPasswordView: View {
                             .textFieldStyle(PlainTextFieldStyle())
                             .padding(Theme.Spacing.md)
                             .background(Theme.Colors.secondaryBackground)
-                            .cornerRadius(16)
+                            .cornerRadius(30)
                             .foregroundColor(Theme.Colors.primaryText)
                     }
                     VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -51,7 +51,7 @@ struct NewPasswordView: View {
                             .textFieldStyle(PlainTextFieldStyle())
                             .padding(Theme.Spacing.md)
                             .background(Theme.Colors.secondaryBackground)
-                            .cornerRadius(16)
+                            .cornerRadius(30)
                             .foregroundColor(Theme.Colors.primaryText)
                     }
                     if let err = errorMessage {
