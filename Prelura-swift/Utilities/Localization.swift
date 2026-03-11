@@ -242,6 +242,8 @@ enum L10n {
         // Notifications & Chat
         "No notifications": "Δεν υπάρχουν ειδοποιήσεις",
         "Messages": "Μηνύματα",
+        "Type a message...": "Πληκτρολογήστε μήνυμα...",
+        "Welcome to the chat, I'm Lenny, and I'm here to assist you. Send a message to get started.": "Καλώς ήρθατε στη συνομιλία, είμαι ο Lenny και είμαι εδώ για να σας βοηθήσω. Στείλτε ένα μήνυμα για να ξεκινήσετε.",
 
         // Auth (extra)
         "Create Account": "Δημιουργία λογαριασμού",

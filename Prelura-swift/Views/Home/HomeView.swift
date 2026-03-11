@@ -85,12 +85,12 @@ struct HomeView: View {
         .refreshable {
             await viewModel.refreshAsync()
         }
-        .sheet(isPresented: $showAIChat) {
-            AIChatView(viewModel: viewModel) {
-                showAIChat = false
+        .background(
+            NavigationLink(destination: AIChatView(viewModel: viewModel).environmentObject(authService), isActive: $showAIChat) {
+                EmptyView()
             }
-            .environmentObject(authService)
-        }
+            .hidden()
+        )
     }
 
     // MARK: - Category Filters

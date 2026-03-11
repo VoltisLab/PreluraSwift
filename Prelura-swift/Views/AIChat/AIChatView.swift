@@ -22,12 +22,10 @@ private let botOutOfScopeMessage = "I don't understand that. I can help you find
 
 // MARK: - AI Chat View (conversational chatbot)
 
-/// Dedicated AI chat: conversation with a welcome message, Messages-style input, and in-scope search or out-of-scope reply.
+/// Dedicated AI chat: standard pushed page with Lenny welcome placeholder, then Messages-style bubbles and input.
 struct AIChatView: View {
-    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authService: AuthService
     @ObservedObject var viewModel: HomeViewModel
-    var onDismiss: (() -> Void)?
 
     @State private var messages: [ChatMessage] = []
     @State private var inputText: String = ""
@@ -39,83 +37,89 @@ struct AIChatView: View {
     private let pageSize = 20
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                messageList
-                inputBar
-            }
-            .background(Theme.Colors.background)
-            .navigationTitle(L10n.string("AI Search"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.string("Done")) {
-                        onDismiss?()
-                        dismiss()
-                    }
-                    .foregroundColor(Theme.primaryColor)
-                }
-            }
+        VStack(spacing: 0) {
+            messageList
+            inputBar
         }
-        .presentationDetents([.large])
+        .background(Theme.Colors.background)
+        .navigationTitle(L10n.string("AI Search"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .onAppear {
             productService.updateAuthToken(authService.authToken)
-            if messages.isEmpty {
-                messages = [
-                    ChatMessage(isFromUser: false, text: L10n.string("What are you looking for?"))
-                ]
-            }
         }
     }
 
     private var messageList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    ForEach(messages) { message in
-                        ChatBubbleView(message: message, viewModel: viewModel)
+        Group {
+            if messages.isEmpty {
+                // Placeholder centered in the middle of the page (above input bar).
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    VStack(spacing: Theme.Spacing.lg) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.system(size: 56))
+                            .foregroundStyle(Theme.primaryColor.opacity(0.6))
+                        Text(L10n.string("Welcome to the chat, I'm Lenny, and I'm here to assist you. Send a message to get started."))
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, Theme.Spacing.xl)
                     }
-                    if isBotThinking {
-                        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                            TypingIndicatorView()
-                            Spacer(minLength: 0)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                            ForEach(messages) { message in
+                                ChatBubbleView(message: message, viewModel: viewModel)
+                            }
+                            if isBotThinking {
+                                HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                                    TypingIndicatorView()
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.vertical, Theme.Spacing.xs)
+                                .id("typing")
+                            }
                         }
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.vertical, Theme.Spacing.xs)
-                        .id("typing")
+                        .padding(.vertical, Theme.Spacing.md)
                     }
-                }
-                .padding(.vertical, Theme.Spacing.md)
-            }
-            .onChange(of: messages.count) { _, _ in
-                withAnimation(.easeOut(duration: 0.2)) {
-                    if isBotThinking {
-                        proxy.scrollTo("typing", anchor: .bottom)
-                    } else if let last = messages.last?.id {
-                        proxy.scrollTo(last, anchor: .bottom)
+                    .onChange(of: messages.count) { _, _ in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            if isBotThinking {
+                                proxy.scrollTo("typing", anchor: .bottom)
+                            } else if let last = messages.last?.id {
+                                proxy.scrollTo(last, anchor: .bottom)
+                            }
+                        }
                     }
-                }
-            }
-            .onChange(of: isBotThinking) { _, thinking in
-                if thinking {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo("typing", anchor: .bottom)
+                    .onChange(of: isBotThinking) { _, thinking in
+                        if thinking {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo("typing", anchor: .bottom)
+                            }
+                        }
                     }
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Messages-style input: single-line text field and send button.
+    /// Messages-style input: same padding and style as ChatDetailView (taller field).
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
-            TextField(L10n.string("What are you looking for?"), text: $inputText, axis: .vertical)
+        HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+            TextField(L10n.string("Type a message..."), text: $inputText, axis: .vertical)
+                .textFieldStyle(PlainTextFieldStyle())
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.primaryText)
                 .focused($isInputFocused)
-                .lineLimit(1...4)
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.sm)
+                .lineLimit(1...6)
+                .padding(Theme.Spacing.md)
                 .background(Theme.Colors.secondaryBackground)
                 .cornerRadius(30)
                 .overlay(
@@ -131,10 +135,14 @@ struct AIChatView: View {
             .disabled(!canSend || isBotThinking)
             .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.primaryAction() }))
         }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.sm)
+        .padding(Theme.Spacing.md)
         .background(Theme.Colors.background)
-        .overlay(ContentDivider(), alignment: .top)
+        .overlay(
+            Rectangle()
+                .frame(height: 0.3)
+                .foregroundColor(Theme.Colors.glassBorder),
+            alignment: .top
+        )
     }
 
     private var canSend: Bool {

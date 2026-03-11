@@ -90,7 +90,7 @@ struct DiscoverView: View {
                 onSubmit: { showSearchMembersResults = true },
                 topPadding: Theme.Spacing.xs
             )
-            .padding(.trailing, Theme.Spacing.sm)
+            .padding(.horizontal, Theme.Spacing.md)
             VStack(spacing: 0) {
                 brandFiltersSection
                 ContentDivider().padding(.vertical, Theme.Spacing.lg)
@@ -135,7 +135,7 @@ struct DiscoverView: View {
         let secondRow = Array(brandsToShow.suffix(from: min(10, brandsToShow.count)))
         
         return VStack(spacing: Theme.Spacing.sm) {
-            // First row
+            // First row: leading edge aligned with search bar (no extra leading padding); trailing padding so last pill isn't cut off (like feed sections).
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Theme.Spacing.sm) {
                     ForEach(firstRow, id: \.self) { brand in
@@ -148,6 +148,7 @@ struct DiscoverView: View {
                         )
                     }
                 }
+                .padding(.trailing, Theme.Spacing.md)
             }
             
             // Second row (if needed)
@@ -164,6 +165,7 @@ struct DiscoverView: View {
                             )
                         }
                     }
+                    .padding(.trailing, Theme.Spacing.md)
                 }
             }
         }
@@ -211,6 +213,7 @@ struct DiscoverView: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
+        .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Spacing.sm)
     }
     
