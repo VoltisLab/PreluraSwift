@@ -32,6 +32,7 @@ struct Prelura_swiftApp: App {
 }
 
 /// Applies preferredColorScheme from stored preference and syncs Theme.effectiveColorScheme for light/dark across all screens.
+/// When system or in-app appearance changes, we sync Theme immediately and force a full view refresh so all elements (colors, tab bar, etc.) update correctly and the app doesn't become buggy.
 struct AppearanceRootView: View {
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appRouter: AppRouter
@@ -53,27 +54,33 @@ struct AppearanceRootView: View {
     @AppStorage(kAppLanguage) private var appLanguage: String = "en"
 
     var body: some View {
+        content
+            .id("\(appLanguage)_\(effectiveScheme)")
+            .preferredColorScheme(resolvedScheme)
+            .tint(Theme.primaryColor)
+            .onAppear { syncThemeScheme() }
+            .onChange(of: appearanceMode) { _, _ in syncThemeScheme() }
+            .onChange(of: colorScheme) { _, _ in syncThemeScheme() }
+            .fullScreenCover(item: $appRouter.pendingItem) { item in
+            DeepLinkOverlayView(item: item, onDismiss: { appRouter.clearPending() })
+                .environmentObject(authService)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .preluraNotificationTapped)) { notification in
+            guard let payload = notification.userInfo?[kNotificationTapPayloadKey] as? [AnyHashable: Any] else { return }
+            Task { @MainActor in
+                appRouter.handle(notificationPayload: payload)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        let _ = syncThemeScheme()
         Group {
             if authService.isAuthenticated {
                 MainTabView()
             } else {
                 LoginView()
-            }
-        }
-        .id(appLanguage)
-        .preferredColorScheme(resolvedScheme)
-        .tint(Theme.primaryColor)
-        .onAppear { syncThemeScheme() }
-        .onChange(of: appearanceMode) { _, _ in syncThemeScheme() }
-        .onChange(of: colorScheme) { _, _ in syncThemeScheme() }
-        .fullScreenCover(item: $appRouter.pendingItem) { item in
-            DeepLinkOverlayView(item: item, onDismiss: { appRouter.clearPending() })
-                .environmentObject(authService)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .preluraNotificationTapped)) { notification in
-            guard let payload = notification.userInfo?[kNotificationTapPayloadKey] as? [AnyHashable: Any] else { return }
-            Task { @MainActor in
-                appRouter.handle(notificationPayload: payload)
             }
         }
     }

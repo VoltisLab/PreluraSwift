@@ -22,6 +22,7 @@ struct SellView: View {
     @State private var parcelSize: String? = nil
     @State private var draftCount: Int = 5 // TODO: Fetch from backend
     @State private var showPhotoPicker: Bool = false
+    @State private var showCategoryPicker: Bool = false
 
     private var discountPercentText: String {
         guard let price = price, let discountPrice = discountPrice, price > 0 else { return "0%" }
@@ -239,10 +240,6 @@ struct SellView: View {
             .background(
                 RoundedRectangle(cornerRadius: 16)
                     .fill(Theme.Colors.secondaryBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .strokeBorder(Theme.Colors.glassBorder, lineWidth: 1)
-                    )
             )
         }
         .buttonStyle(HapticTapButtonStyle())
@@ -355,11 +352,16 @@ extension SellView {
                 .padding(.bottom, Theme.Spacing.sm)
                 .background(Theme.Colors.background)
 
-            NavigationLink(destination: CategorySelectionView(selectedCategory: $category)) {
-                SellFormRow(title: L10n.string("Category"), value: category?.displayPath)
+            Button(action: { showCategoryPicker = true }) {
+                SellFormRow(title: L10n.string("Category"), value: category?.name)
             }
             .buttonStyle(.plain)
             .overlay(ContentDivider(), alignment: .bottom)
+            .sheet(isPresented: $showCategoryPicker) {
+                NavigationStack {
+                    CategorySelectionView(selectedCategory: $category, onDismiss: { showCategoryPicker = false })
+                }
+            }
 
             NavigationLink(destination: BrandInputView(selectedBrand: $brand)) {
                 SellFormRow(title: L10n.string("Brand"), value: brand)
@@ -486,7 +488,7 @@ extension SellView {
 // MARK: - Category Selection View (hierarchical + search all categories/subs)
 struct CategorySelectionView: View {
     @Binding var selectedCategory: SellCategory?
-    @Environment(\.presentationMode) var presentationMode
+    var onDismiss: () -> Void
     @State private var categories: [APICategory] = []
     @State private var isLoading = true
     @State private var loadError: String?
@@ -525,6 +527,12 @@ struct CategorySelectionView: View {
         .navigationTitle(L10n.string("Select Category"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(L10n.string("Cancel")) { onDismiss() }
+                    .foregroundColor(Theme.primaryColor)
+            }
+        }
         .task {
             await loadCategories(parentId: nil)
         }
@@ -559,7 +567,7 @@ struct CategorySelectionView: View {
                                     pathNames: entry.pathNames,
                                     pathIds: entry.pathIds
                                 )
-                                presentationMode.wrappedValue.dismiss()
+                                onDismiss()
                             }) {
                                 Text(entry.displayPath)
                                     .font(Theme.Typography.body)
@@ -597,21 +605,23 @@ struct CategorySelectionView: View {
             } else {
                 List {
                     ForEach(sortedCategories, id: \.id) { cat in
+                        let isInSelectedPath = selectedCategory.map { $0.pathIds.first == cat.id || $0.pathNames.first == cat.name } ?? false
                         if cat.hasChildren == true {
                             NavigationLink(destination: SubCategoryView(
                                 parentId: cat.id,
                                 parentName: cat.name,
                                 pathNames: [cat.name],
                                 pathIds: [cat.id],
-                                selectedCategory: $selectedCategory
+                                selectedCategory: $selectedCategory,
+                                onDismiss: onDismiss
                             )) {
-                                categoryRow(cat.name, isSelected: false)
+                                categoryRow(cat.name, isSelected: isInSelectedPath)
                             }
                             .buttonStyle(.plain)
                         } else {
                             Button(action: {
                                 selectedCategory = SellCategory(id: cat.id, name: cat.name, pathNames: [cat.name], pathIds: [cat.id])
-                                presentationMode.wrappedValue.dismiss()
+                                onDismiss()
                             }) {
                                 categoryRow(cat.name, isSelected: selectedCategory?.id == cat.id)
                             }
@@ -676,7 +686,7 @@ struct SubCategoryView: View {
     let pathNames: [String]
     let pathIds: [String]
     @Binding var selectedCategory: SellCategory?
-    @Environment(\.presentationMode) var presentationMode
+    var onDismiss: () -> Void
     @State private var categories: [APICategory] = []
     @State private var isLoading = true
     @State private var loadError: String?
@@ -705,7 +715,8 @@ struct SubCategoryView: View {
                                 parentName: cat.name,
                                 pathNames: pathNames + [cat.name],
                                 pathIds: pathIds + [cat.id],
-                                selectedCategory: $selectedCategory
+                                selectedCategory: $selectedCategory,
+                                onDismiss: onDismiss
                             )) {
                                 subCategoryRow(cat)
                             }
@@ -718,7 +729,7 @@ struct SubCategoryView: View {
                                     pathNames: pathNames + [cat.name],
                                     pathIds: pathIds + [cat.id]
                                 )
-                                presentationMode.wrappedValue.dismiss()
+                                onDismiss()
                             }) {
                                 subCategoryRow(cat)
                             }
@@ -731,13 +742,9 @@ struct SubCategoryView: View {
             }
         }
         .background(Theme.Colors.background)
+        .navigationTitle(L10n.string("Select Category"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                categoryBreadcrumbTitle
-            }
-        }
         .task {
             let id = Int(parentId)
             await loadCategories(parentId: id)
@@ -745,34 +752,17 @@ struct SubCategoryView: View {
     }
 
     private func subCategoryRow(_ cat: APICategory) -> some View {
-        HStack {
+        let isInSelectedPath = selectedCategory.map { $0.pathIds.contains(cat.id) || $0.id == cat.id } ?? false
+        return HStack {
             Text(cat.name)
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.primaryText)
             Spacer()
-            if selectedCategory?.id == cat.id {
+            if isInSelectedPath {
                 Image(systemName: "checkmark")
                     .foregroundColor(Theme.primaryColor)
             }
         }
-    }
-
-    /// Breadcrumb title: parent path in grey, current category in white (e.g. "Clothing" grey + " > Knitwear" white).
-    private var categoryBreadcrumbTitle: some View {
-        Group {
-            if pathNames.count > 1, let current = pathNames.last {
-                let parentPath = pathNames.dropLast().joined(separator: " > ")
-                (Text(parentPath)
-                    .foregroundColor(Theme.Colors.secondaryText))
-                + Text(" > " + current)
-                    .foregroundColor(Theme.Colors.primaryText)
-            } else {
-                Text(parentName)
-                    .foregroundColor(Theme.Colors.primaryText)
-            }
-        }
-        .font(Theme.Typography.headline)
-        .lineLimit(1)
     }
 
     private func loadCategories(parentId: Int?) async {

@@ -54,8 +54,24 @@ struct SettingsTextEditor: View {
     let placeholder: String
     @Binding var text: String
     var minHeight: CGFloat = 100
+    /// When set, input is capped at this length and the field never accepts more.
+    var maxLength: Int? = nil
 
     private let cornerRadius: CGFloat = 30
+
+    private var effectiveBinding: Binding<String> {
+        guard let max = maxLength else { return $text }
+        return Binding(
+            get: { text },
+            set: { newValue in
+                if newValue.count <= max {
+                    text = newValue
+                } else {
+                    text = String(newValue.prefix(max))
+                }
+            }
+        )
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -66,7 +82,7 @@ struct SettingsTextEditor: View {
                     .padding(.horizontal, Theme.Spacing.md + 4)
                     .padding(.vertical, Theme.Spacing.md + 8)
             }
-            TextEditor(text: $text)
+            TextEditor(text: effectiveBinding)
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.primaryText)
                 .scrollContentBackground(.hidden)

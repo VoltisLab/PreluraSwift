@@ -25,7 +25,7 @@ struct ProfileView: View {
     @StateObject private var viewModel: ProfileViewModel
     @State private var scrollPosition: String? = "profile_top"
     @State private var isMultiBuyEnabled: Bool = false
-    @State private var selectedBrand: String? = nil
+    @State private var selectedBrands: Set<String> = []
     @State private var expandedCategories: Bool = false
     @State private var selectedCategory: String? = nil
     @State private var selectedPhoto: PhotosPickerItem? = nil
@@ -457,8 +457,15 @@ struct ProfileView: View {
                         ForEach(viewModel.topBrands, id: \.self) { brand in
                             BrandFilterPill(
                                 brand: brand,
-                                isSelected: selectedBrand == brand,
-                                action: { selectedBrand = selectedBrand == brand ? nil : brand }
+                                isSelected: selectedBrands.contains(brand),
+                                action: {
+                                    HapticManager.selection()
+                                    if selectedBrands.contains(brand) {
+                                        selectedBrands.remove(brand)
+                                    } else if selectedBrands.count < 2 {
+                                        selectedBrands.insert(brand)
+                                    }
+                                }
                             )
                             .id(brand)
                         }
@@ -469,7 +476,7 @@ struct ProfileView: View {
                 .id("profile_top_brands_pills")
                 .padding(.vertical, Theme.Spacing.sm)
             }
-            .animation(.none, value: selectedBrand)
+            .animation(.none, value: selectedBrands)
             
             // Filter and Sort (matches Flutter FilterAndSort: bottom sheets + Clear)
             HStack {
@@ -646,8 +653,11 @@ struct ProfileView: View {
     private var itemsGridSection: some View {
         var items = viewModel.userItems
         
-        if let selectedBrand = selectedBrand {
-            items = items.filter { $0.brand == selectedBrand }
+        if !selectedBrands.isEmpty {
+            items = items.filter { item in
+                guard let b = item.brand else { return false }
+                return selectedBrands.contains(b)
+            }
         }
         if let selectedCategory = selectedCategory {
             items = items.filter {

@@ -11,6 +11,8 @@ struct AccountSettingsView: View {
     @State private var gender: String = ""
     @State private var bio: String = ""
 
+    private let bioMaxLength = 100
+
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -160,7 +162,7 @@ struct AccountSettingsView: View {
                     dateOfBirth = user.dateOfBirth
                     dateOfBirthText = user.dateOfBirth.map { formatDOB($0) } ?? ""
                     gender = user.gender ?? ""
-                    bio = user.bio ?? ""
+                    bio = String((user.bio ?? "").prefix(bioMaxLength))
                     isLoading = false
                 }
             } catch {
