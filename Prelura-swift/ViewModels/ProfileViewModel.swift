@@ -101,6 +101,12 @@ class ProfileViewModel: ObservableObject {
     }
     
     func refreshAsync() async {
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+            user = nil
+            userItems = []
+        }
         await loadUserData()
     }
 

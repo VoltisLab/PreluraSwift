@@ -19,9 +19,7 @@ struct ChatListView: View {
         Group {
             if isLoading && conversations.isEmpty {
                 InboxShimmerView()
-                    .navigationTitle(L10n.string("Messages"))
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbarBackground(Theme.Colors.background, for: .navigationBar)
+                    .navigationBarHidden(true)
             } else if conversations.isEmpty && !isLoading {
                 ZStack(alignment: .bottom) {
                     VStack(spacing: Theme.Spacing.lg) {
@@ -65,7 +63,6 @@ struct ChatListView: View {
                             placeholder: L10n.string("Search conversations"),
                             topPadding: Theme.Spacing.xs
                         )
-                        .padding(.trailing, Theme.Spacing.sm)
 
                         List {
                             ForEach(Array(filteredConversations.enumerated()), id: \.element.id) { index, conversation in
@@ -146,6 +143,7 @@ struct ChatListView: View {
     
     private func loadConversationsAsync() async {
         isLoading = true
+        conversations = []
         do {
             // Ensure token is up to date
             if let token = authService.authToken {

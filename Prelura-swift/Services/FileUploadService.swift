@@ -7,7 +7,7 @@ final class FileUploadService {
     private let session: URLSession
     private var authToken: String?
 
-    init(baseURL: String = Constants.graphQLBaseURL) {
+    init(baseURL: String = Constants.graphQLUploadURL) {
         self.graphQLURL = URL(string: baseURL)!
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = Constants.apiTimeout

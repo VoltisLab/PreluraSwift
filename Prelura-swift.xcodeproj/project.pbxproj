@@ -65,12 +65,32 @@
 			);
 			name = "Prelura-swift";
 			packageProductDependencies = (
+				CE4600672F5E830D00F6B13D /* Shimmer */,
 			);
 			productName = "Prelura-swift";
 			productReference = CE4600582F5E830D00F6B13D /* Prelura-swift.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CE4600662F5E830D00F6B13D /* XCRemoteSwiftPackageReference "SwiftUI-Shimmer" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/markiv/SwiftUI-Shimmer";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CE4600672F5E830D00F6B13D /* Shimmer */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Shimmer;
+			package = CE4600662F5E830D00F6B13D /* XCRemoteSwiftPackageReference "SwiftUI-Shimmer" */;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXProject section */
 		CE4600502F5E830D00F6B13D /* Project object */ = {
@@ -94,6 +114,9 @@
 			);
 			mainGroup = CE46004F2F5E830D00F6B13D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				CE4600662F5E830D00F6B13D /* XCRemoteSwiftPackageReference "SwiftUI-Shimmer" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CE4600592F5E830D00F6B13D /* Products */;
 			projectDirPath = "";

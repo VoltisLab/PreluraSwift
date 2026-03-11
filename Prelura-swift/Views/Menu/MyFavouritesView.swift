@@ -32,7 +32,6 @@ struct MyFavouritesView: View {
                 placeholder: L10n.string("Search favourites"),
                 topPadding: Theme.Spacing.xs
             )
-            .padding(.trailing, Theme.Spacing.sm)
 
             if let err = errorMessage {
                 Text(err)
@@ -108,6 +107,7 @@ struct MyFavouritesView: View {
         productService.updateAuthToken(authService.authToken)
         if resetPage {
             currentPage = 1
+            items = []
         }
         if currentPage == 1 { isLoading = true }
         errorMessage = nil

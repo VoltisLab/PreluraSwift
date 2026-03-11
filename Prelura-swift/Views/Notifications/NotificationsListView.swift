@@ -84,7 +84,13 @@ struct NotificationsListView: View {
     }
 
     private func load(page: Int) async {
-        if page == 1 { isLoading = true; errorMessage = nil } else { isLoadingMore = true }
+        if page == 1 {
+            isLoading = true
+            errorMessage = nil
+            notifications = []
+        } else {
+            isLoadingMore = true
+        }
         defer {
             if page == 1 { isLoading = false } else { isLoadingMore = false }
         }

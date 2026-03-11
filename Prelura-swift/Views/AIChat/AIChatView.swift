@@ -16,9 +16,6 @@ struct ChatMessage: Identifiable {
     }
 }
 
-// MARK: - Out-of-scope copy
-
-private let botOutOfScopeMessage = "I don't understand that. I can help you find items by colour, category, or style—try something like “red dress” or “blue shoes”."
 
 // MARK: - AI Chat View (conversational chatbot)
 
@@ -42,7 +39,7 @@ struct AIChatView: View {
             inputBar
         }
         .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("AI Search"))
+        .navigationTitle("Lenny")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
@@ -73,8 +70,12 @@ struct AIChatView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                            ForEach(messages) { message in
-                                ChatBubbleView(message: message, viewModel: viewModel)
+                            ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                                ChatBubbleView(
+                                    message: message,
+                                    isLastMessage: index == messages.count - 1,
+                                    viewModel: viewModel
+                                )
                             }
                             if isBotThinking {
                                 HStack(alignment: .top, spacing: Theme.Spacing.sm) {
@@ -82,7 +83,7 @@ struct AIChatView: View {
                                     Spacer(minLength: 0)
                                 }
                                 .padding(.horizontal, Theme.Spacing.md)
-                                .padding(.vertical, Theme.Spacing.xs)
+                                .padding(.vertical, Theme.Spacing.sm)
                                 .id("typing")
                             }
                         }
@@ -165,9 +166,13 @@ struct AIChatView: View {
     }
 
     private func respondToUserMessage(_ raw: String) async {
+        let thinkingStart = Date()
+        let minThinkingSeconds = Double.random(in: 1.0...3.0)
+
         if aiSearch.isGreetingOnly(raw) {
+            await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
             await MainActor.run {
-                messages.append(ChatMessage(isFromUser: false, text: "Hi! What are you looking for? Try something like a dress, jacket, or shoes.", items: []))
+                messages.append(ChatMessage(isFromUser: false, text: L10n.string(aiSearch.randomGreetingReply()), items: []))
             }
             return
         }
@@ -185,8 +190,12 @@ struct AIChatView: View {
                     .filter { !colourSet.contains($0.lowercased()) }
                     .joined(separator: " ")
                 let useBroadSearch = !parsed.appliedColourNames.isEmpty
+                let useSizeFilter = parsed.sizeTerm != nil
+                let fetchCount: Int
+                if useBroadSearch { fetchCount = 50 }
+                else if useSizeFilter { fetchCount = 80 }
+                else { fetchCount = pageSize }
                 let searchForApi = useBroadSearch ? (searchWithoutColour.isEmpty ? nil : String(searchWithoutColour)) : (parsed.searchText.isEmpty ? nil : parsed.searchText)
-                let fetchCount = useBroadSearch ? 50 : pageSize
 
                 var products = try await productService.getAllProducts(
                     pageNumber: 1,
@@ -214,12 +223,36 @@ struct AIChatView: View {
                         visible = fullQueryProducts.excludingVacationModeSellers()
                     }
                 }
+                // When user specified a size (e.g. "size 10 dress"), filter client-side; API search doesn't use size so we get "dress" results then filter.
+                var usedSizeFallbackReply = false
+                if let sizeTerm = parsed.sizeTerm, !visible.isEmpty {
+                    let term = sizeTerm.lowercased()
+                    let filtered = visible.filter { item in
+                        guard let s = item.size?.lowercased().trimmingCharacters(in: .whitespaces), !s.isEmpty else { return false }
+                        if s == term { return true }
+                        let normalized = s.replacingOccurrences(of: " ", with: "")
+                        if normalized == term { return true }
+                        let parts = s.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+                        if parts.contains(term) { return true }
+                        return s.contains(term) && (s.hasPrefix(term + " ") || s.hasSuffix(" " + term) || s.contains(" " + term + " "))
+                    }
+                    if !filtered.isEmpty {
+                        visible = filtered
+                    } else {
+                        usedSizeFallbackReply = true
+                        // visible stays as-is (show all results with fallback message)
+                    }
+                }
+
                 var replyText: String
 
-                if visible.isEmpty, !parsed.searchText.isEmpty, parsed.searchText.contains(" ") {
+                if usedSizeFallbackReply, let sizeTerm = parsed.sizeTerm {
+                    replyText = aiSearch.replyForSizeFallback(sizeTerm: sizeTerm)
+                } else if visible.isEmpty, !parsed.searchText.isEmpty, parsed.searchText.contains(" ") {
                     let colourSet = Set(parsed.appliedColourNames.map { $0.lowercased() })
                     let words = parsed.searchText.split(separator: " ").map(String.init)
-                    let fallbackTerm = words.last(where: { !colourSet.contains($0.lowercased()) })
+                    let fallbackTerm = words.first(where: { aiSearch.isFallbackTermValid($0) })
+                        ?? words.last(where: { !colourSet.contains($0.lowercased()) })
                         ?? words.last
                         ?? parsed.searchText
                     if aiSearch.isFallbackTermValid(fallbackTerm) {
@@ -244,18 +277,29 @@ struct AIChatView: View {
                     replyText = aiSearch.replyForResults(parsed: parsed, hasItems: !visible.isEmpty, query: raw)
                 }
 
+                await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
                 await MainActor.run {
                     messages.append(ChatMessage(isFromUser: false, text: replyText, items: visible))
                 }
             } catch {
+                await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
                 await MainActor.run {
                     messages.append(ChatMessage(isFromUser: false, text: L10n.string("Something went wrong. Please try again.")))
                 }
             }
         } else {
+            await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
             await MainActor.run {
-                messages.append(ChatMessage(isFromUser: false, text: botOutOfScopeMessage))
+                messages.append(ChatMessage(isFromUser: false, text: L10n.string(AISearchService.randomOutOfScopeReply())))
             }
+        }
+    }
+
+    /// Ensures at least minSeconds have passed since `since` before returning (shows "thinking" for a natural 1–3 seconds).
+    private func ensureMinThinkingTime(since: Date, minSeconds: Double) async {
+        let elapsed = Date().timeIntervalSince(since)
+        if elapsed < minSeconds {
+            try? await Task.sleep(nanoseconds: UInt64((minSeconds - elapsed) * 1_000_000_000))
         }
     }
 
@@ -272,14 +316,36 @@ struct AIChatView: View {
 
 struct ChatBubbleView: View {
     let message: ChatMessage
+    let isLastMessage: Bool
     @ObservedObject var viewModel: HomeViewModel
     @EnvironmentObject private var authService: AuthService
 
+    /// Typewriter effect for bot messages: only animates when this message is the last (newly added).
+    @State private var visibleCharCount: Int = 0
+    private let typewriterIntervalNs: UInt64 = 28_000_000 // 28ms per character
+
+    private func runTypewriter() {
+        let fullCount = message.text.count
+        guard fullCount > 0 else { return }
+        Task { @MainActor in
+            for i in 1...fullCount {
+                try? await Task.sleep(nanoseconds: typewriterIntervalNs)
+                visibleCharCount = i
+            }
+        }
+    }
+
+    private var displayedText: String {
+        if message.isFromUser { return message.text }
+        if isLastMessage { return String(message.text.prefix(visibleCharCount)) }
+        return message.text
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-            if message.isFromUser { Spacer(minLength: 60) }
-            VStack(alignment: message.isFromUser ? .trailing : .leading, spacing: Theme.Spacing.xs) {
-                Text(message.text)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                if message.isFromUser { Spacer(minLength: 60) }
+                Text(displayedText)
                     .font(Theme.Typography.body)
                     .foregroundColor(message.isFromUser ? .white : Theme.Colors.primaryText)
                     .padding(.horizontal, Theme.Spacing.md)
@@ -289,8 +355,27 @@ struct ChatBubbleView: View {
                             .fill(message.isFromUser ? Theme.primaryColor : Theme.Colors.secondaryBackground)
                     )
                     .frame(maxWidth: 280, alignment: message.isFromUser ? .trailing : .leading)
+                if !message.isFromUser { Spacer(minLength: 60) }
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .onAppear {
+                if !message.isFromUser && isLastMessage && visibleCharCount < message.text.count {
+                    runTypewriter()
+                } else if !message.isFromUser && !isLastMessage {
+                    visibleCharCount = message.text.count
+                }
+            }
+            .onChange(of: isLastMessage) { _, new in
+                if !new { visibleCharCount = message.text.count }
+            }
 
-                if let items = message.items, !items.isEmpty {
+            if let items = message.items, !items.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Divider above (inset from screen edges)
+                    Rectangle()
+                        .fill(Theme.Colors.glassBorder)
+                        .frame(height: 0.5)
+                        .padding(.horizontal, Theme.Spacing.md)
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: Theme.Spacing.sm) {
@@ -302,7 +387,7 @@ struct ChatBubbleView: View {
                                     .buttonStyle(PlainButtonStyle())
                                 }
                             }
-                            .padding(.horizontal, Theme.Spacing.lg)
+                            .padding(.horizontal, Theme.Spacing.md)
                         }
                         .frame(maxWidth: .infinity)
                         if items.count >= 3 {
@@ -312,17 +397,21 @@ struct ChatBubbleView: View {
                                     .foregroundColor(Theme.primaryColor)
                             }
                             .buttonStyle(HapticTapButtonStyle())
+                            .padding(.leading, Theme.Spacing.md)
                             .padding(.top, Theme.Spacing.xs)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, Theme.Spacing.xs)
+                    .padding(.vertical, Theme.Spacing.md)
+                    // Divider below (inset from screen edges)
+                    Rectangle()
+                        .fill(Theme.Colors.glassBorder)
+                        .frame(height: 0.5)
+                        .padding(.horizontal, Theme.Spacing.md)
                 }
+                .padding(.top, Theme.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: message.isFromUser ? .trailing : .leading)
-            if !message.isFromUser { Spacer(minLength: 60) }
         }
-        .padding(.horizontal, Theme.Spacing.md)
         .id(message.id)
     }
 }
@@ -363,12 +452,17 @@ struct AIResultsView: View {
 
 private struct TypingIndicatorView: View {
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { i in
-                Circle()
-                    .fill(Theme.Colors.secondaryText)
-                    .frame(width: 6, height: 6)
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .fill(Theme.Colors.secondaryText)
+                        .frame(width: 6, height: 6)
+                }
             }
+            Text(L10n.string("Thinking..."))
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.sm)

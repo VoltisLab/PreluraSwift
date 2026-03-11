@@ -5,6 +5,7 @@ import SwiftUI
 struct FeedSearchField: View {
     @Binding var text: String
     @FocusState private var isFocused: Bool
+    @State private var aiButtonScale: CGFloat = 1.0
 
     var placeholder: String = "Search items, brands or colours"
     var onSubmit: ((ParsedSearch) -> Void)?
@@ -34,8 +35,14 @@ struct FeedSearchField: View {
                     Image(systemName: "sparkles")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(Theme.primaryColor)
+                        .scaleEffect(aiButtonScale)
                 }
                 .buttonStyle(HapticTapButtonStyle())
+            }
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                aiButtonScale = 1.2
             }
         }
         .padding(.horizontal, Theme.Spacing.md)

@@ -1,4 +1,5 @@
 import SwiftUI
+import Shimmer
 
 /// Other user's profile – same layout as ProfileView (read-only: no menu, no photo edit).
 struct UserProfileView: View {
@@ -22,65 +23,47 @@ struct UserProfileView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            let contentWidth = geometry.size.width
-            VStack(spacing: 0) {
-                HStack {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundColor(Theme.primaryColor)
-                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    Spacer()
-                    Text(viewModel.user.username)
-                        .font(Theme.Typography.headline)
-                        .foregroundColor(Theme.Colors.primaryText)
-                    Spacer()
-                    NavigationLink(destination: ReportUserView(username: viewModel.user.username)) {
-                        Image(systemName: "flag")
-                            .font(.system(size: 18))
-                            .foregroundColor(Theme.primaryColor)
-                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+        VStack(spacing: 0) {
+            HStack {
+                GlassIconButton(icon: "chevron.left", action: { dismiss() })
+                Spacer()
+                Text(viewModel.user.username)
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.primaryText)
+                Spacer()
+                NavigationLink(destination: ReportUserView(username: viewModel.user.username)) {
+                    GlassIconView(icon: "flag", size: Theme.AppBar.buttonSize, iconSize: 18)
                 }
-                .padding(.horizontal, Theme.AppBar.horizontalPadding)
-                .padding(.vertical, Theme.AppBar.verticalPadding)
-                .background(Theme.Colors.background)
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, Theme.AppBar.horizontalPadding)
+            .padding(.vertical, Theme.AppBar.verticalPadding)
+            .background(Theme.Colors.background)
 
-                ScrollView {
-                    if viewModel.isLoading && viewModel.items.isEmpty && viewModel.errorMessage == nil {
-                        ProfileShimmerView()
-                    } else {
-                        VStack(spacing: 0) {
-                            profileHeaderSection
-                            profileLocationSection
-                            if let bio = viewModel.user.bio, !bio.isEmpty {
-                                bioSection(bio)
-                            }
-                            if viewModel.user.isVacationMode {
-                                vacationModeSection(isLoggedInUser: false)
-                            } else {
-                                filtersSection
-                                itemsGridSection
-                            }
+            ScrollView {
+                if viewModel.isLoading && viewModel.items.isEmpty && viewModel.errorMessage == nil {
+                    ProfileShimmerView()
+                } else {
+                    VStack(spacing: 0) {
+                        profileHeaderSection
+                        profileLocationSection
+                        if let bio = viewModel.user.bio, !bio.isEmpty {
+                            bioSection(bio)
                         }
-                        .padding(.horizontal, Theme.Spacing.xxl)
-                        .frame(maxWidth: contentWidth)
-                    }
-                    if let message = viewModel.errorMessage, !viewModel.items.isEmpty {
-                        Text(message)
-                            .font(Theme.Typography.caption)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                            .padding()
+                        if viewModel.user.isVacationMode {
+                            vacationModeSection(isLoggedInUser: false)
+                        } else {
+                            filtersSection
+                            itemsGridSection
+                        }
                     }
                 }
-                .frame(width: contentWidth)
-                .clipped()
+                if let message = viewModel.errorMessage, !viewModel.items.isEmpty {
+                    Text(message)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .padding()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -93,26 +76,28 @@ struct UserProfileView: View {
         }
     }
 
+    private static let profilePhotoSize: CGFloat = 88
+
     private var profileHeaderSection: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.lg) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .center, spacing: 0) {
                 AsyncImage(url: URL(string: viewModel.user.avatarURL ?? "")) { phase in
                     switch phase {
                     case .empty:
                         Circle()
                             .fill(Theme.Colors.secondaryBackground)
-                            .frame(width: 75, height: 75)
-                            .shimmer()
+                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                            .shimmering()
                     case .success(let image):
                         image
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 75, height: 75)
+                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
                             .clipShape(Circle())
                     case .failure:
                         Circle()
                             .fill(Theme.primaryColor)
-                            .frame(width: 75, height: 75)
+                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
                             .overlay(
                                 Text(String(viewModel.user.username.prefix(1)).uppercased())
                                     .font(.system(size: 28, weight: .semibold))
@@ -122,14 +107,32 @@ struct UserProfileView: View {
                         EmptyView()
                     }
                 }
-                .frame(width: 75, height: 75)
+                .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
 
+                Spacer(minLength: Theme.Spacing.xl)
+
+                HStack(spacing: Theme.Spacing.sm) {
+                    StatColumn(value: "\(viewModel.items.count)", label: viewModel.items.count == 1 ? L10n.string("Listing") : L10n.string("Listings"), compact: true)
+                    NavigationLink(destination: FollowingListView(username: viewModel.user.username)) {
+                        StatColumn(value: "\(viewModel.user.followingsCount)", label: L10n.string("Following"), compact: true)
+                    }
+                    .buttonStyle(.plain)
+                    NavigationLink(destination: FollowersListView(username: viewModel.user.username)) {
+                        StatColumn(value: "\(viewModel.user.followersCount)", label: viewModel.user.followersCount == 1 ? L10n.string("Follower") : L10n.string("Followers"), compact: true)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: Theme.Spacing.xl)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
                 NavigationLink(value: AppRoute.reviews(username: viewModel.user.username, rating: viewModel.user.rating)) {
                     HStack(alignment: .center, spacing: 4) {
                         HStack(spacing: 2) {
                             ForEach(0..<5, id: \.self) { _ in
                                 Image(systemName: "star.fill")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: 13))
                                     .foregroundColor(.yellow)
                             }
                         }
@@ -142,22 +145,9 @@ struct UserProfileView: View {
                 }
                 .buttonStyle(HapticTapButtonStyle())
             }
-
-            HStack(spacing: 0) {
-                StatColumn(value: "\(viewModel.items.count)", label: viewModel.items.count == 1 ? L10n.string("Listing") : L10n.string("Listings"))
-                Spacer(minLength: Theme.Spacing.sm)
-                NavigationLink(destination: FollowingListView(username: viewModel.user.username)) {
-                    StatColumn(value: "\(viewModel.user.followingsCount)", label: L10n.string("Following"))
-                }
-                .buttonStyle(.plain)
-                Spacer(minLength: Theme.Spacing.sm)
-                NavigationLink(destination: FollowersListView(username: viewModel.user.username)) {
-                    StatColumn(value: "\(viewModel.user.followersCount)", label: viewModel.user.followersCount == 1 ? L10n.string("Follower") : L10n.string("Followers"))
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.leading, Theme.Spacing.xs)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
         .overlay(ContentDivider(), alignment: .bottom)
     }
@@ -166,9 +156,10 @@ struct UserProfileView: View {
         Group {
             if let location = viewModel.user.location, !location.isEmpty {
                 Text(location)
-                    .font(Theme.Typography.body)
+                    .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.primaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Theme.Spacing.md)
                     .padding(.bottom, Theme.Spacing.md)
             }
         }
@@ -176,13 +167,11 @@ struct UserProfileView: View {
 
     private func bioSection(_ bio: String) -> some View {
         Text(bio)
-            .font(Theme.Typography.body)
-            .lineSpacing(5)
+            .font(Theme.Typography.subheadline)
             .foregroundColor(Theme.Colors.primaryText)
-            .lineLimit(2)
-            .truncationMode(.tail)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, Theme.Spacing.md)
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
     }
 
     /// When the profile user has vacation mode on, show message and hide products (matches Flutter).
@@ -213,13 +202,14 @@ struct UserProfileView: View {
                 }) {
                     HStack {
                         Text(L10n.string("Categories"))
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
                         Spacer()
                         Image(systemName: expandedCategories ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.system(size: 12))
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
+                    .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.md)
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -235,21 +225,23 @@ struct UserProfileView: View {
                                         .font(.system(size: 13))
                                         .foregroundColor(Theme.Colors.secondaryText)
                                     Text(category.name)
-                                        .font(Theme.Typography.body)
+                                        .font(Theme.Typography.subheadline)
                                         .foregroundColor(Theme.Colors.primaryText)
                                     Text("(\(category.count) \(category.count == 1 ? L10n.string("item") : L10n.string("items"))")
-                                        .font(Theme.Typography.subheadline)
+                                        .font(Theme.Typography.caption)
                                         .foregroundColor(Theme.Colors.secondaryText)
                                     Spacer(minLength: Theme.Spacing.md)
                                     Image(systemName: selectedCategory == category.name ? "checkmark.square" : "square")
-                                        .font(.system(size: 18))
+                                        .font(.system(size: 16))
                                         .foregroundColor(selectedCategory == category.name ? Theme.primaryColor : Theme.Colors.secondaryText)
                                 }
+                                .padding(.horizontal, Theme.Spacing.md)
                                 .padding(.vertical, Theme.Spacing.md)
                             }
                             .buttonStyle(PlainButtonStyle())
                             if category.name != viewModel.categoriesWithCounts.last?.name {
                                 ContentDivider()
+                                    .padding(.leading, Theme.Spacing.md)
                             }
                         }
                     }
@@ -259,28 +251,30 @@ struct UserProfileView: View {
 
             HStack {
                 Text(L10n.string("Multi-buy:"))
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(Theme.Colors.secondaryText)
                 Spacer()
                 Text(viewModel.user.isMultibuyEnabled ? L10n.string("On") : L10n.string("Off"))
-                    .font(Theme.Typography.body)
+                    .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.primaryText)
             }
+            .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.md)
             .overlay(ContentDivider(), alignment: .bottom)
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text(L10n.string("Top brands"))
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.primaryText)
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.Colors.secondaryText)
                     Spacer()
                     Button(action: {}) {
                         Image(systemName: "magnifyingglass")
-                            .font(.system(size: 18))
+                            .font(.system(size: 16))
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.sm)
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -294,21 +288,22 @@ struct UserProfileView: View {
                             .id(brand)
                         }
                     }
+                    .padding(.horizontal, Theme.Spacing.md)
                 }
                 .scrollPosition(id: $topBrandsScrollId, anchor: .leading)
                 .id("user_profile_top_brands_pills")
-                .padding(.vertical, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm)
             }
 
             HStack {
                 Button(action: { showFilterSheet = true }) {
-                    HStack(spacing: Theme.Spacing.sm) {
+                    HStack(spacing: Theme.Spacing.xs) {
                         Image(systemName: "line.3.horizontal.decrease")
-                            .font(.system(size: 17))
+                            .font(.system(size: 14))
                         Text(L10n.string("Filter"))
-                            .font(Theme.Typography.body)
+                            .font(Theme.Typography.subheadline)
                     }
-                    .foregroundColor(Theme.Colors.primaryText)
+                    .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                 }
@@ -316,20 +311,21 @@ struct UserProfileView: View {
                 .fixedSize(horizontal: true, vertical: false)
                 Spacer()
                 Button(action: { showSortSheet = true }) {
-                    HStack(spacing: Theme.Spacing.sm) {
+                    HStack(spacing: Theme.Spacing.xs) {
                         Text(L10n.string(profileSort.rawValue))
-                            .font(Theme.Typography.body)
+                            .font(Theme.Typography.subheadline)
                         Image(systemName: "arrow.up.arrow.down")
-                            .font(.system(size: 16))
+                            .font(.system(size: 12))
                     }
-                    .foregroundColor(Theme.Colors.primaryText)
+                    .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                 }
                 .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
                 .fixedSize(horizontal: true, vertical: false)
             }
-            .padding(.vertical, Theme.Spacing.md)
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
         }
         .sheet(isPresented: $showSortSheet) { userProfileSortSheet }
         .sheet(isPresented: $showFilterSheet) { userProfileFilterSheet }
@@ -340,7 +336,7 @@ struct UserProfileView: View {
             List {
                 Section {
                     ForEach(ProfileSortOption.allCases, id: \.self) { option in
-                        Button(action: { profileSort = option; showSortSheet = false }) {
+                        Button(action: { profileSort = option }) {
                             HStack {
                                 Text(L10n.string(option.rawValue)).foregroundColor(Theme.Colors.primaryText)
                                 Spacer()
@@ -350,28 +346,26 @@ struct UserProfileView: View {
                     }
                     .listRowBackground(Theme.Colors.background)
                 }
-                Section {
-                    Button(action: { profileSort = .relevance; showSortSheet = false }) {
-                        Text(L10n.string("Clear"))
-                            .foregroundColor(.red)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Theme.Colors.background)
-                    Divider()
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Theme.Colors.background)
-                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Spacing.md, bottom: 0, trailing: Theme.Spacing.md))
-                    Color.clear
-                        .frame(height: 50)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Theme.Colors.background)
-                }
             }
             .scrollDisabled(true)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: Theme.Spacing.sm) {
+                    BorderGlassButton(L10n.string("Clear")) {
+                        profileSort = .relevance
+                    }
+                    PrimaryGlassButton(L10n.string("Apply")) {
+                        showSortSheet = false
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.lg)
+                .frame(maxWidth: .infinity)
+                .background(Theme.Colors.background)
+            }
             .navigationTitle(L10n.string("Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -414,28 +408,28 @@ struct UserProfileView: View {
                     .listRowSeparator(.hidden)
                     .listRowBackground(Theme.Colors.background)
                 }
-                Section {
-                    Button(action: { filterCondition = nil; filterMinPrice = ""; filterMaxPrice = ""; showFilterSheet = false }) {
-                        Text(L10n.string("Clear"))
-                            .foregroundColor(.red)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Theme.Colors.background)
-                    Divider()
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Theme.Colors.background)
-                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Spacing.md, bottom: 0, trailing: Theme.Spacing.md))
-                    Color.clear
-                        .frame(height: 50)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Theme.Colors.background)
-                }
             }
             .scrollDisabled(true)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: Theme.Spacing.sm) {
+                    BorderGlassButton(L10n.string("Clear")) {
+                        filterCondition = nil
+                        filterMinPrice = ""
+                        filterMaxPrice = ""
+                    }
+                    PrimaryGlassButton(L10n.string("Apply")) {
+                        showFilterSheet = false
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.lg)
+                .frame(maxWidth: .infinity)
+                .background(Theme.Colors.background)
+            }
             .navigationTitle(L10n.string("Filter"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -485,6 +479,7 @@ struct UserProfileView: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
+        .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
     }
 }

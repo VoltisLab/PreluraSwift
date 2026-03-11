@@ -9,7 +9,7 @@ struct BorderGlassButton: View {
     let action: () -> Void
 
     private let cornerRadius: CGFloat = 30
-    private let strokeLineWidth: CGFloat = 2
+    private let strokeLineWidth: CGFloat = 1
 
     init(
         _ title: String,

@@ -11,6 +11,8 @@ class ItemDetailViewModel: ObservableObject {
     @Published var isLiked: Bool = false
     @Published var likeCount: Int = 0
     @Published var errorMessage: String?
+    /// Current user's profile picture URL; used when viewing own product and seller avatar is missing.
+    @Published var currentUserAvatarURL: String?
     
     var productService: ProductService
     private var userService: UserService
@@ -83,6 +85,16 @@ class ItemDetailViewModel: ObservableObject {
     func syncLikeState(isLiked: Bool, likeCount: Int) {
         self.isLiked = isLiked
         self.likeCount = likeCount
+    }
+    
+    /// Load current user's profile picture URL (for own product detail when seller avatar is missing).
+    func loadCurrentUserAvatar() async {
+        do {
+            let user = try await userService.getUser()
+            currentUserAvatarURL = user.avatarURL
+        } catch {
+            currentUserAvatarURL = nil
+        }
     }
     
     func toggleLike(productId: String) {

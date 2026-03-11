@@ -1,4 +1,5 @@
 import SwiftUI
+import Shimmer
 
 struct DiscoverView: View {
     @EnvironmentObject var authService: AuthService
@@ -30,6 +31,7 @@ struct DiscoverView: View {
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Discover"))
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(viewModel.isLoading && viewModel.discoverItems.isEmpty)
         .toolbar { discoverToolbar }
         .refreshable { await viewModel.refreshAsync() }
         .onAppear {
@@ -62,6 +64,7 @@ struct DiscoverView: View {
                 if viewModel.isLoading && viewModel.discoverItems.isEmpty {
                     DiscoverShimmerView()
                         .frame(width: geometry.size.width)
+                        .frame(minHeight: geometry.size.height)
                 } else {
                     discoverMainStack
                 }
@@ -90,23 +93,40 @@ struct DiscoverView: View {
                 onSubmit: { showSearchMembersResults = true },
                 topPadding: Theme.Spacing.xs
             )
-            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.trailing, Theme.Spacing.sm)
+            brandFiltersSection
             VStack(spacing: 0) {
-                brandFiltersSection
-                ContentDivider().padding(.vertical, Theme.Spacing.lg)
+                Rectangle()
+                    .frame(height: 0.3)
+                    .foregroundColor(Theme.Colors.glassBorder)
+                    .padding(.vertical, Theme.Spacing.sm)
                 categoryCirclesSection
-                ContentDivider().padding(.vertical, Theme.Spacing.lg)
+                Rectangle()
+                    .frame(height: 0.3)
+                    .foregroundColor(Theme.Colors.glassBorder)
+                    .padding(.vertical, Theme.Spacing.sm)
                 recentlyViewedSection
-                ContentDivider().padding(.vertical, Theme.Spacing.lg)
+                Rectangle()
+                    .frame(height: 0.3)
+                    .foregroundColor(Theme.Colors.glassBorder)
+                    .padding(.vertical, Theme.Spacing.lg)
                 brandsYouLoveSection
-                ContentDivider().padding(.vertical, Theme.Spacing.lg)
+                Rectangle()
+                    .frame(height: 0.3)
+                    .foregroundColor(Theme.Colors.glassBorder)
+                    .padding(.vertical, Theme.Spacing.lg)
                 topShopsSection
-                ContentDivider().padding(.vertical, Theme.Spacing.lg)
+                Rectangle()
+                    .frame(height: 0.3)
+                    .foregroundColor(Theme.Colors.glassBorder)
+                    .padding(.vertical, Theme.Spacing.lg)
                 shopBargainsSection
-                ContentDivider().padding(.vertical, Theme.Spacing.lg)
+                Rectangle()
+                    .frame(height: 0.3)
+                    .foregroundColor(Theme.Colors.glassBorder)
+                    .padding(.vertical, Theme.Spacing.lg)
                 onSaleSection
             }
-            .padding(.horizontal, Theme.Spacing.md)
             .padding(.top, Theme.Spacing.sm)
             .padding(.bottom, Theme.Spacing.lg)
         }
@@ -148,6 +168,7 @@ struct DiscoverView: View {
                         )
                     }
                 }
+                .padding(.leading, Theme.Spacing.md)
                 .padding(.trailing, Theme.Spacing.md)
             }
             
@@ -165,7 +186,8 @@ struct DiscoverView: View {
                             )
                         }
                     }
-                    .padding(.trailing, Theme.Spacing.md)
+                    .padding(.leading, Theme.Spacing.md)
+                .padding(.trailing, Theme.Spacing.md)
                 }
             }
         }
@@ -173,47 +195,34 @@ struct DiscoverView: View {
         .padding(.bottom, Theme.Spacing.sm)
     }
     
-    // MARK: - Category Buttons (navigate to filtered category page with filters)
+    // MARK: - Category List (simple list like brands on sell page; navigate to filtered category)
     private var categoryCirclesSection: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-            VStack(spacing: Theme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(Self.categories.enumerated()), id: \.offset) { index, category in
                 NavigationLink(destination: FilteredProductsView(
-                    title: L10n.string("Women"),
-                    filterType: .byParentCategory(categoryName: "Women"),
+                    title: L10n.string(category),
+                    filterType: .byParentCategory(categoryName: category),
                     authService: authService
                 )) {
-                    CategoryPrimaryButton(title: L10n.string("Women"), isSelected: false, action: {})
+                    HStack {
+                        Text(L10n.string(category))
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.primaryText)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Theme.Colors.secondaryText)
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.md)
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
-                NavigationLink(destination: FilteredProductsView(
-                    title: L10n.string("Men"),
-                    filterType: .byParentCategory(categoryName: "Men"),
-                    authService: authService
-                )) {
-                    CategoryPrimaryButton(title: L10n.string("Men"), isSelected: false, action: {})
+                .buttonStyle(.plain)
+                if index < Self.categories.count - 1 {
+                    ContentDivider()
                 }
-                .buttonStyle(PlainButtonStyle())
-            }
-            VStack(spacing: Theme.Spacing.sm) {
-                NavigationLink(destination: FilteredProductsView(
-                    title: L10n.string("Boys"),
-                    filterType: .byParentCategory(categoryName: "Boys"),
-                    authService: authService
-                )) {
-                    CategoryPrimaryButton(title: L10n.string("Boys"), isSelected: false, action: {})
-                }
-                .buttonStyle(PlainButtonStyle())
-                NavigationLink(destination: FilteredProductsView(
-                    title: L10n.string("Girls"),
-                    filterType: .byParentCategory(categoryName: "Girls"),
-                    authService: authService
-                )) {
-                    CategoryPrimaryButton(title: L10n.string("Girls"), isSelected: false, action: {})
-                }
-                .buttonStyle(PlainButtonStyle())
             }
         }
-        .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Spacing.sm)
     }
     
@@ -233,6 +242,7 @@ struct DiscoverView: View {
                         .foregroundColor(Theme.primaryColor)
                 }
             }
+            .padding(.horizontal, Theme.Spacing.md)
             
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: Theme.Spacing.sm) {
@@ -244,6 +254,7 @@ struct DiscoverView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.md)
             }
         }
     }
@@ -270,6 +281,7 @@ struct DiscoverView: View {
                         .foregroundColor(Theme.primaryColor)
                 }
             }
+            .padding(.horizontal, Theme.Spacing.md)
             
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: Theme.Spacing.sm) {
@@ -281,6 +293,7 @@ struct DiscoverView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.md)
             }
         }
     }
@@ -297,6 +310,7 @@ struct DiscoverView: View {
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
+            .padding(.horizontal, Theme.Spacing.md)
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Theme.Spacing.md) {
@@ -310,7 +324,7 @@ struct DiscoverView: View {
                                         Circle()
                                             .fill(Theme.Colors.secondaryBackground)
                                             .frame(width: 100, height: 100)
-                                            .shimmer()
+                                            .shimmering()
                                     case .success(let image):
                                         image
                                             .resizable()
@@ -355,7 +369,7 @@ struct DiscoverView: View {
                         }
                     }
                 }
-                .padding(.trailing, Theme.Spacing.md)
+                .padding(.horizontal, Theme.Spacing.md)
             }
         }
     }
@@ -382,6 +396,7 @@ struct DiscoverView: View {
                         .foregroundColor(Theme.primaryColor)
                 }
             }
+            .padding(.horizontal, Theme.Spacing.md)
             
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: Theme.Spacing.sm) {
@@ -393,6 +408,7 @@ struct DiscoverView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.md)
             }
         }
     }
@@ -419,6 +435,7 @@ struct DiscoverView: View {
                         .foregroundColor(Theme.primaryColor)
                 }
             }
+            .padding(.horizontal, Theme.Spacing.md)
             
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: Theme.Spacing.sm) {
@@ -430,6 +447,7 @@ struct DiscoverView: View {
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.md)
             }
         }
     }
@@ -463,7 +481,7 @@ struct DiscoverItemCard: View {
                         case .empty:
                             Circle()
                                 .fill(Theme.Colors.secondaryBackground)
-                                .shimmer()
+                                .shimmering()
                         case .success(let image):
                             image
                                 .resizable()
@@ -479,7 +497,7 @@ struct DiscoverItemCard: View {
                         @unknown default:
                             Circle()
                                 .fill(Theme.Colors.secondaryBackground)
-                                .shimmer()
+                                .shimmering()
                         }
                     }
                     .frame(width: 20, height: 20)

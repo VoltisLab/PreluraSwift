@@ -1,4 +1,5 @@
 import SwiftUI
+import Shimmer
 import UIKit
 
 struct ItemDetailView: View {
@@ -62,6 +63,9 @@ struct ItemDetailView: View {
                 viewModel.loadSimilarProducts(productId: productId, categoryId: nil)
             }
             viewModel.loadMemberItems(username: item.seller.username, excludeProductId: item.id)
+            if isCurrentUser, item.seller.avatarURL == nil || item.seller.avatarURL?.isEmpty == true {
+                Task { await viewModel.loadCurrentUserAvatar() }
+            }
         }
         .onChange(of: authService.authToken) { oldToken, newToken in
             if authService.isAuthenticated {
@@ -92,6 +96,13 @@ struct ItemDetailView: View {
         return currentUsername.lowercased() == item.seller.username.lowercased()
     }
     
+    /// Avatar URL for seller: use item's seller avatar if set, else for own product use current user's profile picture.
+    private var effectiveSellerAvatarURL: String {
+        if let url = item.seller.avatarURL, !url.isEmpty { return url }
+        if isCurrentUser, let url = viewModel.currentUserAvatarURL, !url.isEmpty { return url }
+        return ""
+    }
+    
     // MARK: - Image Carousel (aspect 585:826; extends under status bar, no black bar)
     private static let imageAspectWidth: CGFloat = 585
     private static let imageAspectHeight: CGFloat = 826
@@ -113,7 +124,7 @@ struct ItemDetailView: View {
                         case .empty:
                             Rectangle()
                                 .fill(Theme.Colors.secondaryBackground)
-                                .shimmer()
+                                .shimmering()
                         case .success(let image):
                             image
                                 .resizable()
@@ -287,13 +298,13 @@ struct ItemDetailView: View {
             HStack(spacing: Theme.Spacing.sm) {
                 NavigationLink(destination: UserProfileView(seller: item.seller, authService: authService)) {
                     HStack(spacing: Theme.Spacing.sm) {
-                        AsyncImage(url: URL(string: item.seller.avatarURL ?? "")) { phase in
+                        AsyncImage(url: URL(string: effectiveSellerAvatarURL)) { phase in
                             switch phase {
                             case .empty:
                                 Circle()
                                     .fill(Theme.Colors.secondaryBackground)
                                     .frame(width: 50, height: 50)
-                                    .shimmer()
+                                    .shimmering()
                             case .success(let image):
                                 image
                                     .resizable()
@@ -607,7 +618,7 @@ struct FullScreenImageViewer: View {
                         case .empty:
                             Rectangle()
                                 .fill(Theme.Colors.secondaryBackground)
-                                .shimmer()
+                                .shimmering()
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                         case .success(let image):
                             image

@@ -807,4 +807,53 @@ When a word is corrected by fuzzy match (category or colour), the first correcti
 
 ---
 
+## 21. Salutations (100 greeting phrases)
+
+If the user's message, after normalisation (lowercase, trim, collapse spaces, straight apostrophe), matches **any** of the phrases below, the AI treats it as a greeting and responds with a random greeting reply (e.g. *"Hi! What are you looking for? Try something like a dress, jacket, or shoes."*) instead of running a product search.
+
+Matching is exact on the normalised string; e.g. "Hey there", "HEY THERE", and "hey   there" all match "hey there". Curly apostrophes (’) are normalised to straight (') so "what's up" and "what's up" both match.
+
+| # | Phrase | # | Phrase | # | Phrase | # | Phrase |
+|---|--------|---|--------|---|--------|---|--------|
+| 1 | hi | 26 | good day | 51 | hello team | 76 | hello good evening |
+| 2 | hello | 27 | greetings | 52 | hey again | 77 | hey good afternoon |
+| 3 | hey | 28 | greetings friend | 53 | hi again | 78 | hi good afternoon |
+| 4 | hey there | 29 | howdy | 54 | hello again | 79 | hello good afternoon |
+| 5 | hi there | 30 | howdy there | 55 | hey how are you | 80 | hey there friend |
+| 6 | hello there | 31 | hey friend | 56 | hi how are you | 81 | hi there friend |
+| 7 | heyy | 32 | hi friend | 57 | hello how are you | 82 | hello there friend |
+| 8 | hiii | 33 | hello friend | 58 | hey how's it going | 83 | hey there mate |
+| 9 | hey hey | 34 | hey mate | 59 | hi how's it going | 84 | hi there mate |
+| 10 | hello hello | 35 | hi mate | 60 | hello how's it going | 85 | hello there mate |
+| 11 | hiya | 36 | hello mate | 61 | hey how you doing | 86 | hey there buddy |
+| 12 | heya | 37 | hey buddy | 62 | hi how you doing | 87 | hi there buddy |
+| 13 | yo | 38 | hi buddy | 63 | hello how you doing | 88 | hello there buddy |
+| 14 | yoo | 39 | hello buddy | 64 | hey what's going on | 89 | hey hey there |
+| 15 | yo yo | 40 | hey pal | 65 | hi what's going on | 90 | hi hi |
+| 16 | sup | 41 | hi pal | 66 | hello what's going on | 91 | hello hello there |
+| 17 | what's up | 42 | hello pal | 67 | hey what's happening | 92 | hey how's everything |
+| 18 | hey what's up | 43 | hey everyone | 68 | hi what's happening | 93 | hi how's everything |
+| 19 | hi what's up | 44 | hi everyone | 69 | hello what's happening | 94 | hello how's everything |
+| 20 | hello what's up | 45 | hello everyone | 70 | hey what's new | 95 | hey what's good |
+| 21 | good morning | 46 | hey guys | 71 | hi what's new | 96 | hi what's good |
+| 22 | morning | 47 | hi guys | 72 | hello what's new | 97 | hello what's good |
+| 23 | good afternoon | 48 | hello guys | 73 | hey good morning | 98 | hey what's good |
+| 24 | afternoon | 49 | hey team | 74 | hi good morning | 99 | hi what's good |
+| 25 | good evening | 50 | hi team | 75 | hello good morning | 100 | hello what's good |
+| (cont.) | evening | (cont.) | (cont.) | (cont.) | hey good evening | (cont.) | (cont.) |
+
+---
+
+## 22. Social greeting Q&A (100 questions + answers)
+
+When the user asks a **social/greeting question** (e.g. "Hi, how are you?", "Hey, what's up?", "Hello, how's your day?"), the AI must respond with a greeting-style reply and **no product search**. Input is normalised (lowercase, trim, collapse spaces, straight apostrophe, strip `, . ! ?`) so "Hi, how are you?" matches the phrase "hi how are you".
+
+**Detection:** The same normalisation as §21 is used. If the normalised string is in `socialGreetingPhrases` (or in `salutations`), the AI responds with a random entry from `greetingReplies` and does **not** run a product search or show fallback "tops" etc.
+
+**100 social phrases** (stored normalised; examples of what users might type): hi how are you, hey how are you, hello how are you; hi how are you today, hey how are you today, hello how are you today; hi hows it going, hey hows it going, hello hows it going; hi how you doing, hey how you doing, hello how you doing; hi how are you doing, hey how are you doing, hello how are you doing; hi whats up, hey whats up, hello whats up; hi whats new, hey whats new, hello whats new; hi hows your day, hey hows your day, hello hows your day; hi hows your day going, hey hows your day going, hello hows your day going; hi hows everything, hey hows everything, hello hows everything; hi how have you been, hey how have you been, hello how have you been; hi how do you do, hey how do you do, hello how do you do; hi whats going on, hey whats going on, hello whats going on; hi whats happening, hey whats happening, hello whats happening; hi whats good, hey whats good, hello whats good; hi hows life, hey hows life, hello hows life; hi good to see you, hey good to see you, hello good to see you; hi nice to meet you, hey nice to meet you, hello nice to meet you; hi good morning how are you, hey good morning how are you, hello good morning how are you; hi there how are you, hey there how are you, hello there how are you; hi whats up today, hey whats up today, hello whats up today; hi how is your day, hey how is your day, hello how is your day; hi how are things, hey how are things, hello how are things; hi how have you been doing, hey how have you been doing, hello how have you been doing; hi great to see you, hey great to see you, hello great to see you; hi lovely to meet you, hey lovely to meet you, hello lovely to meet you; hi hope you are well, hey hope you are well, hello hope you are well; hi hope youre well, hey hope youre well, hello hope youre well; hi how you been, hey how you been, hello how you been; hi whats the vibe, hey whats the vibe, hello whats the vibe; hi hows your morning, hey hows your morning, hello hows your morning; hi hows your evening, hey hows your evening, hello hows your evening; hi good to chat, hey good to chat, hello good to chat; hi good afternoon how are you, hey good afternoon how are you, hello good afternoon how are you; hi good evening how are you, hey good evening how are you, hello good evening how are you; hi how is it going, hey how is it going, hello how is it going; hi whats cracking, hey whats cracking, hello whats cracking; hi how are we, hey how are we, hello how are we; hi how are you feeling, hey how are you feeling, hello how are you feeling; hi alright, hey alright, hello alright; hi you good, hey you good, hello you good; hi everything good, hey everything good, hello everything good.
+
+**Answers:** The AI uses the same pool as §21 — `greetingReplies` — which includes both short prompts (e.g. "Hi! What are you looking for?") and social-style replies (e.g. "I'm good, thanks! What can I help you find today?", "Doing great! What are you looking for?", "All good here! What would you like to browse?"). One is chosen at random so the response feels natural.
+
+---
+
 *Last synced with `Prelura-swift/Services/AISearchService.swift`. Update this file whenever the model is updated.*

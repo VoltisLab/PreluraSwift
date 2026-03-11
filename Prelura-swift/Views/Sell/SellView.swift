@@ -194,47 +194,66 @@ struct SellView: View {
         .buttonStyle(HapticTapButtonStyle())
     }
 
+    /// Photo grid: 3 columns, square cells, intrinsic height. Rebuilt to avoid layout breakage.
     private var photoGrid: some View {
-        let columnCount = 3
         let spacing = Theme.Spacing.sm
-        let horizontalPadding = Theme.Spacing.md * 2
-        let totalGaps = spacing * CGFloat(columnCount - 1)
-        let approximateWidth = UIScreen.main.bounds.width - horizontalPadding - totalGaps
-        let cellWidth = max(60, approximateWidth / CGFloat(columnCount))
-        let cellHeight = cellWidth * 13 // 1:13 width:height
-        let itemCount = selectedImages.count + (selectedImages.count < 20 ? 1 : 0)
-        let rowCount = max(1, (itemCount + columnCount - 1) / columnCount)
-        let totalHeight = CGFloat(rowCount) * cellHeight + CGFloat(max(0, rowCount - 1)) * spacing
-
-        return GeometryReader { geo in
-            let w = geo.size.width
-            let actualCellWidth = max(60, (w - totalGaps) / CGFloat(columnCount))
-            let actualCellHeight = actualCellWidth * 13
-            let columns = (0..<columnCount).map { _ in GridItem(.fixed(actualCellWidth), spacing: spacing) }
-
-            LazyVGrid(columns: columns, alignment: .leading, spacing: spacing) {
-                ForEach(Array(selectedImages.enumerated()), id: \.offset) { index, image in
-                    SellPhotoGridCell(
-                        image: image,
-                        cellWidth: actualCellWidth,
-                        cellHeight: actualCellHeight,
-                        onRemove: {
-                            selectedImages.remove(at: index)
-                            selectedPhotos.remove(at: index)
-                        }
-                    )
-                }
-                if selectedImages.count < 20 {
-                    addPhotoCell(cellWidth: actualCellWidth, cellHeight: actualCellHeight)
-                }
+        let columns = [
+            GridItem(.flexible(), spacing: spacing),
+            GridItem(.flexible(), spacing: spacing),
+            GridItem(.flexible(), spacing: spacing)
+        ]
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: spacing) {
+            ForEach(Array(selectedImages.enumerated()), id: \.offset) { index, image in
+                SellPhotoGridCell(
+                    image: image,
+                    onRemove: {
+                        selectedImages.remove(at: index)
+                        selectedPhotos.remove(at: index)
+                    }
+                )
             }
-            .frame(width: w, height: totalHeight, alignment: .topLeading)
+            if selectedImages.count < 20 {
+                SellAddPhotoCell(action: { showPhotoPicker = true })
+            }
         }
-        .frame(height: totalHeight)
     }
+}
 
-    private func addPhotoCell(cellWidth: CGFloat, cellHeight: CGFloat) -> some View {
-        Button(action: { showPhotoPicker = true }) {
+// MARK: - Sell photo grid cell (square thumbnail, remove button)
+private struct SellPhotoGridCell: View {
+    let image: UIImage
+    let onRemove: () -> Void
+
+    var body: some View {
+        GeometryReader { geo in
+            let side = min(geo.size.width, geo.size.height)
+            ZStack(alignment: .topTrailing) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: side, height: side)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                Button(action: onRemove) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.white)
+                        .background(Circle().fill(.black.opacity(0.5)))
+                }
+                .padding(6)
+            }
+            .frame(width: side, height: side, alignment: .topLeading)
+        }
+        .aspectRatio(1, contentMode: .fit)
+    }
+}
+
+// MARK: - Sell add-photo cell (square, + and label)
+private struct SellAddPhotoCell: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
             RoundedRectangle(cornerRadius: 10)
                 .fill(Theme.Colors.secondaryBackground)
                 .overlay(
@@ -253,34 +272,7 @@ struct SellView: View {
                 )
         }
         .buttonStyle(HapticTapButtonStyle())
-        .frame(width: cellWidth, height: cellHeight)
-    }
-}
-
-// MARK: - Sell photo grid cell (1:13 width:height thumbnail)
-private struct SellPhotoGridCell: View {
-    let image: UIImage
-    let cellWidth: CGFloat
-    let cellHeight: CGFloat
-    let onRemove: () -> Void
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Image(uiImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: cellWidth, height: cellHeight)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-
-            Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 22))
-                    .foregroundStyle(.white)
-                    .background(Circle().fill(.black.opacity(0.5)))
-            }
-            .padding(6)
-        }
-        .frame(width: cellWidth, height: cellHeight, alignment: .topLeading)
+        .aspectRatio(1, contentMode: .fit)
     }
 }
 

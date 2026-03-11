@@ -45,7 +45,7 @@ class UserProfileViewModel: ObservableObject {
     }
 
     private func loadProducts() async {
-        await MainActor.run { isLoading = true; errorMessage = nil }
+        await MainActor.run { isLoading = true; errorMessage = nil; items = [] }
         do {
             let products = try await userService.getUserProducts(username: user.username)
             await MainActor.run {

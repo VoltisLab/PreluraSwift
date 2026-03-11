@@ -11,7 +11,7 @@ enum DetectedEvent {
 /// Result of parsing a search query for colours, categories, price, and free text.
 /// Used to build API search/filters and to show conversational replies.
 struct ParsedSearch {
-    /// Search string to send to the API (includes colour/category/synonym terms for backend to match).
+    /// Search string to send to the API (includes colour/category/synonym terms for backend to match). Does not include size — size is applied client-side.
     var searchText: String
     /// Resolved parent category if detected from query (e.g. "Women", "Men").
     var categoryOverride: String?
@@ -25,6 +25,8 @@ struct ParsedSearch {
     var priceMax: Double?
     /// Detected event for response tone (birthday → cheerful, funeral → neutral).
     var detectedEvent: DetectedEvent = .none
+    /// Size from "size 10", "size M", etc. Applied client-side filter; not sent in API search (backend text search doesn't match size well).
+    var sizeTerm: String?
 }
 
 /// Lightweight "learning" search: parses natural language for colours and categories,
@@ -103,6 +105,81 @@ final class AISearchService {
     static let nonProductWords: Set<String> = [
         "hello", "hi", "hey", "thanks", "thank", "bye", "ok", "okay",
         "world", "there", "help", "please", "yes", "no"
+    ]
+
+    /// 100 salutation phrases: if the user's message (normalized) matches any of these, the AI responds with a greeting instead of searching. See AI Dataset.md § Salutations.
+    static let salutations: Set<String> = [
+        "hi", "hello", "hey", "hey there", "hi there", "hello there",
+        "heyy", "hiii", "hey hey", "hello hello", "hiya", "heya",
+        "yo", "yoo", "yo yo", "sup", "what's up", "hey what's up", "hi what's up", "hello what's up",
+        "good morning", "morning", "good afternoon", "afternoon", "good evening", "evening", "good day",
+        "greetings", "greetings friend", "howdy", "howdy there",
+        "hey friend", "hi friend", "hello friend", "hey mate", "hi mate", "hello mate",
+        "hey buddy", "hi buddy", "hello buddy", "hey pal", "hi pal", "hello pal",
+        "hey everyone", "hi everyone", "hello everyone", "hey guys", "hi guys", "hello guys",
+        "hey team", "hi team", "hello team", "hey again", "hi again", "hello again",
+        "hey how are you", "hi how are you", "hello how are you",
+        "hey how's it going", "hi how's it going", "hello how's it going",
+        "hey how you doing", "hi how you doing", "hello how you doing",
+        "hey what's going on", "hi what's going on", "hello what's going on",
+        "hey what's happening", "hi what's happening", "hello what's happening",
+        "hey what's new", "hi what's new", "hello what's new",
+        "hey good morning", "hi good morning", "hello good morning",
+        "hey good evening", "hi good evening", "hello good evening",
+        "hey good afternoon", "hi good afternoon", "hello good afternoon",
+        "hey there friend", "hi there friend", "hello there friend",
+        "hey there mate", "hi there mate", "hello there mate",
+        "hey there buddy", "hi there buddy", "hello there buddy",
+        "hey hey there", "hi hi", "hello hello there",
+        "hey how's everything", "hi how's everything", "hello how's everything",
+        "hey what's good", "hi what's good", "hello what's good"
+    ]
+
+    /// 100 social/greeting questions (e.g. "Hi, how are you?", "Hey, what's up?") that get a greeting reply, not a product search. Stored normalized (no punctuation). See AI Dataset.md § Social greeting Q&A.
+    static let socialGreetingPhrases: Set<String> = [
+        "hi how are you", "hey how are you", "hello how are you",
+        "hi how are you today", "hey how are you today", "hello how are you today",
+        "hi hows it going", "hey hows it going", "hello hows it going",
+        "hi how you doing", "hey how you doing", "hello how you doing",
+        "hi how are you doing", "hey how are you doing", "hello how are you doing",
+        "hi whats up", "hey whats up", "hello whats up",
+        "hi whats new", "hey whats new", "hello whats new",
+        "hi hows your day", "hey hows your day", "hello hows your day",
+        "hi hows your day going", "hey hows your day going", "hello hows your day going",
+        "hi hows everything", "hey hows everything", "hello hows everything",
+        "hi how have you been", "hey how have you been", "hello how have you been",
+        "hi how do you do", "hey how do you do", "hello how do you do",
+        "hi whats going on", "hey whats going on", "hello whats going on",
+        "hi whats happening", "hey whats happening", "hello whats happening",
+        "hi whats good", "hey whats good", "hello whats good",
+        "hi hows life", "hey hows life", "hello hows life",
+        "hi good to see you", "hey good to see you", "hello good to see you",
+        "hi nice to meet you", "hey nice to meet you", "hello nice to meet you",
+        "hi good morning how are you", "hey good morning how are you", "hello good morning how are you",
+        "hi there how are you", "hey there how are you", "hello there how are you",
+        "hi how have you been", "hey how have you been", "hello how have you been",
+        "hi whats up today", "hey whats up today", "hello whats up today",
+        "hi how is your day", "hey how is your day", "hello how is your day",
+        "hi how are things", "hey how are things", "hello how are things",
+        "hi how have you been doing", "hey how have you been doing", "hello how have you been doing",
+        "hi great to see you", "hey great to see you", "hello great to see you",
+        "hi lovely to meet you", "hey lovely to meet you", "hello lovely to meet you",
+        "hi hope you are well", "hey hope you are well", "hello hope you are well",
+        "hi hope youre well", "hey hope youre well", "hello hope youre well",
+        "hi how you been", "hey how you been", "hello how you been",
+        "hi whats the vibe", "hey whats the vibe", "hello whats the vibe",
+        "hi hows your morning", "hey hows your morning", "hello hows your morning",
+        "hi hows your evening", "hey hows your evening", "hello hows your evening",
+        "hi good to chat", "hey good to chat", "hello good to chat",
+        "hi good afternoon how are you", "hey good afternoon how are you", "hello good afternoon how are you",
+        "hi good evening how are you", "hey good evening how are you", "hello good evening how are you",
+        "hi how is it going", "hey how is it going", "hello how is it going",
+        "hi whats cracking", "hey whats cracking", "hello whats cracking",
+        "hi how are we", "hey how are we", "hello how are we",
+        "hi how are you feeling", "hey how are you feeling", "hello how are you feeling",
+        "hi alright", "hey alright", "hello alright",
+        "hi you good", "hey you good", "hello you good",
+        "hi everything good", "hey everything good", "hello everything good"
     ]
 
     /// Category keywords for matching (training doc + Batch 3: dress, scarf, cargo trousers, cardigan, blazer, joggers, etc.); fuzzy-matched for typos.
@@ -191,6 +268,19 @@ final class AISearchService {
         return q
     }
 
+    /// Maps common category word variants (possessive and plural) to parent category. Used so "jeans women's", "dress boys", "shoes boy's" set category and don't pollute search text.
+    private static func parentCategoryFromWord(_ lower: String) -> String? {
+        switch lower {
+        case "woman's", "women's", "womens", "women": return "Women"
+        case "man's", "men's", "mens", "men": return "Men"
+        case "boy's", "boys'", "boys": return "Boys"
+        case "girl's", "girls'", "girls": return "Girls"
+        case "kid's", "kids'", "kids": return "Kids"
+        case "toddler's", "toddlers'", "toddlers": return "Toddlers"
+        default: return nil
+        }
+    }
+
     /// Extract size from "size M", "size 32", "size 6", "size L", etc. (training doc: size + colour queries).
     private func extractSizeTerm(from query: String) -> String? {
         let lower = query.lowercased()
@@ -244,7 +334,7 @@ final class AISearchService {
     func parse(query: String) -> ParsedSearch {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            return ParsedSearch(searchText: "", categoryOverride: nil, appliedColourNames: [], closestMatchHint: nil, spellingCorrectionHint: nil, priceMax: nil, detectedEvent: .none)
+            return ParsedSearch(searchText: "", categoryOverride: nil, appliedColourNames: [], closestMatchHint: nil, spellingCorrectionHint: nil, priceMax: nil, detectedEvent: .none, sizeTerm: nil)
         }
 
         let normalized = normalizeConversational(trimmed)
@@ -296,14 +386,17 @@ final class AISearchService {
                 continue
             }
 
-            // 4) Parent category
+            // 4) Parent category — exact "women"/"men"/"boys"/"kids" etc. or possessive "women's"/"boys'" so "size 10 jeans women's" → category Women, search "jeans". Category words are not added to search text.
             if let cat = Self.parentCategories.first(where: { $0.lowercased() == lower && $0.lowercased() != "all" }) {
                 appliedCategory = cat
-                remainingWords.append(word)
+                continue
+            }
+            if let cat = Self.parentCategoryFromWord(lower) {
+                appliedCategory = cat
                 continue
             }
 
-            // 5) Category keyword (with fuzzy: dres→dress, jaket→jacket) — track correction for "Do you mean?"
+            // 5) Category keyword
             if let match = fuzzyMatchCategory(word: lower) {
                 remainingWords.append(match)
                 if spellingHint == nil && match.lowercased() != lower {
@@ -327,8 +420,10 @@ final class AISearchService {
         for c in appliedColours where !searchParts.contains(where: { $0.lowercased() == c.lowercased() }) {
             searchParts.append(c)
         }
-        if let sizeTerm = extractSizeTerm(from: expandedQuery) {
-            searchParts.append(sizeTerm)
+        let extractedSize = extractSizeTerm(from: expandedQuery)
+        if let sizeTerm = extractedSize {
+            // Remove "size" and the size value from search parts so API gets e.g. "blue jeans" not "size 10 blue jeans" (backend text search returns no results for the latter).
+            searchParts = searchParts.filter { $0.lowercased() != "size" && $0.lowercased() != sizeTerm }
         }
         let searchText = searchParts.joined(separator: " ")
 
@@ -346,7 +441,8 @@ final class AISearchService {
             closestMatchHint: hint,
             spellingCorrectionHint: spellingHint,
             priceMax: priceMax,
-            detectedEvent: detectedEvent
+            detectedEvent: detectedEvent,
+            sizeTerm: extractedSize
         )
     }
 
@@ -1174,11 +1270,132 @@ final class AISearchService {
     }
 
     /// True if the query is only a greeting (e.g. "Hello") — show a friendly prompt instead of search.
+    /// Normalizes user input for salutation/social matching: lowercase, trim, collapse whitespace, straight apostrophe, strip punctuation so "Hi, how are you?" matches "hi how are you".
+    private func normalizedForSalutation(_ query: String) -> String {
+        var q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        q = q.replacingOccurrences(of: "\u{2019}", with: "'") // curly apostrophe → straight
+        let punctuation = CharacterSet(charactersIn: ",.!?")
+        q = q.unicodeScalars.filter { !punctuation.contains($0) }.map(String.init).joined()
+        q = q.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
+        return q
+    }
+
+    /// True if the query is only a greeting/salutation or a social question (e.g. "hi", "good morning", "Hi, how are you?"). Matches 100 salutations + 100 social phrases; AI responds with a greeting reply instead of searching.
     func isGreetingOnly(_ query: String) -> Bool {
-        let words = query.trimmingCharacters(in: .whitespaces).lowercased()
-            .components(separatedBy: .whitespaces)
-            .filter { !$0.isEmpty }
-        return words.count == 1 && Self.nonProductWords.contains(words[0])
+        let normalized = normalizedForSalutation(query)
+        guard !normalized.isEmpty else { return false }
+        return Self.salutations.contains(normalized) || Self.socialGreetingPhrases.contains(normalized)
+    }
+
+    /// Greeting replies when user says "hi", "hello", or social questions like "how are you?". Picked at random so Lenny feels natural. 55+ variants with Lenny introducing himself and welcoming the user. Used for both salutations and social Q&A.
+    private static let greetingReplies: [String] = [
+        "Hello! Welcome to the chat — I'm Lenny, and I'm here to help with whatever you need. Just type what you're looking for to get started.",
+        "Hey there! I'm Lenny. Great to have you here. Tell me what you're after — a colour and item like leather jacket or denim jeans works a treat.",
+        "Hi! Lenny here. Welcome in. I'm here to help you find something lovely — try typing something like black jacket or green dress.",
+        "Hello! I'm Lenny, and I'm really here to assist you. You can start by typing what you're looking for — for example, striped top or floral dress.",
+        "Hey! Welcome to the chat. I'm Lenny and I'm here to help you find whatever you need. Just drop a message — try a colour and item like navy blazer or pink skirt.",
+        "Hi there! Lenny at your service. Good to see you. Type anything you're after — dresses, jackets, shoes — or try wool coat or ankle boots.",
+        "Hello! I'm Lenny. Welcome. I'm here to assist you with whatever you need. You can start by typing — e.g. black jacket or white trainers.",
+        "Hey! Welcome — I'm Lenny. I'm here to help you shop. Just type what you're looking for to get started; something like green hoodie or beige coat works.",
+        "Hi! Lenny here — welcome to the chat. I'm here to help with whatever you need. Type a colour and item, like summer dress or sandals, and we'll go from there.",
+        "Hello! Welcome. I'm Lenny and I'm here to assist you. You can start by typing what you'd like to find — try knit jumper or tailored trousers.",
+        "Hey there! I'm Lenny. Glad you're here. I'm here to help you find something — just type what you're looking for. Try black jacket or green dress.",
+        "Hi! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. Start by typing — for example, navy blazer or pink skirt.",
+        "Hello! I'm Lenny — welcome. I'm here to assist you. You can type what you're looking for; try a colour and item like trench coat or loafers.",
+        "Hey! Lenny here. Welcome in. I'm here to help you find whatever you need. Just type to get started — e.g. white trainers or black dress.",
+        "Hi there! Welcome. I'm Lenny and I'm here to assist you. Type what you're after to get started; something like blouse or heels.",
+        "Hello! I'm Lenny. Good to have you. I'm here to help with whatever you need. You can start by typing — try green hoodie or beige coat.",
+        "Hey! Welcome to the chat. I'm Lenny, and I'm here to help you shop. Just type what you're looking for — like cardigan or sneakers.",
+        "Hi! Lenny at your service. Welcome. I'm here to assist you with whatever you need. Type a message to get started; try black jacket or green dress.",
+        "Hello! I'm Lenny — welcome. I'm here to help you find something. You can start by typing; for example, navy blazer or pink skirt.",
+        "Hey there! Welcome. I'm Lenny and I'm here to help. Just type what you're looking for to get started — maxi dress, espadrilles, whatever you like.",
+        "Hi! I'm Lenny. Welcome to the chat. I'm here to assist you with whatever you need. Start by typing — e.g. linen shirt or chinos.",
+        "Hello! Lenny here. Good to see you. I'm here to help you find whatever you need. Type what you're after; try a colour and item like blazer or midi skirt.",
+        "Hey! Welcome. I'm Lenny, and I'm here to help you shop. You can start by typing what you're looking for — try hoodie or trainers.",
+        "Hi there! I'm Lenny. Welcome in. I'm here to assist you. Just type to get started — something like green hoodie or beige coat.",
+        "Hello! I'm Lenny — welcome to the chat. I'm here to help with whatever you need. You can start by typing; try jacket or boots.",
+        "Hey! Lenny here. Welcome. I'm here to help you find something. Type what you're looking for to get started — e.g. navy blazer or pink skirt.",
+        "Hi! Welcome. I'm Lenny and I'm here to assist you. Just type what you're after; try a colour and item like vintage dress or loafers.",
+        "Hello! I'm Lenny. Welcome in. I'm here to help you shop. You can start by typing — for example, black jacket or green dress.",
+        "Hey there! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. Type to get started — try silk blouse or heels.",
+        "Hi! I'm Lenny — good to have you. I'm here to assist you. You can start by typing what you're looking for; e.g. denim jacket or sneakers.",
+        "Hello! Lenny at your service. Welcome. I'm here to help you find whatever you need. Just type — try navy blazer or pink skirt.",
+        "Hey! I'm Lenny. Welcome to the chat. I'm here to help with whatever you need. Start by typing; something like winter coat or boots.",
+        "Hi there! Welcome. I'm Lenny and I'm here to help you find something. You can type what you're after — try black jacket or green dress.",
+        "Hello! I'm Lenny — welcome. I'm here to assist you. Just type what you're looking for to get started. Try floral skirt or sandals.",
+        "Hey! Lenny here. Glad you're here. I'm here to help you shop. Type to get started — e.g. green hoodie or beige coat.",
+        "Hi! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. You can start by typing — dress, jacket, shoes, etc.",
+        "Hello! I'm Lenny. Welcome in. I'm here to help you find something. Just type what you're after; try a colour and item like camel coat or jeans.",
+        "Hey there! I'm Lenny — welcome. I'm here to assist you. You can start by typing; for example, navy blazer or pink skirt.",
+        "Hi! Lenny at your service. Welcome to the chat. I'm here to help with whatever you need. Type to get started — try printed top or trousers.",
+        "Hello! Welcome. I'm Lenny and I'm here to help you shop. Just type what you're looking for — e.g. black jacket or green dress.",
+        "Hey! I'm Lenny. Good to see you. I'm here to assist you. You can start by typing; something like striped jumper or jeans.",
+        "Hi there! I'm Lenny. Welcome. I'm here to help you find whatever you need. Just type — try navy blazer or pink skirt.",
+        "Hello! Lenny here. Welcome to the chat. I'm here to help with whatever you need. Start by typing what you're after — leather bag or scarf.",
+        "Hey! Welcome in. I'm Lenny, and I'm here to assist you. You can type what you're looking for; try green hoodie or beige coat.",
+        "Hi! I'm Lenny — welcome. I'm here to help you find something. Just type to get started — e.g. blazer or ankle boots.",
+        "Hello! I'm Lenny. Welcome. I'm here to help with whatever you need. You can start by typing — try black jacket or green dress.",
+        "Hey there! Lenny at your service. Welcome to the chat. I'm here to assist you. Type what you're after; for example, coat or trainers.",
+        "Hi! Welcome. I'm Lenny and I'm here to help you shop. Just type what you're looking for to get started — navy blazer or pink skirt.",
+        "Hello! Lenny here. Good to have you. I'm here to help you find whatever you need. You can start by typing — try midi skirt or heels.",
+        "Hey! I'm Lenny — welcome in. I'm here to assist you. Just type; something like dress or shoes works.",
+        "Hi there! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. Type what you're looking for — e.g. black jacket or green dress.",
+        "Hello! I'm Lenny. Welcome. I'm here to help you find something. You can start by typing — try cropped top or wide-leg trousers.",
+        "Hey! Lenny at your service. Glad you're here. I'm here to help you shop. Just type to get started — navy blazer or pink skirt.",
+        "Hi! I'm Lenny — welcome to the chat. I'm here to assist you with whatever you need. Type what you're after; try bomber jacket or sneakers.",
+        "Hello! Welcome. I'm Lenny and I'm here to help. You can start by typing what you're looking for — e.g. green hoodie or beige coat.",
+        "Hey there! I'm Lenny. Welcome. I'm here to help you find whatever you need. Just type — try wrap dress or flats.",
+        "Hi! Lenny here. Welcome in. I'm here to assist you. You can start by typing; for example, black jacket or green dress.",
+        "Hello! I'm Lenny — good to see you. I'm here to help with whatever you need. Type to get started — dress, jacket, shoes, you name it.",
+        "Hey! Welcome to the chat. I'm Lenny, and I'm here to help you find something. Just type what you're after — try oversized coat or boots.",
+        "Hi there! I'm Lenny. Welcome to the chat. I'm here to assist you. You can start by typing — navy blazer or pink skirt.",
+        "Hello! Lenny at your service. Welcome. I'm here to help you shop. Type what you're looking for to get started; try linen shirt or chinos.",
+        "Hey! I'm Lenny. Welcome in. I'm here to help with whatever you need. Just type — e.g. black jacket or green dress.",
+        "Hi! Welcome. I'm Lenny and I'm here to assist you. You can start by typing what you're after — try puffer jacket or joggers.",
+        "Hello! I'm Lenny — welcome to the chat. I'm here to help you find whatever you need. Type to get started; something like slip dress or mules.",
+        "Hey there! Lenny here. Welcome. I'm here to assist you. Just type what you're looking for — e.g. navy blazer or pink skirt.",
+        "Hi! I'm Lenny. Good to have you. I'm here to help you find something. You can start by typing — try tailored blazer or pumps.",
+        "Hello! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. Just type; try a colour and item like graphic tee or shorts.",
+        "Hey! Lenny at your service. Welcome in. I'm here to help you shop. You can start by typing — for example, black jacket or green dress.",
+        "Hi there! I'm Lenny — welcome. I'm here to assist you with whatever you need. Type what you're after to get started — biker jacket or boots.",
+        "Hello! I'm Lenny. Welcome to the chat. I'm here to help you find something. Just type to get started — try pleated skirt or loafers.",
+        "Hey! Welcome. I'm Lenny and I'm here to help. You can start by typing what you're looking for; e.g. navy blazer or pink skirt.",
+        "Hi! Lenny here. Welcome to the chat. I'm here to assist you. Type what you're after — try cashmere sweater or trousers.",
+        "Hello! I'm Lenny — welcome in. I'm here to help with whatever you need. Just type; try mini skirt or trainers to get started.",
+        "Hey there! Welcome. I'm Lenny, and I'm here to help you find whatever you need. You can start by typing — black jacket or green dress.",
+        "Hi! I'm Lenny. Welcome. I'm here to assist you. You can start by typing what you're looking for — try gilet or Chelsea boots.",
+        "Hello! Lenny here. Welcome to the chat. I'm here to help you shop. Just type to get started — navy blazer or pink skirt.",
+        "Hey! I'm Lenny. Good to see you. I'm here to help with whatever you need. Type what you're after; try satin top or palazzo pants.",
+        "Hi there! I'm Lenny — welcome. I'm here to help you find something. You can start by typing — e.g. turtleneck or ankle boots.",
+        "Hello! Welcome to the chat. I'm Lenny, and I'm here to assist you. Just type what you're looking for to get started — try blouse or ballet flats.",
+        "Hey! Lenny at your service. Welcome in. I'm here to help you find whatever you need. Type to get started; something like parka or trainers.",
+        "Hi! Welcome. I'm Lenny and I'm here to help you find something. You can start by typing — try black jacket or green dress.",
+        "Hello! I'm Lenny. Welcome to the chat. I'm here to assist you. Just type — e.g. sundress or sandals.",
+        "Hey there! Lenny here. Glad you're here. I'm here to help with whatever you need. You can start by typing; try roll neck or smart trousers.",
+        "Hi! I'm Lenny — welcome. I'm here to help you shop. Type what you're looking for to get started — navy blazer or pink skirt.",
+        "Hello! Welcome. I'm Lenny and I'm here to assist you. Just type what you're after — try waistcoat or brogues.",
+        "Hey! I'm Lenny. Welcome. I'm here to help you find whatever you need. You can start by typing — try crop top or high-waist jeans.",
+        "Hi there! Welcome to the chat. I'm Lenny, and I'm here to help. Just type to get started; for example, black jacket or green dress.",
+        "Hello! Lenny here. Welcome. I'm here to assist you with whatever you need. You can start by typing — red dress or blue shoes.",
+        "Hey! I'm Lenny — good to have you. I'm here to help you find something. Type what you're looking for; try checked shirt or desert boots.",
+        "Hi! Welcome to the chat. I'm Lenny, and I'm here to help you shop. Just type what you're after to get started — try vest or espadrilles."
+    ]
+
+    /// Out-of-scope replies when the query isn't about products. Varied so the bot doesn't feel robotic.
+    static let outOfScopeReplies: [String] = [
+        "I don't understand that. I can help you find items by colour, category, or style—try something like \"red dress\" or \"blue shoes\".",
+        "I'm not sure about that. I'm best at finding clothes and accessories—try something like pink skirt or navy blazer.",
+        "That's outside what I can help with. I can search for items by colour and type—e.g. green hoodie or beige coat."
+    ]
+
+    /// Returns a random greeting reply (for use with L10n).
+    func randomGreetingReply() -> String {
+        Self.greetingReplies.randomElement() ?? Self.greetingReplies[0]
+    }
+
+    /// Returns a random out-of-scope reply (for use with L10n).
+    static func randomOutOfScopeReply() -> String {
+        Self.outOfScopeReplies.randomElement() ?? Self.outOfScopeReplies[0]
     }
 
     /// True if the term is a valid product category for fallback (avoids "here are some hellos" for greetings).
@@ -1193,6 +1410,13 @@ final class AISearchService {
         let warm = Self.warmLeadInPhrases.randomElement() ?? Self.warmLeadInPhrases[0]
         let plural = fallbackTerm.hasSuffix("s") ? fallbackTerm : fallbackTerm + "s"
         return "\(warm) I couldn't find that exact match right now, but here are some \(plural) you might like."
+    }
+
+    /// Reply when user asked for a size (e.g. size 10) but we're showing all results because none matched that size.
+    func replyForSizeFallback(sizeTerm: String) -> String {
+        let warm = Self.warmLeadInPhrases.randomElement() ?? Self.warmLeadInPhrases[0]
+        let msg = String(format: L10n.string("We don't have size %@ in these results, but here are some options you might like."), sizeTerm)
+        return "\(warm) \(msg)"
     }
 
     func replyForResults(parsed: ParsedSearch, hasItems: Bool, query: String? = nil) -> String {

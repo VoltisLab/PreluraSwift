@@ -35,17 +35,16 @@ struct GlassButton: View {
     }
 }
 
-// MARK: - Toolbar/nav icons: system material only (same as tab bar), no custom glass.
-private let toolbarIconShape = Circle()
+// MARK: - Toolbar/nav icons: Liquid Glass circle (system .regular material in circle).
 
-/// System bar material only — same material as the tab bar. No custom opacity, border, or shadow.
+/// Liquid Glass circle behind toolbar icons — system glass material for consistent look.
 private struct GlassIconCircleStyle: ViewModifier {
     let size: CGFloat
 
     func body(content: Content) -> some View {
         content
             .frame(width: size, height: size)
-            .background(toolbarIconShape.fill(.bar))
+            .glassEffect(.regular, in: .ellipse)
     }
 }
 

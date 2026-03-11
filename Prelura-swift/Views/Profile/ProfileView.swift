@@ -52,6 +52,7 @@ struct ProfileView: View {
                 ScrollView {
                     if viewModel.isLoading && viewModel.user == nil {
                         ProfileShimmerView()
+                            .frame(minHeight: UIScreen.main.bounds.height)
                     } else {
                         VStack(spacing: 0) {
                             Color.clear.frame(height: 1).id(topId)
@@ -97,6 +98,7 @@ struct ProfileView: View {
         }
         .navigationTitle(viewModel.user?.username ?? L10n.string("Profile"))
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(viewModel.isLoading && viewModel.user == nil)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink(value: AppRoute.menu(MenuContext(
@@ -481,16 +483,13 @@ struct ProfileView: View {
         .sheet(isPresented: $showFilterSheet) { profileFilterSheet }
     }
     
-    // MARK: - Sort sheet
+    // MARK: - Sort sheet (Apply/Clear at bottom like filter modal)
     private var profileSortSheet: some View {
         NavigationStack {
             List {
                 Section {
                     ForEach(ProfileSortOption.allCases, id: \.self) { option in
-                        Button(action: {
-                            profileSort = option
-                            showSortSheet = false
-                        }) {
+                        Button(action: { profileSort = option }) {
                             HStack {
                                 Text(L10n.string(option.rawValue))
                                     .foregroundColor(Theme.Colors.primaryText)
@@ -505,32 +504,26 @@ struct ProfileView: View {
                     }
                     .listRowBackground(Theme.Colors.background)
                 }
-                Section {
-                    Button(action: {
-                        profileSort = .relevance
-                        showSortSheet = false
-                    }) {
-                        Text(L10n.string("Clear"))
-                            .foregroundColor(.red)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.destructive() }))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Theme.Colors.background)
-                    Divider()
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Theme.Colors.background)
-                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Spacing.md, bottom: 0, trailing: Theme.Spacing.md))
-                    Color.clear
-                        .frame(height: 50)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Theme.Colors.background)
-                }
             }
             .scrollDisabled(true)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: Theme.Spacing.sm) {
+                    BorderGlassButton(L10n.string("Clear")) {
+                        profileSort = .relevance
+                    }
+                    PrimaryGlassButton(L10n.string("Apply")) {
+                        showSortSheet = false
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.lg)
+                .frame(maxWidth: .infinity)
+                .background(Theme.Colors.background)
+            }
             .navigationTitle(L10n.string("Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -582,34 +575,28 @@ struct ProfileView: View {
                     .listRowSeparator(.hidden)
                     .listRowBackground(Theme.Colors.background)
                 } header: { Text(L10n.string("Price range")) }
-                Section {
-                    Button(action: {
-                        filterCondition = nil
-                        filterMinPrice = ""
-                        filterMaxPrice = ""
-                        showFilterSheet = false
-                    }) {
-                        Text(L10n.string("Clear"))
-                            .foregroundColor(.red)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.destructive() }))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Theme.Colors.background)
-                    Divider()
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Theme.Colors.background)
-                        .listRowInsets(EdgeInsets(top: 0, leading: Theme.Spacing.md, bottom: 0, trailing: Theme.Spacing.md))
-                    Color.clear
-                        .frame(height: 50)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Theme.Colors.background)
-                }
             }
             .scrollDisabled(true)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: Theme.Spacing.sm) {
+                    BorderGlassButton(L10n.string("Clear")) {
+                        filterCondition = nil
+                        filterMinPrice = ""
+                        filterMaxPrice = ""
+                    }
+                    PrimaryGlassButton(L10n.string("Apply")) {
+                        showFilterSheet = false
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.lg)
+                .frame(maxWidth: .infinity)
+                .background(Theme.Colors.background)
+            }
             .navigationTitle(L10n.string("Filter"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

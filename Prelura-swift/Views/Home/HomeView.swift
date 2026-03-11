@@ -1,4 +1,5 @@
 import SwiftUI
+import Shimmer
 
 struct HomeView: View {
     @EnvironmentObject var authService: AuthService
@@ -13,48 +14,53 @@ struct HomeView: View {
     private let topId = "home_top"
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(spacing: 0) {
-                    Color.clear.frame(height: 1).id(topId)
-                    FeedSearchField(
-                        text: $searchText,
-                        placeholder: L10n.string("Search items, brands or colours"),
-                        onSubmit: { viewModel.searchWithParsed($0) },
-                        onAITap: { showAIChat = true },
-                        topPadding: Theme.Spacing.xs
-                    )
-                    .padding(.trailing, Theme.Spacing.sm)
+        Group {
+            if viewModel.isLoading && viewModel.filteredItems.isEmpty {
+                FeedShimmerView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            Color.clear.frame(height: 1).id(topId)
+                            FeedSearchField(
+                                text: $searchText,
+                                placeholder: L10n.string("Search items, brands or colours"),
+                                onSubmit: { viewModel.searchWithParsed($0) },
+                                onAITap: { showAIChat = true },
+                                topPadding: Theme.Spacing.xs
+                            )
 
-                    if let hint = viewModel.searchClosestMatchHint {
-                        HStack(spacing: Theme.Spacing.xs) {
-                            Image(systemName: "info.circle.fill")
-                                .font(.system(size: 14))
-                                .foregroundColor(Theme.primaryColor)
-                            Text(hint)
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(Theme.Colors.secondaryText)
+                            if let hint = viewModel.searchClosestMatchHint {
+                                HStack(spacing: Theme.Spacing.xs) {
+                                    Image(systemName: "info.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(Theme.primaryColor)
+                                    Text(hint)
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(Theme.Colors.secondaryText)
+                                }
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.vertical, Theme.Spacing.xs)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+
+                            categoryFiltersSection
+                            productGridSection
                         }
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.vertical, Theme.Spacing.xs)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-
-                categoryFiltersSection
-
-                productGridSection
-            }
-            }
-            .scrollPosition(id: $scrollPosition, anchor: .top)
-            .onAppear {
-                tabCoordinator.reportAtTop(tab: 0, isAtTop: true)
-                tabCoordinator.registerScrollToTop(tab: 0) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        proxy.scrollTo(topId, anchor: .top)
+                    .scrollPosition(id: $scrollPosition, anchor: .top)
+                    .onAppear {
+                        tabCoordinator.reportAtTop(tab: 0, isAtTop: true)
+                        tabCoordinator.registerScrollToTop(tab: 0) {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                proxy.scrollTo(topId, anchor: .top)
+                            }
+                        }
+                        tabCoordinator.registerRefresh(tab: 0) {
+                            Task { await viewModel.refreshAsync() }
+                        }
                     }
-                }
-                tabCoordinator.registerRefresh(tab: 0) {
-                    Task { await viewModel.refreshAsync() }
                 }
             }
         }
@@ -63,6 +69,7 @@ struct HomeView: View {
         }
         .background(Theme.Colors.background)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(viewModel.isLoading && viewModel.filteredItems.isEmpty)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Image("PreluraLogo")
@@ -169,7 +176,7 @@ struct HomeItemCard: View {
                         case .empty:
                             Circle()
                                 .fill(Theme.Colors.secondaryBackground)
-                                .shimmer()
+                                .shimmering()
                         case .success(let image):
                             image
                                 .resizable()
