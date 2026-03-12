@@ -53,12 +53,7 @@ class HomeViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    if let i = allItems.firstIndex(where: { $0.productId == productId }) {
-                        allItems[i] = item
-                    }
-                    if let j = filteredItems.firstIndex(where: { $0.productId == productId }) {
-                        filteredItems[j] = item
-                    }
+                    // Keep optimistic state so the heart doesn't flip back; surface error for user
                     errorMessage = L10n.userFacingError(error)
                 }
             }

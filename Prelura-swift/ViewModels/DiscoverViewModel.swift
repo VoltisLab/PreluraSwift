@@ -179,7 +179,7 @@ class DiscoverViewModel: ObservableObject {
         }
     }
 
-    /// Toggle like for a product and update it in all relevant arrays.
+    /// Toggle like for a product and update it in all relevant arrays. Optimistic update so heart/count change immediately.
     func toggleLike(productId: String) {
         guard !productId.isEmpty else { return }
         let current = discoverItems.first(where: { $0.productId == productId })
@@ -188,9 +188,17 @@ class DiscoverViewModel: ObservableObject {
             ?? shopBargainsItems.first(where: { $0.productId == productId })
             ?? onSaleItems.first(where: { $0.productId == productId })
         guard let item = current else { return }
+        let newLiked = !item.isLiked
+        let newCount = item.likeCount + (newLiked ? 1 : -1)
+        let optimistic = item.with(likeCount: max(0, newCount), isLiked: newLiked)
+        discoverItems = discoverItems.replacingItem(productId: productId, with: optimistic)
+        recentlyViewedItems = recentlyViewedItems.replacingItem(productId: productId, with: optimistic)
+        brandsYouLoveItems = brandsYouLoveItems.replacingItem(productId: productId, with: optimistic)
+        shopBargainsItems = shopBargainsItems.replacingItem(productId: productId, with: optimistic)
+        onSaleItems = onSaleItems.replacingItem(productId: productId, with: optimistic)
         Task {
             do {
-                let (isLiked, likeCount) = try await productService.toggleLike(productId: productId, isLiked: !item.isLiked)
+                let (isLiked, likeCount) = try await productService.toggleLike(productId: productId, isLiked: newLiked)
                 await MainActor.run {
                     let updated = item.with(likeCount: likeCount, isLiked: isLiked)
                     discoverItems = discoverItems.replacingItem(productId: productId, with: updated)
@@ -200,7 +208,10 @@ class DiscoverViewModel: ObservableObject {
                     onSaleItems = onSaleItems.replacingItem(productId: productId, with: updated)
                 }
             } catch {
-                await MainActor.run { errorMessage = L10n.userFacingError(error) }
+                await MainActor.run {
+                    // Keep optimistic state so the heart doesn't flip back; surface error for user
+                    errorMessage = L10n.userFacingError(error)
+                }
             }
         }
     }

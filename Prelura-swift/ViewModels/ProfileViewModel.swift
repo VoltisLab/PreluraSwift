@@ -110,12 +110,16 @@ class ProfileViewModel: ObservableObject {
         await loadUserData()
     }
 
-    /// Toggle like for a product and update userItems.
+    /// Toggle like for a product and update userItems. Optimistic update so heart doesn't flip back on API failure.
     func toggleLike(productId: String) {
         guard !productId.isEmpty, let item = userItems.first(where: { $0.productId == productId }) else { return }
+        let newLiked = !item.isLiked
+        let newCount = item.likeCount + (newLiked ? 1 : -1)
+        let optimistic = item.with(likeCount: max(0, newCount), isLiked: newLiked)
+        userItems = userItems.replacingItem(productId: productId, with: optimistic)
         Task {
             do {
-                let (isLiked, likeCount) = try await productService.toggleLike(productId: productId, isLiked: !item.isLiked)
+                let (isLiked, likeCount) = try await productService.toggleLike(productId: productId, isLiked: newLiked)
                 await MainActor.run {
                     userItems = userItems.replacingItem(productId: productId, with: item.with(likeCount: likeCount, isLiked: isLiked))
                 }

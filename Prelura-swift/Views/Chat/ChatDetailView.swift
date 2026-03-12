@@ -79,35 +79,17 @@ struct ChatDetailView: View {
         conversation.recipient.displayName.isEmpty ? conversation.recipient.username : conversation.recipient.displayName
     }
 
-    private var chatHeader: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            GlassIconButton(icon: "chevron.left", action: { dismiss() })
-            Spacer()
-            Text(recipientTitle)
-                .font(Theme.Typography.headline)
-                .foregroundColor(Theme.Colors.primaryText)
-            Spacer()
-            NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: conversation.id)) {
-                GlassIconView(icon: "questionmark.circle")
-            }
-            .buttonStyle(HapticTapButtonStyle())
-        }
-        .padding(.horizontal, Theme.AppBar.horizontalPadding)
-        .padding(.vertical, Theme.AppBar.verticalPadding)
-        .background(Theme.Colors.background)
-    }
-
     private var messageInputBar: some View {
-        HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
+        HStack(alignment: .center, spacing: Theme.Spacing.sm) {
             TextField("Type a message...", text: $newMessage)
                 .textFieldStyle(.plain)
                 .focused($isMessageFieldFocused)
                 .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.sm)
+                .frame(minHeight: 44)
                 .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(20)
+                .cornerRadius(22)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: 22)
                         .stroke(isMessageFieldFocused ? Theme.primaryColor : Theme.Colors.glassBorder, lineWidth: isMessageFieldFocused ? 2 : 1)
                 )
                 .foregroundColor(Theme.Colors.primaryText)
@@ -139,7 +121,8 @@ struct ChatDetailView: View {
                         if message.isSoldConfirmation {
                             SoldConfirmationBannerView(
                                 message: message,
-                                isSeller: message.senderUsername != authService.username
+                                isSeller: message.senderUsername != authService.username,
+                                conversationId: conversation.id
                             )
                             .id(message.id)
                         } else {
@@ -159,15 +142,22 @@ struct ChatDetailView: View {
                     }
                 }
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                chatHeader
-            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 messageInputBar
             }
         }
         .background(Theme.Colors.background)
-        .navigationBarHidden(true)
+        .navigationTitle(recipientTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(false)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: conversation.id)) {
+                    Image(systemName: "questionmark.circle")
+                }
+            }
+        }
+        .toolbarBackground(Theme.Colors.background, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
             loadMessages()
@@ -314,46 +304,59 @@ struct ChatProductCardView: View {
 struct SoldConfirmationBannerView: View {
     let message: Message
     let isSeller: Bool
+    var conversationId: String = ""
 
     private var displayText: String {
         guard let data = message.soldConfirmationData else {
             return message.displayContent
         }
         let price = data.productPrice ?? data.buyerSubtotal ?? "0"
-        return "SOLD! 💰\nYour item sold for £\(price)! 📦\nPrint your shipping label below, and send the parcel. Your payment will be released once the buyer receives the item. 🚀"
+        return "SOLD! 💰\nYour item sold for £\(price)! 📦"
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text(displayText)
-                .font(Theme.Typography.body)
-                .fontWeight(.medium)
-                .foregroundColor(Theme.Colors.primaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            if isSeller {
-                Button(action: { /* TODO: navigate to shipping confirmation */ }) {
-                    Text("I've shipped the item")
-                        .font(Theme.Typography.body)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, Theme.Spacing.sm)
+        VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                Text(displayText)
+                    .font(Theme.Typography.body)
+                    .fontWeight(.medium)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                if isSeller {
+                    Button(action: { /* TODO: navigate to shipping confirmation */ }) {
+                        Text("I've shipped the item")
+                            .font(Theme.Typography.body)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                    }
+                    .background(Theme.primaryColor)
+                    .cornerRadius(24)
                 }
-                .background(Theme.primaryColor)
-                .cornerRadius(25)
+                HStack {
+                    Spacer(minLength: 0)
+                    NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: conversationId.isEmpty ? nil : conversationId)) {
+                        Text("Report an issue")
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.primaryColor)
+                    }
+                    .buttonStyle(.plain)
+                    Spacer(minLength: 0)
+                }
             }
+            .padding(Theme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.Colors.secondaryBackground)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+            )
             Text(message.formattedTimestamp)
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.secondaryBackground)
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
-        )
         .padding(.vertical, 2)
     }
 }
@@ -390,6 +393,7 @@ struct MessageBubbleView: View {
                 Text(message.formattedTimestamp)
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .frame(maxWidth: bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
             if !isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }

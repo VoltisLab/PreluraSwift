@@ -296,27 +296,11 @@ struct ItemDetailView: View {
                 Spacer()
                 HStack {
                     Spacer()
-                    Button(action: {
-                        if let productId = item.productId {
-                            viewModel.toggleLike(productId: productId)
-                        }
-                    }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: viewModel.isLiked ? "heart.fill" : "heart")
-                                .font(.system(size: 17, weight: .medium))
-                                .foregroundColor(.white)
-                            Text("\(viewModel.likeCount)")
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(.white)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
-                        .background(Color.black.opacity(0.6))
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
+                    LikeButtonView(
+                        isLiked: viewModel.isLiked,
+                        likeCount: viewModel.likeCount,
+                        action: { if let productId = item.productId { viewModel.toggleLike(productId: productId) } }
+                    )
                     .padding(.trailing, 15)
                     .padding(.bottom, 15)
                 }

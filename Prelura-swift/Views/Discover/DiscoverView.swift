@@ -7,8 +7,9 @@ struct DiscoverView: View {
     @StateObject private var viewModel: DiscoverViewModel
     @State private var searchText: String = ""
     @State private var showSearchMembersResults: Bool = false
-    @State private var selectedBrand: String? = nil
     @State private var scrollPosition: String? = "discover_top"
+    /// When true, pill tag rows stop their drift animation (set on scroll or tap).
+    @State private var pillAnimationStopped: Bool = false
 
     private static let categories = ["Women", "Men", "Boys", "Girls"]
 
@@ -102,6 +103,7 @@ struct DiscoverView: View {
                 topPadding: Theme.Spacing.xs
             )
             .padding(.trailing, Theme.Spacing.sm)
+            .padding(.bottom, 2)
             brandFiltersSection
             VStack(alignment: .leading, spacing: 0) {
                 Text(L10n.string("Shop Categories"))
@@ -151,51 +153,20 @@ struct DiscoverView: View {
         }
     }
     
-    // MARK: - Brand Filters (2 rows, up to 20 items)
+    // MARK: - Brand Filters (2 rows, slow drift; tap or scroll stops animation)
     private var brandFiltersSection: some View {
         let brandsToShow = Array(brands.prefix(20))
         let firstRow = Array(brandsToShow.prefix(10))
         let secondRow = Array(brandsToShow.suffix(from: min(10, brandsToShow.count)))
         
-        return VStack(spacing: Theme.Spacing.sm) {
-            // First row: leading edge aligned with search bar (no extra leading padding); trailing padding so last pill isn't cut off (like feed sections).
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.Spacing.sm) {
-                    ForEach(firstRow, id: \.self) { brand in
-                        BrandFilterPill(
-                            brand: brand,
-                            isSelected: selectedBrand == brand,
-                            action: {
-                                selectedBrand = selectedBrand == brand ? nil : brand
-                            }
-                        )
-                    }
-                }
-                .padding(.leading, Theme.Spacing.md)
-                .padding(.trailing, Theme.Spacing.md)
-            }
-            
-            // Second row (if needed)
+        return VStack(spacing: 2) {
+            AnimatedBrandRow(brands: firstRow, maxOffset: 50, authService: authService, animationStopped: $pillAnimationStopped)
             if !secondRow.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        ForEach(secondRow, id: \.self) { brand in
-                            BrandFilterPill(
-                                brand: brand,
-                                isSelected: selectedBrand == brand,
-                                action: {
-                                    selectedBrand = selectedBrand == brand ? nil : brand
-                                }
-                            )
-                        }
-                    }
-                    .padding(.leading, Theme.Spacing.md)
-                .padding(.trailing, Theme.Spacing.md)
-                }
+                AnimatedBrandRow(brands: secondRow, maxOffset: 30, authService: authService, animationStopped: $pillAnimationStopped)
             }
         }
-        .padding(.top, Theme.Spacing.xs)
-        .padding(.bottom, Theme.Spacing.sm)
+        .padding(.top, 2)
+        .padding(.bottom, Theme.Spacing.xs)
     }
     
     // MARK: - Category List (simple list like brands on sell page; navigate to filtered category)
@@ -317,58 +288,64 @@ struct DiscoverView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Theme.Spacing.md) {
                     ForEach(viewModel.topShops) { shop in
-                        VStack(spacing: Theme.Spacing.xs) {
-                            // Shop avatar
-                            if let avatarURL = shop.avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
-                                AsyncImage(url: url) { phase in
-                                    switch phase {
-                                    case .empty:
-                                        Circle()
-                                            .fill(Theme.Colors.secondaryBackground)
-                                            .frame(width: 100, height: 100)
-                                            .shimmering()
-                                    case .success(let image):
-                                        image
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: 100, height: 100)
-                                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    case .failure:
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(Theme.primaryColor)
-                                            .frame(width: 100, height: 100)
-                                            .overlay(
-                                                Text(String(shop.username.prefix(1)).uppercased())
-                                                    .font(.system(size: 32, weight: .bold))
-                                                    .foregroundColor(.white)
-                                            )
-                                    @unknown default:
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(Theme.primaryColor)
-                                            .frame(width: 100, height: 100)
-                                            .overlay(
-                                                Text(String(shop.username.prefix(1)).uppercased())
-                                                    .font(.system(size: 32, weight: .bold))
-                                                    .foregroundColor(.white)
-                                            )
+                        NavigationLink(destination: UserProfileView(
+                            seller: User(username: shop.username, displayName: shop.username, avatarURL: shop.avatarURL),
+                            authService: authService
+                        )) {
+                            VStack(spacing: Theme.Spacing.xs) {
+                                // Shop avatar
+                                if let avatarURL = shop.avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
+                                    AsyncImage(url: url) { phase in
+                                        switch phase {
+                                        case .empty:
+                                            Circle()
+                                                .fill(Theme.Colors.secondaryBackground)
+                                                .frame(width: 100, height: 100)
+                                                .shimmering()
+                                        case .success(let image):
+                                            image
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: 100, height: 100)
+                                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        case .failure:
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(Theme.primaryColor)
+                                                .frame(width: 100, height: 100)
+                                                .overlay(
+                                                    Text(String(shop.username.prefix(1)).uppercased())
+                                                        .font(.system(size: 32, weight: .bold))
+                                                        .foregroundColor(.white)
+                                                )
+                                        @unknown default:
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(Theme.primaryColor)
+                                                .frame(width: 100, height: 100)
+                                                .overlay(
+                                                    Text(String(shop.username.prefix(1)).uppercased())
+                                                        .font(.system(size: 32, weight: .bold))
+                                                        .foregroundColor(.white)
+                                                )
+                                        }
                                     }
+                                } else {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Theme.primaryColor)
+                                        .frame(width: 100, height: 100)
+                                        .overlay(
+                                            Text(String(shop.username.prefix(1)).uppercased())
+                                                .font(.system(size: 32, weight: .bold))
+                                                .foregroundColor(.white)
+                                        )
                                 }
-                            } else {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(Theme.primaryColor)
-                                    .frame(width: 100, height: 100)
-                                    .overlay(
-                                        Text(String(shop.username.prefix(1)).uppercased())
-                                            .font(.system(size: 32, weight: .bold))
-                                            .foregroundColor(.white)
-                                    )
+                                
+                                Text(shop.username)
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                    .lineLimit(1)
                             }
-                            
-                            Text(shop.username)
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(Theme.Colors.primaryText)
-                                .lineLimit(1)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -457,6 +434,91 @@ struct DiscoverView: View {
 }
 
 // MARK: - Supporting Views
+
+/// One row of brand pills: slow drift (50px top row, 30px second row) then loop back. Stops when user scrolls or taps.
+private struct AnimatedBrandRow: View {
+    let brands: [String]
+    let maxOffset: CGFloat
+    let authService: AuthService
+    @Binding var animationStopped: Bool
+    
+    @State private var offset: CGFloat = 0
+    @State private var driftTimer: Timer?
+    
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.Spacing.sm) {
+                ForEach(brands, id: \.self) { brand in
+                    NavigationLink(destination: FilteredProductsView(
+                        title: brand,
+                        filterType: .byBrand(brandName: brand),
+                        authService: authService
+                    )) {
+                        Text(brand)
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.sm)
+                            .background(RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius).fill(Theme.Colors.background))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
+                                    .strokeBorder(Color.black.opacity(0.18), lineWidth: 0.5)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .simultaneousGesture(TapGesture().onEnded { _ in
+                        animationStopped = true
+                    })
+                }
+            }
+            .padding(.leading, Theme.Spacing.md)
+            .padding(.trailing, Theme.Spacing.md)
+            .offset(x: offset)
+        }
+        .frame(height: 48)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 1).onEnded { _ in
+                animationStopped = true
+            }
+        )
+        .onAppear {
+            startDriftIfNeeded()
+        }
+        .onChange(of: animationStopped) { _, stopped in
+            if stopped {
+                driftTimer?.invalidate()
+                driftTimer = nil
+                withAnimation(.easeOut(duration: 0.25)) {
+                    offset = 0
+                }
+            } else {
+                startDriftIfNeeded()
+            }
+        }
+        .onDisappear {
+            driftTimer?.invalidate()
+            driftTimer = nil
+        }
+    }
+    
+    private func startDriftIfNeeded() {
+        guard !animationStopped else { return }
+        driftTimer?.invalidate()
+        driftTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            Task { @MainActor in
+                guard !animationStopped else { return }
+                withAnimation(.easeInOut(duration: 3)) {
+                    offset = offset == 0 ? maxOffset : 0
+                }
+            }
+        }
+        driftTimer?.tolerance = 0.2
+        RunLoop.main.add(driftTimer!, forMode: .common)
+        withAnimation(.easeInOut(duration: 3)) {
+            offset = maxOffset
+        }
+    }
+}
 
 struct BrandFilterPill: View {
     let brand: String
@@ -576,23 +638,7 @@ struct DiscoverItemCard: View {
                     .cornerRadius(8)
                     
                     // Like count overlay - tappable
-                    Button(action: { onLikeTap?() }) {
-                        HStack(spacing: Theme.Spacing.xs) {
-                            Image(systemName: item.isLiked ? "heart.fill" : "heart")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white)
-                            Text("\(item.likeCount)")
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(.white)
-                        }
-                        .padding(.horizontal, Theme.Spacing.sm)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(Color.black.opacity(0.6))
-                        )
-                    }
-                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
+                    LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: { onLikeTap?() })
                     .padding(Theme.Spacing.xs)
                 }
             }

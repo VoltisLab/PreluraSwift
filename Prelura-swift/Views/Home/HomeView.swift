@@ -144,22 +144,7 @@ struct HomeView: View {
                             Spacer()
                             HStack {
                                 Spacer()
-                                Button(action: { viewModel.toggleLike(productId: item.productId ?? "") }) {
-                                    HStack(spacing: Theme.Spacing.xs) {
-                                        Image(systemName: item.isLiked ? "heart.fill" : "heart")
-                                            .font(.system(size: 14, weight: .medium))
-                                        Text("\(item.likeCount)")
-                                            .font(Theme.Typography.caption)
-                                    }
-                                    .foregroundColor(item.isLiked ? .red : .white)
-                                    .shadow(color: .black.opacity(0.4), radius: 1, x: 0, y: 1)
-                                    .padding(.horizontal, Theme.Spacing.sm)
-                                    .padding(.vertical, 6)
-                                    .frame(minWidth: 44, minHeight: 44)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
+                                LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: { viewModel.toggleLike(productId: item.productId ?? "") })
                                 .padding(Theme.Spacing.xs)
                             }
                         }
@@ -354,23 +339,8 @@ struct HomeItemCard: View {
     
     @ViewBuilder
     private var likeButtonContent: some View {
-        Button(action: { onLikeTap?() }) {
-            HStack(spacing: Theme.Spacing.xs) {
-                Image(systemName: item.isLiked ? "heart.fill" : "heart")
-                    .font(.system(size: 14, weight: .medium))
-                Text("\(item.likeCount)")
-                    .font(Theme.Typography.caption)
-            }
-            .foregroundColor(item.isLiked ? .red : .white)
-            .shadow(color: .black.opacity(0.4), radius: 1, x: 0, y: 1)
-            .padding(.horizontal, Theme.Spacing.sm)
-            .padding(.vertical, 6)
-            .frame(minWidth: 44, minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PlainButtonStyle())
-        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
-        .padding(Theme.Spacing.xs)
+        LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: { onLikeTap?() })
+            .padding(Theme.Spacing.xs)
     }
 }
 

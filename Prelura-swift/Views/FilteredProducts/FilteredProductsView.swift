@@ -12,7 +12,7 @@ enum ProductFilterType: Equatable {
 }
 
 struct FilteredProductsView: View {
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authService: AuthService
     @StateObject private var viewModel: FilteredProductsViewModel
     @State private var showSortSheet = false
@@ -29,27 +29,6 @@ struct FilteredProductsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Header (same position as all app bar icons/back buttons)
-            HStack {
-                Button(action: { presentationMode.wrappedValue.dismiss() }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(Theme.primaryColor)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(HapticTapButtonStyle())
-                Spacer()
-                Text(title)
-                    .font(Theme.Typography.title3)
-                    .foregroundColor(Theme.Colors.primaryText)
-                Spacer()
-                Color.clear.frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-            }
-            .padding(.horizontal, Theme.AppBar.horizontalPadding)
-            .padding(.vertical, Theme.AppBar.verticalPadding)
-            .background(Theme.Colors.background)
-
             // Search Bar (same position as feed / discover / inbox)
             DiscoverSearchField(
                 text: Binding(get: { viewModel.searchText }, set: { viewModel.searchText = $0 }),
@@ -188,7 +167,10 @@ struct FilteredProductsView: View {
             }
         }
         .background(Theme.Colors.background)
-        .navigationBarHidden(true)
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(false)
+        .toolbarBackground(Theme.Colors.background, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
             if authService.isAuthenticated {

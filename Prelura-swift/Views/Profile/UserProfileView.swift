@@ -24,24 +24,7 @@ struct UserProfileView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                GlassIconButton(icon: "chevron.left", action: { dismiss() })
-                Spacer()
-                Text(viewModel.user.username)
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                Spacer()
-                NavigationLink(destination: ReportUserView(username: viewModel.user.username)) {
-                    GlassIconView(icon: "flag", size: Theme.AppBar.buttonSize, iconSize: 18)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, Theme.AppBar.horizontalPadding)
-            .padding(.vertical, Theme.AppBar.verticalPadding)
-            .background(Theme.Colors.background)
-
-            ScrollView {
+        ScrollView {
                 if viewModel.isLoading && viewModel.items.isEmpty && viewModel.errorMessage == nil {
                     ProfileShimmerView()
                 } else {
@@ -67,11 +50,19 @@ struct UserProfileView: View {
                         .foregroundColor(Theme.Colors.secondaryText)
                         .padding()
                 }
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
-        .navigationBarHidden(true)
+        .navigationTitle(viewModel.user.username)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(false)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                NavigationLink(destination: ReportUserView(username: viewModel.user.username)) {
+                    Image(systemName: "flag")
+                }
+            }
+        }
         .toolbar(.hidden, for: .tabBar)
         .refreshable { await viewModel.refreshAsync() }
         .onAppear {

@@ -71,8 +71,12 @@ class FilteredProductsViewModel: ObservableObject {
         Task {
             do {
                 let products = try await fetchProducts(page: 1)
+                var processed = products.excludingVacationModeSellers().excludingSold()
+                if case .recentlyViewed = filterType {
+                    processed = processed.sorted { $0.createdAt > $1.createdAt }
+                }
                 await MainActor.run {
-                    self.items = products.excludingVacationModeSellers().excludingSold()
+                    self.items = processed
                     self.applyFilters()
                     self.isLoading = false
                     self.hasMorePages = products.count >= pageSize
@@ -118,8 +122,12 @@ class FilteredProductsViewModel: ObservableObject {
         
         do {
             let products = try await fetchProducts(page: 1)
+            var processed = products.excludingVacationModeSellers().excludingSold()
+            if case .recentlyViewed = filterType {
+                processed = processed.sorted { $0.createdAt > $1.createdAt }
+            }
             await MainActor.run {
-                self.items = products.excludingVacationModeSellers()
+                self.items = processed
                 applyFilters()
                 self.isLoading = false
                 self.hasMorePages = products.count >= pageSize

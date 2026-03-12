@@ -30,9 +30,18 @@ struct Message: Identifiable {
     }
     
     var formattedTimestamp: String {
+        let now = Date()
+        let interval = timestamp.timeIntervalSince(now)
+        if interval > -60 {
+            return "Just now"
+        }
         let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: timestamp, relativeTo: Date())
+        formatter.unitsStyle = .abbreviated
+        let str = formatter.localizedString(for: timestamp, relativeTo: now)
+        if str.hasPrefix("in ") {
+            return "Just now"
+        }
+        return str
     }
 
     /// Human-readable text for bubbles: show "Order issue" / "Order update" / "New offer" for JSON, else plain content.

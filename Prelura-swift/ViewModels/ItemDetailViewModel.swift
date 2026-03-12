@@ -115,15 +115,21 @@ class ItemDetailViewModel: ObservableObject {
     }
     
     func toggleLike(productId: String) {
+        // Optimistic update so heart changes immediately
+        let newLiked = !isLiked
+        let newCount = likeCount + (newLiked ? 1 : -1)
+        isLiked = newLiked
+        likeCount = max(0, newCount)
         Task {
             do {
-                let (newIsLiked, newCount) = try await productService.toggleLike(productId: productId, isLiked: !isLiked)
+                let (serverIsLiked, serverCount) = try await productService.toggleLike(productId: productId, isLiked: newLiked)
                 await MainActor.run {
-                    self.isLiked = newIsLiked
-                    self.likeCount = newCount
+                    self.isLiked = serverIsLiked
+                    self.likeCount = serverCount
                 }
             } catch {
                 await MainActor.run {
+                    // Keep optimistic state so the heart doesn't flip back
                     self.errorMessage = error.localizedDescription
                 }
             }
