@@ -47,10 +47,18 @@ struct NotificationsListView: View {
             } else {
                 List {
                     ForEach(notifications) { notification in
-                        NavigationLink(destination: NotificationDestinationView(notification: notification)) {
+                        NavigationLink(destination: NotificationDestinationView(notification: notification, onMarkRead: { markAsRead(notification) })) {
                             NotificationRowView(notification: notification)
                         }
                         .buttonStyle(.plain)
+                        .listRowBackground(Theme.Colors.background)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                deleteNotification(notification)
+                            } label: {
+                                Label(L10n.string("Delete"), systemImage: "trash")
+                            }
+                        }
                     }
                     .listRowBackground(Theme.Colors.background)
                     if notifications.count < totalNumber {
@@ -116,6 +124,43 @@ struct NotificationsListView: View {
         guard !isLoading, !isLoadingMore, notifications.count < totalNumber else { return }
         await load(page: page + 1)
     }
+    
+    private func markAsRead(_ notification: AppNotification) {
+        guard let idInt = Int(notification.id) else { return }
+        Task {
+            _ = try? await notificationService.readNotifications(notificationIds: [idInt])
+            await MainActor.run {
+                if let idx = notifications.firstIndex(where: { $0.id == notification.id }) {
+                    notifications[idx] = AppNotification(
+                        id: notifications[idx].id,
+                        sender: notifications[idx].sender,
+                        message: notifications[idx].message,
+                        model: notifications[idx].model,
+                        modelId: notifications[idx].modelId,
+                        modelGroup: notifications[idx].modelGroup,
+                        isRead: true,
+                        createdAt: notifications[idx].createdAt,
+                        meta: notifications[idx].meta
+                    )
+                }
+            }
+        }
+    }
+    
+    private func deleteNotification(_ notification: AppNotification) {
+        guard let idInt = Int(notification.id) else { return }
+        Task {
+            do {
+                _ = try await notificationService.deleteNotification(notificationId: idInt)
+                await MainActor.run {
+                    notifications.removeAll { $0.id == notification.id }
+                    totalNumber = max(0, totalNumber - 1)
+                }
+            } catch {
+                await MainActor.run { errorMessage = L10n.userFacingError(error) }
+            }
+        }
+    }
 }
 
 // MARK: - Notification tap destination (product, profile, or chat)
@@ -123,6 +168,7 @@ struct NotificationsListView: View {
 /// Resolves and presents the appropriate screen when user taps a notification (matches Flutter NotificationCard navigation).
 struct NotificationDestinationView: View {
     let notification: AppNotification
+    var onMarkRead: (() -> Void)? = nil
     @EnvironmentObject private var authService: AuthService
 
     @State private var resolvedItem: Item?
@@ -143,6 +189,7 @@ struct NotificationDestinationView: View {
             productService.updateAuthToken(authService.authToken)
             userService.updateAuthToken(authService.authToken)
             chatService.updateAuthToken(authService.authToken)
+            onMarkRead?()
             Task { await resolve() }
         }
     }

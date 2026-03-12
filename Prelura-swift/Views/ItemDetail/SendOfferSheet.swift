@@ -1,14 +1,18 @@
 import SwiftUI
 
-/// Modal sheet for sending an offer on a product. Uses Theme.primaryColor for accents.
+/// Modal sheet for sending an offer on a product. Uses Theme.primaryColor for accents. Calls createOffer API.
 struct SendOfferSheet: View {
     let item: Item
     var onDismiss: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var authService: AuthService
+    private let productService = ProductService()
+
     @State private var offerAmount: String = ""
     @State private var message: String = ""
     @State private var isSubmitting: Bool = false
+    @State private var errorMessage: String?
     @FocusState private var offerFieldFocused: Bool
 
     private var offerValue: Double? {
@@ -87,6 +91,12 @@ struct SendOfferSheet: View {
                                 .background(Theme.Colors.secondaryBackground)
                                 .clipShape(RoundedRectangle(cornerRadius: 30))
                         }
+
+                        if let err = errorMessage {
+                            Text(err)
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.error)
+                        }
                     }
                     .padding(Theme.Spacing.lg)
                     .padding(.bottom, 100)
@@ -121,12 +131,24 @@ struct SendOfferSheet: View {
 
     private func submitOffer() {
         guard canSubmit, let value = offerValue else { return }
+        guard let productIdStr = item.productId, let productId = Int(productIdStr) else {
+            errorMessage = "Product ID missing"
+            return
+        }
+        errorMessage = nil
         isSubmitting = true
-        // TODO: Call API to send offer (productId: item.productId, amount: value, message: message)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            isSubmitting = false
-            dismiss()
-            onDismiss()
+        Task {
+            defer { Task { @MainActor in isSubmitting = false } }
+            productService.updateAuthToken(authService.authToken)
+            do {
+                _ = try await productService.createOffer(offerPrice: value, productIds: [productId], message: message.isEmpty ? nil : message)
+                await MainActor.run {
+                    dismiss()
+                    onDismiss()
+                }
+            } catch {
+                await MainActor.run { errorMessage = error.localizedDescription }
+            }
         }
     }
 }

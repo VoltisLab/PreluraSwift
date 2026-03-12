@@ -2,6 +2,8 @@ import Foundation
 
 struct User: Identifiable, Hashable {
     let id: UUID
+    /// Backend numeric user id when available (e.g. from order.otherParty); used for rateUser, blockUnblock, etc.
+    let userId: Int?
     let username: String
     let displayName: String
     let avatarURL: String?
@@ -25,9 +27,12 @@ struct User: Identifiable, Hashable {
     let gender: String?
     /// Shipping address (from ViewMe, JSONString).
     let shippingAddress: ShippingAddress?
+    /// When viewing another user's profile: true if current user follows them (from getUser isFollowing).
+    let isFollowing: Bool?
 
     init(
         id: UUID = UUID(),
+        userId backendUserId: Int? = nil,
         username: String,
         displayName: String,
         avatarURL: String? = nil,
@@ -47,9 +52,11 @@ struct User: Identifiable, Hashable {
         phoneDisplay: String? = nil,
         dateOfBirth: Date? = nil,
         gender: String? = nil,
-        shippingAddress: ShippingAddress? = nil
+        shippingAddress: ShippingAddress? = nil,
+        isFollowing: Bool? = nil
     ) {
         self.id = id
+        self.userId = backendUserId
         self.username = username
         self.displayName = displayName
         self.avatarURL = avatarURL
@@ -70,6 +77,7 @@ struct User: Identifiable, Hashable {
         self.dateOfBirth = dateOfBirth
         self.gender = gender
         self.shippingAddress = shippingAddress
+        self.isFollowing = isFollowing
     }
     
     var formattedRating: String {

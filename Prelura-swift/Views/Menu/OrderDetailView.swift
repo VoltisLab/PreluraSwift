@@ -6,6 +6,22 @@ struct OrderDetailView: View {
     /// When viewing from My Orders: true = sold (so other party is Buyer), false = bought (so other party is Seller). When nil (e.g. from chat), section shows "Other party".
     var isSeller: Bool? = nil
 
+    @EnvironmentObject var authService: AuthService
+    private let userService = UserService()
+
+    @State private var rateStars: Int = 0
+    @State private var rateComment: String = ""
+    @State private var isSubmittingRating = false
+    @State private var hasRated = false
+    @State private var ratingError: String?
+    @State private var shippingLabelLoading = false
+    @State private var shippingLabelError: String?
+    @State private var showConfirmShippingSheet = false
+    @State private var confirmShippingCarrier = ""
+    @State private var confirmShippingTracking = ""
+    @State private var confirmShippingSubmitting = false
+    @State private var confirmShippingError: String?
+
     private var dateFormatter: DateFormatter {
         let f = DateFormatter()
         f.dateStyle = .medium
@@ -40,6 +56,32 @@ struct OrderDetailView: View {
                 if let addr = order.shippingAddress, !formatShippingAddress(addr).isEmpty {
                     sectionLabel(L10n.string("Shipping Address"))
                     shippingAddressCard(addr)
+                }
+
+                if canShowRateSeller {
+                    sectionLabel(L10n.string("Rate seller"))
+                    rateSellerCard
+                }
+
+                if canShowCancelOrder {
+                    NavigationLink(destination: CancelOrderView(order: order)) {
+                        HStack {
+                            Image(systemName: "xmark.circle")
+                            Text(L10n.string("Cancel order"))
+                        }
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.error)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(Theme.Spacing.md)
+                        .background(Theme.Colors.secondaryBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canShowSellerShipping {
+                    sectionLabel(L10n.string("Shipping"))
+                    sellerShippingCard
                 }
 
                 Text("Ordered \(dateFormatter.string(from: order.createdAt))")
@@ -225,5 +267,192 @@ struct OrderDetailView: View {
         .frame(width: 56, height: 56)
         .clipped()
         .cornerRadius(8)
+    }
+
+    /// Show "Cancel order" when: buyer view, order not yet delivered/cancelled/refunded.
+    private var canShowCancelOrder: Bool {
+        guard isSeller == false else { return false }
+        let terminal = ["DELIVERED", "CANCELLED", "REFUNDED"]
+        return !terminal.contains(order.status)
+    }
+
+    /// Show seller shipping actions when: seller view, order paid (CONFIRMED/PENDING/SHIPPED).
+    private var canShowSellerShipping: Bool {
+        guard isSeller == true else { return false }
+        return ["CONFIRMED", "PENDING", "SHIPPED"].contains(order.status)
+    }
+
+    /// Show "Rate seller" when: buyer view (isSeller == false), order delivered, we have orderId and seller userId, and not yet rated.
+    private var canShowRateSeller: Bool {
+        guard isSeller == false,
+              order.status == "DELIVERED",
+              !hasRated,
+              Int(order.id) != nil,
+              let other = order.otherParty, other.userId != nil else { return false }
+        return true
+    }
+
+    private var rateSellerCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            HStack(spacing: 4) {
+                ForEach(1...5, id: \.self) { i in
+                    Button {
+                        rateStars = i
+                    } label: {
+                        Image(systemName: i <= rateStars ? "star.fill" : "star")
+                            .font(.system(size: 28))
+                            .foregroundColor(i <= rateStars ? Theme.primaryColor : Theme.Colors.tertiaryBackground)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            TextField(L10n.string("Add a comment (optional)"), text: $rateComment, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(3...6)
+            if let err = ratingError {
+                Text(err)
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.error)
+            }
+            Button {
+                Task { await submitRating() }
+            } label: {
+                if isSubmittingRating {
+                    ProgressView()
+                        .tint(Theme.Colors.primaryText)
+                } else {
+                    Text(L10n.string("Submit rating"))
+                }
+            }
+            .disabled(rateStars == 0 || isSubmittingRating)
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.primaryColor)
+        }
+        .padding(Theme.Spacing.md)
+        .background(Theme.Colors.secondaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+    }
+
+    private func submitRating() async {
+        guard let orderId = Int(order.id), let userId = order.otherParty?.userId else { return }
+        ratingError = nil
+        isSubmittingRating = true
+        defer { isSubmittingRating = false }
+        userService.updateAuthToken(authService.authToken)
+        do {
+            try await userService.rateUser(comment: rateComment.isEmpty ? "No comment" : rateComment, orderId: orderId, rating: rateStars, userId: userId)
+            hasRated = true
+        } catch {
+            ratingError = error.localizedDescription
+        }
+    }
+
+    private var sellerShippingCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            Button {
+                Task { await generateLabel() }
+            } label: {
+                if shippingLabelLoading {
+                    ProgressView()
+                        .tint(Theme.Colors.primaryText)
+                } else {
+                    Label(L10n.string("View shipping label"), systemImage: "shippingbox")
+                }
+            }
+            .disabled(shippingLabelLoading)
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.primaryColor)
+
+            Button {
+                showConfirmShippingSheet = true
+            } label: {
+                Label(L10n.string("Confirm shipping (manual)"), systemImage: "location.circle")
+            }
+            .buttonStyle(.bordered)
+            .tint(Theme.primaryColor)
+
+            if let err = shippingLabelError {
+                Text(err)
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.error)
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .background(Theme.Colors.secondaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+        .sheet(isPresented: $showConfirmShippingSheet) {
+            confirmShippingSheet
+        }
+    }
+
+    private var confirmShippingSheet: some View {
+        NavigationStack {
+            Form {
+                TextField(L10n.string("Carrier name"), text: $confirmShippingCarrier)
+                    .textContentType(.none)
+                TextField(L10n.string("Tracking number"), text: $confirmShippingTracking)
+                    .textContentType(.none)
+                if let err = confirmShippingError {
+                    Text(err)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.error)
+                }
+            }
+            .navigationTitle(L10n.string("Confirm shipping"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.string("Cancel")) {
+                        showConfirmShippingSheet = false
+                        confirmShippingError = nil
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.string("Submit")) {
+                        Task { await submitConfirmShipping() }
+                    }
+                    .disabled(confirmShippingCarrier.trimmingCharacters(in: .whitespaces).isEmpty || confirmShippingTracking.trimmingCharacters(in: .whitespaces).isEmpty || confirmShippingSubmitting)
+                }
+            }
+        }
+    }
+
+    private func generateLabel() async {
+        guard let orderId = Int(order.id) else { return }
+        shippingLabelError = nil
+        shippingLabelLoading = true
+        defer { shippingLabelLoading = false }
+        userService.updateAuthToken(authService.authToken)
+        do {
+            let result = try await userService.generateShippingLabel(orderId: orderId)
+            if result.success, let urlStr = result.labelUrl, !urlStr.isEmpty, let url = URL(string: urlStr) {
+                await MainActor.run { UIApplication.shared.open(url) }
+            } else {
+                shippingLabelError = result.message ?? "No label URL"
+            }
+        } catch {
+            shippingLabelError = error.localizedDescription
+        }
+    }
+
+    private func submitConfirmShipping() async {
+        guard let orderId = Int(order.id) else { return }
+        let carrier = confirmShippingCarrier.trimmingCharacters(in: .whitespaces)
+        let tracking = confirmShippingTracking.trimmingCharacters(in: .whitespaces)
+        guard !carrier.isEmpty, !tracking.isEmpty else { return }
+        confirmShippingError = nil
+        confirmShippingSubmitting = true
+        defer { confirmShippingSubmitting = false }
+        userService.updateAuthToken(authService.authToken)
+        do {
+            try await userService.confirmShipping(orderId: orderId, carrierName: carrier, trackingNumber: tracking, trackingUrl: nil)
+            await MainActor.run {
+                showConfirmShippingSheet = false
+                confirmShippingCarrier = ""
+                confirmShippingTracking = ""
+            }
+        } catch {
+            confirmShippingError = error.localizedDescription
+        }
     }
 }

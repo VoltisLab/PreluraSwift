@@ -128,6 +128,13 @@ struct ChatDetailView: View {
                         } else {
                             MessageBubbleView(message: message, isCurrentUser: message.senderUsername == authService.username)
                                 .id(message.id)
+                                .contextMenu {
+                                    if message.senderUsername == authService.username, let backendId = message.backendId {
+                                        Button(role: .destructive, action: { deleteMessage(message) }) {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                                }
                         }
                     }
                 }
@@ -154,7 +161,11 @@ struct ChatDetailView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: conversation.id)) {
                     Image(systemName: "questionmark.circle")
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
         }
         .toolbarBackground(Theme.Colors.background, for: .navigationBar)
@@ -200,11 +211,32 @@ struct ChatDetailView: View {
                     self.messages = msgs
                     self.isLoading = false
                 }
+                // Mark as read: messages from the other party (IDs we have from backend)
+                let idsToMarkRead = msgs
+                    .filter { $0.senderUsername != authService.username }
+                    .compactMap(\.backendId)
+                if !idsToMarkRead.isEmpty {
+                    _ = try? await chatService.readMessages(messageIds: idsToMarkRead)
+                }
             } catch {
                 await MainActor.run {
                     self.messages = []
                     self.isLoading = false
                 }
+            }
+        }
+    }
+
+    private func deleteMessage(_ message: Message) {
+        guard let backendId = message.backendId else { return }
+        Task {
+            do {
+                try await chatService.deleteMessage(messageId: backendId)
+                await MainActor.run {
+                    messages.removeAll { $0.id == message.id }
+                }
+            } catch {
+                // Best-effort; could show an alert
             }
         }
     }

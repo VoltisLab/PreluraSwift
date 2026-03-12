@@ -72,6 +72,11 @@ struct ChatListView: View {
                                 .id(index == 0 ? "inbox_top" : conversation.id)
                                 .listRowBackground(Theme.Colors.background)
                                 .listRowInsets(EdgeInsets(top: 8, leading: Theme.Spacing.md, bottom: 8, trailing: Theme.Spacing.md))
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive, action: { deleteConversation(conversation) }) {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
                         .listStyle(.plain)
@@ -119,6 +124,22 @@ struct ChatListView: View {
         }
         .onChange(of: authService.authToken) { oldValue, newToken in
             chatService.updateAuthToken(newToken)
+        }
+    }
+
+    private func deleteConversation(_ conversation: Conversation) {
+        guard let convId = Int(conversation.id) else { return }
+        Task {
+            do {
+                try await chatService.deleteConversation(conversationId: convId)
+                await MainActor.run {
+                    conversations.removeAll { $0.id == conversation.id }
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                }
+            }
         }
     }
     

@@ -21,7 +21,7 @@ class ProductService: ObservableObject {
         client.setAuthToken(token)
     }
     
-    func getAllProducts(pageNumber: Int = 1, pageCount: Int = 20, search: String? = nil, parentCategory: String? = nil, categoryId: Int? = nil, discountPrice: Bool? = nil, maxPrice: Double? = nil) async throws -> [Item] {
+    func getAllProducts(pageNumber: Int = 1, pageCount: Int = 20, search: String? = nil, parentCategory: String? = nil, categoryId: Int? = nil, discountPrice: Bool? = nil, minPrice: Double? = nil, maxPrice: Double? = nil) async throws -> [Item] {
         let query = """
         query AllProducts($pageNumber: Int, $pageCount: Int, $search: String, $filters: ProductFiltersInput) {
           allProducts(pageNumber: $pageNumber, pageCount: $pageCount, search: $search, filters: $filters) {
@@ -89,7 +89,10 @@ class ProductService: ObservableObject {
             filters["discountPrice"] = discountPrice
         }
         
-        // Add maxPrice filter if specified (for shop bargains)
+        // Add minPrice / maxPrice filters if specified (ProductFiltersInput)
+        if let minPrice = minPrice {
+            filters["minPrice"] = minPrice
+        }
         if let maxPrice = maxPrice {
             filters["maxPrice"] = maxPrice
         }
@@ -107,9 +110,12 @@ class ProductService: ObservableObject {
         guard let products = response.allProducts else {
             return []
         }
-        
-        return products.compactMap { product in
-            // Convert id to string
+        return itemsFromProductData(products)
+    }
+
+    /// Map GraphQL ProductData array to [Item]. Reused by getAllProducts, filterProductsByPrice, getFavoriteBrandProducts.
+    private func itemsFromProductData(_ products: [ProductData]) -> [Item] {
+        products.compactMap { product in
             let idString: String
             if let anyCodable = product.id {
                 if let intValue = anyCodable.value as? Int {
@@ -122,11 +128,7 @@ class ProductService: ObservableObject {
             } else {
                 return nil
             }
-            
-            // Extract image URLs from imagesUrl array (which contains JSON strings)
             let imageURLs = extractImageURLs(from: product.imagesUrl)
-            
-            // Extract seller id
             let sellerIdString: String
             if let sellerId = product.seller?.id {
                 if let intValue = sellerId.value as? Int {
@@ -139,30 +141,22 @@ class ProductService: ObservableObject {
             } else {
                 sellerIdString = ""
             }
-            
-            // Parse discountPrice (it's a percentage string, e.g., "20" for 20% off)
             let originalPrice = product.price ?? 0.0
             let discountPercentage: Double? = {
                 guard let discountPriceStr = product.discountPrice,
                       let discount = Double(discountPriceStr),
-                      discount > 0 else {
-                    return nil
-                }
+                      discount > 0 else { return nil }
                 return discount
             }()
-            
-            // Calculate final price: if discount exists, apply it; otherwise use original price
             let finalPrice: Double
             let itemOriginalPrice: Double?
             if let discount = discountPercentage {
-                // Calculate discounted price: originalPrice - (originalPrice * discount / 100)
                 finalPrice = originalPrice - (originalPrice * discount / 100)
                 itemOriginalPrice = originalPrice
             } else {
                 finalPrice = originalPrice
                 itemOriginalPrice = nil
             }
-            
             return Item(
                 id: Item.id(fromProductId: idString),
                 productId: idString,
@@ -172,7 +166,7 @@ class ProductService: ObservableObject {
                 originalPrice: itemOriginalPrice,
                 imageURLs: imageURLs,
                 category: Category.fromName(product.category?.name ?? ""),
-                categoryName: product.category?.name, // Store actual category name from API (subcategory)
+                categoryName: product.category?.name,
                 seller: User(
                     id: UUID(uuidString: sellerIdString) ?? UUID(),
                     username: product.seller?.username ?? "",
@@ -234,6 +228,72 @@ class ProductService: ObservableObject {
     func searchProducts(query: String, pageNumber: Int = 1, pageCount: Int = 20) async throws -> [Item] {
         // Use the search parameter in getAllProducts
         return try await getAllProducts(pageNumber: pageNumber, pageCount: pageCount, search: query)
+    }
+
+    /// Products filtered by max price. Matches Flutter filterProductByPrice(priceLimit). Auth not required.
+    func filterProductsByPrice(priceLimit: Double, pageNumber: Int = 1, pageCount: Int = 20) async throws -> [Item] {
+        let query = """
+        query FilterProductsByPrice($priceLimit: Float!, $pageCount: Int, $pageNumber: Int) {
+          filterProductsByPrice(priceLimit: $priceLimit, pageCount: $pageCount, pageNumber: $pageNumber) {
+            id name description price discountPrice imagesUrl condition createdAt
+            size { id name }
+            brand { id name }
+            customBrand likes views userLiked
+            seller { id username displayName profilePictureUrl isVacationMode }
+            category { id name }
+            color status
+          }
+        }
+        """
+        let variables: [String: Any] = ["priceLimit": priceLimit, "pageNumber": pageNumber, "pageCount": pageCount]
+        struct Payload: Decodable { let filterProductsByPrice: [ProductData]? }
+        let response: Payload = try await client.execute(query: query, variables: variables, responseType: Payload.self)
+        return itemsFromProductData(response.filterProductsByPrice ?? [])
+    }
+
+    /// User's products grouped by category/brand (for profile shop). Matches Flutter getUserProductGrouping(userId, groupBy). Auth required.
+    func getUserProductGrouping(userId: Int, groupBy: String) async throws -> [CategoryGroup] {
+        let query = """
+        query UserProductGrouping($userId: Int!, $groupBy: ProductGroupingEnum!) {
+          userProductGrouping(userId: $userId, groupBy: $groupBy) {
+            id name count
+          }
+        }
+        """
+        let variables: [String: Any] = ["userId": userId, "groupBy": groupBy]
+        struct Payload: Decodable {
+            let userProductGrouping: [CategoryGroupRow]?
+        }
+        struct CategoryGroupRow: Decodable {
+            let id: Int?
+            let name: String?
+            let count: Int?
+        }
+        let response: Payload = try await client.execute(query: query, variables: variables, responseType: Payload.self)
+        return (response.userProductGrouping ?? []).map { row in
+            CategoryGroup(id: row.id ?? 0, name: row.name ?? "", count: row.count ?? 0)
+        }
+    }
+
+    /// Products from the user's favorite brands. Matches Flutter getFavoriteBrandProducts(top). Auth required.
+    func getFavoriteBrandProducts(top: Int = 20) async throws -> [Item] {
+        let query = """
+        query FavoriteBrandProducts($top: Int!) {
+          favoriteBrandProducts(top: $top) {
+            id name description price discountPrice imagesUrl condition createdAt
+            size { id name }
+            brand { id name }
+            customBrand likes views userLiked
+            seller { id username displayName profilePictureUrl isVacationMode }
+            category { id name }
+            color status
+          }
+        }
+        """
+        let variables: [String: Any] = ["top": top]
+        struct Payload: Decodable { let favoriteBrandProducts: [ProductData]? }
+        let response: Payload = try await client.execute(query: query, variables: variables, responseType: Payload.self)
+        return itemsFromProductData(response.favoriteBrandProducts ?? [])
     }
 
     /// Fetch brand names for the sell-flow brand picker. Uses the same GraphQL query as Flutter. Loads first page only for fast display; user can search for other brands.
@@ -455,6 +515,22 @@ class ProductService: ObservableObject {
         }
     }
 
+    /// Report a product. Matches Flutter reportProduct(reason, productId, content?).
+    func reportProduct(productId: String, reason: String, content: String? = nil) async throws {
+        let mutation = """
+        mutation ReportProduct($reason: String!, $productId: String!, $content: String) {
+          reportProduct(reason: $reason, productId: $productId, content: $content) {
+            message
+          }
+        }
+        """
+        var variables: [String: Any] = ["reason": reason, "productId": productId]
+        if let c = content, !c.isEmpty { variables["content"] = c }
+        struct Payload: Decodable { let reportProduct: ReportProductResult? }
+        struct ReportProductResult: Decodable { let message: String? }
+        _ = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+    }
+
     /// Mark product as sold. Matches Flutter/backend updateProduct status if available.
     func updateProductStatus(productId: Int, status: String) async throws {
         let mutation = """
@@ -570,6 +646,98 @@ class ProductService: ObservableObject {
         return response.likeProduct?.success ?? false
     }
 
+    /// Create an offer (buyer sends price + product ids). Matches Flutter createOffer(offerPrice, productIds, message).
+    /// Returns (success, conversationId) so caller can open chat. productIds must be [Int] (use item.productId as Int).
+    func createOffer(offerPrice: Double, productIds: [Int], message: String? = nil) async throws -> (success: Bool, conversationId: Int?) {
+        let mutation = """
+        mutation CreateOffer($offerPrice: Float!, $productIds: [Int]!, $message: String) {
+          createOffer(offerPrice: $offerPrice, productIds: $productIds, message: $message) {
+            success
+            message
+            data { conversationId }
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let createOffer: CreateOfferPayload?
+        }
+        struct CreateOfferPayload: Decodable {
+            let success: Bool?
+            let message: String?
+            let data: CreateOfferData?
+        }
+        struct CreateOfferData: Decodable {
+            let conversationId: Int?
+        }
+        var variables: [String: Any] = ["offerPrice": offerPrice, "productIds": productIds]
+        if let m = message, !m.isEmpty { variables["message"] = m }
+        let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        guard let offer = response.createOffer else { throw NSError(domain: "CreateOffer", code: -1, userInfo: [NSLocalizedDescriptionKey: response.createOffer?.message ?? "Unknown error"]) }
+        if offer.success != true {
+            throw NSError(domain: "CreateOffer", code: -1, userInfo: [NSLocalizedDescriptionKey: offer.message ?? "Failed to create offer"])
+        }
+        return (true, offer.data?.conversationId)
+    }
+
+    /// Create an order (buy now or from accepted offer). Matches Flutter createOrder. Pass either productId (single) or productIds (multi); deliveryDetails required.
+    func createOrder(productId: Int? = nil, productIds: [Int]? = nil, buyerProtection: Bool? = nil, shippingFee: Float? = nil, deliveryDetails: CreateOrderDeliveryDetails) async throws -> CreateOrderResult {
+        let mutation = """
+        mutation CreateOrder($productId: Int, $productIds: [Int], $buyerProtection: Boolean, $shippingFee: Float, $deliveryDetails: DeliveryDetailsInputType!) {
+          createOrder(productId: $productId, productIds: $productIds, buyerProtection: $buyerProtection, shippingFee: $shippingFee, deliveryDetails: $deliveryDetails) {
+            success
+            order { id priceTotal status }
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let createOrder: CreateOrderPayload?
+        }
+        struct CreateOrderPayload: Decodable {
+            let success: Bool?
+            let order: CreateOrderOrder?
+        }
+        struct CreateOrderOrder: Decodable {
+            let id: AnyCodable?
+            let priceTotal: String?
+            let status: String?
+        }
+        var variables: [String: Any] = [
+            "deliveryDetails": deliveryDetails.toGraphQLVariables()
+        ]
+        if let pid = productId { variables["productId"] = pid }
+        if let pids = productIds { variables["productIds"] = pids }
+        if let bp = buyerProtection { variables["buyerProtection"] = bp }
+        if let fee = shippingFee { variables["shippingFee"] = fee }
+        let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        guard let create = response.createOrder else { throw NSError(domain: "CreateOrder", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unknown error"]) }
+        if create.success != true {
+            throw NSError(domain: "CreateOrder", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create order"])
+        }
+        let orderId = create.order?.id?.value as? Int ?? (create.order?.id?.value as? String).flatMap(Int.init)
+        let orderIdStr = orderId.map { String($0) } ?? ""
+        return CreateOrderResult(success: true, orderId: orderIdStr, orderStatus: create.order?.status)
+    }
+
+    /// Respond to an offer (accept, reject, or counter). Matches Flutter respondToOffer. action: ACCEPT, REJECT, COUNTER; offerPrice required for COUNTER.
+    func respondToOffer(action: String, offerId: Int, offerPrice: Double? = nil) async throws {
+        let mutation = """
+        mutation RespondToOffer($action: OfferActionEnum!, $offerId: Int!, $offerPrice: Float) {
+          respondToOffer(action: $action, offerId: $offerId, offerPrice: $offerPrice) {
+            success
+            message
+          }
+        }
+        """
+        struct Payload: Decodable { let respondToOffer: RespondToOfferPayload? }
+        struct RespondToOfferPayload: Decodable { let success: Bool?; let message: String? }
+        var variables: [String: Any] = ["action": action, "offerId": offerId]
+        if let price = offerPrice { variables["offerPrice"] = price }
+        let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        if response.respondToOffer?.success != true {
+            throw NSError(domain: "RespondToOffer", code: -1, userInfo: [NSLocalizedDescriptionKey: response.respondToOffer?.message ?? "Failed to respond to offer"])
+        }
+    }
+
     // Map category filter names to GraphQL enum values
     private func mapCategoryToEnum(_ category: String) -> String? {
         switch category {
@@ -644,6 +812,63 @@ struct SellerData: Decodable {
 struct CategoryData: Decodable {
     let id: AnyCodable?
     let name: String?
+}
+
+/// One entry from userProductGrouping (group by category/brand). Matches Flutter CategoryGroupType.
+struct CategoryGroup {
+    let id: Int
+    let name: String
+    let count: Int
+}
+
+/// Input for createOrder mutation. Matches DeliveryDetailsInputType + DeliveryAddressInputType.
+struct CreateOrderDeliveryDetails {
+    let address: String
+    let city: String
+    let state: String
+    let country: String
+    let postalCode: String
+    let phoneNumber: String
+    /// DeliveryProviderEnum: DPD, EVRI, UDEL, ROYAL_MAIL
+    let deliveryProvider: String
+    /// DeliveryTypeEnum: HOME_DELIVERY, LOCAL_PICKUP
+    let deliveryType: String
+
+    func toGraphQLVariables() -> [String: Any] {
+        [
+            "deliveryAddress": [
+                "address": address,
+                "city": city,
+                "state": state,
+                "country": country,
+                "postalCode": postalCode,
+                "phoneNumber": phoneNumber
+            ],
+            "deliveryProvider": deliveryProvider,
+            "deliveryType": deliveryType
+        ]
+    }
+
+    /// Build from User.ShippingAddress (and phone) for checkout.
+    static func from(shippingAddress: ShippingAddress, phoneNumber: String, deliveryProvider: String = "EVRI", deliveryType: String = "HOME_DELIVERY") -> CreateOrderDeliveryDetails {
+        CreateOrderDeliveryDetails(
+            address: shippingAddress.address,
+            city: shippingAddress.city,
+            state: shippingAddress.state ?? "",
+            country: shippingAddress.country,
+            postalCode: shippingAddress.postcode,
+            phoneNumber: phoneNumber,
+            deliveryProvider: deliveryProvider,
+            deliveryType: deliveryType
+        )
+    }
+}
+
+/// Result of createOrder mutation.
+struct CreateOrderResult {
+    let success: Bool
+    let orderId: String
+    let orderStatus: String?
 }
 
 extension ProductService {

@@ -7,6 +7,10 @@ class AuthService: ObservableObject {
     @Published var authToken: String?
     @Published var refreshToken: String?
     @Published var username: String?
+    /// When true, user chose "Continue as guest" and can browse without logging in. No auth sent for feed/product APIs.
+    @Published var isGuestMode: Bool = false
+    
+    private static let kGuestMode = "IS_GUEST_MODE"
     
     init(client: GraphQLClient = GraphQLClient()) {
         self.client = client
@@ -18,8 +22,14 @@ class AuthService: ObservableObject {
         authToken = UserDefaults.standard.string(forKey: "AUTH_TOKEN")
         refreshToken = UserDefaults.standard.string(forKey: "REFRESH_TOKEN")
         username = UserDefaults.standard.string(forKey: "USERNAME")
+        isGuestMode = UserDefaults.standard.bool(forKey: Self.kGuestMode)
         
-        if let token = authToken {
+        if isGuestMode {
+            authToken = nil
+            refreshToken = nil
+            username = nil
+            client.setAuthToken(nil)
+        } else if let token = authToken {
             client.setAuthToken(token)
         }
     }
@@ -28,9 +38,11 @@ class AuthService: ObservableObject {
         UserDefaults.standard.set(token, forKey: "AUTH_TOKEN")
         UserDefaults.standard.set(refreshToken, forKey: "REFRESH_TOKEN")
         UserDefaults.standard.set(username, forKey: "USERNAME")
+        UserDefaults.standard.set(false, forKey: Self.kGuestMode)
         self.authToken = token
         self.refreshToken = refreshToken
         self.username = username
+        self.isGuestMode = false
         client.setAuthToken(token)
     }
     
@@ -79,6 +91,25 @@ class AuthService: ObservableObject {
         objectWillChange.send()
         
         return loginData
+    }
+    
+    /// Verify email/account with code from verification link. Matches Flutter verifyAccount(code). No auth required.
+    func verifyAccount(code: String) async throws -> Bool {
+        let mutation = """
+        mutation VerifyAccount($code: String!) {
+          verifyAccount(code: $code) {
+            success
+          }
+        }
+        """
+        struct Payload: Decodable { let verifyAccount: VerifyResult? }
+        struct VerifyResult: Decodable { let success: Bool? }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["code": code],
+            responseType: Payload.self
+        )
+        return response.verifyAccount?.success ?? false
     }
     
     func register(
@@ -142,6 +173,27 @@ class AuthService: ObservableObject {
         clearTokens()
     }
 
+    /// Continue as guest: clear tokens and set flag so feed uses public (no-auth) API. Matches Flutter isGuestModeProvider + clearTokenForGuest.
+    func continueAsGuest() {
+        UserDefaults.standard.removeObject(forKey: "AUTH_TOKEN")
+        UserDefaults.standard.removeObject(forKey: "REFRESH_TOKEN")
+        UserDefaults.standard.removeObject(forKey: "USERNAME")
+        UserDefaults.standard.set(true, forKey: Self.kGuestMode)
+        authToken = nil
+        refreshToken = nil
+        username = nil
+        isGuestMode = true
+        client.setAuthToken(nil)
+        objectWillChange.send()
+    }
+
+    /// Leave guest mode and return to login screen (no token).
+    func clearGuestMode() {
+        UserDefaults.standard.set(false, forKey: Self.kGuestMode)
+        isGuestMode = false
+        objectWillChange.send()
+    }
+
     /// Request password reset: sends OTP/code to email (matches Flutter resetPassword(email)).
     func requestPasswordReset(email: String) async throws {
         let query = """
@@ -189,9 +241,11 @@ class AuthService: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "AUTH_TOKEN")
         UserDefaults.standard.removeObject(forKey: "REFRESH_TOKEN")
         UserDefaults.standard.removeObject(forKey: "USERNAME")
+        UserDefaults.standard.set(false, forKey: Self.kGuestMode)
         authToken = nil
         refreshToken = nil
         username = nil
+        isGuestMode = false
         client.setAuthToken(nil)
     }
     

@@ -213,4 +213,37 @@ final class NotificationService {
         }
         return (parsed, total)
     }
+    
+    /// Mark notifications as read. Matches Flutter readNotification(notificationIds).
+    func readNotifications(notificationIds: [Int]) async throws -> Bool {
+        guard !notificationIds.isEmpty else { return true }
+        let mutation = """
+        mutation ReadNotification($notificationId: [Int]) {
+          readNotifications(notificationId: $notificationId) {
+            success
+          }
+        }
+        """
+        let variables: [String: Any] = ["notificationId": notificationIds]
+        struct Payload: Decodable { let readNotifications: ReadResult? }
+        struct ReadResult: Decodable { let success: Bool? }
+        let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        return response.readNotifications?.success ?? false
+    }
+    
+    /// Delete a notification. Matches Flutter deleteNotification(notificationId).
+    func deleteNotification(notificationId: Int) async throws -> Bool {
+        let mutation = """
+        mutation DeleteNotification($notificationId: Int!) {
+          deleteNotification(notificationId: $notificationId) {
+            success
+          }
+        }
+        """
+        let variables: [String: Any] = ["notificationId": notificationId]
+        struct Payload: Decodable { let deleteNotification: DeleteResult? }
+        struct DeleteResult: Decodable { let success: Bool? }
+        let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        return response.deleteNotification?.success ?? false
+    }
 }

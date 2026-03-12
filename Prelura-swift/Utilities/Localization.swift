@@ -178,6 +178,10 @@ enum L10n {
         "Don't have an account?": "Δεν έχετε λογαριασμό;",
         "Sign up": "Εγγραφή",
         "Login": "Σύνδεση",
+        "Continue as guest": "Συνέχεια ως επισκέπτης",
+        "You're browsing as guest": "Περιηγείστε ως επισκέπτης",
+        "Sign in to see your profile, listings and messages.": "Συνδεθείτε για να δείτε το προφίλ σας, τις αγγελίες και τα μηνύματά σας.",
+        "Sign in": "Σύνδεση",
 
         // Profile sort
         "Relevance": "Συσχέτιση",

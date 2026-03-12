@@ -39,6 +39,7 @@ struct PaymentView: View {
     @State private var errorMessage: String?
 
     private let userService = UserService()
+    private let productService = ProductService()
 
     private var orderSubtotal: Double { totalPrice }
     private var multiBuyDiscountPercent: Int { 0 } // TODO: from seller multi-buy if multiple products
@@ -299,15 +300,57 @@ struct PaymentView: View {
             errorMessage = "Please add a complete shipping address before payment. Go to Settings > Shipping Address."
             return
         }
-        guard paymentMethod != nil else {
+        guard let method = paymentMethod else {
             errorMessage = "Add a payment method"
             return
         }
+        guard let addr = currentUser?.shippingAddress else { return }
         isSubmitting = true
-        // TODO: Call order creation API (createOrder mutation) then on success show PaymentSuccessfulView
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            isSubmitting = false
-            showPaymentSuccess = true
+        Task {
+            defer { Task { @MainActor in isSubmitting = false } }
+            userService.updateAuthToken(authService.authToken)
+            productService.updateAuthToken(authService.authToken)
+            do {
+                let phone = currentUser?.phoneDisplay ?? "0000000000"
+                let deliveryDetails = CreateOrderDeliveryDetails.from(
+                    shippingAddress: addr,
+                    phoneNumber: phone,
+                    deliveryProvider: "EVRI",
+                    deliveryType: selectedDelivery == .collectionPoint ? "LOCAL_PICKUP" : "HOME_DELIVERY"
+                )
+                let productIds = products.compactMap { $0.productId }.compactMap { Int($0) }
+                guard !productIds.isEmpty else {
+                    await MainActor.run { errorMessage = "Invalid product" }
+                    return
+                }
+                let orderResult: CreateOrderResult
+                if productIds.count == 1 {
+                    orderResult = try await productService.createOrder(
+                        productId: productIds[0],
+                        productIds: nil,
+                        buyerProtection: buyerProtectionEnabled,
+                        shippingFee: Float(selectedDelivery.shippingFee),
+                        deliveryDetails: deliveryDetails
+                    )
+                } else {
+                    orderResult = try await productService.createOrder(
+                        productId: nil,
+                        productIds: productIds,
+                        buyerProtection: buyerProtectionEnabled,
+                        shippingFee: Float(selectedDelivery.shippingFee),
+                        deliveryDetails: deliveryDetails
+                    )
+                }
+                guard let orderIdInt = Int(orderResult.orderId) else {
+                    await MainActor.run { errorMessage = "Invalid order id" }
+                    return
+                }
+                let (_, paymentRef) = try await userService.createPaymentIntent(orderId: orderIdInt, paymentMethodId: method.paymentMethodId)
+                _ = try await userService.confirmPayment(paymentRef: paymentRef)
+                await MainActor.run { showPaymentSuccess = true }
+            } catch {
+                await MainActor.run { errorMessage = error.localizedDescription }
+            }
         }
     }
 }

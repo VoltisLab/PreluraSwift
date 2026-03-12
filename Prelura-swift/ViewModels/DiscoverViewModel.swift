@@ -20,6 +20,7 @@ class DiscoverViewModel: ObservableObject {
     @Published var errorMessage: String?
     
     private var productService: ProductService
+    private var userService: UserService
     private var client: GraphQLClient
     
     init(authService: AuthService? = nil) {
@@ -32,12 +33,14 @@ class DiscoverViewModel: ObservableObject {
             self.client.setAuthToken(token)
         }
         self.productService = ProductService(client: self.client)
+        self.userService = UserService(client: self.client)
         // Don't load in init - will be called from view
     }
     
     func updateAuthToken(_ token: String?) {
         client.setAuthToken(token)
         productService.updateAuthToken(token)
+        userService.updateAuthToken(token)
     }
     
     func loadData() {
@@ -112,17 +115,24 @@ class DiscoverViewModel: ObservableObject {
                 // Update used product IDs
                 usedProductIds.formUnion(Set(self.brandsYouLoveItems.map { $0.id }))
                 
-                // Top Shops - extract unique seller info (username + avatar) from all products
-                // This should ideally use a GraphQL query for top shops, but for now use all products
-                var shopMap: [String: (username: String, avatarURL: String?)] = [:]
-                for product in allVisible {
-                    let username = product.seller.username
-                    if shopMap[username] == nil && !username.isEmpty {
-                        shopMap[username] = (username: username, avatarURL: product.seller.avatarURL)
+                // Top Shops - use getRecommendedSellers API when available (matches Flutter recommendedSellersProvider)
+                do {
+                    let recommended = try await userService.getRecommendedSellers(pageNumber: 1, pageCount: 20)
+                    self.topShops = recommended.map { rec in
+                        ShopInfo(username: rec.seller.username, avatarURL: rec.seller.avatarURL)
                     }
-                }
-                self.topShops = Array(shopMap.values.prefix(10)).map { shopInfo in
-                    ShopInfo(username: shopInfo.username, avatarURL: shopInfo.avatarURL)
+                } catch {
+                    // Fallback: extract unique seller info from all products
+                    var shopMap: [String: (username: String, avatarURL: String?)] = [:]
+                    for product in allVisible {
+                        let username = product.seller.username
+                        if shopMap[username] == nil && !username.isEmpty {
+                            shopMap[username] = (username: username, avatarURL: product.seller.avatarURL)
+                        }
+                    }
+                    self.topShops = Array(shopMap.values.prefix(10)).map { shopInfo in
+                        ShopInfo(username: shopInfo.username, avatarURL: shopInfo.avatarURL)
+                    }
                 }
                 
                 // Shop Bargains - use the separately fetched products under £15, excluding already used products

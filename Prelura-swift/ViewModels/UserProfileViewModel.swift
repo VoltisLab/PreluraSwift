@@ -7,6 +7,11 @@ class UserProfileViewModel: ObservableObject {
     @Published var items: [Item] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
+    /// Follow state for other user's profile (synced from user.isFollowing on load, updated on toggle).
+    @Published var isFollowing: Bool = false
+    /// Followers count shown in header (synced from user, updated optimistically on follow/unfollow).
+    @Published var displayedFollowersCount: Int = 0
+    @Published var isTogglingFollow: Bool = false
 
     private let userService: UserService
 
@@ -40,7 +45,30 @@ class UserProfileViewModel: ObservableObject {
 
     func load() {
         Task {
-            await loadProducts()
+            await loadProfileAndProducts()
+        }
+    }
+    
+    private func loadProfileAndProducts() async {
+        await MainActor.run { isLoading = true; errorMessage = nil; items = [] }
+        do {
+            // Fetch full profile (bio, location, stats) for this username
+            let profileUser = try await userService.getUserByUsername(user.username)
+            await MainActor.run {
+                self.user = profileUser
+                self.isFollowing = profileUser.isFollowing ?? false
+                self.displayedFollowersCount = profileUser.followersCount
+            }
+            let products = try await userService.getUserProducts(username: user.username)
+            await MainActor.run {
+                self.items = products
+                self.isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                self.isLoading = false
+                self.errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -61,10 +89,34 @@ class UserProfileViewModel: ObservableObject {
     }
 
     func refresh() {
-        Task { await loadProducts() }
+        Task { await loadProfileAndProducts() }
     }
 
     func refreshAsync() async {
-        await loadProducts()
+        await loadProfileAndProducts()
+    }
+
+    /// Toggle follow state; call from Follow switch. Uses user.userId as followedId. Optimistic update.
+    func toggleFollow(authToken: String?) async {
+        guard let followedId = user.userId else { return }
+        let wasFollowing = isFollowing
+        isFollowing.toggle()
+        displayedFollowersCount += isFollowing ? 1 : -1
+        if displayedFollowersCount < 0 { displayedFollowersCount = 0 }
+        isTogglingFollow = true
+        defer { isTogglingFollow = false }
+        userService.updateAuthToken(authToken)
+        do {
+            if wasFollowing {
+                try await userService.unfollowUser(followedId: followedId)
+            } else {
+                try await userService.followUser(followedId: followedId)
+            }
+        } catch {
+            isFollowing = wasFollowing
+            displayedFollowersCount += wasFollowing ? 1 : -1
+            if displayedFollowersCount < 0 { displayedFollowersCount = 0 }
+            errorMessage = error.localizedDescription
+        }
     }
 }

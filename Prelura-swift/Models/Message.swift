@@ -2,6 +2,8 @@ import Foundation
 
 struct Message: Identifiable {
     let id: UUID
+    /// Backend message ID (for mark-as-read API).
+    let backendId: Int?
     let senderUsername: String
     let content: String
     let preview: String
@@ -12,6 +14,7 @@ struct Message: Identifiable {
     
     init(
         id: UUID = UUID(),
+        backendId: Int? = nil,
         senderUsername: String,
         content: String,
         timestamp: Date = Date(),
@@ -20,6 +23,7 @@ struct Message: Identifiable {
         thumbnailURL: String? = nil
     ) {
         self.id = id
+        self.backendId = backendId
         self.senderUsername = senderUsername
         self.content = content
         self.preview = content.prefix(50) + "..."

@@ -128,7 +128,19 @@ class ChatService: ObservableObject {
         }
         
         let list: [Message] = messages.compactMap { msg in
-            // Convert id to string
+            // Backend id (Int) for mark-as-read
+            let backendIdInt: Int?
+            if let anyCodable = msg.id {
+                if let intValue = anyCodable.value as? Int {
+                    backendIdInt = intValue
+                } else if let stringValue = anyCodable.value as? String, let i = Int(stringValue) {
+                    backendIdInt = i
+                } else {
+                    backendIdInt = nil
+                }
+            } else {
+                backendIdInt = nil
+            }
             let idString: String
             if let anyCodable = msg.id {
                 if let intValue = anyCodable.value as? Int {
@@ -149,6 +161,7 @@ class ChatService: ObservableObject {
             
             return Message(
                 id: UUID(uuidString: idString) ?? UUID(),
+                backendId: backendIdInt,
                 senderUsername: senderUsername,
                 content: text,
                 timestamp: parseDate(msg.createdAt) ?? Date(),
@@ -249,7 +262,103 @@ class ChatService: ObservableObject {
         )
         return response.sendMessage?.success ?? false
     }
-
+    
+    /// Mark messages as read. Matches Flutter readMessages(ids). Call when opening a conversation.
+    func readMessages(messageIds: [Int]) async throws -> Bool {
+        guard !messageIds.isEmpty else { return true }
+        let mutation = """
+        mutation UpdateReadMessages($messageIds: [Int]!) {
+          updateReadMessages(messageIds: $messageIds) {
+            success
+          }
+        }
+        """
+        let variables: [String: Any] = ["messageIds": messageIds]
+        struct Payload: Decodable { let updateReadMessages: UpdateReadResult? }
+        struct UpdateReadResult: Decodable { let success: Bool? }
+        let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        return response.updateReadMessages?.success ?? false
+    }
+    
+    /// Create a sold-confirmation message in the order's conversation. Matches Flutter createSoldConfirmationMessage(orderId). Call after seller marks order/item as sold.
+    func createSoldConfirmationMessage(orderId: Int) async throws -> (success: Bool, conversationId: Int?) {
+        let mutation = """
+        mutation CreateSoldConfirmationMessage($orderId: Int!) {
+          createSoldConfirmationMessage(orderId: $orderId) {
+            success
+            messageId
+            conversationId
+          }
+        }
+        """
+        let variables: [String: Any] = ["orderId": orderId]
+        struct Payload: Decodable {
+            let createSoldConfirmationMessage: Result?
+            struct Result: Decodable {
+                let success: Bool?
+                let messageId: Int?
+                let conversationId: Int?
+            }
+        }
+        let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        let result = response.createSoldConfirmationMessage
+        return (result?.success ?? false, result?.conversationId)
+    }
+    
+    /// Delete a single message. Matches Flutter deleteMessage(messageId). Use message.backendId.
+    func deleteMessage(messageId: Int) async throws {
+        let mutation = """
+        mutation DeleteMessage($messageId: Int!) {
+          deleteMessage(messageId: $messageId) {
+            message
+          }
+        }
+        """
+        let variables: [String: Any] = ["messageId": messageId]
+        struct Payload: Decodable { let deleteMessage: Result?; struct Result: Decodable { let message: String? } }
+        _ = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+    }
+    
+    /// Delete a conversation. Matches Flutter deleteConversation(conversationId).
+    func deleteConversation(conversationId: Int) async throws {
+        let mutation = """
+        mutation DeleteConversation($conversationId: Int!) {
+          deleteConversation(conversationId: $conversationId) {
+            message
+          }
+        }
+        """
+        let variables: [String: Any] = ["conversationId": conversationId]
+        struct Payload: Decodable { let deleteConversation: Result?; struct Result: Decodable { let message: String? } }
+        _ = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+    }
+    
+    /// Delete all conversations (admin/self-service). Matches Flutter deleteAllConversations.
+    func deleteAllConversations() async throws -> (success: Bool, message: String?, deletedConversationsCount: Int?, deletedOrdersCount: Int?) {
+        let mutation = """
+        mutation DeleteAllConversations {
+          deleteAllConversations {
+            success
+            message
+            deletedConversationsCount
+            deletedOrdersCount
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let deleteAllConversations: Result?
+            struct Result: Decodable {
+                let success: Bool?
+                let message: String?
+                let deletedConversationsCount: Int?
+                let deletedOrdersCount: Int?
+            }
+        }
+        let response: Payload = try await client.execute(query: mutation, variables: [:], responseType: Payload.self)
+        let result = response.deleteAllConversations
+        return (result?.success ?? false, result?.message, result?.deletedConversationsCount, result?.deletedOrdersCount)
+    }
+    
     private func parseDate(_ dateString: String?) -> Date? {
         guard let dateString = dateString else { return nil }
         let formatter = ISO8601DateFormatter()

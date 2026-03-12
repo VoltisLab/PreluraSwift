@@ -123,6 +123,83 @@ class UserService: ObservableObject {
         )
     }
     
+    /// Fetch another user's profile by username (for profile screen: bio, location, stats). Uses backend query getUser(username: String!).
+    func getUserByUsername(_ username: String) async throws -> User {
+        let query = """
+        query GetUser($username: String!) {
+          getUser(username: $username) {
+            id
+            username
+            displayName
+            fullName
+            profilePictureUrl
+            bio
+            location { locationName }
+            listing
+            noOfFollowing
+            noOfFollowers
+            isFollowing
+            isVacationMode
+            isMultibuyEnabled
+            reviewStats { noOfReviews rating }
+          }
+        }
+        """
+        let variables: [String: Any] = ["username": username]
+        let response: GetUserByUsernameResponse = try await client.execute(
+            query: query,
+            variables: variables,
+            responseType: GetUserByUsernameResponse.self
+        )
+        guard let userData = response.getUser else {
+            throw UserError.userNotFound
+        }
+        let locationName = userData.location?.locationName
+        let reviewCount = userData.reviewStats?.noOfReviews ?? 0
+        let rating = userData.reviewStats?.rating ?? 5.0
+        let idString: String
+        let userIdInt: Int?
+        if let anyCodable = userData.id {
+            if let intValue = anyCodable.value as? Int {
+                idString = String(intValue)
+                userIdInt = intValue
+            } else if let stringValue = anyCodable.value as? String {
+                idString = stringValue
+                userIdInt = Int(stringValue)
+            } else {
+                idString = String(describing: anyCodable.value)
+                userIdInt = nil
+            }
+        } else {
+            idString = ""
+            userIdInt = nil
+        }
+        return User(
+            id: UUID(uuidString: idString) ?? UUID(),
+            userId: userIdInt,
+            username: userData.username ?? "",
+            displayName: userData.displayName ?? "",
+            avatarURL: userData.profilePictureUrl,
+            bio: userData.bio,
+            location: locationName,
+            locationAbbreviation: extractLocationAbbreviation(from: locationName),
+            rating: rating,
+            reviewCount: reviewCount,
+            listingsCount: userData.listing ?? 0,
+            followingsCount: userData.noOfFollowing ?? 0,
+            followersCount: userData.noOfFollowers ?? 0,
+            isStaff: false,
+            isVacationMode: userData.isVacationMode ?? false,
+            isMultibuyEnabled: userData.isMultibuyEnabled ?? false,
+            email: nil,
+            phoneDisplay: nil,
+            dateOfBirth: nil,
+            gender: nil,
+            shippingAddress: nil,
+            isFollowing: userData.isFollowing
+        )
+    }
+    
     /// Fetch current user's earnings (networth, balance, etc.) for Shop Value screen. Matches Flutter userRepo.getUserEarning().
     func getUserEarnings() async throws -> UserEarnings {
         let query = """
@@ -314,6 +391,59 @@ class UserService: ObservableObject {
         }
     }
 
+    /// Recommended/top sellers for Discover "Top Shops". Matches Flutter getRecommendedSellers(pageNumber, pageCount).
+    func getRecommendedSellers(pageNumber: Int = 1, pageCount: Int = 20) async throws -> [RecommendedSeller] {
+        let query = """
+        query RecommendedSellers($pageCount: Int, $pageNumber: Int) {
+          recommendedSellers(pageCount: $pageCount, pageNumber: $pageNumber) {
+            seller {
+              id
+              username
+              displayName
+              profilePictureUrl
+            }
+          }
+        }
+        """
+        let variables: [String: Any] = ["pageNumber": pageNumber, "pageCount": pageCount]
+        struct Payload: Decodable {
+            let recommendedSellers: [RecommendedSellerRow]?
+        }
+        struct RecommendedSellerRow: Decodable {
+            let seller: SellerRow?
+        }
+        struct SellerRow: Decodable {
+            let id: AnyCodable?
+            let username: String?
+            let displayName: String?
+            let profilePictureUrl: String?
+        }
+        let response: Payload = try await client.execute(query: query, variables: variables, responseType: Payload.self)
+        return (response.recommendedSellers ?? []).compactMap { row -> RecommendedSeller? in
+            guard let s = row.seller else { return nil }
+            let idStr: String
+            if let any = s.id {
+                if let i = any.value as? Int { idStr = String(i) }
+                else if let str = any.value as? String { idStr = str }
+                else { idStr = "" }
+            } else { idStr = "" }
+            let user = User(
+                id: UUID(uuidString: idStr) ?? UUID(),
+                username: s.username ?? "",
+                displayName: s.displayName ?? s.username ?? "",
+                avatarURL: s.profilePictureUrl
+            )
+            return RecommendedSeller(
+                seller: user,
+                totalSales: nil,
+                totalShopValue: nil,
+                productViews: 0,
+                sellerScore: 0,
+                activeListings: 0
+            )
+        }
+    }
+
     /// Fetch blocked users. Matches Flutter getBlockedUsers.
     func getBlockedUsers(pageNumber: Int = 1, pageCount: Int = 20, search: String? = nil) async throws -> [BlockedUser] {
         let query = """
@@ -498,7 +628,98 @@ class UserService: ObservableObject {
         }
     }
 
-    // MARK: - Payment methods (fetch / add / delete; backend unchanged)
+    /// Report a user/account. Matches Flutter reportAccount(reason, username, content?).
+    func reportAccount(username: String, reason: String, content: String? = nil) async throws {
+        let mutation = """
+        mutation ReportAccount($reason: String!, $username: String!, $content: String) {
+          reportAccount(reason: $reason, username: $username, content: $content) {
+            message
+          }
+        }
+        """
+        var variables: [String: Any] = ["reason": reason, "username": username]
+        if let c = content, !c.isEmpty { variables["content"] = c }
+        struct Payload: Decodable { let reportAccount: ReportResult? }
+        struct ReportResult: Decodable { let message: String? }
+        _ = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+    }
+
+    /// Rate a user after an order (e.g. rate seller as buyer). Matches Flutter rateUser(comment, orderId, rating, userId).
+    func rateUser(comment: String, orderId: Int, rating: Int, userId: Int) async throws {
+        let mutation = """
+        mutation RateUser($comment: String!, $orderId: Int!, $rating: Int!, $userId: Int!) {
+          rateUser(comment: $comment, orderId: $orderId, rating: $rating, userId: $userId) {
+            success
+            message
+          }
+        }
+        """
+        struct Payload: Decodable { let rateUser: RateUserPayload? }
+        struct RateUserPayload: Decodable { let success: Bool?; let message: String? }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["comment": comment, "orderId": orderId, "rating": min(5, max(1, rating)), "userId": userId],
+            responseType: Payload.self
+        )
+        if response.rateUser?.success != true {
+            throw NSError(domain: "RateUser", code: -1, userInfo: [NSLocalizedDescriptionKey: response.rateUser?.message ?? "Failed to submit rating"])
+        }
+    }
+
+    /// Cancel an order. Matches Flutter cancelOrder(orderId, reason, notes, imagesUrl). Reason must be OrderCancellationReasonEnum raw value (e.g. CHANGED_MY_MIND, NOT_AS_DESCRIBED).
+    func cancelOrder(orderId: Int, reason: String, notes: String, imagesUrl: [String] = []) async throws {
+        let mutation = """
+        mutation CancelOrder($orderId: Int!, $reason: OrderCancellationReasonEnum!, $notes: String!, $imagesUrl: [String]!) {
+          cancelOrder(orderId: $orderId, reason: $reason, notes: $notes, imagesUrl: $imagesUrl) {
+            success
+          }
+        }
+        """
+        struct Payload: Decodable { let cancelOrder: CancelOrderPayload? }
+        struct CancelOrderPayload: Decodable { let success: Bool? }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["orderId": orderId, "reason": reason, "notes": notes, "imagesUrl": imagesUrl],
+            responseType: Payload.self
+        )
+        if response.cancelOrder?.success != true {
+            throw NSError(domain: "CancelOrder", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to cancel order"])
+        }
+    }
+
+    /// Follow a user. Matches Flutter followUser(followedId).
+    func followUser(followedId: Int) async throws {
+        let mutation = """
+        mutation FollowUser($followedId: Int!) {
+          followUser(followedId: $followedId) {
+            success
+          }
+        }
+        """
+        struct Payload: Decodable { let followUser: FollowResult? }
+        struct FollowResult: Decodable { let success: Bool? }
+        let response: Payload = try await client.execute(query: mutation, variables: ["followedId": followedId], responseType: Payload.self)
+        if response.followUser?.success != true {
+            throw NSError(domain: "FollowUser", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to follow"])
+        }
+    }
+
+    /// Unfollow a user. Matches Flutter unfollowUser(followedId).
+    func unfollowUser(followedId: Int) async throws {
+        let mutation = """
+        mutation UnfollowUser($followedId: Int!) {
+          unfollowUser(followedId: $followedId) {
+            success
+          }
+        }
+        """
+        struct Payload: Decodable { let unfollowUser: UnfollowResult? }
+        struct UnfollowResult: Decodable { let success: Bool? }
+        let response: Payload = try await client.execute(query: mutation, variables: ["followedId": followedId], responseType: Payload.self)
+        if response.unfollowUser?.success != true {
+            throw NSError(domain: "UnfollowUser", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to unfollow"])
+        }
+    }
 
     /// Fetch current payment method. Matches Flutter getUserPaymentMethod (query userPaymentMethods).
     func getUserPaymentMethod() async throws -> PaymentMethod? {
@@ -563,6 +784,100 @@ class UserService: ObservableObject {
         let response: Payload = try await client.execute(query: mutation, variables: ["paymentMethodID": paymentMethodId], responseType: Payload.self)
         if response.deletePaymentMethod?.success != true {
             throw NSError(domain: "DeletePaymentMethod", code: -1, userInfo: [NSLocalizedDescriptionKey: response.deletePaymentMethod?.error ?? "Failed to delete"])
+        }
+    }
+
+    /// Create a Stripe payment intent for an order. Matches Flutter createPaymentIntent. Returns clientSecret (for Stripe SDK) and paymentRef (for confirmPayment).
+    func createPaymentIntent(orderId: Int, paymentMethodId: String) async throws -> (clientSecret: String, paymentRef: String) {
+        let mutation = """
+        mutation CreatePaymentIntent($orderId: Int!, $paymentMethodId: String!) {
+          createPaymentIntent(orderId: $orderId, paymentMethodId: $paymentMethodId) {
+            clientSecret
+            paymentRef
+          }
+        }
+        """
+        struct Payload: Decodable { let createPaymentIntent: CreatePaymentIntentPayload? }
+        struct CreatePaymentIntentPayload: Decodable {
+            let clientSecret: String?
+            let paymentRef: String?
+        }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["orderId": orderId, "paymentMethodId": paymentMethodId],
+            responseType: Payload.self
+        )
+        guard let intent = response.createPaymentIntent,
+              let ref = intent.paymentRef, !ref.isEmpty else {
+            throw NSError(domain: "CreatePaymentIntent", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create payment intent"])
+        }
+        let secret = intent.clientSecret ?? ""
+        return (secret, ref)
+    }
+
+    /// Confirm payment after Stripe confirmation (or if backend allows). Matches Flutter confirmPayment.
+    func confirmPayment(paymentRef: String) async throws -> (paymentStatus: String?, orderConfirmed: Bool?) {
+        let mutation = """
+        mutation ConfirmPayment($paymentRef: String!) {
+          confirmPayment(paymentRef: $paymentRef) {
+            paymentStatus
+            orderConfirmed
+          }
+        }
+        """
+        struct Payload: Decodable { let confirmPayment: ConfirmPaymentPayload? }
+        struct ConfirmPaymentPayload: Decodable {
+            let paymentStatus: String?
+            let orderConfirmed: Bool?
+        }
+        let response: Payload = try await client.execute(query: mutation, variables: ["paymentRef": paymentRef], responseType: Payload.self)
+        guard let confirm = response.confirmPayment else {
+            throw NSError(domain: "ConfirmPayment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+        return (confirm.paymentStatus, confirm.orderConfirmed)
+    }
+
+    /// Generate shipping label for an order (seller). Matches Flutter generateShippingLabel.
+    func generateShippingLabel(orderId: Int) async throws -> (success: Bool, labelUrl: String?, message: String?) {
+        let mutation = """
+        mutation GenerateShippingLabel($orderId: Int!) {
+          generateShippingLabel(orderId: $orderId) {
+            success
+            labelUrl
+            message
+          }
+        }
+        """
+        struct Payload: Decodable { let generateShippingLabel: GenerateShippingLabelPayload? }
+        struct GenerateShippingLabelPayload: Decodable {
+            let success: Bool?
+            let labelUrl: String?
+            let message: String?
+        }
+        let response: Payload = try await client.execute(query: mutation, variables: ["orderId": orderId], responseType: Payload.self)
+        guard let gen = response.generateShippingLabel else {
+            throw NSError(domain: "GenerateShippingLabel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+        return (gen.success ?? false, gen.labelUrl, gen.message)
+    }
+
+    /// Confirm shipping (seller): carrier and tracking. Matches Flutter confirmShipping.
+    func confirmShipping(orderId: Int, carrierName: String, trackingNumber: String, trackingUrl: String? = nil) async throws {
+        let mutation = """
+        mutation ConfirmShipping($orderId: Int!, $carrierName: String!, $trackingNumber: String!, $trackingUrl: String) {
+          confirmShipping(orderId: $orderId, carrierName: $carrierName, trackingNumber: $trackingNumber, trackingUrl: $trackingUrl) {
+            success
+            message
+          }
+        }
+        """
+        struct Payload: Decodable { let confirmShipping: ConfirmShippingPayload? }
+        struct ConfirmShippingPayload: Decodable { let success: Bool?; let message: String? }
+        var variables: [String: Any] = ["orderId": orderId, "carrierName": carrierName, "trackingNumber": trackingNumber]
+        if let url = trackingUrl, !url.isEmpty { variables["trackingUrl"] = url }
+        let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        if response.confirmShipping?.success != true {
+            throw NSError(domain: "ConfirmShipping", code: -1, userInfo: [NSLocalizedDescriptionKey: response.confirmShipping?.message ?? "Failed to confirm shipping"])
         }
     }
 
@@ -745,7 +1060,9 @@ class UserService: ObservableObject {
             guard let idVal = row.id?.value else { return nil }
             let idStr = (idVal as? Int).map { String($0) } ?? (idVal as? String) ?? String(describing: idVal)
             let otherParty: User? = row.user.map { u in
-                User(
+                let uid = (u.id?.value as? Int) ?? (u.id?.value as? String).flatMap { Int($0) }
+                return User(
+                    userId: uid,
                     username: u.username ?? "",
                     displayName: u.displayName ?? "",
                     avatarURL: u.profilePictureUrl
@@ -1015,6 +1332,11 @@ struct GetUserResponse: Decodable {
     let viewMe: UserProfileData?
 }
 
+/// Response for GetUser(username: String!) query (other user's profile).
+struct GetUserByUsernameResponse: Decodable {
+    let getUser: UserProfileData?
+}
+
 struct UserProfileData: Decodable {
     let id: AnyCodable?
     let username: String?
@@ -1031,6 +1353,7 @@ struct UserProfileData: Decodable {
     let listing: Int?
     let noOfFollowing: Int?
     let noOfFollowers: Int?
+    let isFollowing: Bool?
     let isVacationMode: Bool?
     let isMultibuyEnabled: Bool?
     let isStaff: Bool?
@@ -1206,6 +1529,16 @@ struct BlockedUserRow: Decodable {
     let displayName: String?
     let profilePictureUrl: String?
     let thumbnailUrl: String?
+}
+
+/// One entry from recommendedSellers query (Top Shops).
+struct RecommendedSeller {
+    let seller: User
+    let totalSales: String?
+    let totalShopValue: String?
+    let productViews: Int
+    let sellerScore: Double
+    let activeListings: Int
 }
 
 // Reuse ProductData, SizeData, BrandData, SellerData, CategoryData from ProductService

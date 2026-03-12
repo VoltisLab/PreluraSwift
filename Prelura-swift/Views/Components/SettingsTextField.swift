@@ -10,6 +10,8 @@ struct SettingsTextField: View {
     var isSecure: Bool = false
     var isEnabled: Bool = true
     var onTap: (() -> Void)? = nil
+    /// When true, adds a grey border and no shadow (e.g. Filter modal price fields).
+    var bordered: Bool = false
 
     private let cornerRadius: CGFloat = 30
 
@@ -46,6 +48,10 @@ struct SettingsTextField: View {
         }
         .background(Theme.Colors.secondaryBackground)
         .cornerRadius(cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .strokeBorder(bordered ? Theme.Colors.glassBorder : .clear, lineWidth: bordered ? 1 : 0)
+        )
     }
 }
 

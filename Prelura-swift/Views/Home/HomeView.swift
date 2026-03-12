@@ -92,6 +92,16 @@ struct HomeView: View {
         .refreshable {
             await viewModel.refreshAsync()
         }
+        .onAppear {
+            viewModel.updateAuthToken(authService.isGuestMode ? nil : authService.authToken)
+        }
+        .onChange(of: authService.isGuestMode) { _, _ in
+            viewModel.updateAuthToken(authService.isGuestMode ? nil : authService.authToken)
+            if authService.isGuestMode { viewModel.loadData() }
+        }
+        .onChange(of: authService.authToken) { _, _ in
+            if !authService.isGuestMode { viewModel.updateAuthToken(authService.authToken) }
+        }
         .background(
             NavigationLink(destination: AIChatView(viewModel: viewModel).environmentObject(authService), isActive: $showAIChat) {
                 EmptyView()

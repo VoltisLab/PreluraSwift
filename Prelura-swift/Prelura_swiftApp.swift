@@ -77,7 +77,7 @@ struct AppearanceRootView: View {
     private var content: some View {
         let _ = syncThemeScheme()
         Group {
-            if authService.isAuthenticated {
+            if authService.isAuthenticated || authService.isGuestMode {
                 MainTabView()
             } else {
                 LoginView()

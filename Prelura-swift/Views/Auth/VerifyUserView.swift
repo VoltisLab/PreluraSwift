@@ -57,12 +57,18 @@ struct VerifyUserView: View {
     }
 
     private func verify() {
-        // Backend may expose verifyUser(token) or similar; if not, show success after a short delay for demo
         Task {
-            // TODO: Call verifyUser(token) when API is confirmed
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            await MainActor.run {
-                status = .success
+            do {
+                let success = try await authService.verifyAccount(code: token)
+                await MainActor.run {
+                    status = success ? .success : .failure
+                    if !success { errorMessage = "Verification failed." }
+                }
+            } catch {
+                await MainActor.run {
+                    status = .failure
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }

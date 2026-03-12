@@ -18,6 +18,9 @@ struct UserProfileView: View {
     @State private var showFilterSheet: Bool = false
     @State private var topBrandsScrollId: String? = nil
     @State private var showProfilePhotoFullScreen: Bool = false
+    @State private var showFullBioSheet: Bool = false
+    @State private var filterMultiBuyOnly: Bool = false
+
     init(seller: User, authService: AuthService?) {
         self.seller = seller
         _viewModel = StateObject(wrappedValue: UserProfileViewModel(seller: seller, authService: authService))
@@ -39,6 +42,7 @@ struct UserProfileView: View {
                         if viewModel.user.isVacationMode {
                             vacationModeSection(isLoggedInUser: false)
                         } else {
+                            followRow
                             filtersSection
                             itemsGridSection
                         }
@@ -60,7 +64,11 @@ struct UserProfileView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink(destination: ReportUserView(username: viewModel.user.username)) {
                     Image(systemName: "flag")
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
         }
         .toolbar(.hidden, for: .tabBar)
@@ -123,7 +131,7 @@ struct UserProfileView: View {
                     }
                     .buttonStyle(.plain)
                     NavigationLink(destination: FollowersListView(username: viewModel.user.username)) {
-                        StatColumn(value: "\(viewModel.user.followersCount)", label: viewModel.user.followersCount == 1 ? L10n.string("Follower") : L10n.string("Followers"), compact: true)
+                        StatColumn(value: "\(viewModel.displayedFollowersCount)", label: viewModel.displayedFollowersCount == 1 ? L10n.string("Follower") : L10n.string("Followers"), compact: true)
                     }
                     .buttonStyle(.plain)
                 }
@@ -146,6 +154,11 @@ struct UserProfileView: View {
                             .foregroundColor(Theme.Colors.secondaryText)
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: true)
+                        Spacer(minLength: 4)
+                        Image("SaleIcon")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(height: 16)
                     }
                 }
                 .buttonStyle(HapticTapButtonStyle())
@@ -154,7 +167,6 @@ struct UserProfileView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
-        .overlay(ContentDivider(), alignment: .bottom)
     }
 
     /// Placeholder when no photo or load failed (matches profile placeholder: circle + initial).
@@ -185,16 +197,53 @@ struct UserProfileView: View {
     }
 
     private func bioSection(_ bio: String) -> some View {
-        Text(bio)
-            .font(Theme.Typography.subheadline)
-            .foregroundColor(Theme.Colors.primaryText)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.top, Theme.Spacing.xs)
-            .padding(.bottom, Theme.Spacing.sm)
+        let limit = 100
+        let truncated = bio.count > limit
+        let displayText = truncated ? String(bio.prefix(limit)) + "..." : bio
+        return Group {
+            if truncated {
+                Button(action: { showFullBioSheet = true }) {
+                    Text(displayText)
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.top, Theme.Spacing.xs)
+                        .padding(.bottom, Theme.Spacing.sm)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text(displayText)
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.xs)
+                    .padding(.bottom, Theme.Spacing.sm)
+            }
+        }
+        .sheet(isPresented: $showFullBioSheet) {
+            NavigationStack {
+                ScrollView {
+                    Text(bio)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(Theme.Spacing.md)
+                }
+                .navigationTitle(L10n.string("Bio"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(L10n.string("Done")) { showFullBioSheet = false }
+                            .foregroundColor(Theme.primaryColor)
+                    }
+                }
+            }
+        }
     }
 
-    /// When the profile user has vacation mode on, show message and hide products (matches Flutter).
+    /// Placeholder when no photo or load failed (matches profile placeholder: circle + initial).
     private func vacationModeSection(isLoggedInUser: Bool) -> some View {
         VStack(spacing: Theme.Spacing.lg) {
             Spacer(minLength: 40)
@@ -209,6 +258,36 @@ struct UserProfileView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Spacing.xl)
+    }
+
+    /// Follow / Following row with switch, above Categories. Only meaningful when viewing another user (we have userId).
+    private var followRow: some View {
+        HStack {
+            Text(viewModel.isFollowing ? L10n.string("Following") : L10n.string("Follow"))
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.secondaryText)
+            Spacer()
+            if viewModel.user.userId != nil {
+                if viewModel.isTogglingFollow {
+                    ProgressView()
+                        .scaleEffect(0.9)
+                } else {
+                    Toggle("", isOn: Binding(
+                        get: { viewModel.isFollowing },
+                        set: { _ in
+                            Task {
+                                await viewModel.toggleFollow(authToken: authService.authToken)
+                            }
+                        }
+                    ))
+                    .labelsHidden()
+                    .tint(Theme.primaryColor)
+                }
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.md)
+        .overlay(ContentDivider(), alignment: .bottom)
     }
 
     // MARK: - Filters Section (Categories, Multi-buy read-only, Top brands, Filter/Sort)
@@ -269,30 +348,32 @@ struct UserProfileView: View {
             }
             .overlay(ContentDivider(), alignment: .bottom)
 
-            HStack {
-                Text(L10n.string("Multi-buy:"))
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                Spacer()
-                Text(viewModel.user.isMultibuyEnabled ? L10n.string("On") : L10n.string("Off"))
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.primaryText)
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.md)
-            .overlay(ContentDivider(), alignment: .bottom)
-
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text(L10n.string("Top brands"))
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    Spacer()
+                HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                     Button(action: {}) {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 16))
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
+                    Text(L10n.string("Top brands"))
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    Spacer()
+                    Button(action: {
+                        HapticManager.selection()
+                        filterMultiBuyOnly.toggle()
+                    }) {
+                        Text(L10n.string("Multi-buy"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(filterMultiBuyOnly ? .white : Theme.primaryColor)
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.sm)
+                            .background(
+                                RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
+                                    .fill(filterMultiBuyOnly ? Theme.primaryColor : Theme.primaryColor.opacity(0.2))
+                            )
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.md)
@@ -315,7 +396,7 @@ struct UserProfileView: View {
                 .padding(.vertical, Theme.Spacing.sm)
             }
 
-            // Filter and Sort (Liquid Glass pills — match ProfileView / FilteredProductsView)
+            // Filter and Sort (grey pills, no shadow)
             HStack {
                 Button(action: { showFilterSheet = true }) {
                     HStack(spacing: Theme.Spacing.xs) {
@@ -327,9 +408,12 @@ struct UserProfileView: View {
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                            .fill(Theme.Colors.secondaryBackground)
+                    )
                 }
                 .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
-                .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
                 Spacer()
                 Button(action: { showSortSheet = true }) {
                     HStack(spacing: Theme.Spacing.xs) {
@@ -341,9 +425,12 @@ struct UserProfileView: View {
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                            .fill(Theme.Colors.secondaryBackground)
+                    )
                 }
                 .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
-                .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
@@ -352,27 +439,35 @@ struct UserProfileView: View {
         .sheet(isPresented: $showFilterSheet) { userProfileFilterSheet }
     }
 
+    private var optionDivider: some View {
+        Rectangle()
+            .fill(Theme.Colors.glassBorder)
+            .frame(height: 0.5)
+            .padding(.horizontal, Theme.Spacing.md)
+    }
+
     private var userProfileSortSheet: some View {
-        OptionsSheet(title: L10n.string("Sort"), onDismiss: { showSortSheet = false }, detents: [.large]) {
-            List {
-                Section {
-                    ForEach(ProfileSortOption.allCases, id: \.self) { option in
-                        Button(action: { profileSort = option }) {
-                            HStack {
-                                Text(L10n.string(option.rawValue)).foregroundColor(Theme.Colors.primaryText)
-                                Spacer()
-                                if profileSort == option { Image(systemName: "checkmark").foregroundColor(Theme.primaryColor) }
+        OptionsSheet(title: L10n.string("Sort"), onDismiss: { showSortSheet = false }, detents: [.height(380)], useCustomCornerRadius: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(ProfileSortOption.allCases.enumerated()), id: \.offset) { index, option in
+                    Button(action: { profileSort = option }) {
+                        HStack {
+                            Text(L10n.string(option.rawValue))
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.primaryText)
+                            Spacer()
+                            if profileSort == option {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(Theme.primaryColor)
                             }
                         }
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.md)
                     }
-                    .listRowBackground(Theme.Colors.background)
+                    .buttonStyle(.plain)
+                    if index < ProfileSortOption.allCases.count - 1 { optionDivider }
                 }
-            }
-            .scrollDisabled(true)
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(Theme.Colors.background)
-            .safeAreaInset(edge: .bottom) {
+                optionDivider
                 VStack(spacing: Theme.Spacing.sm) {
                     BorderGlassButton(L10n.string("Clear")) {
                         profileSort = .relevance
@@ -383,44 +478,58 @@ struct UserProfileView: View {
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.md)
-                .padding(.bottom, Theme.Spacing.lg)
-                .frame(maxWidth: .infinity)
-                .background(Theme.Colors.background)
+                .padding(.bottom, Theme.Spacing.md)
             }
+            .padding(.vertical, Theme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                    .fill(Theme.Colors.background)
+            )
         }
     }
 
     private var userProfileFilterSheet: some View {
-        OptionsSheet(title: L10n.string("Filter"), onDismiss: { showFilterSheet = false }, detents: [.large]) {
-            List {
-                Section(header: Text(L10n.string("Condition"))) {
-                    ForEach(profileConditionOptions, id: \.raw) { option in
-                        Button(action: { filterCondition = filterCondition == option.raw ? nil : option.raw }) {
-                            HStack {
-                                Text(L10n.string(option.display)).foregroundColor(Theme.Colors.primaryText)
-                                Spacer()
-                                if filterCondition == option.raw { Image(systemName: "checkmark").foregroundColor(Theme.primaryColor) }
+        OptionsSheet(title: L10n.string("Filter"), onDismiss: { showFilterSheet = false }, detents: [.height(580)], useCustomCornerRadius: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(L10n.string("Condition"))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.xs)
+                ForEach(profileConditionOptions, id: \.raw) { option in
+                    Button(action: { filterCondition = filterCondition == option.raw ? nil : option.raw }) {
+                        HStack {
+                            Text(L10n.string(option.display))
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.primaryText)
+                            Spacer()
+                            if filterCondition == option.raw {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(Theme.primaryColor)
                             }
                         }
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.md)
                     }
-                    .listRowBackground(Theme.Colors.background)
+                    .buttonStyle(.plain)
+                    optionDivider
                 }
-                Section(header: Text(L10n.string("Price range"))) {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        SettingsTextField(placeholder: L10n.string("Min. Price"), text: $filterMinPrice)
-                            .keyboardType(.decimalPad)
-                        SettingsTextField(placeholder: L10n.string("Max. Price"), text: $filterMaxPrice)
-                            .keyboardType(.decimalPad)
-                    }
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Theme.Colors.background)
+                Text(L10n.string("Price range"))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.sm)
+                HStack(spacing: Theme.Spacing.sm) {
+                    SettingsTextField(placeholder: L10n.string("Min. Price"), text: $filterMinPrice, bordered: true)
+                        .keyboardType(.decimalPad)
+                    SettingsTextField(placeholder: L10n.string("Max. Price"), text: $filterMaxPrice, bordered: true)
+                        .keyboardType(.decimalPad)
                 }
-            }
-            .scrollDisabled(true)
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(Theme.Colors.background)
-            .safeAreaInset(edge: .bottom) {
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
+                optionDivider
                 VStack(spacing: Theme.Spacing.sm) {
                     BorderGlassButton(L10n.string("Clear")) {
                         filterCondition = nil
@@ -433,10 +542,16 @@ struct UserProfileView: View {
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.md)
-                .padding(.bottom, Theme.Spacing.lg)
-                .frame(maxWidth: .infinity)
-                .background(Theme.Colors.background)
+                .padding(.bottom, Theme.Spacing.md)
             }
+            .padding(.top, Theme.Spacing.xxl)
+            .padding(.bottom, Theme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                    .fill(Theme.Colors.background)
+            )
         }
     }
 

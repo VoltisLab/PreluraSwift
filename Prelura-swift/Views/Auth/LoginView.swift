@@ -75,6 +75,14 @@ struct LoginView: View {
                             }
                             .buttonStyle(HapticTapButtonStyle())
                         }
+                        .padding(.bottom, Theme.Spacing.sm)
+
+                        Button(action: { authService.continueAsGuest() }) {
+                            Text(L10n.string("Continue as guest"))
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        }
+                        .buttonStyle(HapticTapButtonStyle())
                         .padding(.bottom, 100)
                     }
                 }

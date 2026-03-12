@@ -7,8 +7,14 @@ struct ReportUserView: View {
     var productId: Int?
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var authService: AuthService
     @State private var selectedOption: String?
     @State private var submitted = false
+    @State private var errorMessage: String?
+    @State private var isSubmitting = false
+
+    private let userService = UserService()
+    private let productService = ProductService()
 
     private let userOptions = [
         "This user has engaged in inappropriate or offensive behaviour towards others",
@@ -56,6 +62,11 @@ struct ReportUserView: View {
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.primaryColor)
             }
+            if let err = errorMessage {
+                Text(err)
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.error)
+            }
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
@@ -67,21 +78,40 @@ struct ReportUserView: View {
                     submitReport()
                 }
                 .foregroundColor(Theme.primaryColor)
-                .disabled(selectedOption == nil)
+                .disabled(selectedOption == nil || isSubmitting)
             }
         }
         .toolbar(.hidden, for: .tabBar)
     }
 
     private func submitReport() {
-        guard selectedOption != nil else { return }
-        // TODO: Call report API
-        submitted = true
+        guard let reason = selectedOption, !reason.isEmpty else { return }
+        isSubmitting = true
+        errorMessage = nil
+        Task {
+            do {
+                if isProduct, let pid = productId {
+                    try await productService.reportProduct(productId: String(pid), reason: reason, content: nil)
+                } else {
+                    try await userService.reportAccount(username: username, reason: reason, content: nil)
+                }
+                await MainActor.run {
+                    submitted = true
+                    isSubmitting = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isSubmitting = false
+                }
+            }
+        }
     }
 }
 
 #Preview {
     NavigationStack {
         ReportUserView(username: "testuser")
+            .environmentObject(AuthService())
     }
 }

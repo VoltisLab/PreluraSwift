@@ -115,6 +115,7 @@ struct ItemDetailView: View {
         }
         .sheet(isPresented: $showSendOfferSheet) {
             SendOfferSheet(item: effectiveItem) { showSendOfferSheet = false }
+                .environmentObject(authService)
                 .presentationDetents([.large])
         }
         .navigationDestination(isPresented: $showPaymentSheet) {
@@ -863,7 +864,7 @@ struct ProductOptionsSheet: View {
     }
 
     var body: some View {
-        OptionsSheet(title: L10n.string("Options"), onDismiss: onDismiss, detents: [.height(300)]) {
+        OptionsSheet(title: L10n.string("Options"), onDismiss: onDismiss, detents: [.height(300)], useCustomCornerRadius: false) {
             VStack(alignment: .leading, spacing: 0) {
                 if isCurrentUser {
                     MenuItemRow(title: L10n.string("Edit listing"), icon: "square.and.pencil", action: { onEdit() }, iconAndSubtitleColor: Theme.Colors.secondaryText)

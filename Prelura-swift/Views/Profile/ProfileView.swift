@@ -37,10 +37,48 @@ struct ProfileView: View {
     @State private var filterMaxPrice: String = ""
     @State private var showSortSheet: Bool = false
     @State private var showFilterSheet: Bool = false
-    /// Tracks horizontal scroll position in Top brands so it doesn't reset when Multi-buy or selection changes.
+    /// Tracks horizontal scroll position in Top brands so it doesn't reset when selection changes.
     @State private var topBrandsScrollId: String? = nil
+    @State private var showFullBioSheet: Bool = false
+    @State private var filterMultiBuyOnly: Bool = false
+    @State private var showShopSearchSheet: Bool = false
+    @State private var shopSearchQuery: String = ""
 
     private let topId = "profile_top"
+
+    /// Shown when user chose "Continue as guest": prompt to sign in (clears guest mode and shows login).
+    private var guestModeContent: some View {
+        VStack(spacing: Theme.Spacing.xl) {
+            Color.clear.frame(height: 1).id(topId)
+            Spacer(minLength: 60)
+            Image(systemName: "person.crop.circle.badge.questionmark")
+                .font(.system(size: 64))
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text(L10n.string("You're browsing as guest"))
+                .font(Theme.Typography.title3)
+                .foregroundColor(Theme.Colors.primaryText)
+                .multilineTextAlignment(.center)
+            Text(L10n.string("Sign in to see your profile, listings and messages."))
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            Button(action: { authService.clearGuestMode() }) {
+                Text(L10n.string("Sign in"))
+                    .font(Theme.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+            }
+            .background(Theme.primaryColor)
+            .cornerRadius(24)
+            .padding(.horizontal, Theme.Spacing.xl)
+            .padding(.top, Theme.Spacing.sm)
+            Spacer(minLength: 60)
+        }
+        .frame(maxWidth: .infinity)
+    }
     
     init(tabCoordinator: TabCoordinator) {
         self.tabCoordinator = tabCoordinator
@@ -51,7 +89,9 @@ struct ProfileView: View {
         ZStack(alignment: .topTrailing) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    if viewModel.isLoading && viewModel.user == nil {
+                    if authService.isGuestMode {
+                        guestModeContent
+                    } else if viewModel.isLoading && viewModel.user == nil {
                         ProfileShimmerView()
                             .frame(minHeight: UIScreen.main.bounds.height)
                     } else {
@@ -102,38 +142,42 @@ struct ProfileView: View {
         }
         .navigationTitle(viewModel.user?.username ?? L10n.string("Profile"))
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarHidden(viewModel.isLoading && viewModel.user == nil)
+        .navigationBarHidden(viewModel.isLoading && viewModel.user == nil || authService.isGuestMode)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink(value: AppRoute.menu(MenuContext(
-                    listingCount: viewModel.user?.listingsCount ?? 0,
-                    isMultiBuyEnabled: viewModel.user?.isMultibuyEnabled ?? isMultiBuyEnabled,
-                    isVacationMode: viewModel.user?.isVacationMode ?? isVacationMode,
-                    isStaff: viewModel.user?.isStaff ?? false
-                ))) {
-                    Image(systemName: "line.3.horizontal")
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
+            if !authService.isGuestMode {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink(value: AppRoute.menu(MenuContext(
+                        listingCount: viewModel.user?.listingsCount ?? 0,
+                        isMultiBuyEnabled: viewModel.user?.isMultibuyEnabled ?? isMultiBuyEnabled,
+                        isVacationMode: viewModel.user?.isVacationMode ?? isVacationMode,
+                        isStaff: viewModel.user?.isStaff ?? false
+                    ))) {
+                        Image(systemName: "line.3.horizontal")
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(HapticTapButtonStyle())
                 }
-                .buttonStyle(HapticTapButtonStyle())
             }
         }
         .onAppear {
+            if authService.isGuestMode { return }
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
                 viewModel.refresh()
             }
         }
-        .onChange(of: authService.isAuthenticated) { oldValue, isAuthenticated in
-            if isAuthenticated {
+        .onChange(of: authService.isGuestMode) { _, isGuest in
+            if isGuest { return }
+            if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
                 viewModel.refresh()
             }
         }
         .onChange(of: authService.authToken) { oldToken, newToken in
             // Update token and refresh when token changes
-            if authService.isAuthenticated {
+            if authService.isAuthenticated && !authService.isGuestMode {
                 viewModel.updateAuthToken(newToken)
                 viewModel.refresh()
             }
@@ -262,6 +306,11 @@ struct ProfileView: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: true)
+                            Spacer(minLength: 4)
+                            Image("SaleIcon")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 16)
                         }
                     }
                     .buttonStyle(HapticTapButtonStyle())
@@ -277,6 +326,11 @@ struct ProfileView: View {
                             .foregroundColor(Theme.Colors.secondaryText)
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: true)
+                        Spacer(minLength: 4)
+                        Image("SaleIcon")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(height: 16)
                     }
                 }
             }
@@ -310,13 +364,50 @@ struct ProfileView: View {
     
     // MARK: - Bio Section
     private func bioSection(_ bio: String) -> some View {
-        Text(bio)
-            .font(Theme.Typography.subheadline)
-            .foregroundColor(Theme.Colors.primaryText)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.top, Theme.Spacing.xs)
-            .padding(.bottom, Theme.Spacing.sm)
+        let limit = 100
+        let truncated = bio.count > limit
+        let displayText = truncated ? String(bio.prefix(limit)) + "..." : bio
+        return Group {
+            if truncated {
+                Button(action: { showFullBioSheet = true }) {
+                    Text(displayText)
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.top, Theme.Spacing.xs)
+                        .padding(.bottom, Theme.Spacing.sm)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text(displayText)
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.xs)
+                    .padding(.bottom, Theme.Spacing.sm)
+            }
+        }
+        .sheet(isPresented: $showFullBioSheet) {
+            NavigationStack {
+                ScrollView {
+                    Text(bio)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(Theme.Spacing.md)
+                }
+                .navigationTitle(L10n.string("Bio"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(L10n.string("Done")) { showFullBioSheet = false }
+                            .foregroundColor(Theme.primaryColor)
+                    }
+                }
+            }
+        }
     }
 
     /// Location row: grey location icon + text, shown below bio.
@@ -417,37 +508,43 @@ struct ProfileView: View {
             }
             .overlay(ContentDivider(), alignment: .bottom)
             
-            // Multi-buy Toggle (extra trailing padding so switch right edge aligns with chevron/search icon)
-            HStack {
-                Text(L10n.string("Multi-buy:"))
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                Spacer()
-                Toggle("", isOn: $isMultiBuyEnabled)
-                    .tint(Theme.primaryColor)
-                    .frame(width: 50)
-                    .onChange(of: isMultiBuyEnabled) { _, _ in HapticManager.toggle() }
-            }
-            .padding(.leading, Theme.Spacing.md)
-            .padding(.trailing, Theme.Spacing.md + 12)
-            .padding(.vertical, Theme.Spacing.md)
-            .overlay(ContentDivider(), alignment: .bottom)
-            .animation(.none, value: isMultiBuyEnabled)
-            
             // Top Brands (same component and placement as Home filter tags)
-            // Stable id so toggling Multi-buy or selecting a pill doesn't recreate this scroll view and reset scroll position.
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text(L10n.string("Top brands"))
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    Spacer()
-                    Button(action: {}) {
+                HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                    Button(action: {
+                        HapticManager.selection()
+                        showShopSearchSheet = true
+                    }) {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 16))
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
                     .buttonStyle(HapticTapButtonStyle())
+                    Button(action: {
+                        HapticManager.selection()
+                        showShopSearchSheet = true
+                    }) {
+                        Text(L10n.string("Top brands"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                    Button(action: {
+                        HapticManager.selection()
+                        filterMultiBuyOnly.toggle()
+                    }) {
+                        Text(L10n.string("Multi-buy"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(filterMultiBuyOnly ? .white : Theme.primaryColor)
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.sm)
+                            .background(
+                                RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
+                                    .fill(filterMultiBuyOnly ? Theme.primaryColor : Theme.primaryColor.opacity(0.2))
+                            )
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.md)
@@ -490,9 +587,12 @@ struct ProfileView: View {
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                            .fill(Theme.Colors.secondaryBackground)
+                    )
                 }
                 .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
-                .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
                 
                 Spacer()
                 
@@ -506,44 +606,53 @@ struct ProfileView: View {
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                            .fill(Theme.Colors.secondaryBackground)
+                    )
                 }
                 .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
-                .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
         }
         .sheet(isPresented: $showSortSheet) { profileSortSheet }
         .sheet(isPresented: $showFilterSheet) { profileFilterSheet }
+        .sheet(isPresented: $showShopSearchSheet) {
+            shopSearchSheetContent
+        }
     }
     
-    // MARK: - Sort sheet (Apply/Clear at bottom like filter modal)
+    private var optionDivider: some View {
+        Rectangle()
+            .fill(Theme.Colors.glassBorder)
+            .frame(height: 0.5)
+            .padding(.horizontal, Theme.Spacing.md)
+    }
+
+    // MARK: - Sort sheet (same presentation as product Options sheet)
     private var profileSortSheet: some View {
-        OptionsSheet(title: L10n.string("Sort"), onDismiss: { showSortSheet = false }, detents: [.large]) {
-            List {
-                Section {
-                    ForEach(ProfileSortOption.allCases, id: \.self) { option in
-                        Button(action: { profileSort = option }) {
-                            HStack {
-                                Text(L10n.string(option.rawValue))
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                Spacer()
-                                if profileSort == option {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(Theme.primaryColor)
-                                }
+        OptionsSheet(title: L10n.string("Sort"), onDismiss: { showSortSheet = false }, detents: [.height(380)], useCustomCornerRadius: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(ProfileSortOption.allCases.enumerated()), id: \.offset) { index, option in
+                    Button(action: { profileSort = option }) {
+                        HStack {
+                            Text(L10n.string(option.rawValue))
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.primaryText)
+                            Spacer()
+                            if profileSort == option {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(Theme.primaryColor)
                             }
                         }
-                        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.md)
                     }
-                    .listRowBackground(Theme.Colors.background)
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
+                    if index < ProfileSortOption.allCases.count - 1 { optionDivider }
                 }
-            }
-            .scrollDisabled(true)
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(Theme.Colors.background)
-            .safeAreaInset(edge: .bottom) {
+                optionDivider
                 VStack(spacing: Theme.Spacing.sm) {
                     BorderGlassButton(L10n.string("Clear")) {
                         profileSort = .relevance
@@ -554,52 +663,61 @@ struct ProfileView: View {
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.md)
-                .padding(.bottom, Theme.Spacing.lg)
-                .frame(maxWidth: .infinity)
-                .background(Theme.Colors.background)
+                .padding(.bottom, Theme.Spacing.md)
             }
+            .padding(.vertical, Theme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                    .fill(Theme.Colors.background)
+            )
         }
     }
-    
-    // MARK: - Filter sheet
+
+    // MARK: - Filter sheet (same presentation as product Options sheet)
     private var profileFilterSheet: some View {
-        OptionsSheet(title: L10n.string("Filter"), onDismiss: { showFilterSheet = false }, detents: [.large]) {
-            List {
-                Section {
-                    ForEach(profileConditionOptions, id: \.raw) { option in
-                        Button(action: {
-                            filterCondition = filterCondition == option.raw ? nil : option.raw
-                        }) {
-                            HStack {
-                                Text(L10n.string(option.display))
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                Spacer()
-                                if filterCondition == option.raw {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(Theme.primaryColor)
-                                }
+        OptionsSheet(title: L10n.string("Filter"), onDismiss: { showFilterSheet = false }, detents: [.height(580)], useCustomCornerRadius: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(L10n.string("Condition"))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.xs)
+                ForEach(profileConditionOptions, id: \.raw) { option in
+                    Button(action: {
+                        filterCondition = filterCondition == option.raw ? nil : option.raw
+                    }) {
+                        HStack {
+                            Text(L10n.string(option.display))
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.primaryText)
+                            Spacer()
+                            if filterCondition == option.raw {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(Theme.primaryColor)
                             }
                         }
-                        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.md)
                     }
-                    .listRowBackground(Theme.Colors.background)
-                } header: { Text(L10n.string("Condition")) }
-                Section {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        SettingsTextField(placeholder: L10n.string("Min. Price"), text: $filterMinPrice)
-                            .keyboardType(.decimalPad)
-                        SettingsTextField(placeholder: L10n.string("Max. Price"), text: $filterMaxPrice)
-                            .keyboardType(.decimalPad)
-                    }
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Theme.Colors.background)
-                } header: { Text(L10n.string("Price range")) }
-            }
-            .scrollDisabled(true)
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(Theme.Colors.background)
-            .safeAreaInset(edge: .bottom) {
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
+                    optionDivider
+                }
+                Text(L10n.string("Price range"))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.sm)
+                HStack(spacing: Theme.Spacing.sm) {
+                    SettingsTextField(placeholder: L10n.string("Min. Price"), text: $filterMinPrice, bordered: true)
+                        .keyboardType(.decimalPad)
+                    SettingsTextField(placeholder: L10n.string("Max. Price"), text: $filterMaxPrice, bordered: true)
+                        .keyboardType(.decimalPad)
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
+                optionDivider
                 VStack(spacing: Theme.Spacing.sm) {
                     BorderGlassButton(L10n.string("Clear")) {
                         filterCondition = nil
@@ -612,11 +730,87 @@ struct ProfileView: View {
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.md)
-                .padding(.bottom, Theme.Spacing.lg)
-                .frame(maxWidth: .infinity)
-                .background(Theme.Colors.background)
+                .padding(.bottom, Theme.Spacing.md)
+            }
+            .padding(.top, Theme.Spacing.xxl)
+            .padding(.bottom, Theme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                    .fill(Theme.Colors.background)
+            )
+        }
+    }
+    
+    // MARK: - Shop search sheet (tap on Top brands search field)
+    private var shopSearchSheetContent: some View {
+        let query = shopSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let filteredItems = query.isEmpty
+            ? viewModel.userItems
+            : viewModel.userItems.filter { item in
+                item.title.lowercased().contains(query)
+                || (item.brand?.lowercased().contains(query) ?? false)
+                || (item.categoryName?.lowercased().contains(query) ?? false)
+                || item.category.name.lowercased().contains(query)
+                || item.description.lowercased().contains(query)
+            }
+        return NavigationStack {
+            VStack(spacing: 0) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 16))
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    TextField(L10n.string("Search your shop"), text: $shopSearchQuery)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .autocorrectionDisabled()
+                }
+                .padding(Theme.Spacing.sm)
+                .background(Theme.Colors.secondaryBackground)
+                .cornerRadius(10)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.sm)
+                .padding(.bottom, Theme.Spacing.xs)
+                
+                ScrollView {
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                            GridItem(.flexible(), spacing: Theme.Spacing.sm)
+                        ],
+                        spacing: Theme.Spacing.md
+                    ) {
+                        ForEach(filteredItems) { item in
+                            NavigationLink(value: AppRoute.itemDetail(item)) {
+                                WardrobeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.md)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.Colors.background)
+            .navigationTitle(L10n.string("Top brands"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: {
+                        showShopSearchSheet = false
+                        shopSearchQuery = ""
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                }
             }
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
     
     // MARK: - Items Grid Section
