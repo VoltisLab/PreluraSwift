@@ -27,6 +27,7 @@ class SellViewModel: ObservableObject {
         discountPrice: Double? = nil,
         parcelSize: String? = nil,
         colours: [String] = [],
+        sizeId: Int? = nil,
         measurements: String? = nil,
         material: String? = nil,
         styles: [String] = []
@@ -85,7 +86,7 @@ class SellViewModel: ObservableObject {
                     materialIds: materialIds,
                     style: styles.first,
                     styles: styles.count > 1 ? Array(styles.prefix(2)) : (styles.isEmpty ? nil : styles),
-                    sizeId: nil,
+                    sizeId: sizeId,
                     status: "ACTIVE"
                 )
 
@@ -100,13 +101,14 @@ class SellViewModel: ObservableObject {
         }
     }
 
+    /// Maps UI parcel size to backend ParcelSizeEnum. Backend only supports SMALL, MEDIUM, LARGE.
     private static func mapParcelSizeToEnum(_ value: String?) -> String? {
         guard let v = value?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty else { return nil }
         switch v.lowercased() {
         case "small": return "SMALL"
         case "medium": return "MEDIUM"
-        case "large": return "LARGE"
-        default: return v.uppercased()
+        case "large", "extra large": return "LARGE"
+        default: return "LARGE"
         }
     }
 }

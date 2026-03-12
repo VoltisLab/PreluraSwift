@@ -10,6 +10,15 @@ struct ItemDetailView: View {
     @State private var showFullScreenImages: Bool = false
     @State private var showSendOfferSheet: Bool = false
     @State private var showPaymentSheet: Bool = false
+    @State private var showProductOptionsSheet: Bool = false
+    @State private var showReportSheet: Bool = false
+    @State private var showEditListingSheet: Bool = false
+    @State private var showDeleteConfirm: Bool = false
+    @State private var showMarkSoldConfirm: Bool = false
+    @State private var showDeleteError: Bool = false
+    @State private var showMarkSoldError: Bool = false
+    @State private var deleteErrorMessage: String?
+    @State private var markSoldErrorMessage: String?
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authService: AuthService
     
@@ -47,6 +56,18 @@ struct ItemDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: { showProductOptionsSheet = true }) {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
 
             // Bottom Action Buttons
             if !isCurrentUser {
@@ -55,17 +76,22 @@ struct ItemDetailView: View {
         }
         .ignoresSafeArea(edges: .top)
         .onAppear {
+            viewModel.syncLikeState(isLiked: item.isLiked, likeCount: item.likeCount)
+        }
+        .task(id: item.productId ?? item.id.uuidString) {
+            // Run when detail view appears (and when product changes): auth, record view, load related content
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
             }
-            viewModel.syncLikeState(isLiked: item.isLiked, likeCount: item.likeCount)
             if let productId = item.productId {
                 viewModel.loadSimilarProducts(productId: productId, categoryId: nil)
-                viewModel.recordRecentlyViewed(productId: productId)
+                if authService.isAuthenticated {
+                    viewModel.recordRecentlyViewed(productId: productId)
+                }
             }
-            viewModel.loadMemberItems(username: item.seller.username, excludeProductId: item.id)
+            viewModel.loadMemberItems(username: item.seller.username, excludeProductId: item.id, includeInListIfEmpty: isCurrentUser ? item : nil)
             if isCurrentUser, item.seller.avatarURL == nil || item.seller.avatarURL?.isEmpty == true {
-                Task { await viewModel.loadCurrentUserAvatar() }
+                await viewModel.loadCurrentUserAvatar()
             }
         }
         .onChange(of: authService.authToken) { oldToken, newToken in
@@ -89,6 +115,70 @@ struct ItemDetailView: View {
                 .environmentObject(authService)
                 .presentationDetents([.large])
         }
+        .sheet(isPresented: $showProductOptionsSheet) {
+            productOptionsSheet
+        }
+        .sheet(isPresented: $showReportSheet) {
+            NavigationStack {
+                ReportUserView(
+                    username: item.seller.username,
+                    isProduct: true,
+                    productId: Int(item.productId ?? "") ?? 0
+                )
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(L10n.string("Done")) { showReportSheet = false }
+                            .foregroundColor(Theme.primaryColor)
+                    }
+                }
+            }
+            .environmentObject(authService)
+        }
+        .sheet(isPresented: $showEditListingSheet) {
+            EditListingPlaceholderView(onDone: { showEditListingSheet = false })
+        }
+        .alert(L10n.string("Delete listing?"), isPresented: $showDeleteConfirm) {
+            Button(L10n.string("Cancel"), role: .cancel) { showDeleteConfirm = false }
+            Button(L10n.string("Delete listing"), role: .destructive) {
+                guard let productId = item.productId else { return }
+                Task {
+                    do {
+                        try await viewModel.deleteProduct(productId: productId)
+                        await MainActor.run { dismiss() }
+                    } catch {
+                        await MainActor.run { deleteErrorMessage = error.localizedDescription; showDeleteError = true }
+                    }
+                }
+            }
+        } message: {
+            Text("This cannot be undone.")
+        }
+        .alert(L10n.string("Mark as sold?"), isPresented: $showMarkSoldConfirm) {
+            Button(L10n.string("Cancel"), role: .cancel) { showMarkSoldConfirm = false }
+            Button(L10n.string("Mark as sold")) {
+                guard let productId = item.productId else { return }
+                Task {
+                    do {
+                        try await viewModel.markAsSold(productId: productId)
+                        await MainActor.run { dismiss() }
+                    } catch {
+                        await MainActor.run { markSoldErrorMessage = error.localizedDescription; showMarkSoldError = true }
+                    }
+                }
+            }
+        } message: {
+            Text("This will mark the listing as sold.")
+        }
+        .alert(L10n.string("Error"), isPresented: $showDeleteError) {
+            Button(L10n.string("OK")) { showDeleteError = false; deleteErrorMessage = nil }
+        } message: {
+            if let msg = deleteErrorMessage { Text(msg) }
+        }
+        .alert(L10n.string("Error"), isPresented: $showMarkSoldError) {
+            Button(L10n.string("OK")) { showMarkSoldError = false; markSoldErrorMessage = nil }
+        } message: {
+            if let msg = markSoldErrorMessage { Text(msg) }
+        }
         .toolbar(.hidden, for: .tabBar)
     }
     
@@ -96,7 +186,37 @@ struct ItemDetailView: View {
         guard let currentUsername = authService.username else { return false }
         return currentUsername.lowercased() == item.seller.username.lowercased()
     }
-    
+
+    // MARK: - Product options sheet (3-dot menu; modal list design like ProfileMenuView)
+    private var productOptionsSheet: some View {
+        ProductOptionsSheet(
+            item: item,
+            isCurrentUser: isCurrentUser,
+            onDismiss: { showProductOptionsSheet = false },
+            onShare: { shareProduct(); showProductOptionsSheet = false },
+            onReport: { showProductOptionsSheet = false; showReportSheet = true },
+            onEdit: { showProductOptionsSheet = false; showEditListingSheet = true },
+            onDelete: { showProductOptionsSheet = false; showDeleteConfirm = true },
+            onMarkAsSold: { showProductOptionsSheet = false; showMarkSoldConfirm = true },
+            onCopyLink: { copyProductLink(); showProductOptionsSheet = false }
+        )
+    }
+
+    private func shareProduct() {
+        guard let url = URL(string: "https://prelura.com/item/\(item.productId ?? "")") else { return }
+        let av = UIActivityViewController(activityItems: [item.title, url], applicationActivities: nil)
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let root = windowScene.windows.first?.rootViewController else { return }
+        var top = root
+        while let presented = top.presentedViewController { top = presented }
+        top.present(av, animated: true)
+    }
+
+    private func copyProductLink() {
+        let urlString = "https://prelura.com/item/\(item.productId ?? "")"
+        UIPasteboard.general.string = urlString
+    }
+
     /// Avatar URL for seller: use item's seller avatar if set, else for own product use current user's profile picture.
     private var effectiveSellerAvatarURL: String {
         if let url = item.seller.avatarURL, !url.isEmpty { return url }
@@ -150,12 +270,14 @@ struct ItemDetailView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(width: w, height: h)
             .ignoresSafeArea(edges: .top)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                showFullScreenImages = true
-            }
             
-            // Heart Icon Overlay (bottom right) - tappable
+            // Full-screen tap to open gallery (separate layer so like button can receive touches)
+            Color.clear
+                .contentShape(Rectangle())
+                .frame(width: w, height: h)
+                .onTapGesture { showFullScreenImages = true }
+            
+            // Heart Icon Overlay (bottom right) — on top so it always receives touch
             VStack {
                 Spacer()
                 HStack {
@@ -175,6 +297,8 @@ struct ItemDetailView: View {
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                         .background(Color.black.opacity(0.6))
                         .cornerRadius(8)
                     }
@@ -183,6 +307,8 @@ struct ItemDetailView: View {
                     .padding(.bottom, 15)
                 }
             }
+            .allowsHitTesting(true)
+            .zIndex(2)
             
             // Page Indicator (centered at bottom)
             VStack {
@@ -347,16 +473,19 @@ struct ItemDetailView: View {
 
                 Spacer()
 
-                NavigationLink(destination: ChatWithSellerView(seller: item.seller, authService: authService)) {
-                    Image(systemName: "message.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(Theme.primaryColor)
+                if !isCurrentUser {
+                    NavigationLink(destination: ChatWithSellerView(seller: item.seller, authService: authService)) {
+                        Image(systemName: "message.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(Theme.primaryColor)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.lg)
+        .padding(.top, Theme.Spacing.lg)
+        .padding(.bottom, Theme.Spacing.lg / 2)
         .background(Theme.Colors.background)
     }
     
@@ -365,7 +494,8 @@ struct ItemDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             descriptionBody
                 .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.lg)
+                .padding(.top, Theme.Spacing.lg / 2)
+                .padding(.bottom, Theme.Spacing.lg)
                 .overlay(ContentDivider(), alignment: .bottom)
         }
         .background(Theme.Colors.background)
@@ -666,6 +796,104 @@ struct FullScreenImageViewer: View {
                 .padding(.bottom, 40)
             }
         }
+    }
+}
+
+// MARK: - Edit listing placeholder (until full edit flow exists)
+struct EditListingPlaceholderView: View {
+    var onDone: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: Theme.Spacing.lg) {
+                Text("Coming soon")
+                    .font(Theme.Typography.title2)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                Text("Edit listing will be available in a future update.")
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.Colors.background)
+            .navigationTitle(L10n.string("Edit listing"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.string("Done"), action: onDone)
+                        .foregroundColor(Theme.primaryColor)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Product options sheet (3-dot menu; modal list design like ProfileMenuView)
+struct ProductOptionsSheet: View {
+    let item: Item
+    let isCurrentUser: Bool
+    let onDismiss: () -> Void
+    var onShare: () -> Void = {}
+    var onReport: () -> Void = {}
+    var onEdit: () -> Void = {}
+    var onDelete: () -> Void = {}
+    var onMarkAsSold: () -> Void = {}
+    var onCopyLink: () -> Void = {}
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var optionDivider: some View {
+        Rectangle()
+            .frame(height: 0.5)
+            .foregroundColor(Theme.Colors.glassBorder.opacity(0.3))
+            .padding(.horizontal, Theme.Spacing.md)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    if isCurrentUser {
+                        MenuItemRow(title: L10n.string("Edit listing"), icon: "square.and.pencil", action: { onEdit() })
+                        optionDivider
+                        MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() })
+                        optionDivider
+                        MenuItemRow(title: L10n.string("Mark as sold"), icon: "checkmark.circle", action: { onMarkAsSold() })
+                        optionDivider
+                        MenuItemRow(title: L10n.string("Delete listing"), icon: "trash", action: { onDelete() }, isDestructive: true)
+                    } else {
+                        MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() })
+                        optionDivider
+                        MenuItemRow(title: L10n.string("Report listing"), icon: "flag", action: { onReport() })
+                        optionDivider
+                        MenuItemRow(title: L10n.string("Copy link"), icon: "link", action: { onCopyLink() })
+                    }
+                }
+                .padding(.vertical, Theme.Spacing.sm)
+            }
+            .frame(maxWidth: .infinity)
+            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                    .fill(colorScheme == .dark ? Color.black.opacity(0.3) : Color.white.opacity(0.1))
+            )
+            .navigationTitle(L10n.string("Options"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Theme.Colors.background)
     }
 }
 

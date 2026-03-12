@@ -52,7 +52,7 @@ struct ProfileShimmerView: View {
                     // Divider then Categories row
                     Rectangle()
                         .fill(Theme.Colors.secondaryBackground.opacity(0.5))
-                        .frame(height: 0.3)
+                        .frame(height: 0.5)
                         .padding(.horizontal, Theme.Spacing.md)
                     HStack {
                         RoundedRectangle(cornerRadius: 4)

@@ -60,7 +60,8 @@ class ItemDetailViewModel: ObservableObject {
         }
     }
     
-    func loadMemberItems(username: String, excludeProductId: UUID) {
+    /// - Parameter includeInListIfEmpty: When non-nil (e.g. viewing own listing), if the API returns no other items, this item is shown so "Member's items" is not empty (e.g. right after posting).
+    func loadMemberItems(username: String, excludeProductId: UUID, includeInListIfEmpty: Item? = nil) {
         isLoadingMember = true
         errorMessage = nil
         
@@ -68,8 +69,13 @@ class ItemDetailViewModel: ObservableObject {
             do {
                 let products = try await userService.getUserProducts(username: username)
                 await MainActor.run {
-                    // Exclude the current product
-                    self.memberItems = products.filter { $0.id != excludeProductId }
+                    // Exclude the current product from the list
+                    var list = products.filter { $0.id != excludeProductId }
+                    // If empty and we have a fallback (e.g. own just-posted item), show it so the section isn’t empty
+                    if list.isEmpty, let fallback = includeInListIfEmpty {
+                        list = [fallback]
+                    }
+                    self.memberItems = list
                     self.isLoadingMember = false
                 }
             } catch {
@@ -121,6 +127,24 @@ class ItemDetailViewModel: ObservableObject {
                     self.errorMessage = error.localizedDescription
                 }
             }
+        }
+    }
+
+    /// Delete own listing. Call from product options. On success, post profile refresh.
+    func deleteProduct(productId: String) async throws {
+        guard let id = Int(productId) else { return }
+        try await productService.deleteProduct(productId: id)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
+        }
+    }
+
+    /// Mark own listing as sold. Call from product options. On success, post profile refresh.
+    func markAsSold(productId: String) async throws {
+        guard let id = Int(productId) else { return }
+        try await productService.updateProductStatus(productId: id, status: "SOLD")
+        await MainActor.run {
+            NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
         }
     }
 }

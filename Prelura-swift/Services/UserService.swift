@@ -942,7 +942,7 @@ class UserService: ObservableObject {
             }
             
             return Item(
-                id: UUID(uuidString: idString) ?? UUID(),
+                id: Item.id(fromProductId: idString),
                 productId: idString,
                 title: product.name ?? "",
                 description: product.description ?? "",

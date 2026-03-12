@@ -36,6 +36,15 @@ enum L10n {
         "Inbox": "Εισερχόμενα",
         "Profile": "Προφίλ",
         "Options": "Επιλογές",
+        "Edit listing": "Επεξεργασία αγγελίας",
+        "Share": "Κοινοποίηση",
+        "Mark as sold": "Σημείωση ως πωλημένο",
+        "Delete listing": "Διαγραφή αγγελίας",
+        "Report listing": "Αναφορά αγγελίας",
+        "Copy link": "Αντιγραφή συνδέσμου",
+        "Error": "Σφάλμα",
+        "Delete listing?": "Διαγραφή αγγελίας;",
+        "Mark as sold?": "Σημείωση ως πωλημένο;",
 
         // Menu – profile drawer
         "Shop Value": "Αξία Καταστήματος",

@@ -28,6 +28,10 @@ struct AIChatView: View {
     @State private var inputText: String = ""
     @FocusState private var isInputFocused: Bool
     @State private var isBotThinking: Bool = false
+    private static let conversationStarters: [String] = [
+        "navy blazer", "floral dress", "pink skirt", "black jacket", "green hoodie",
+        "white trainers", "denim jeans", "leather bag", "striped top", "wool coat"
+    ]
 
     private let aiSearch = AISearchService()
     private let productService = ProductService()
@@ -111,22 +115,31 @@ struct AIChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Messages-style input: same padding and style as ChatDetailView (taller field).
+    /// Messages-style input: same padding and style as ChatDetailView (taller field). Before first message, shows animated conversation starters in the field.
     private var inputBar: some View {
         HStack(alignment: .center, spacing: Theme.Spacing.sm) {
-            TextField(L10n.string("Type a message..."), text: $inputText, axis: .vertical)
-                .textFieldStyle(PlainTextFieldStyle())
-                .font(Theme.Typography.body)
-                .foregroundColor(Theme.Colors.primaryText)
-                .focused($isInputFocused)
-                .lineLimit(1...6)
-                .padding(Theme.Spacing.md)
-                .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(30)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 30)
-                        .stroke(isInputFocused ? Theme.primaryColor : Color.clear, lineWidth: 2)
-                )
+            ZStack(alignment: .leading) {
+                TextField(L10n.string("Type a message..."), text: $inputText, axis: .vertical)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .focused($isInputFocused)
+                    .lineLimit(1...6)
+                    .padding(Theme.Spacing.md)
+                    .background(Theme.Colors.secondaryBackground)
+                    .cornerRadius(30)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 30)
+                            .stroke(isInputFocused ? Theme.primaryColor : Color.clear, lineWidth: 2)
+                    )
+
+                if messages.isEmpty && inputText.isEmpty {
+                    ConversationStarterOverlay(
+                        starters: Self.conversationStarters,
+                        onTap: { isInputFocused = true }
+                    )
+                }
+            }
 
             Button(action: sendMessage) {
                 Image(systemName: "arrow.up.circle.fill")
@@ -140,7 +153,7 @@ struct AIChatView: View {
         .background(Theme.Colors.background)
         .overlay(
             Rectangle()
-                .frame(height: 0.3)
+                .frame(height: 0.5)
                 .foregroundColor(Theme.Colors.glassBorder),
             alignment: .top
         )
@@ -182,48 +195,76 @@ struct AIChatView: View {
         if inScope {
             let categoryFilter = (parsed.categoryOverride == nil || parsed.categoryOverride == "All") ? nil : parsed.categoryOverride
             do {
-                // When user specified colour(s), fetch more candidates then filter by colour client-side so we show all matches (backend search often returns too few).
                 let colourSet = Set(parsed.appliedColourNames.map { $0.lowercased() })
-                let searchWithoutColour = parsed.searchText
-                    .split(separator: " ")
-                    .map(String.init)
-                    .filter { !colourSet.contains($0.lowercased()) }
-                    .joined(separator: " ")
                 let useBroadSearch = !parsed.appliedColourNames.isEmpty
                 let useSizeFilter = parsed.sizeTerm != nil
                 let fetchCount: Int
                 if useBroadSearch { fetchCount = 50 }
                 else if useSizeFilter { fetchCount = 80 }
                 else { fetchCount = pageSize }
-                let searchForApi = useBroadSearch ? (searchWithoutColour.isEmpty ? nil : String(searchWithoutColour)) : (parsed.searchText.isEmpty ? nil : parsed.searchText)
 
-                var products = try await productService.getAllProducts(
-                    pageNumber: 1,
-                    pageCount: fetchCount,
-                    search: searchForApi,
-                    parentCategory: categoryFilter,
-                    maxPrice: parsed.priceMax
-                )
-                var visible = products.excludingVacationModeSellers()
-                if useBroadSearch && !parsed.appliedColourNames.isEmpty {
-                    visible = visible.filter { item in
-                        item.colors.contains { c in
-                            parsed.appliedColourNames.contains { $0.caseInsensitiveCompare(c) == .orderedSame }
+                let candidates = parsed.searchQueryCandidates.isEmpty
+                    ? (parsed.searchText.isEmpty ? [""] : [parsed.searchText])
+                    : parsed.searchQueryCandidates
+                var visible: [Item] = []
+                var usedQuery: String?
+                for (index, candidate) in candidates.enumerated() {
+                    let searchForApi: String?
+                    if useBroadSearch {
+                        let withoutColour = candidate
+                            .split(separator: " ")
+                            .map(String.init)
+                            .filter { !colourSet.contains($0.lowercased()) }
+                            .joined(separator: " ")
+                        searchForApi = withoutColour.isEmpty ? nil : withoutColour
+                    } else {
+                        searchForApi = candidate.isEmpty ? nil : candidate
+                    }
+                    let products = try await productService.getAllProducts(
+                        pageNumber: 1,
+                        pageCount: fetchCount,
+                        search: searchForApi,
+                        parentCategory: categoryFilter,
+                        maxPrice: parsed.priceMax
+                    )
+                    var filtered = products.excludingVacationModeSellers()
+                    if useBroadSearch && !parsed.appliedColourNames.isEmpty {
+                        filtered = filtered.filter { item in
+                            item.colors.contains { c in
+                                parsed.appliedColourNames.contains { $0.caseInsensitiveCompare(c) == .orderedSame }
+                            }
+                        }
+                        if filtered.isEmpty && index == 0 {
+                            let fullQueryProducts = try await productService.getAllProducts(
+                                pageNumber: 1,
+                                pageCount: pageSize,
+                                search: parsed.searchText.isEmpty ? nil : parsed.searchText,
+                                parentCategory: categoryFilter,
+                                maxPrice: parsed.priceMax
+                            )
+                            filtered = fullQueryProducts.excludingVacationModeSellers()
                         }
                     }
-                    // If no items match the colour, use backend search with full query (e.g. "black shirt") instead of showing unfiltered results
-                    if visible.isEmpty {
-                        let fullQueryProducts = try await productService.getAllProducts(
-                            pageNumber: 1,
-                            pageCount: pageSize,
-                            search: parsed.searchText.isEmpty ? nil : parsed.searchText,
-                            parentCategory: categoryFilter,
-                            maxPrice: parsed.priceMax
-                        )
-                        visible = fullQueryProducts.excludingVacationModeSellers()
+                    if let sizeTerm = parsed.sizeTerm, !filtered.isEmpty {
+                        let term = sizeTerm.lowercased()
+                        let sizeFiltered = filtered.filter { item in
+                            guard let s = item.size?.lowercased().trimmingCharacters(in: .whitespaces), !s.isEmpty else { return false }
+                            if s == term { return true }
+                            let normalized = s.replacingOccurrences(of: " ", with: "")
+                            if normalized == term { return true }
+                            let parts = s.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+                            if parts.contains(term) { return true }
+                            return s.contains(term) && (s.hasPrefix(term + " ") || s.hasSuffix(" " + term) || s.contains(" " + term + " "))
+                        }
+                        if !sizeFiltered.isEmpty { filtered = sizeFiltered }
+                    }
+                    if !filtered.isEmpty {
+                        visible = filtered
+                        usedQuery = candidate
+                        break
                     }
                 }
-                // When user specified a size (e.g. "size 10 dress"), filter client-side; API search doesn't use size so we get "dress" results then filter.
+
                 var usedSizeFallbackReply = false
                 if let sizeTerm = parsed.sizeTerm, !visible.isEmpty {
                     let term = sizeTerm.lowercased()
@@ -240,41 +281,18 @@ struct AIChatView: View {
                         visible = filtered
                     } else {
                         usedSizeFallbackReply = true
-                        // visible stays as-is (show all results with fallback message)
                     }
                 }
 
                 var replyText: String
-
                 if usedSizeFallbackReply, let sizeTerm = parsed.sizeTerm {
                     replyText = aiSearch.replyForSizeFallback(sizeTerm: sizeTerm)
-                } else if visible.isEmpty, !parsed.searchText.isEmpty, parsed.searchText.contains(" ") {
-                    let colourSet = Set(parsed.appliedColourNames.map { $0.lowercased() })
-                    let words = parsed.searchText.split(separator: " ").map(String.init)
-                    let fallbackTerm = words.first(where: { aiSearch.isFallbackTermValid($0) })
-                        ?? words.last(where: { !colourSet.contains($0.lowercased()) })
-                        ?? words.last
-                        ?? parsed.searchText
-                    if aiSearch.isFallbackTermValid(fallbackTerm) {
-                        let fallbackProducts = try await productService.getAllProducts(
-                            pageNumber: 1,
-                            pageCount: pageSize,
-                            search: fallbackTerm,
-                            parentCategory: categoryFilter,
-                            maxPrice: parsed.priceMax
-                        )
-                        let fallbackVisible = fallbackProducts.excludingVacationModeSellers()
-                        if !fallbackVisible.isEmpty {
-                            visible = fallbackVisible
-                            replyText = aiSearch.replyForFallbackResults(fallbackTerm: fallbackTerm)
-                        } else {
-                            replyText = aiSearch.replyForNoResults()
-                        }
-                    } else {
-                        replyText = aiSearch.replyForNoResults()
-                    }
+                } else if let used = usedQuery, used != parsed.searchText, !visible.isEmpty {
+                    replyText = aiSearch.replyForFallbackResults(fallbackTerm: used)
+                } else if visible.isEmpty {
+                    replyText = aiSearch.replyForNoResults()
                 } else {
-                    replyText = aiSearch.replyForResults(parsed: parsed, hasItems: !visible.isEmpty, query: raw)
+                    replyText = aiSearch.replyForResults(parsed: parsed, hasItems: true, query: raw)
                 }
 
                 await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
@@ -448,21 +466,71 @@ struct AIResultsView: View {
     }
 }
 
-// MARK: - Typing indicator
+// MARK: - Conversation starter overlay (animated cycling suggestions before first message)
 
-private struct TypingIndicatorView: View {
+private struct ConversationStarterOverlay: View {
+    let starters: [String]
+    var onTap: () -> Void
+
+    @State private var currentIndex: Int = 0
+    @State private var opacity: Double = 1
+    private let cycleInterval: Double = 2.8
+    private let fadeDuration: Double = 0.35
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(spacing: 4) {
-                ForEach(0..<3, id: \.self) { i in
-                    Circle()
-                        .fill(Theme.Colors.secondaryText)
-                        .frame(width: 6, height: 6)
+        let starter = starters.isEmpty ? "Type a message..." : "e.g. \(starters[currentIndex % starters.count])"
+        Text(starter)
+            .font(Theme.Typography.body)
+            .foregroundColor(Theme.Colors.secondaryText.opacity(0.9))
+            .padding(Theme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onTap)
+            .opacity(opacity)
+            .task {
+                guard !starters.isEmpty else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: UInt64(cycleInterval * 1_000_000_000))
+                    if Task.isCancelled { break }
+                    await MainActor.run {
+                        withAnimation(.easeInOut(duration: fadeDuration)) { opacity = 0 }
+                    }
+                    try? await Task.sleep(nanoseconds: UInt64(fadeDuration * 1_000_000_000))
+                    if Task.isCancelled { break }
+                    await MainActor.run {
+                        currentIndex = (currentIndex + 1) % starters.count
+                        withAnimation(.easeInOut(duration: fadeDuration)) { opacity = 1 }
+                    }
                 }
             }
-            Text(L10n.string("Thinking..."))
-                .font(Theme.Typography.caption)
-                .foregroundColor(Theme.Colors.secondaryText)
+    }
+}
+
+// MARK: - Typing indicator (animated bouncing dots)
+
+private struct TypingIndicatorView: View {
+    private let dotCount = 3
+    private let dotSize: CGFloat = 8
+    private let period: Double = 1.2
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.05, paused: false)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                HStack(spacing: 6) {
+                    ForEach(0..<dotCount, id: \.self) { i in
+                        let phase = (t / period + Double(i) * 0.22).truncatingRemainder(dividingBy: 1)
+                        let scale = 0.65 + 0.5 * sin(phase * .pi * 2)
+                        Circle()
+                            .fill(Theme.primaryColor.opacity(0.9))
+                            .frame(width: dotSize, height: dotSize)
+                            .scaleEffect(scale)
+                    }
+                }
+                Text(L10n.string("Thinking..."))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.sm)

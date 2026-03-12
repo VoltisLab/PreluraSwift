@@ -50,8 +50,7 @@ struct FollowersListView: View {
                         .padding(.vertical, Theme.Spacing.xs)
                         .contentShape(Rectangle())
                         .overlay(
-                            ContentDivider()
-                                .padding(.horizontal, -Theme.Spacing.md),
+                            ContentDivider(),
                             alignment: .bottom
                         )
                     }

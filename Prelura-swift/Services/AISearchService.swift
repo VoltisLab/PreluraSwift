@@ -13,6 +13,8 @@ enum DetectedEvent {
 struct ParsedSearch {
     /// Search string to send to the API (includes colour/category/synonym terms for backend to match). Does not include size — size is applied client-side.
     var searchText: String
+    /// Ordered list of search queries to try in order: multi-term first (e.g. "floral tshirt"), then single terms (e.g. "floral", "tshirt"). Enables hierarchy: try narrow query first, then broader.
+    var searchQueryCandidates: [String]
     /// Resolved parent category if detected from query (e.g. "Women", "Men").
     var categoryOverride: String?
     /// Colour names we inferred (from app colours or aliases); for hint only if we mapped aliases.
@@ -192,7 +194,50 @@ final class AISearchService {
         "flannel", "bomber"
     ]
 
-    /// Conversational prefixes/suffixes to strip (training doc §100: queries 11–20, 91–100).
+    /// Conversational "want" prefixes/suffixes to strip so "I need a floral tshirt" → "floral tshirt". ~100 variants (training doc §100; user: "I need a", "I want a", "I'm looking for", etc.). Stripped in order of length (longest first) so "i am looking for a" is removed before "looking for".
+    private static let wantPhrasesLongestFirst: [String] = {
+        let raw: [String] = [
+            "i am looking for a", "i'm looking for a", "im looking for a", "i am looking for", "i'm looking for", "im looking for", "looking for a", "looking for",
+            "i would like to find a", "i'd like to find a", "id like to find a", "i would like to find", "i'd like to find", "id like to find", "like to find a", "like to find",
+            "i am searching for a", "i'm searching for a", "im searching for a", "i am searching for", "i'm searching for", "im searching for", "searching for a", "searching for",
+            "i am in the market for a", "i'm in the market for a", "im in the market for a", "in the market for a", "in the market for",
+            "i need to find a", "i need to find", "need to find a", "need to find",
+            "i want to find a", "i want to find", "want to find a", "want to find",
+            "i am trying to find a", "i'm trying to find a", "im trying to find a", "trying to find a", "trying to find",
+            "can you find me a", "can you find me", "could you find me a", "could you find me",
+            "can you show me a", "can you show me", "could you show me a", "could you show me",
+            "do you have a", "do you have any", "do u have a", "do u have any", "you have a", "you have any",
+            "have you got a", "have you got any", "got any", "got a",
+            "can i get a", "can i get", "could i get a", "could i get",
+            "i need a", "i need", "need a", "need",
+            "i want a", "i want", "want a", "want",
+            "show me a", "show me some", "show me",
+            "find me a", "find me",
+            "get me a", "get me",
+            "i'm after a", "im after a", "i am after a", "after a", "after",
+            "i'm on the hunt for a", "im on the hunt for a", "on the hunt for a", "on the hunt for",
+            "i'm after", "i am after",
+            "i am after a", "i am after",
+            "looking to buy a", "looking to buy", "looking to get a", "looking to get",
+            "i'd love a", "id love a", "i would love a", "i'd love", "id love", "love a", "love",
+            "i'm hoping to find a", "im hoping to find a", "hoping to find a", "hoping to find",
+            "i'm trying to find a", "im trying to find a",
+            "i am hoping for a", "i'm hoping for a", "im hoping for a", "hoping for a", "hoping for",
+            "on the lookout for a", "on the lookout for", "lookout for a", "lookout for",
+            "in need of a", "in need of",
+            "searching for a", "searching for",
+            "in search of a", "in search of", "search of a", "search of",
+            "after something like a", "after something like", "something like a", "something like",
+            "something along the lines of a", "something along the lines of",
+            "after a", "after",
+            "want something like a", "want something like",
+            "need something like a", "need something like",
+            "asap", "pls", "please", "thanks", "thank you"
+        ]
+        return raw.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty }.sorted { $0.count > $1.count }
+    }()
+
+    /// Legacy list kept for any suffix stripping; prefer wantPhrasesLongestFirst for prefix.
     private static let conversationalStrippers: [String] = [
         "do you have", "do you have a", "do you have any", "do u have", "do u have a",
         "im looking for", "i'm looking for", "i am looking for", "looking for", "looking for a",
@@ -242,13 +287,45 @@ final class AISearchService {
     
     // MARK: - Parse query
 
-    /// Strip conversational phrasing so "do you have a green dress" still yields category: dress, colour: green (training doc).
+    /// Strip conversational "want" phrasing so "I need a floral tshirt" → "floral tshirt". First strips leading salutations (hi, hello, hey...) so "Hi I need a floral shirt" works; then uses ~100 want phrases (longest first); then strips suffix phrases.
     private func normalizeConversational(_ query: String) -> String {
         var q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        for phrase in Self.conversationalStrippers {
+        if q.isEmpty { return q }
+        // Strip leading salutations/greetings so "Hi I need a floral shirt" → "i need a floral shirt" (then want phrase strips to "floral shirt").
+        let leadingSalutations: [String] = [
+            "hi there", "hey there", "hello there", "hi again", "hey again", "hello again",
+            "good morning", "good afternoon", "good evening", "good day",
+            "hey friend", "hi friend", "hello friend", "hey mate", "hi mate", "hello mate",
+            "hey buddy", "hi buddy", "hello buddy", "hey pal", "hi pal", "hello pal",
+            "hey everyone", "hi everyone", "hello everyone", "hey guys", "hi guys", "hello guys",
+            "hey team", "hi team", "hello team",
+            "hi lenny", "hey lenny", "hello lenny", "hey lenny,",
+            "hi", "hey", "hello", "heyy", "hiii", "hey hey", "hello hello", "hiya", "heya",
+            "yo", "yoo", "sup", "greetings", "howdy", "hiya"
+        ]
+        let salutationsLongestFirst = leadingSalutations.sorted { $0.count > $1.count }
+        var didStripSalutation = true
+        while didStripSalutation {
+            didStripSalutation = false
+            for prefix in salutationsLongestFirst {
+                if q.hasPrefix(prefix + " ") {
+                    q = String(q.dropFirst(prefix.count + 1)).trimmingCharacters(in: .whitespaces)
+                    didStripSalutation = true
+                    break
+                }
+                if q == prefix {
+                    q = ""
+                    return q
+                }
+            }
+        }
+        for phrase in Self.wantPhrasesLongestFirst {
             if q.hasPrefix(phrase) {
                 q = String(q.dropFirst(phrase.count)).trimmingCharacters(in: .whitespaces)
+                break
             }
+        }
+        for phrase in Self.conversationalStrippers {
             if q.hasSuffix(phrase) {
                 q = String(q.dropLast(phrase.count)).trimmingCharacters(in: .whitespaces)
             }
@@ -334,7 +411,7 @@ final class AISearchService {
     func parse(query: String) -> ParsedSearch {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            return ParsedSearch(searchText: "", categoryOverride: nil, appliedColourNames: [], closestMatchHint: nil, spellingCorrectionHint: nil, priceMax: nil, detectedEvent: .none, sizeTerm: nil)
+            return ParsedSearch(searchText: "", searchQueryCandidates: [], categoryOverride: nil, appliedColourNames: [], closestMatchHint: nil, spellingCorrectionHint: nil, priceMax: nil, detectedEvent: .none, sizeTerm: nil)
         }
 
         let normalized = normalizeConversational(trimmed)
@@ -426,6 +503,11 @@ final class AISearchService {
             searchParts = searchParts.filter { $0.lowercased() != "size" && $0.lowercased() != sizeTerm }
         }
         let searchText = searchParts.joined(separator: " ")
+        let candidates: [String] = {
+            let terms = searchText.split(separator: " ").map(String.init).filter { !$0.isEmpty }
+            if terms.count <= 1 { return searchText.isEmpty ? [] : [searchText] }
+            return [searchText] + terms
+        }()
 
         let hint: String?
         if let (req, mapped) = usedAlias, !appliedColours.isEmpty {
@@ -436,6 +518,7 @@ final class AISearchService {
 
         return ParsedSearch(
             searchText: searchText,
+            searchQueryCandidates: candidates,
             categoryOverride: appliedCategory,
             appliedColourNames: appliedColours,
             closestMatchHint: hint,

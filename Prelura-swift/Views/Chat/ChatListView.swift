@@ -237,6 +237,7 @@ struct ChatRowView: View {
                     .clipShape(Capsule())
             }
         }
+        .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.xs)
     }
     

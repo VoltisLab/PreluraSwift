@@ -48,8 +48,9 @@ struct ProfileMenuView: View {
     }
     
     private var menuDivider: some View {
-        Divider()
-            .background(Theme.Colors.glassBorder.opacity(0.3))
+        Rectangle()
+            .frame(height: 0.5)
+            .foregroundColor(Theme.Colors.glassBorder.opacity(0.3))
             .padding(.horizontal, Theme.Spacing.md)
     }
 }

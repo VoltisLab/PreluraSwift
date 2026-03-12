@@ -38,24 +38,39 @@ final class CategoriesService {
         return body.categories ?? []
     }
 
-    /// Recursively fetch all categories and return leaf categories with full path (for search).
+    /// Recursively fetch all categories and return leaf categories with full path (for search). Fetches root children in parallel for speed.
     func fetchAllCategoriesFlattened() async throws -> [CategoryPathEntry] {
-        var result: [CategoryPathEntry] = []
         let root = try await fetchCategories(parentId: nil)
-        for cat in root {
-            try await collectLeaves(category: cat, pathNames: [cat.name], pathIds: [cat.id], into: &result)
+        return await withTaskGroup(of: [CategoryPathEntry].self, returning: [CategoryPathEntry].self) { group in
+            for cat in root {
+                group.addTask {
+                    (try? await self.collectLeaves(category: cat, pathNames: [cat.name], pathIds: [cat.id])) ?? []
+                }
+            }
+            var result: [CategoryPathEntry] = []
+            for await chunk in group {
+                result.append(contentsOf: chunk)
+            }
+            return result
         }
-        return result
     }
 
-    private func collectLeaves(category: APICategory, pathNames: [String], pathIds: [String], into result: inout [CategoryPathEntry]) async throws {
+    private func collectLeaves(category: APICategory, pathNames: [String], pathIds: [String]) async throws -> [CategoryPathEntry] {
         if category.hasChildren != true {
-            result.append(CategoryPathEntry(id: category.id, name: category.name, pathNames: pathNames, pathIds: pathIds))
-            return
+            return [CategoryPathEntry(id: category.id, name: category.name, pathNames: pathNames, pathIds: pathIds)]
         }
         let children = try await fetchCategories(parentId: Int(category.id))
-        for child in children {
-            try await collectLeaves(category: child, pathNames: pathNames + [child.name], pathIds: pathIds + [child.id], into: &result)
+        return await withTaskGroup(of: [CategoryPathEntry].self, returning: [CategoryPathEntry].self) { group in
+            for child in children {
+                group.addTask {
+                    (try? await self.collectLeaves(category: child, pathNames: pathNames + [child.name], pathIds: pathIds + [child.id])) ?? []
+                }
+            }
+            var result: [CategoryPathEntry] = []
+            for await chunk in group {
+                result.append(contentsOf: chunk)
+            }
+            return result
         }
     }
 }

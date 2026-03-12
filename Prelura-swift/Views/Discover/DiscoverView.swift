@@ -110,13 +110,9 @@ struct DiscoverView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.top, 24)
                     .padding(.bottom, Theme.Spacing.sm)
-                Rectangle()
-                    .frame(height: 0.3)
-                    .foregroundColor(Theme.Colors.glassBorder)
+                ContentDivider()
                 categoryCirclesSection
-                Rectangle()
-                    .frame(height: 0.3)
-                    .foregroundColor(Theme.Colors.glassBorder)
+                ContentDivider()
                     .padding(.top, Theme.Spacing.sm - 5)
                     .padding(.bottom, 30)
                 recentlyViewedSection
@@ -124,19 +120,13 @@ struct DiscoverView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.lg)
                 brandsYouLoveSection
-                Rectangle()
-                    .frame(height: 0.3)
-                    .foregroundColor(Theme.Colors.glassBorder)
+                ContentDivider()
                     .padding(.vertical, Theme.Spacing.lg)
                 topShopsSection
-                Rectangle()
-                    .frame(height: 0.3)
-                    .foregroundColor(Theme.Colors.glassBorder)
+                ContentDivider()
                     .padding(.vertical, Theme.Spacing.lg)
                 shopBargainsSection
-                Rectangle()
-                    .frame(height: 0.3)
-                    .foregroundColor(Theme.Colors.glassBorder)
+                ContentDivider()
                     .padding(.vertical, Theme.Spacing.lg)
                 onSaleSection
             }

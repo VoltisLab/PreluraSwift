@@ -8,12 +8,38 @@ struct SellCategory: Equatable {
     let pathNames: [String]
     /// Full path of IDs for each level.
     let pathIds: [String]
+    /// Server-provided full path (e.g. "Men > Clothing > T-Shirts"). Used for sizes(path) to match Flutter; falls back to pathNames if nil.
+    let fullPath: String?
 
-    init(id: String, name: String, pathNames: [String]? = nil, pathIds: [String]? = nil) {
+    init(id: String, name: String, pathNames: [String]? = nil, pathIds: [String]? = nil, fullPath: String? = nil) {
         self.id = id
         self.name = name
         self.pathNames = pathNames ?? [name]
         self.pathIds = pathIds ?? [id]
+        self.fullPath = fullPath
+    }
+
+    /// Path for sizes(path) API: use server fullPath when available (matches Flutter), else first two path segments. Normalizes Boys/Girls → Kids like backend.
+    var sizeApiPath: String {
+        let raw: String
+        if let fp = fullPath, !fp.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let parts = fp.split(separator: ">").map { $0.trimmingCharacters(in: .whitespaces) }
+            if parts.count >= 2 {
+                raw = "\(parts[0]) > \(parts[1])"
+            } else {
+                raw = pathNames.prefix(2).joined(separator: " > ")
+            }
+        } else {
+            raw = pathNames.prefix(2).joined(separator: " > ")
+        }
+        let lower = raw.lowercased()
+        if lower.hasPrefix("boys") {
+            return "Kids" + raw.dropFirst(4)
+        }
+        if lower.hasPrefix("girls") {
+            return "Kids" + raw.dropFirst(5)
+        }
+        return raw
     }
 
     /// Display string for the sell form (e.g. "Men > Accessories > Gloves").

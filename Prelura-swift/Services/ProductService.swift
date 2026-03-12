@@ -163,7 +163,7 @@ class ProductService: ObservableObject {
             }
             
             return Item(
-                id: UUID(uuidString: idString) ?? UUID(),
+                id: Item.id(fromProductId: idString),
                 productId: idString,
                 title: product.name ?? "",
                 description: product.description ?? "",
@@ -377,7 +377,14 @@ class ProductService: ObservableObject {
         ]
         if let c = condition, !c.isEmpty { variables["condition"] = c }
         if let ps = parcelSize, !ps.isEmpty { variables["parcelSize"] = ps }
-        if let d = discount, d > 0 { variables["discount"] = d }
+        // Backend expects discount as percentage (0–100). UI sends discounted (sale) price in pounds; convert to %.
+        let discountPercent: Double
+        if let salePrice = discount, salePrice > 0, salePrice < price {
+            discountPercent = ((price - salePrice) / price) * 100
+        } else {
+            discountPercent = 0
+        }
+        variables["discount"] = max(0, min(100, discountPercent))
         if let col = color, !col.isEmpty { variables["color"] = col }
         if let bid = brandId { variables["brand"] = bid }
         if let cb = customBrand, !cb.isEmpty { variables["customBrand"] = cb }
@@ -420,6 +427,85 @@ class ProductService: ObservableObject {
             throw NSError(domain: "ProductService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No product id returned"])
         }
         return idVal
+    }
+
+    /// Delete a product (own listing). Matches Flutter/backend deleteProduct if available.
+    func deleteProduct(productId: Int) async throws {
+        let mutation = """
+        mutation DeleteProduct($productId: Int!) {
+          deleteProduct(productId: $productId) {
+            success
+            message
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let deleteProduct: DeleteProductPayload?
+        }
+        struct DeleteProductPayload: Decodable {
+            let success: Bool?
+            let message: String?
+        }
+        let response: Payload = try await client.execute(query: mutation, variables: ["productId": productId], responseType: Payload.self)
+        guard response.deleteProduct?.success == true else {
+            let msg = response.deleteProduct?.message ?? "Failed to delete listing"
+            throw NSError(domain: "ProductService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+    }
+
+    /// Mark product as sold. Matches Flutter/backend updateProduct status if available.
+    func updateProductStatus(productId: Int, status: String) async throws {
+        let mutation = """
+        mutation UpdateProductStatus($productId: Int!, $status: ProductStatusEnum!) {
+          updateProductStatus(productId: $productId, status: $status) {
+            success
+            message
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let updateProductStatus: UpdateStatusPayload?
+        }
+        struct UpdateStatusPayload: Decodable {
+            let success: Bool?
+            let message: String?
+        }
+        let response: Payload = try await client.execute(query: mutation, variables: ["productId": productId, "status": status], responseType: Payload.self)
+        guard response.updateProductStatus?.success == true else {
+            let msg = response.updateProductStatus?.message ?? "Failed to update listing"
+            throw NSError(domain: "ProductService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+    }
+
+    /// Fetch sizes for a category path (e.g. "Women > Clothing"). Backend uses first two path segments. Matches Flutter fetchSizes(fullPath).
+    func fetchSizes(path: String) async throws -> [APISize] {
+        let query = """
+        query Sizes($path: String!) {
+          sizes(path: $path) {
+            id
+            name
+          }
+        }
+        """
+        struct SizesResponseInner: Decodable {
+            let sizes: [APISizeRaw]?
+        }
+        struct APISizeRaw: Decodable {
+            let id: AnyCodable?
+            let name: String?
+        }
+        let response: SizesResponseInner = try await client.execute(
+            query: query,
+            variables: ["path": path],
+            operationName: "Sizes",
+            responseType: SizesResponseInner.self
+        )
+        let rawList = response.sizes ?? []
+        return rawList.compactMap { r -> APISize? in
+            guard let name = r.name else { return nil }
+            let id: Int? = (r.id?.value as? Int) ?? (r.id?.value as? String).flatMap { Int($0) }
+            return APISize(id: id, name: name)
+        }
     }
 
     func getLikedProducts(pageNumber: Int = 1, pageCount: Int = 50) async throws -> (items: [Item], totalNumber: Int) {
@@ -531,6 +617,12 @@ struct ProductData: Decodable {
 struct SizeData: Decodable {
     let id: AnyCodable?
     let name: String?
+}
+
+/// Size option from sizes(path) query for sell form.
+struct APISize {
+    let id: Int?
+    let name: String
 }
 
 struct BrandData: Decodable {
@@ -705,7 +797,7 @@ extension ProductService {
             let sizeName = product.size?.name ?? "One Size"
             
             return Item(
-                id: UUID(uuidString: idString) ?? UUID(),
+                id: Item.id(fromProductId: idString),
                 title: product.name ?? "",
                 description: product.description ?? "",
                 price: finalPrice,
@@ -928,7 +1020,7 @@ extension ProductService {
         let sizeName = product.size?.name ?? "One Size"
         
         return Item(
-            id: UUID(uuidString: idString) ?? UUID(),
+            id: Item.id(fromProductId: idString),
             productId: idString,
             title: product.name ?? "",
             description: product.description ?? "",

@@ -17,6 +17,7 @@ struct UserProfileView: View {
     @State private var showSortSheet: Bool = false
     @State private var showFilterSheet: Bool = false
     @State private var topBrandsScrollId: String? = nil
+    @State private var showProfilePhotoFullScreen: Bool = false
     init(seller: User, authService: AuthService?) {
         self.seller = seller
         _viewModel = StateObject(wrappedValue: UserProfileViewModel(seller: seller, authService: authService))
@@ -76,6 +77,15 @@ struct UserProfileView: View {
         .onAppear {
             viewModel.load()
         }
+        .fullScreenCover(isPresented: $showProfilePhotoFullScreen) {
+            if let urlString = viewModel.user.avatarURL, !urlString.isEmpty {
+                FullScreenImageViewer(
+                    imageURLs: [urlString],
+                    selectedIndex: .constant(0),
+                    onDismiss: { showProfilePhotoFullScreen = false }
+                )
+            }
+        }
     }
 
     private static let profilePhotoSize: CGFloat = 88
@@ -85,26 +95,29 @@ struct UserProfileView: View {
             HStack(alignment: .center, spacing: 0) {
                 Group {
                     if let urlString = viewModel.user.avatarURL, !urlString.isEmpty, let url = URL(string: urlString) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .empty:
-                                Circle()
-                                    .fill(Theme.Colors.secondaryBackground)
-                                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                                    .shimmering()
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                                    .clipShape(Circle())
-                            case .failure:
-                                profilePhotoPlaceholder
-                            @unknown default:
-                                profilePhotoPlaceholder
+                        Button(action: { showProfilePhotoFullScreen = true }) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .empty:
+                                    Circle()
+                                        .fill(Theme.Colors.secondaryBackground)
+                                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                                        .shimmering()
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                                        .clipShape(Circle())
+                                case .failure:
+                                    profilePhotoPlaceholder
+                                @unknown default:
+                                    profilePhotoPlaceholder
+                                }
                             }
+                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
                         }
-                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                        .buttonStyle(.plain)
                     } else {
                         profilePhotoPlaceholder
                     }
@@ -311,6 +324,7 @@ struct UserProfileView: View {
                 .padding(.vertical, Theme.Spacing.sm)
             }
 
+            // Filter and Sort (Liquid Glass pills — match ProfileView / FilteredProductsView)
             HStack {
                 Button(action: { showFilterSheet = true }) {
                     HStack(spacing: Theme.Spacing.xs) {
@@ -323,8 +337,8 @@ struct UserProfileView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                 }
+                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                 .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
-                .fixedSize(horizontal: true, vertical: false)
                 Spacer()
                 Button(action: { showSortSheet = true }) {
                     HStack(spacing: Theme.Spacing.xs) {
@@ -337,8 +351,8 @@ struct UserProfileView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                 }
+                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                 .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
-                .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)

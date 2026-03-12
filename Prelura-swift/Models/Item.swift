@@ -69,6 +69,14 @@ struct Item: Identifiable, Hashable {
     static func == (lhs: Item, rhs: Item) -> Bool {
         lhs.id == rhs.id
     }
+
+    /// Deterministic UUID from backend product id so the same product always has the same id (avoids wrong product opening in grids/navigation).
+    static func id(fromProductId productId: String) -> UUID {
+        guard let intVal = Int(productId), intVal >= 0 else { return UUID() }
+        let hex = String(format: "%012llx", UInt64(intVal))
+        let uuidString = "00000000-0000-0000-0000-\(hex)"
+        return UUID(uuidString: uuidString) ?? UUID()
+    }
     
     /// Returns a copy with updated like state (for optimistic/local updates after toggle like).
     func with(likeCount: Int? = nil, isLiked: Bool? = nil) -> Item {

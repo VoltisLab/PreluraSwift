@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import Shimmer
 
 struct SellView: View {
     @Binding var selectedTab: Int
@@ -14,6 +15,8 @@ struct SellView: View {
     @State private var brand: String? = nil
     @State private var condition: String? = nil
     @State private var colours: [String] = []
+    @State private var sizeId: Int? = nil
+    @State private var sizeName: String? = nil
     @State private var measurements: String? = nil
     @State private var material: String? = nil
     @State private var styles: [String] = []
@@ -87,6 +90,7 @@ struct SellView: View {
                             discountPrice: discountPrice,
                             parcelSize: parcelSize,
                             colours: colours,
+                            sizeId: sizeId,
                             measurements: measurements,
                             material: material,
                             styles: styles
@@ -99,7 +103,8 @@ struct SellView: View {
         .onChange(of: viewModel.submissionSuccess) { _, success in
             if success {
                 HapticManager.success()
-                selectedTab = 0
+                selectedTab = 4 // Profile tab
+                NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
             }
         }
         .alert(L10n.string("Upload failed"), isPresented: Binding(
@@ -383,6 +388,16 @@ extension SellView {
             }
             .buttonStyle(.plain)
             .overlay(ContentDivider(), alignment: .bottom)
+
+            NavigationLink(destination: SizeSelectionView(
+                selectedSizeId: $sizeId,
+                selectedSizeName: $sizeName,
+                categoryPath: category?.sizeApiPath ?? ""
+            )) {
+                SellFormRow(title: L10n.string("Size"), value: sizeName)
+            }
+            .buttonStyle(.plain)
+            .overlay(ContentDivider(), alignment: .bottom)
         }
         .background(Theme.Colors.background)
     }
@@ -543,43 +558,41 @@ struct CategorySelectionView: View {
 
     @ViewBuilder
     private var searchResultsContent: some View {
-        if isLoadingSearch {
+        let results = filteredSearchResults
+        if isLoadingSearch && allCategories.isEmpty {
             ProgressView()
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, Theme.Spacing.xl)
                 .tint(Theme.primaryColor)
+        } else if results.isEmpty {
+            Text(L10n.string("No categories found"))
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Spacing.xl)
         } else {
-            let results = filteredSearchResults
-            if results.isEmpty {
-                Text(L10n.string("No categories found"))
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.xl)
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(results, id: \.id) { entry in
-                            Button(action: {
-                                selectedCategory = SellCategory(
-                                    id: entry.id,
-                                    name: entry.name,
-                                    pathNames: entry.pathNames,
-                                    pathIds: entry.pathIds
-                                )
-                                onDismiss()
-                            }) {
-                                Text(entry.displayPath)
-                                    .font(Theme.Typography.body)
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, Theme.Spacing.md)
-                                    .padding(.vertical, Theme.Spacing.md)
-                            }
-                            .buttonStyle(.plain)
-                            if entry.id != results.last?.id {
-                                ContentDivider()
-                            }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(results, id: \.displayPath) { entry in
+                        Button(action: {
+                            selectedCategory = SellCategory(
+                                id: entry.id,
+                                name: entry.name,
+                                pathNames: entry.pathNames,
+                                pathIds: entry.pathIds
+                            )
+                            onDismiss()
+                        }) {
+                            Text(entry.displayPath)
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.primaryText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.vertical, Theme.Spacing.md)
+                        }
+                        .buttonStyle(.plain)
+                        if entry.displayPath != results.last?.displayPath {
+                            ContentDivider()
                         }
                     }
                 }
@@ -605,7 +618,7 @@ struct CategorySelectionView: View {
             } else {
                 List {
                     ForEach(sortedCategories, id: \.id) { cat in
-                        let isInSelectedPath = selectedCategory.map { $0.pathIds.first == cat.id || $0.pathNames.first == cat.name } ?? false
+                        let isInSelectedPath = selectedCategory.map { $0.pathNames.first == cat.name } ?? false
                         if cat.hasChildren == true {
                             NavigationLink(destination: SubCategoryView(
                                 parentId: cat.id,
@@ -620,7 +633,7 @@ struct CategorySelectionView: View {
                             .buttonStyle(.plain)
                         } else {
                             Button(action: {
-                                selectedCategory = SellCategory(id: cat.id, name: cat.name, pathNames: [cat.name], pathIds: [cat.id])
+                                selectedCategory = SellCategory(id: cat.id, name: cat.name, pathNames: [cat.name], pathIds: [cat.id], fullPath: cat.fullPath)
                                 onDismiss()
                             }) {
                                 categoryRow(cat.name, isSelected: selectedCategory?.id == cat.id)
@@ -727,7 +740,8 @@ struct SubCategoryView: View {
                                     id: cat.id,
                                     name: cat.name,
                                     pathNames: pathNames + [cat.name],
-                                    pathIds: pathIds + [cat.id]
+                                    pathIds: pathIds + [cat.id],
+                                    fullPath: cat.fullPath
                                 )
                                 onDismiss()
                             }) {
@@ -940,6 +954,126 @@ struct ColoursSelectionView: View {
         case "teal": return .teal
         default: return .gray
         }
+    }
+}
+
+// MARK: - Size Selection View (sizes from backend by category path; under Colours in Item Information)
+struct SizeSelectionView: View {
+    @Binding var selectedSizeId: Int?
+    @Binding var selectedSizeName: String?
+    let categoryPath: String
+    @Environment(\.presentationMode) private var presentationMode
+    @EnvironmentObject private var authService: AuthService
+    @State private var sizes: [APISize] = []
+    @State private var isLoading = true
+    @State private var loadError: String?
+    private let productService = ProductService()
+
+    var body: some View {
+        Group {
+            if categoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                VStack(spacing: Theme.Spacing.md) {
+                    Text(L10n.string("Select a category first to see sizes"))
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .tint(Theme.primaryColor)
+            } else if let error = loadError {
+                VStack(spacing: Theme.Spacing.md) {
+                    Text(error)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(sizes, id: \.name) { size in
+                        Button(action: {
+                            selectedSizeId = size.id
+                            selectedSizeName = size.name
+                            presentationMode.wrappedValue.dismiss()
+                        }) {
+                            HStack {
+                                Text(size.name.replacingOccurrences(of: "_", with: " "))
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                Spacer()
+                                if selectedSizeId == size.id || selectedSizeName == size.name {
+                                    Image(systemName: "checkmark.circle")
+                                        .font(.system(size: 22, weight: .medium))
+                                        .foregroundColor(Theme.primaryColor)
+                                }
+                            }
+                            .padding(.vertical, Theme.Spacing.xs)
+                        }
+                        .listRowBackground(Theme.Colors.background)
+                    }
+                }
+                .listStyle(PlainListStyle())
+                .scrollContentBackground(.hidden)
+            }
+        }
+        .background(Theme.Colors.background)
+        .navigationTitle(L10n.string("Size"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .task {
+            guard !categoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                isLoading = false
+                return
+            }
+            productService.updateAuthToken(authService.authToken)
+            isLoading = true
+            loadError = nil
+            do {
+                var list = try await productService.fetchSizes(path: categoryPath)
+                list = SizeSelectionView.sortedSizesForDisplay(list)
+                sizes = list
+            } catch {
+                loadError = L10n.userFacingError(error)
+                sizes = []
+            }
+            isLoading = false
+        }
+    }
+
+    /// Order sizes to match backend fixture (add_sizes.py): ONE SIZE last, UK sizes numerically, letter sizes (XS,S,M,L,XL...), numeric-only by value.
+    private static func sortedSizesForDisplay(_ list: [APISize]) -> [APISize] {
+        return list.sorted { a, b in
+            let na = a.name.uppercased()
+            let nb = b.name.uppercased()
+            if na == "ONE SIZE" { return false }
+            if nb == "ONE SIZE" { return true }
+            // UK sizes (e.g. UK 4, UK 6, UK 6.5)
+            let ukA = parseUKSize(na)
+            let ukB = parseUKSize(nb)
+            if ukA != nil || ukB != nil {
+                guard let va = ukA ?? ukB, let vb = ukB ?? ukA else { return na < nb }
+                return va < vb
+            }
+            // Letter sizes: XXS, XS, S, M, L, XL, 2XL, ...
+            let letterOrder = ["XXS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL"]
+            let ia = letterOrder.firstIndex(of: na) ?? letterOrder.count
+            let ib = letterOrder.firstIndex(of: nb) ?? letterOrder.count
+            if ia != ib { return ia < ib }
+            // Numeric-only (e.g. kids shoes 15-40)
+            if let va = Double(na), let vb = Double(nb) { return va < vb }
+            return na < nb
+        }
+    }
+
+    private static func parseUKSize(_ name: String) -> Double? {
+        let pre = "UK "
+        guard name.hasPrefix(pre) else { return nil }
+        return Double(name.dropFirst(pre.count).trimmingCharacters(in: .whitespaces))
     }
 }
 
@@ -1354,13 +1488,7 @@ struct PriceInputView: View {
                             .padding(.horizontal, Theme.Spacing.md)
 
                         if similarLoading {
-                            HStack {
-                                Spacer()
-                                ProgressView()
-                                    .tint(Theme.primaryColor)
-                                    .padding(.vertical, Theme.Spacing.xl)
-                                Spacer()
-                            }
+                            PriceSimilarItemsShimmer()
                         } else if let err = similarError {
                             Text(err)
                                 .font(Theme.Typography.caption)
@@ -1417,6 +1545,60 @@ struct PriceInputView: View {
             similarError = L10n.userFacingError(error)
         }
         similarLoading = false
+    }
+}
+
+// Shimmer for "Similar sold items" feed while loading (2-column grid matching PriceSimilarItemCard layout).
+private struct PriceSimilarItemsShimmer: View {
+    var body: some View {
+        LazyVGrid(columns: [
+            GridItem(.flexible(), spacing: Theme.Spacing.sm),
+            GridItem(.flexible(), spacing: Theme.Spacing.sm)
+        ], spacing: Theme.Spacing.sm) {
+            ForEach(0..<6, id: \.self) { _ in
+                PriceSimilarItemShimmerCell()
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .shimmering()
+    }
+}
+
+private struct PriceSimilarItemShimmerCell: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            HStack(spacing: Theme.Spacing.xs) {
+                Circle()
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: 20, height: 20)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: 60, height: 12)
+            }
+            .padding(.horizontal, Theme.Spacing.xs)
+            .padding(.bottom, Theme.Spacing.xs * 1.5)
+
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Theme.Colors.secondaryBackground)
+                .aspectRatio(1.0 / 1.3, contentMode: .fit)
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: 50, height: 14)
+                    .padding(.top, Theme.Spacing.sm)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(height: 14)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: 80, height: 12)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: 40, height: 14)
+            }
+            .padding(.horizontal, Theme.Spacing.xs)
+        }
     }
 }
 
@@ -1629,32 +1811,49 @@ struct DiscountPriceInputView: View {
     }
 }
 
-// MARK: - Parcel Size Selection View
+// MARK: - Parcel Size Selection View (same layout as Condition: icon, title, subtitle, checkmark)
 struct ParcelSizeSelectionView: View {
     @Binding var selectedParcelSize: String?
     @Environment(\.presentationMode) var presentationMode
-    
-    let parcelSizes = ["Small", "Medium", "Large", "Extra Large"]
-    
+
+    private static let options: [(key: String, title: String, subtitle: String, icon: String)] = [
+        ("Small", "Small", "Letters, jewellery, accessories", "envelope"),
+        ("Medium", "Medium", "Standard clothing, shoes", "shippingbox"),
+        ("Large", "Large", "Coats, bags, bulkier items", "shippingbox.fill")
+    ]
+
     var body: some View {
         List {
-            ForEach(parcelSizes, id: \.self) { size in
+            ForEach(Self.options, id: \.key) { item in
                 Button(action: {
-                    selectedParcelSize = size
+                    selectedParcelSize = item.key
                     presentationMode.wrappedValue.dismiss()
                 }) {
-                    HStack {
-                        Text(size)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                        
+                    HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 22, weight: .regular))
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .frame(width: 32, alignment: .center)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title)
+                                .font(Theme.Typography.body)
+                                .fontWeight(.medium)
+                                .foregroundColor(Theme.Colors.primaryText)
+                            Text(item.subtitle)
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        }
+
                         Spacer()
-                        
-                        if selectedParcelSize == size {
-                            Image(systemName: "checkmark")
+
+                        if selectedParcelSize == item.key {
+                            Image(systemName: "checkmark.circle")
+                                .font(.system(size: 22, weight: .medium))
                                 .foregroundColor(Theme.primaryColor)
                         }
                     }
+                    .padding(.vertical, Theme.Spacing.xs)
                 }
             }
             .listRowBackground(Theme.Colors.background)
@@ -1664,6 +1863,7 @@ struct ParcelSizeSelectionView: View {
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Parcel Size"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }
 
