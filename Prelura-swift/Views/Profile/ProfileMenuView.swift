@@ -40,9 +40,9 @@ struct ProfileMenuView: View {
         }
         .frame(maxHeight: 400)
         .frame(width: 260)
-        .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
+        .glassEffect(cornerRadius: Theme.Glass.menuContainerCornerRadius)
         .background(
-            RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+            RoundedRectangle(cornerRadius: Theme.Glass.menuContainerCornerRadius)
                 .fill(colorScheme == .dark ? Color.black.opacity(0.3) : Color.white.opacity(0.1))
         )
     }

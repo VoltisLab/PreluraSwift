@@ -11,11 +11,12 @@ struct OrderScreenDebugView: View {
     private let progressPercent = 40
     private let productName = "MX Master - 3S"
     private let productAttributes = "Color: Black | Material: Plastic"
-    private let quantity = 1
     private let originalPrice = "£30,910"
     private let finalPrice = "£25,100"
     private let buyerUsername = "jasontodd"
     private let orderCount = "1 Order"
+    /// Same as sell page: width / height = 1 / 1.3
+    private static let productThumbnailAspectRatio: CGFloat = 1.0 / 1.3
     private let shippingLines = ["123 High Street", "London", "SW1A 1AA", "United Kingdom"]
 
     var body: some View {
@@ -63,8 +64,11 @@ struct OrderScreenDebugView: View {
     private var processingCard: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack {
-                Image(systemName: "gift.fill")
-                    .font(.body)
+                Image("ParcelIcon")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 24, height: 25)
                     .foregroundColor(Theme.Colors.secondaryText)
                 Text(statusLabel)
                     .font(Theme.Typography.body)
@@ -110,37 +114,19 @@ struct OrderScreenDebugView: View {
         .background(Color.clear)
     }
 
-    // MARK: - Product card: image, name, attributes, quantity, refund, prices, discount tag
+    // MARK: - Product card: thumbnail (sell aspect 1:1.3), name, attributes, prices, discount tag
     private var productCard: some View {
         ZStack(alignment: .topTrailing) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                HStack(alignment: .top, spacing: Theme.Spacing.md) {
-                    productImagePlaceholder
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(productName)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Theme.Colors.primaryText)
-                        Text(productAttributes)
-                            .font(Theme.Typography.caption)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                    }
-                    Spacer()
-                }
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Quantity: \(quantity)")
-                            .font(Theme.Typography.caption)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                        HStack(spacing: 4) {
-                            Image(systemName: "tag.fill")
-                                .font(.caption2)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                            Text("Available Refund")
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                        }
-                    }
-                    Spacer()
+            HStack(alignment: .top, spacing: Theme.Spacing.md) {
+                productThumbnailView
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(productName)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Theme.Colors.primaryText)
+                    Text(productAttributes)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    Spacer(minLength: 4)
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(originalPrice)
                             .font(Theme.Typography.caption)
@@ -150,7 +136,9 @@ struct OrderScreenDebugView: View {
                             .font(.system(size: 17, weight: .bold))
                             .foregroundColor(Theme.Colors.primaryText)
                     }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
+                Spacer(minLength: 0)
             }
             .padding(Theme.Spacing.md)
             .clipShape(RoundedRectangle(cornerRadius: Self.cardCornerRadius))
@@ -165,36 +153,27 @@ struct OrderScreenDebugView: View {
         }
     }
 
-    private var productImagePlaceholder: some View {
-        RoundedRectangle(cornerRadius: 8)
+    /// Product thumbnail: same aspect ratio as sell page (1 : 1.3). Placeholder until real image URL is wired.
+    private var productThumbnailView: some View {
+        let width: CGFloat = 72
+        let height = width / Self.productThumbnailAspectRatio
+        return RoundedRectangle(cornerRadius: 8)
             .fill(Theme.Colors.tertiaryBackground)
-            .overlay(Image(systemName: "computermouse").font(.title2).foregroundColor(Theme.Colors.secondaryText))
-            .frame(width: 72, height: 72)
+            .overlay(Image(systemName: "photo").font(.title2).foregroundColor(Theme.Colors.secondaryText))
+            .frame(width: width, height: height)
+            .clipped()
     }
 
-    // MARK: - Buyer: heading + Edit, then card with empty avatar + username jasontodd, bag + order count
+    // MARK: - Buyer: card with profile placeholder avatar + jasontodd, bag + order count
     private var contactSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack {
-                Text("Buyer")
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                Spacer()
-                Button(action: {}) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "pencil")
-                            .font(.caption)
-                        Text("Edit")
-                            .font(Theme.Typography.caption)
-                    }
-                    .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .buttonStyle(.plain)
-            }
+            Text("Buyer")
+                .font(Theme.Typography.headline)
+                .foregroundColor(Theme.Colors.primaryText)
             HStack(spacing: Theme.Spacing.md) {
-                emptyAvatarView
+                profilePhotoPlaceholderView
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("username \(buyerUsername)")
+                    Text(buyerUsername)
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.primaryText)
                     HStack(spacing: 4) {
@@ -218,17 +197,16 @@ struct OrderScreenDebugView: View {
         }
     }
 
-    /// Empty-state avatar placeholder for buyer (to be replaced with real avatar later).
-    private var emptyAvatarView: some View {
+    /// Default profile placeholder used across the app: purple circle + person icon (matches ProfileView).
+    private var profilePhotoPlaceholderView: some View {
         Circle()
-            .stroke(Theme.Colors.glassBorder, lineWidth: 1)
-            .background(Circle().fill(Theme.Colors.tertiaryBackground))
+            .fill(Theme.primaryColor)
+            .frame(width: 44, height: 44)
             .overlay(
                 Image(systemName: "person.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(Theme.Colors.secondaryText)
+                    .font(.system(size: 22))
+                    .foregroundColor(.white)
             )
-            .frame(width: 44, height: 44)
     }
 
     // MARK: - Shipping address (instead of Download Invoice button)

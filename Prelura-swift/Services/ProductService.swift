@@ -57,6 +57,7 @@ class ProductService: ObservableObject {
               name
             }
             color
+            status
           }
           allProductsTotalNumber
         }
@@ -186,7 +187,8 @@ class ProductService: ObservableObject {
                 likeCount: product.likes ?? 0,
                 views: product.views ?? 0,
                 createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),
-                isLiked: product.userLiked ?? false
+                isLiked: product.userLiked ?? false,
+                status: product.status ?? "ACTIVE"
             )
         }
     }
@@ -612,6 +614,7 @@ struct ProductData: Decodable {
     let userLiked: Bool?
     let seller: SellerData?
     let category: CategoryData?
+    let status: String?
 }
 
 struct SizeData: Decodable {
@@ -666,6 +669,7 @@ extension ProductService {
             seller { id username displayName profilePictureUrl isVacationMode }
             category { id name }
             color
+            status
           }
         }
         """
@@ -717,6 +721,7 @@ extension ProductService {
               name
             }
             color
+            status
           }
         }
         """
@@ -819,7 +824,8 @@ extension ProductService {
                 likeCount: product.likes ?? 0,
                 views: product.views ?? 0,
                 createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),
-                isLiked: product.userLiked ?? false
+                isLiked: product.userLiked ?? false,
+                status: product.status ?? "ACTIVE"
             )
         }
     }
@@ -878,6 +884,7 @@ extension ProductService {
               name
             }
             color
+            status
           }
         }
         """
@@ -1043,7 +1050,8 @@ extension ProductService {
             likeCount: product.likes ?? 0,
             views: product.views ?? 0,
             createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),
-            isLiked: product.userLiked ?? false
+            isLiked: product.userLiked ?? false,
+            status: product.status ?? "ACTIVE"
         )
     }
 }

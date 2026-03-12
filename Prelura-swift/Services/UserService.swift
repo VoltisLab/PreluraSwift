@@ -867,6 +867,7 @@ class UserService: ObservableObject {
               name
             }
             color
+            status
           }
         }
         """
@@ -965,7 +966,8 @@ class UserService: ObservableObject {
                 likeCount: product.likes ?? 0,
                 views: product.views ?? 0,
                 createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),
-                isLiked: product.userLiked ?? false
+                isLiked: product.userLiked ?? false,
+                status: product.status ?? "ACTIVE"
             )
         }
     }

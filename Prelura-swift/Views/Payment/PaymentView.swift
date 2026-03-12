@@ -65,126 +65,120 @@ struct PaymentView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .bottom) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                        sectionHeader("Address")
-                        NavigationLink(destination: ShippingAddressView()) {
-                            paymentRow(title: currentUser?.shippingAddress.map { formatAddress($0) } ?? currentUser?.location ?? "No address set", trailing: "chevron.right")
-                        }
-                        .buttonStyle(.plain)
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    sectionHeader("Address")
+                    NavigationLink(destination: ShippingAddressView()) {
+                        paymentRow(title: currentUser?.shippingAddress.map { formatAddress($0) } ?? currentUser?.location ?? "No address set", trailing: "chevron.right")
+                    }
+                    .buttonStyle(.plain)
 
-                        sectionHeader("Delivery Option")
-                        HStack(spacing: Theme.Spacing.sm) {
-                            ForEach(DeliveryType.allCases, id: \.self) { option in
-                                deliveryOptionCard(option)
-                            }
-                        }
-
-                        sectionHeader("Your Contact details")
-                        paymentRow(title: currentUser?.phoneDisplay ?? "+44 ••••••••••", trailing: "chevron.right")
-
-                        Toggle(isOn: $buyerProtectionEnabled) {
-                            HStack(spacing: Theme.Spacing.sm) {
-                                Image(systemName: "shield")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                Text(L10n.string("Buyer protection fee"))
-                                    .font(Theme.Typography.body)
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                Text(String(format: "£%.2f", buyerProtectionFee))
-                                    .font(Theme.Typography.body)
-                                    .foregroundColor(Theme.Colors.secondaryText)
-                            }
-                        }
-                        .tint(Theme.primaryColor)
-
-                        sectionHeader("\(products.count) \(products.count == 1 ? "Item" : "Items")")
-                        VStack(spacing: 0) {
-                            infoRow("Order", String(format: "£%.2f", totalPrice))
-                            infoRow("Postage", String(format: "£%.2f", selectedDelivery.shippingFee))
-                            if products.count > 1 && multiBuyDiscountPercent > 0 {
-                                infoRow("Multi-buy discount (\(multiBuyDiscountPercent)%)", String(format: "-£%.2f", multiBuyDiscountAmount), valueColor: Theme.primaryColor)
-                            }
-                            if buyerProtectionEnabled {
-                                infoRow("Buyer protection fee", String(format: "£%.2f", buyerProtectionFee))
-                            }
-                            infoRow("Total", String(format: "£%.2f", total), isBold: true)
-                        }
-                        .background(Theme.Colors.background)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 0)
-                                .stroke(Theme.Colors.glassBorder, lineWidth: 0.5)
-                        )
-
-                        sectionHeader("Active Payment Method")
-                        if let method = paymentMethod {
-                            HStack(spacing: Theme.Spacing.md) {
-                                Image(systemName: "creditcard.fill")
-                                    .font(.system(size: 22))
-                                    .foregroundColor(Theme.primaryColor)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("\(method.cardBrand) •••• \(method.last4Digits)")
-                                        .font(Theme.Typography.headline)
-                                        .foregroundColor(Theme.Colors.primaryText)
-                                    Text(String(format: L10n.string("Card ending in %@"), method.last4Digits))
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText)
-                                }
-                                Spacer()
-                            }
-                            .padding(Theme.Spacing.md)
-                            .background(Theme.Colors.secondaryBackground)
-                            .cornerRadius(Theme.Glass.cornerRadius)
-                        } else if !isLoadingPaymentMethod {
-                            Text(L10n.string("No payment method added"))
-                                .font(Theme.Typography.body)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                                .padding(Theme.Spacing.md)
-                            NavigationLink(destination: AddPaymentCardView(onAdded: { Task { await loadPaymentMethod() } })) {
-                                Text(L10n.string("Add payment method"))
-                                    .font(Theme.Typography.headline)
-                                    .foregroundColor(Theme.primaryColor)
-                            }
-                        } else {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                        }
-
-                        if let err = errorMessage {
-                            Text(err)
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(Theme.Colors.error)
-                                .padding(.horizontal)
+                    sectionHeader("Delivery Option")
+                    HStack(spacing: Theme.Spacing.sm) {
+                        ForEach(DeliveryType.allCases, id: \.self) { option in
+                            deliveryOptionCard(option)
                         }
                     }
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.bottom, 200)
-                }
-                .background(Theme.Colors.background)
 
-                bottomBar
-            }
-            .navigationTitle(L10n.string("Payment"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    CircleCloseButton(action: { dismiss() })
+                    sectionHeader("Your Contact details")
+                    paymentRow(title: currentUser?.phoneDisplay ?? "+44 ••••••••••", trailing: "chevron.right")
+
+                    Toggle(isOn: $buyerProtectionEnabled) {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "shield")
+                                .font(.system(size: 16))
+                                .foregroundColor(Theme.Colors.primaryText)
+                            Text(L10n.string("Buyer protection fee"))
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.primaryText)
+                            Text(String(format: "£%.2f", buyerProtectionFee))
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        }
+                    }
+                    .tint(Theme.primaryColor)
+
+                    sectionHeader("\(products.count) \(products.count == 1 ? "Item" : "Items")")
+                    VStack(spacing: 0) {
+                        infoRow("Order", String(format: "£%.2f", totalPrice))
+                        infoRow("Postage", String(format: "£%.2f", selectedDelivery.shippingFee))
+                        if products.count > 1 && multiBuyDiscountPercent > 0 {
+                            infoRow("Multi-buy discount (\(multiBuyDiscountPercent)%)", String(format: "-£%.2f", multiBuyDiscountAmount), valueColor: Theme.primaryColor)
+                        }
+                        if buyerProtectionEnabled {
+                            infoRow("Buyer protection fee", String(format: "£%.2f", buyerProtectionFee))
+                        }
+                        infoRow("Total", String(format: "£%.2f", total), isBold: true)
+                    }
+                    .background(Theme.Colors.background)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 0)
+                            .stroke(Theme.Colors.glassBorder, lineWidth: 0.5)
+                    )
+
+                    sectionHeader("Active Payment Method")
+                    if let method = paymentMethod {
+                        HStack(spacing: Theme.Spacing.md) {
+                            Image(systemName: "creditcard.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(Theme.primaryColor)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(method.cardBrand) •••• \(method.last4Digits)")
+                                    .font(Theme.Typography.headline)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                Text(String(format: L10n.string("Card ending in %@"), method.last4Digits))
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                            }
+                            Spacer()
+                        }
+                        .padding(Theme.Spacing.md)
+                        .background(Theme.Colors.secondaryBackground)
+                        .cornerRadius(Theme.Glass.cornerRadius)
+                    } else if !isLoadingPaymentMethod {
+                        Text(L10n.string("No payment method added"))
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .padding(Theme.Spacing.md)
+                        NavigationLink(destination: AddPaymentCardView(onAdded: { Task { await loadPaymentMethod() } })) {
+                            Text(L10n.string("Add payment method"))
+                                .font(Theme.Typography.headline)
+                                .foregroundColor(Theme.primaryColor)
+                        }
+                    } else {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                    }
+
+                    if let err = errorMessage {
+                        Text(err)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.error)
+                            .padding(.horizontal)
+                    }
                 }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.bottom, 200)
             }
-            .fullScreenCover(isPresented: $showPaymentSuccess) {
-                PaymentSuccessfulView(productId: products.first?.productId) {
-                    showPaymentSuccess = false
-                    dismiss()
-                }
+            .background(Theme.Colors.background)
+
+            bottomBar
+        }
+        .navigationTitle(L10n.string("Payment"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Theme.Colors.background, for: .navigationBar)
+        .fullScreenCover(isPresented: $showPaymentSuccess) {
+            PaymentSuccessfulView(productId: products.first?.productId) {
+                showPaymentSuccess = false
+                dismiss()
             }
-            .onAppear {
-                Task {
-                    await loadUser()
-                    await loadPaymentMethod()
-                }
+        }
+        .onAppear {
+            Task {
+                await loadUser()
+                await loadPaymentMethod()
             }
         }
         .toolbar(.hidden, for: .tabBar)
@@ -289,7 +283,11 @@ struct PaymentView: View {
         isLoadingPaymentMethod = true
         defer { isLoadingPaymentMethod = false }
         do {
-            paymentMethod = try await userService.getUserPaymentMethod()
+            let method = try await userService.getUserPaymentMethod()
+            await MainActor.run {
+                paymentMethod = method
+                errorMessage = nil
+            }
         } catch {
             await MainActor.run { errorMessage = error.localizedDescription }
         }

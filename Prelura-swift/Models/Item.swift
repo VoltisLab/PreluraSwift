@@ -20,6 +20,8 @@ struct Item: Identifiable, Hashable {
     let views: Int
     let createdAt: Date
     let isLiked: Bool
+    /// Product status from API (e.g. "ACTIVE", "SOLD"). Used to hide Buy/Offer for sold items and filter marketplace.
+    let status: String
     
     init(
         id: UUID = UUID(),
@@ -39,7 +41,8 @@ struct Item: Identifiable, Hashable {
         likeCount: Int = 0,
         views: Int = 0,
         createdAt: Date = Date(),
-        isLiked: Bool = false
+        isLiked: Bool = false,
+        status: String = "ACTIVE"
     ) {
         self.id = id
         self.productId = productId
@@ -59,6 +62,7 @@ struct Item: Identifiable, Hashable {
         self.views = views
         self.createdAt = createdAt
         self.isLiked = isLiked
+        self.status = status
     }
     
     // Hashable conformance
@@ -79,7 +83,7 @@ struct Item: Identifiable, Hashable {
     }
     
     /// Returns a copy with updated like state (for optimistic/local updates after toggle like).
-    func with(likeCount: Int? = nil, isLiked: Bool? = nil) -> Item {
+    func with(likeCount: Int? = nil, isLiked: Bool? = nil, status: String? = nil) -> Item {
         Item(
             id: id,
             productId: productId,
@@ -98,7 +102,8 @@ struct Item: Identifiable, Hashable {
             likeCount: likeCount ?? self.likeCount,
             views: views,
             createdAt: createdAt,
-            isLiked: isLiked ?? self.isLiked
+            isLiked: isLiked ?? self.isLiked,
+            status: status ?? self.status
         )
     }
 
@@ -123,6 +128,9 @@ struct Item: Identifiable, Hashable {
         guard let originalPrice = originalPrice, originalPrice > price else { return nil }
         return Int(((originalPrice - price) / originalPrice) * 100)
     }
+    
+    /// True when product status is SOLD (hide Buy/Offer, show sold state).
+    var isSold: Bool { status.uppercased() == "SOLD" }
     
     var formattedCondition: String {
         // Map condition enum values to display text (matching Flutter app)
@@ -152,6 +160,10 @@ extension Array where Element == Item {
     /// Excludes items from sellers who have vacation mode on (so they are hidden from catalogues).
     func excludingVacationModeSellers() -> [Item] {
         filter { !$0.seller.isVacationMode }
+    }
+    /// Excludes sold items from marketplace feeds.
+    func excludingSold() -> [Item] {
+        filter { !$0.isSold }
     }
 }
 

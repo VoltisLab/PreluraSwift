@@ -21,15 +21,16 @@ struct ItemNotAsDescribedHelpView: View {
     ]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+        List {
+            Section {
                 Text("If the item you received doesn't match the description, you can raise an issue within 3 days of delivery.")
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.secondaryText)
+                    .listRowInsets(EdgeInsets(top: Theme.Spacing.sm, leading: Theme.Spacing.md, bottom: Theme.Spacing.sm, trailing: Theme.Spacing.md))
+                    .listRowBackground(Theme.Colors.background)
+            }
 
-                Text("What's the issue?")
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
+            Section(header: Text("What's the issue?").font(Theme.Typography.headline).foregroundColor(Theme.Colors.primaryText)) {
                 ForEach(issueTypes, id: \.id) { type in
                     Button {
                         selectedIssueType = type.id
@@ -44,23 +45,24 @@ struct ItemNotAsDescribedHelpView: View {
                                     .foregroundColor(Theme.primaryColor)
                             }
                         }
-                        .padding(Theme.Spacing.md)
-                        .background(Theme.Colors.secondaryBackground)
-                        .cornerRadius(Theme.Glass.cornerRadius)
                     }
                     .buttonStyle(.plain)
                 }
+            }
 
-                Text("Additional details (optional)")
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                TextField("Describe the issue...", text: $description, axis: .vertical)
-                    .lineLimit(3...6)
-                    .font(Theme.Typography.body)
-                    .padding(Theme.Spacing.md)
-                    .background(Theme.Colors.secondaryBackground)
-                    .cornerRadius(30)
+            Section {
+                SellLabeledField(
+                    label: "Additional details (optional)",
+                    placeholder: "Describe the issue...",
+                    text: $description,
+                    minLines: 6,
+                    maxLines: nil
+                )
+                .listRowInsets(EdgeInsets(top: Theme.Spacing.sm, leading: Theme.Spacing.md, bottom: Theme.Spacing.sm, trailing: Theme.Spacing.md))
+                .listRowBackground(Theme.Colors.background)
+            }
 
+            Section {
                 NavigationLink(destination: HelpChatView()) {
                     HStack {
                         Image(systemName: "bubble.left.and.bubble.right")
@@ -69,13 +71,13 @@ struct ItemNotAsDescribedHelpView: View {
                     .font(Theme.Typography.headline)
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
                 }
-                .buttonStyle(.plain)
-                .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
+                .listRowBackground(Theme.primaryColor)
+                .listRowInsets(EdgeInsets(top: Theme.Spacing.sm, leading: Theme.Spacing.md, bottom: Theme.Spacing.sm, trailing: Theme.Spacing.md))
             }
-            .padding(Theme.Spacing.md)
         }
+        .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
         .navigationTitle("Item Not as Described")
         .navigationBarTitleDisplayMode(.inline)

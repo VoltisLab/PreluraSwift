@@ -5,6 +5,7 @@ import UIKit
 struct ItemDetailView: View {
     let item: Item
     @StateObject private var viewModel: ItemDetailViewModel
+    @State private var displayedItem: Item? = nil
     @State private var selectedImageIndex: Int = 0
     @State private var selectedTab: Int = 0
     @State private var showFullScreenImages: Bool = false
@@ -49,7 +50,7 @@ struct ItemDetailView: View {
                     // Tab Content
                     tabContent
                 }
-                .padding(.bottom, isCurrentUser ? 0 : 100)
+                .padding(.bottom, isCurrentUser || effectiveItem.isSold ? 0 : 100)
             }
             .background(Theme.Colors.background)
             .navigationTitle("")
@@ -70,15 +71,17 @@ struct ItemDetailView: View {
             }
 
             // Bottom Action Buttons
-            if !isCurrentUser {
+            if !isCurrentUser, !effectiveItem.isSold {
                 bottomActionButtons
             }
         }
         .ignoresSafeArea(edges: .top)
         .onAppear {
-            viewModel.syncLikeState(isLiked: item.isLiked, likeCount: item.likeCount)
+            if displayedItem == nil { displayedItem = item }
+            viewModel.syncLikeState(isLiked: effectiveItem.isLiked, likeCount: effectiveItem.likeCount)
         }
         .task(id: item.productId ?? item.id.uuidString) {
+            if displayedItem == nil { displayedItem = item }
             // Run when detail view appears (and when product changes): auth, record view, load related content
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
@@ -88,8 +91,12 @@ struct ItemDetailView: View {
                 if authService.isAuthenticated {
                     viewModel.recordRecentlyViewed(productId: productId)
                 }
+                // Refetch to get latest status (e.g. sold) in case list had stale data
+                if let updated = await viewModel.loadProduct(productId: productId) {
+                    displayedItem = updated
+                }
             }
-            viewModel.loadMemberItems(username: item.seller.username, excludeProductId: item.id, includeInListIfEmpty: isCurrentUser ? item : nil)
+            viewModel.loadMemberItems(username: item.seller.username, excludeProductId: item.id, includeInListIfEmpty: isCurrentUser ? effectiveItem : nil)
             if isCurrentUser, item.seller.avatarURL == nil || item.seller.avatarURL?.isEmpty == true {
                 await viewModel.loadCurrentUserAvatar()
             }
@@ -101,19 +108,18 @@ struct ItemDetailView: View {
         }
         .fullScreenCover(isPresented: $showFullScreenImages) {
             FullScreenImageViewer(
-                imageURLs: item.imageURLs,
+                imageURLs: effectiveItem.imageURLs,
                 selectedIndex: $selectedImageIndex,
                 onDismiss: { showFullScreenImages = false }
             )
         }
         .sheet(isPresented: $showSendOfferSheet) {
-            SendOfferSheet(item: item) { showSendOfferSheet = false }
+            SendOfferSheet(item: effectiveItem) { showSendOfferSheet = false }
                 .presentationDetents([.large])
         }
-        .sheet(isPresented: $showPaymentSheet) {
-            PaymentView(products: [item], totalPrice: item.price)
+        .navigationDestination(isPresented: $showPaymentSheet) {
+            PaymentView(products: [effectiveItem], totalPrice: effectiveItem.price)
                 .environmentObject(authService)
-                .presentationDetents([.large])
         }
         .sheet(isPresented: $showProductOptionsSheet) {
             productOptionsSheet
@@ -121,7 +127,7 @@ struct ItemDetailView: View {
         .sheet(isPresented: $showReportSheet) {
             NavigationStack {
                 ReportUserView(
-                    username: item.seller.username,
+                    username: effectiveItem.seller.username,
                     isProduct: true,
                     productId: Int(item.productId ?? "") ?? 0
                 )
@@ -160,7 +166,10 @@ struct ItemDetailView: View {
                 Task {
                     do {
                         try await viewModel.markAsSold(productId: productId)
-                        await MainActor.run { dismiss() }
+                        if let updated = await viewModel.loadProduct(productId: productId) {
+                            await MainActor.run { displayedItem = updated }
+                        }
+                        await MainActor.run { showMarkSoldConfirm = false }
                     } catch {
                         await MainActor.run { markSoldErrorMessage = error.localizedDescription; showMarkSoldError = true }
                     }
@@ -187,10 +196,15 @@ struct ItemDetailView: View {
         return currentUsername.lowercased() == item.seller.username.lowercased()
     }
 
+    /// Displayed item (refetched after mark-as-sold); falls back to initial item.
+    private var effectiveItem: Item {
+        displayedItem ?? item
+    }
+
     // MARK: - Product options sheet (3-dot menu; modal list design like ProfileMenuView)
     private var productOptionsSheet: some View {
         ProductOptionsSheet(
-            item: item,
+            item: effectiveItem,
             isCurrentUser: isCurrentUser,
             onDismiss: { showProductOptionsSheet = false },
             onShare: { shareProduct(); showProductOptionsSheet = false },
@@ -204,7 +218,7 @@ struct ItemDetailView: View {
 
     private func shareProduct() {
         guard let url = URL(string: "https://prelura.com/item/\(item.productId ?? "")") else { return }
-        let av = UIActivityViewController(activityItems: [item.title, url], applicationActivities: nil)
+        let av = UIActivityViewController(activityItems: [effectiveItem.title, url], applicationActivities: nil)
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let root = windowScene.windows.first?.rootViewController else { return }
         var top = root
@@ -219,7 +233,7 @@ struct ItemDetailView: View {
 
     /// Avatar URL for seller: use item's seller avatar if set, else for own product use current user's profile picture.
     private var effectiveSellerAvatarURL: String {
-        if let url = item.seller.avatarURL, !url.isEmpty { return url }
+        if let url = effectiveItem.seller.avatarURL, !url.isEmpty { return url }
         if isCurrentUser, let url = viewModel.currentUserAvatarURL, !url.isEmpty { return url }
         return ""
     }
@@ -239,8 +253,8 @@ struct ItemDetailView: View {
             
             ZStack(alignment: .top) {
                 TabView(selection: $selectedImageIndex) {
-                ForEach(0..<item.imageURLs.count, id: \.self) { index in
-                    AsyncImage(url: URL(string: item.imageURLs[index])) { phase in
+                ForEach(0..<effectiveItem.imageURLs.count, id: \.self) { index in
+                    AsyncImage(url: URL(string: effectiveItem.imageURLs[index])) { phase in
                         switch phase {
                         case .empty:
                             Rectangle()
@@ -316,7 +330,7 @@ struct ItemDetailView: View {
                 HStack {
                     Spacer()
                     HStack(spacing: 5) {
-                        ForEach(0..<item.imageURLs.count, id: \.self) { index in
+                        ForEach(0..<effectiveItem.imageURLs.count, id: \.self) { index in
                             Circle()
                                 .fill(selectedImageIndex == index ? Theme.primaryColor : Color.black)
                                 .frame(width: selectedImageIndex == index ? 7 : 5,
@@ -340,14 +354,14 @@ struct ItemDetailView: View {
     private var productTopDetails: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             // Title (smaller than before; Flutter uses bodyLarge-style)
-            Text(item.title)
+            Text(effectiveItem.title)
                 .font(Theme.Typography.headline)
                 .foregroundColor(Theme.Colors.primaryText)
                 .lineLimit(4)
             
             // Brand and Size Row (tappable → filter by brand / size; same behaviour as Flutter)
             HStack {
-                if let brand = item.brand {
+                if let brand = effectiveItem.brand {
                     NavigationLink(destination: FilteredProductsView(title: brand, filterType: .byBrand(brandName: brand), authService: authService)) {
                         Text(brand)
                             .font(Theme.Typography.body)
@@ -356,7 +370,7 @@ struct ItemDetailView: View {
                     .buttonStyle(HapticTapButtonStyle())
                 }
                 Spacer()
-                if let size = item.size {
+                if let size = effectiveItem.size {
                     NavigationLink(destination: FilteredProductsView(title: "Size \(size)", filterType: .bySize(sizeName: size), authService: authService)) {
                         Text("Size \(size)")
                             .font(Theme.Typography.body)
@@ -368,21 +382,33 @@ struct ItemDetailView: View {
             
             // Condition and Price Row
             HStack {
-                Text(item.formattedCondition)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.secondaryText)
+                HStack(spacing: Theme.Spacing.sm) {
+                    Text(effectiveItem.formattedCondition)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    if effectiveItem.isSold {
+                        Text(L10n.string("Sold"))
+                            .font(Theme.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Theme.primaryColor)
+                            .cornerRadius(8)
+                    }
+                }
                 Spacer()
                 
                 // Price with discount handling
-                if let originalPrice = item.originalPrice {
-                    Text(item.formattedOriginalPrice)
+                if let originalPrice = effectiveItem.originalPrice {
+                    Text(effectiveItem.formattedOriginalPrice)
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .strikethrough()
-                    Text(item.formattedPrice)
+                    Text(effectiveItem.formattedPrice)
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
-                    if let discount = item.discountPercentage {
+                    if let discount = effectiveItem.discountPercentage {
                         Text("\(discount)%")
                             .font(Theme.Typography.caption)
                             .foregroundColor(.white)
@@ -391,7 +417,7 @@ struct ItemDetailView: View {
                             .background(Color(hex: "8d100f"))
                     }
                 } else {
-                    Text(item.formattedPrice)
+                    Text(effectiveItem.formattedPrice)
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
                 }
@@ -399,12 +425,12 @@ struct ItemDetailView: View {
             
             // Colour field: round swatch then text (e.g. 🔵 Blue), always shown just above seller
             HStack(spacing: Theme.Spacing.sm) {
-                if item.colors.isEmpty {
+                if effectiveItem.colors.isEmpty {
                     Text("—")
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
                 } else {
-                    ForEach(item.colors, id: \.self) { colorName in
+                    ForEach(effectiveItem.colors, id: \.self) { colorName in
                         HStack(spacing: 6) {
                             if let swatch = Theme.productColor(for: colorName) {
                                 Circle()
@@ -423,7 +449,7 @@ struct ItemDetailView: View {
             
             // Seller Info (avatar + username tappable → seller profile)
             HStack(spacing: Theme.Spacing.sm) {
-                NavigationLink(destination: UserProfileView(seller: item.seller, authService: authService)) {
+                NavigationLink(destination: UserProfileView(seller: effectiveItem.seller, authService: authService)) {
                     HStack(spacing: Theme.Spacing.sm) {
                         AsyncImage(url: URL(string: effectiveSellerAvatarURL)) { phase in
                             switch phase {
@@ -443,7 +469,7 @@ struct ItemDetailView: View {
                                     .fill(Theme.primaryColor.opacity(0.3))
                                     .frame(width: 50, height: 50)
                                     .overlay(
-                                        Text(String(item.seller.username.prefix(1)).uppercased())
+                                        Text(String(effectiveItem.seller.username.prefix(1)).uppercased())
                                             .font(.system(size: 20, weight: .semibold))
                                             .foregroundColor(Theme.primaryColor)
                                     )
@@ -452,7 +478,7 @@ struct ItemDetailView: View {
                             }
                         }
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(item.seller.username)
+                            Text(effectiveItem.seller.username)
                                 .font(Theme.Typography.body)
                                 .fontWeight(.bold)
                                 .foregroundColor(Theme.Colors.primaryText)
@@ -462,7 +488,7 @@ struct ItemDetailView: View {
                                         .font(.system(size: 12))
                                         .foregroundColor(Theme.Colors.secondaryText)
                                 }
-                                Text("(\(item.seller.reviewCount))")
+                                Text("(\(effectiveItem.seller.reviewCount))")
                                     .font(Theme.Typography.caption)
                                     .foregroundColor(Theme.Colors.secondaryText)
                             }
@@ -474,7 +500,7 @@ struct ItemDetailView: View {
                 Spacer()
 
                 if !isCurrentUser {
-                    NavigationLink(destination: ChatWithSellerView(seller: item.seller, authService: authService)) {
+                    NavigationLink(destination: ChatWithSellerView(seller: effectiveItem.seller, item: effectiveItem, authService: authService)) {
                         Image(systemName: "message.fill")
                             .font(.system(size: 20))
                             .foregroundColor(Theme.primaryColor)
@@ -502,7 +528,7 @@ struct ItemDetailView: View {
     }
     
     private var descriptionBody: some View {
-        let lines = item.description.isEmpty ? ["—"] : item.description.components(separatedBy: "\n").filter { !$0.isEmpty }
+        let lines = effectiveItem.description.isEmpty ? ["—"] : effectiveItem.description.components(separatedBy: "\n").filter { !$0.isEmpty }
         return VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             ForEach(lines, id: \.self) { line in
                 textWithHashtags(line.trimmingCharacters(in: .whitespaces))
@@ -547,22 +573,22 @@ struct ItemDetailView: View {
     // MARK: - Product Attributes
     private var productAttributes: some View {
         VStack(spacing: 0) {
-            attributeRow(label: "Category", value: item.categoryName ?? item.category.name)
-            if let brandName = item.brand {
+            attributeRow(label: "Category", value: effectiveItem.categoryName ?? effectiveItem.category.name)
+            if let brandName = effectiveItem.brand {
                 NavigationLink(destination: FilteredProductsView(title: brandName, filterType: .byBrand(brandName: brandName), authService: authService)) {
                     attributeRow(label: "Material", value: brandName, valueColor: Theme.primaryColor)
                 }
                 .buttonStyle(.plain)
             }
-            if let size = item.size {
+            if let size = effectiveItem.size {
                 NavigationLink(destination: FilteredProductsView(title: "Size \(size)", filterType: .bySize(sizeName: size), authService: authService)) {
                     attributeRow(label: "Size", value: size, valueColor: Theme.primaryColor)
                 }
                 .buttonStyle(.plain)
             }
-            attributeRow(label: "Condition", value: item.formattedCondition)
-            attributeRow(label: "Views", value: "\(item.views)")
-            attributeRow(label: "Uploaded", value: formatDate(item.createdAt))
+            attributeRow(label: "Condition", value: effectiveItem.formattedCondition)
+            attributeRow(label: "Views", value: "\(effectiveItem.views)")
+            attributeRow(label: "Uploaded", value: formatDate(effectiveItem.createdAt))
             attributeRow(label: "Postage", value: "Postage: From £1.99", valueColor: Theme.primaryColor)
         }
         .background(Theme.Colors.background)

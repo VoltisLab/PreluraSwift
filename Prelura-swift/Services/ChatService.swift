@@ -93,22 +93,20 @@ class ChatService: ObservableObject {
     }
     
     func getMessages(conversationId: String, pageNumber: Int = 1, pageCount: Int = 50) async throws -> [Message] {
+        // Backend returns conversation(id:) as [MessageType] directly, not { id, messages }.
         let query = """
         query Conversation($id: ID!, $pageNumber: Int, $pageCount: Int) {
           conversation(id: $id, pageNumber: $pageNumber, pageCount: $pageCount) {
             id
-            messages {
+            text
+            createdAt
+            sender {
               id
-              text
-              createdAt
-              sender {
-                id
-                username
-                profilePictureUrl
-              }
-              isItem
-              itemId
+              username
+              profilePictureUrl
             }
+            isItem
+            itemId
           }
         }
         """
@@ -119,17 +117,17 @@ class ChatService: ObservableObject {
             "pageCount": pageCount
         ]
         
-        let response: ConversationResponse = try await client.execute(
+        let response: ConversationMessagesResponse = try await client.execute(
             query: query,
             variables: variables,
-            responseType: ConversationResponse.self
+            responseType: ConversationMessagesResponse.self
         )
         
-        guard let messages = response.conversation?.messages else {
+        guard let messages = response.conversation else {
             return []
         }
         
-        return messages.compactMap { msg in
+        let list: [Message] = messages.compactMap { msg in
             // Convert id to string
             let idString: String
             if let anyCodable = msg.id {
@@ -159,6 +157,7 @@ class ChatService: ObservableObject {
                 thumbnailURL: nil
             )
         }
+        return list.sorted { $0.timestamp < $1.timestamp }
     }
     
     func createChat(recipient: String) async throws -> Conversation {
@@ -186,11 +185,21 @@ class ChatService: ObservableObject {
             responseType: CreateChatResponse.self
         )
         
-        guard let chat = response.createChat?.chat,
-              let id = chat.id else {
+        guard let chat = response.createChat?.chat else {
             throw ChatError.invalidResponse
         }
-        
+        let idString: String
+        if let anyId = chat.id {
+            if let intValue = anyId.value as? Int {
+                idString = String(intValue)
+            } else if let stringValue = anyId.value as? String {
+                idString = stringValue
+            } else {
+                idString = String(describing: anyId.value)
+            }
+        } else {
+            throw ChatError.invalidResponse
+        }
         // Extract recipient id
         let recipientIdString: String
         if let recipientId = chat.recipient?.id {
@@ -206,7 +215,7 @@ class ChatService: ObservableObject {
         }
         
         return Conversation(
-            id: id,
+            id: idString,
             recipient: User(
                 id: UUID(uuidString: recipientIdString) ?? UUID(),
                 username: chat.recipient?.username ?? "",
@@ -274,6 +283,11 @@ struct ConversationResponse: Decodable {
     let conversation: ConversationDetailData?
 }
 
+/// Response when conversation(id:) returns [MessageType] directly (not wrapped in { id, messages }).
+struct ConversationMessagesResponse: Decodable {
+    let conversation: [MessageData]?
+}
+
 struct ConversationDetailData: Decodable {
     let id: String?
     let messages: [MessageData]?
@@ -304,7 +318,7 @@ struct CreateChatData: Decodable {
 }
 
 struct ChatData: Decodable {
-    let id: String?
+    let id: AnyCodable?
     let recipient: UserData?
 }
 

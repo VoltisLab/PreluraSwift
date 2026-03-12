@@ -237,7 +237,6 @@ struct ChatRowView: View {
                     .clipShape(Capsule())
             }
         }
-        .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.xs)
     }
     
@@ -259,6 +258,7 @@ struct ChatRowView: View {
         case "order_issue": return "Order issue"
         case "order": return "Order update"
         case "offer": return "New offer"
+        case "sold_confirmation": return "Sold confirmation"
         default: return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
         }
     }

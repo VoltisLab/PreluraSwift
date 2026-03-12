@@ -62,7 +62,7 @@ struct OrderHelpView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.md)
             .background(Theme.Colors.secondaryBackground)
-            .cornerRadius(Theme.Glass.cornerRadius)
+            .cornerRadius(Theme.Glass.menuContainerCornerRadius)
         }
         .buttonStyle(.plain)
     }

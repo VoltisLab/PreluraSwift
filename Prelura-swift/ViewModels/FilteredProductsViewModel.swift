@@ -72,7 +72,7 @@ class FilteredProductsViewModel: ObservableObject {
             do {
                 let products = try await fetchProducts(page: 1)
                 await MainActor.run {
-                    self.items = products.excludingVacationModeSellers()
+                    self.items = products.excludingVacationModeSellers().excludingSold()
                     self.applyFilters()
                     self.isLoading = false
                     self.hasMorePages = products.count >= pageSize
@@ -95,7 +95,7 @@ class FilteredProductsViewModel: ObservableObject {
                 currentPage += 1
                 let products = try await fetchProducts(page: currentPage)
                 await MainActor.run {
-                    self.items.append(contentsOf: products.excludingVacationModeSellers())
+                    self.items.append(contentsOf: products.excludingVacationModeSellers().excludingSold())
                     applyFilters()
                     self.isLoadingMore = false
                     self.hasMorePages = products.count >= pageSize

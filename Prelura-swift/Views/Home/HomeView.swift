@@ -277,42 +277,23 @@ struct HomeItemCard: View {
                         )
                         .frame(width: imageWidth, height: imageHeight)
                     
-                    // Product Image - fixed size container to prevent movement
-                    Group {
-                        if let firstImageURL = item.imageURLs.first, let url = URL(string: firstImageURL) {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .empty:
-                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
-                                        .frame(width: imageWidth, height: imageHeight)
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: imageWidth, height: imageHeight)
-                                        .clipped()
-                                case .failure:
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
-                                        .frame(width: imageWidth, height: imageHeight)
-                                @unknown default:
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
-                                        .frame(width: imageWidth, height: imageHeight)
-                                }
-                            }
-                        } else {
+                    // Product Image - fixed size container; retries once on load failure (e.g. in chat)
+                    RetryAsyncImage(
+                        url: item.imageURLs.first.flatMap { URL(string: $0) },
+                        width: imageWidth,
+                        height: imageHeight,
+                        cornerRadius: 8,
+                        placeholder: {
+                            ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                                .frame(width: imageWidth, height: imageHeight)
+                        },
+                        failurePlaceholder: {
                             Image(systemName: "photo")
                                 .font(.system(size: 40))
                                 .foregroundColor(Theme.primaryColor.opacity(0.5))
                                 .frame(width: imageWidth, height: imageHeight)
                         }
-                    }
-                    .frame(width: imageWidth, height: imageHeight)
-                    .clipped()
-                    .cornerRadius(8)
+                    )
                     
                     if !hideLikeButton {
                         likeButtonContent

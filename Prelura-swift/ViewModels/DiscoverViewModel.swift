@@ -69,11 +69,11 @@ class DiscoverViewModel: ObservableObject {
                 // Fetch recently viewed products from backend (like Flutter)
                 let recentlyViewedProducts = try await productService.getRecentlyViewedProducts()
                 
-                // Exclude items from sellers in vacation mode (hidden from catalogues)
-                let allVisible = allProducts.excludingVacationModeSellers()
-                let onSaleVisible = onSaleProducts.excludingVacationModeSellers()
-                let shopBargainsVisible = shopBargainsProducts.excludingVacationModeSellers()
-                let recentlyViewedVisible = recentlyViewedProducts.excludingVacationModeSellers()
+                // Exclude items from sellers in vacation mode (hidden from catalogues) and sold items
+                let allVisible = allProducts.excludingVacationModeSellers().excludingSold()
+                let onSaleVisible = onSaleProducts.excludingVacationModeSellers().excludingSold()
+                let shopBargainsVisible = shopBargainsProducts.excludingVacationModeSellers().excludingSold()
+                let recentlyViewedVisible = recentlyViewedProducts.excludingVacationModeSellers().excludingSold()
                 
                 // Main product grid
                 self.discoverItems = allVisible
@@ -240,10 +240,10 @@ class DiscoverViewModel: ObservableObject {
             // Fetch recently viewed products from backend (like Flutter)
             let recentlyViewedProducts = try await productService.getRecentlyViewedProducts()
             
-            let allVisible = allProducts.excludingVacationModeSellers()
-            let onSaleVisible = onSaleProducts.excludingVacationModeSellers()
-            let shopBargainsVisible = shopBargainsProducts.excludingVacationModeSellers()
-            let recentlyViewedVisible = recentlyViewedProducts.excludingVacationModeSellers()
+            let allVisible = allProducts.excludingVacationModeSellers().excludingSold()
+            let onSaleVisible = onSaleProducts.excludingVacationModeSellers().excludingSold()
+            let shopBargainsVisible = shopBargainsProducts.excludingVacationModeSellers().excludingSold()
+            let recentlyViewedVisible = recentlyViewedProducts.excludingVacationModeSellers().excludingSold()
             
             await MainActor.run {
                 self.discoverItems = allVisible

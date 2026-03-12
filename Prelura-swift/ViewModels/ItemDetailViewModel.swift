@@ -147,4 +147,14 @@ class ItemDetailViewModel: ObservableObject {
             NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
         }
     }
+
+    /// Refetch a single product by ID (e.g. after marking as sold). Returns updated Item or nil.
+    func loadProduct(productId: String) async -> Item? {
+        guard let id = Int(productId) else { return nil }
+        do {
+            return try await productService.getProduct(id: id)
+        } catch {
+            return nil
+        }
+    }
 }

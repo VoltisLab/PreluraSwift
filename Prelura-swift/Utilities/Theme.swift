@@ -60,6 +60,8 @@ struct Theme {
         static let opacity: Double = 0.8
         static let borderWidth: CGFloat = 1
         static let cornerRadius: CGFloat = 10.8
+        /// Corner radius for menu-style containers and cards (e.g. Help with Order, profile menu popover)
+        static let menuContainerCornerRadius: CGFloat = 12
         /// Corner radius for category/tag pills (unchanged by menu container reduction; keep pill-shaped)
         static let tagCornerRadius: CGFloat = 20
         static let shadowRadius: CGFloat = 10

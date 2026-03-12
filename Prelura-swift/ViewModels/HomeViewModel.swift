@@ -81,7 +81,7 @@ class HomeViewModel: ObservableObject {
                     parentCategory: categoryFilter
                 )
                 await MainActor.run {
-                    let visible = products.excludingVacationModeSellers()
+                    let visible = products.excludingVacationModeSellers().excludingSold()
                     self.allItems = visible
                     self.filteredItems = visible
                     self.isLoading = false
@@ -112,7 +112,7 @@ class HomeViewModel: ObservableObject {
                     parentCategory: selectedCategory
                 )
                 await MainActor.run {
-                    let visible = products.excludingVacationModeSellers()
+                    let visible = products.excludingVacationModeSellers().excludingSold().excludingSold()
                     self.allItems.append(contentsOf: visible)
                     self.filteredItems.append(contentsOf: visible)
                     self.isLoadingMore = false
@@ -161,7 +161,7 @@ class HomeViewModel: ObservableObject {
                     parentCategory: categoryFilter
                 )
                 await MainActor.run {
-                    let visible = products.excludingVacationModeSellers()
+                    let visible = products.excludingVacationModeSellers().excludingSold()
                     self.allItems = visible
                     self.filteredItems = visible
                     self.isLoading = false
@@ -194,7 +194,7 @@ class HomeViewModel: ObservableObject {
                     parentCategory: categoryFilter
                 )
                 await MainActor.run {
-                    let visible = products.excludingVacationModeSellers()
+                    let visible = products.excludingVacationModeSellers().excludingSold()
                     self.allItems = visible
                     self.filteredItems = visible
                     self.isLoading = false
@@ -234,7 +234,7 @@ class HomeViewModel: ObservableObject {
             )
             
             await MainActor.run {
-                let visible = products.excludingVacationModeSellers()
+                let visible = products.excludingVacationModeSellers().excludingSold()
                 self.allItems = visible
                 self.filteredItems = visible
                 self.isLoading = false
@@ -264,7 +264,7 @@ class HomeViewModel: ObservableObject {
                         parentCategory: selectedCategory
                     )
                     await MainActor.run {
-                        self.filteredItems = searchResults.excludingVacationModeSellers()
+                        self.filteredItems = searchResults.excludingVacationModeSellers().excludingSold()
                     }
                 } catch {
                     await MainActor.run {

@@ -1,8 +1,11 @@
 import SwiftUI
 
 /// Resolves conversation with seller (existing or new) then shows ChatDetailView. Used when tapping message icon on product detail.
+/// When opened from product detail, pass `item` so the chat shows the product at the top (Flutter behavior).
 struct ChatWithSellerView: View {
     let seller: User
+    /// When non-nil, chat shows this product at the top (e.g. when starting conversation from product detail).
+    var item: Item? = nil
     let authService: AuthService?
     @State private var resolvedConversation: Conversation?
     @State private var isLoading = true
@@ -11,13 +14,13 @@ struct ChatWithSellerView: View {
     var body: some View {
         Group {
             if let conv = resolvedConversation {
-                ChatDetailView(conversation: conv)
+                ChatDetailView(conversation: conv, item: item)
             } else if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Theme.Colors.background)
             } else {
-                ChatDetailView(conversation: Conversation(id: "0", recipient: seller, lastMessage: nil, lastMessageTime: nil, unreadCount: 0))
+                ChatDetailView(conversation: Conversation(id: "0", recipient: seller, lastMessage: nil, lastMessageTime: nil, unreadCount: 0), item: item)
             }
         }
         .navigationBarHidden(true)
@@ -35,9 +38,17 @@ struct ChatWithSellerView: View {
     private func resolveConversation() async {
         do {
             let convs = try await chatService.getConversations()
+            let existing = convs.first { $0.recipient.username == seller.username }
+            if let conv = existing {
+                await MainActor.run {
+                    resolvedConversation = conv
+                    isLoading = false
+                }
+                return
+            }
+            let newConv = try await chatService.createChat(recipient: seller.username)
             await MainActor.run {
-                let existing = convs.first { $0.recipient.username == seller.username }
-                resolvedConversation = existing ?? Conversation(id: "0", recipient: seller, lastMessage: nil, lastMessageTime: nil, unreadCount: 0)
+                resolvedConversation = newConv
                 isLoading = false
             }
         } catch {
@@ -51,6 +62,8 @@ struct ChatWithSellerView: View {
 
 struct ChatDetailView: View {
     let conversation: Conversation
+    /// When non-nil, show this product at the top of the chat (Flutter: productId → ProductCard at top).
+    var item: Item? = nil
     @EnvironmentObject var authService: AuthService
     @Environment(\.dismiss) private var dismiss
     @StateObject private var chatService = ChatService()
@@ -66,68 +79,92 @@ struct ChatDetailView: View {
         conversation.recipient.displayName.isEmpty ? conversation.recipient.username : conversation.recipient.displayName
     }
 
-    var body: some View {
-        VStack(spacing: 0) {
-            // Toolbar: default liquid glass icon buttons (same as rest of app)
-            HStack {
-                GlassIconButton(icon: "chevron.left", action: { dismiss() })
-                Spacer()
-                Text(recipientTitle)
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                Spacer()
-                NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: conversation.id)) {
-                    GlassIconView(icon: "questionmark.circle")
-                }
-                .buttonStyle(HapticTapButtonStyle())
+    private var chatHeader: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            GlassIconButton(icon: "chevron.left", action: { dismiss() })
+            Spacer()
+            Text(recipientTitle)
+                .font(Theme.Typography.headline)
+                .foregroundColor(Theme.Colors.primaryText)
+            Spacer()
+            NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: conversation.id)) {
+                GlassIconView(icon: "questionmark.circle")
             }
-            .padding(.horizontal, Theme.AppBar.horizontalPadding)
-            .padding(.vertical, Theme.AppBar.verticalPadding)
-            .background(Theme.Colors.background)
+            .buttonStyle(HapticTapButtonStyle())
+        }
+        .padding(.horizontal, Theme.AppBar.horizontalPadding)
+        .padding(.vertical, Theme.AppBar.verticalPadding)
+        .background(Theme.Colors.background)
+    }
 
-            // Messages list
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: Theme.Spacing.sm) {
-                        ForEach(messages) { message in
+    private var messageInputBar: some View {
+        HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
+            TextField("Type a message...", text: $newMessage)
+                .textFieldStyle(.plain)
+                .focused($isMessageFieldFocused)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm)
+                .background(Theme.Colors.secondaryBackground)
+                .cornerRadius(20)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(isMessageFieldFocused ? Theme.primaryColor : Theme.Colors.glassBorder, lineWidth: isMessageFieldFocused ? 2 : 1)
+                )
+                .foregroundColor(Theme.Colors.primaryText)
+            Button(action: sendMessage) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(newMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Theme.Colors.secondaryText : Theme.primaryColor)
+            }
+            .disabled(newMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
+        .background(Theme.Colors.background)
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                    if let item = item {
+                        ChatProductCardView(item: item)
+                            .padding(.bottom, Theme.Spacing.xs)
+                        Rectangle()
+                            .fill(Theme.Colors.glassBorder)
+                            .frame(height: 0.5)
+                            .padding(.vertical, Theme.Spacing.xs)
+                    }
+                    ForEach(messages) { message in
+                        if message.isSoldConfirmation {
+                            SoldConfirmationBannerView(
+                                message: message,
+                                isSeller: message.senderUsername != authService.username
+                            )
+                            .id(message.id)
+                        } else {
                             MessageBubbleView(message: message, isCurrentUser: message.senderUsername == authService.username)
                                 .id(message.id)
                         }
                     }
-                    .padding(Theme.Spacing.md)
                 }
-                .onChange(of: messages.count) { _ in
-                    if let lastMessage = messages.last {
-                        withAnimation {
-                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                        }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: messages.count) { _, _ in
+                if let lastMessage = messages.last {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
                     }
                 }
             }
-            
-            // Input area
-            HStack(spacing: Theme.Spacing.sm) {
-                TextField("Type a message...", text: $newMessage)
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .focused($isMessageFieldFocused)
-                    .padding(Theme.Spacing.md)
-                    .background(Theme.Colors.secondaryBackground)
-                    .cornerRadius(30)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 30)
-                            .stroke(isMessageFieldFocused ? Theme.primaryColor : Color.clear, lineWidth: 2)
-                    )
-                    .foregroundColor(Theme.Colors.primaryText)
-                
-                Button(action: sendMessage) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundColor(Theme.primaryColor)
-                }
-                .disabled(newMessage.isEmpty || isLoading)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                chatHeader
             }
-            .padding(Theme.Spacing.md)
-            .background(Theme.Colors.background)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                messageInputBar
+            }
         }
         .background(Theme.Colors.background)
         .navigationBarHidden(true)
@@ -161,15 +198,23 @@ struct ChatDetailView: View {
     }
 
     private func loadMessages() {
+        guard conversation.id != "0" else {
+            messages = []
+            return
+        }
         isLoading = true
         Task {
             do {
                 let msgs = try await chatService.getMessages(conversationId: conversation.id)
-                self.messages = msgs
-                self.isLoading = false
+                await MainActor.run {
+                    self.messages = msgs
+                    self.isLoading = false
+                }
             } catch {
-                self.isLoading = false
-                self.messages = Message.sampleMessages
+                await MainActor.run {
+                    self.messages = []
+                    self.isLoading = false
+                }
             }
         }
     }
@@ -210,46 +255,146 @@ struct ChatDetailView: View {
     }
 }
 
+/// Product card shown at top of chat when conversation was started from product detail (Flutter ProductCard).
+struct ChatProductCardView: View {
+    let item: Item
+
+    var body: some View {
+        NavigationLink(destination: ItemDetailView(item: item)) {
+            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                Group {
+                    if let urlString = item.imageURLs.first, let url = URL(string: urlString) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().aspectRatio(contentMode: .fill)
+                            case .failure, .empty:
+                                Rectangle()
+                                    .fill(Theme.Colors.secondaryBackground)
+                                    .overlay(Image(systemName: "photo").foregroundColor(Theme.Colors.secondaryText))
+                            @unknown default:
+                                EmptyView()
+                            }
+                        }
+                    } else {
+                        Rectangle()
+                            .fill(Theme.Colors.secondaryBackground)
+                            .overlay(Image(systemName: "photo").foregroundColor(Theme.Colors.secondaryText))
+                    }
+                }
+                .frame(width: 60, height: 60)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(Theme.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Text(item.formattedPrice)
+                        .font(Theme.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.Colors.primaryText)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Banner for sold_confirmation messages (matches Flutter SoldConfirmationBanner).
+struct SoldConfirmationBannerView: View {
+    let message: Message
+    let isSeller: Bool
+
+    private var displayText: String {
+        guard let data = message.soldConfirmationData else {
+            return message.displayContent
+        }
+        let price = data.productPrice ?? data.buyerSubtotal ?? "0"
+        return "SOLD! 💰\nYour item sold for £\(price)! 📦\nPrint your shipping label below, and send the parcel. Your payment will be released once the buyer receives the item. 🚀"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            Text(displayText)
+                .font(Theme.Typography.body)
+                .fontWeight(.medium)
+                .foregroundColor(Theme.Colors.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            if isSeller {
+                Button(action: { /* TODO: navigate to shipping confirmation */ }) {
+                    Text("I've shipped the item")
+                        .font(Theme.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Theme.Spacing.sm)
+                }
+                .background(Theme.primaryColor)
+                .cornerRadius(25)
+            }
+            Text(message.formattedTimestamp)
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.secondaryBackground)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+        )
+        .padding(.vertical, 2)
+    }
+}
+
 struct MessageBubbleView: View {
     let message: Message
     let isCurrentUser: Bool
-    
+
+    private var bubbleMaxWidth: CGFloat { UIScreen.main.bounds.width * 0.78 }
+
     var body: some View {
-        HStack {
-            if isCurrentUser {
-                Spacer()
-            }
-            
-            VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: Theme.Spacing.xs) {
-                Text(message.content)
+        HStack(alignment: .bottom, spacing: Theme.Spacing.xs) {
+            if isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
+            VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 4) {
+                Text(message.displayContent)
                     .font(Theme.Typography.body)
                     .foregroundColor(isCurrentUser ? .white : Theme.Colors.primaryText)
-                    .padding(Theme.Spacing.md)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
                     .background(
-                        isCurrentUser ?
-                        LinearGradient(
-                            colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.8)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ) :
-                        LinearGradient(
-                            colors: [Theme.Colors.secondaryBackground, Theme.Colors.secondaryBackground],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                        isCurrentUser
+                            ? LinearGradient(
+                                colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.85)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            : LinearGradient(
+                                colors: [Theme.Colors.secondaryBackground, Theme.Colors.secondaryBackground],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                     )
-                    .cornerRadius(16)
-                
+                    .cornerRadius(18)
                 Text(message.formattedTimestamp)
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
-            .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: isCurrentUser ? .trailing : .leading)
-            
-            if !isCurrentUser {
-                Spacer()
-            }
+            .frame(maxWidth: bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
+            if !isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
         }
+        .padding(.vertical, 2)
     }
 }
 
