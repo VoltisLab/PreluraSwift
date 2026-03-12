@@ -20,6 +20,10 @@ struct UserProfileView: View {
     @State private var showProfilePhotoFullScreen: Bool = false
     @State private var showFullBioSheet: Bool = false
     @State private var filterMultiBuyOnly: Bool = false
+    @State private var isMultiBuySelectionMode: Bool = false
+    @State private var selectedMultiBuyItemIds: Set<String> = []
+    @State private var showShopSearchSheet: Bool = false
+    @State private var shopSearchQuery: String = ""
 
     init(seller: User, authService: AuthService?) {
         self.seller = seller
@@ -27,6 +31,7 @@ struct UserProfileView: View {
     }
 
     var body: some View {
+        ZStack(alignment: .topTrailing) {
         ScrollView {
                 if viewModel.isLoading && viewModel.items.isEmpty && viewModel.errorMessage == nil {
                     ProfileShimmerView()
@@ -62,13 +67,25 @@ struct UserProfileView: View {
         .navigationBarHidden(false)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink(destination: ReportUserView(username: viewModel.user.username)) {
-                    Image(systemName: "flag")
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
+                HStack(spacing: Theme.Spacing.sm) {
+                    Button(action: {
+                        HapticManager.selection()
+                        showShopSearchSheet = true
+                    }) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    NavigationLink(destination: ReportUserView(username: viewModel.user.username)) {
+                        Image(systemName: "flag")
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .toolbar(.hidden, for: .tabBar)
@@ -83,6 +100,37 @@ struct UserProfileView: View {
                     selectedIndex: .constant(0),
                     onDismiss: { showProfilePhotoFullScreen = false }
                 )
+            }
+        }
+
+            if !selectedMultiBuyItemIds.isEmpty && isMultiBuySelectionMode {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        NavigationLink(destination: MultiBuyCartView(
+                            selectedIds: $selectedMultiBuyItemIds,
+                            allItems: viewModel.items
+                        )) {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                Image(systemName: "cart.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text(L10n.string("View bag"))
+                                    .font(Theme.Typography.headline)
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, Theme.Spacing.lg)
+                            .padding(.vertical, Theme.Spacing.md)
+                        }
+                        .buttonStyle(.plain)
+                        .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
+                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        Spacer()
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.bottom, 100)
+                }
+                .allowsHitTesting(true)
             }
         }
     }
@@ -353,11 +401,6 @@ struct UserProfileView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .center, spacing: Theme.Spacing.sm) {
-                    Button(action: {}) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 16))
-                            .foregroundColor(Theme.Colors.secondaryText)
-                    }
                     Text(L10n.string("Top brands"))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.secondaryText)
@@ -365,16 +408,21 @@ struct UserProfileView: View {
                     if viewModel.user.isMultibuyEnabled {
                         Button(action: {
                             HapticManager.selection()
-                            filterMultiBuyOnly.toggle()
+                            if isMultiBuySelectionMode {
+                                isMultiBuySelectionMode = false
+                                selectedMultiBuyItemIds = []
+                            } else {
+                                isMultiBuySelectionMode = true
+                            }
                         }) {
                             Text(L10n.string("Multi-buy"))
                                 .font(Theme.Typography.subheadline)
-                                .foregroundColor(filterMultiBuyOnly ? .white : Theme.primaryColor)
+                                .foregroundColor(isMultiBuySelectionMode ? .white : Theme.primaryColor)
                                 .padding(.horizontal, Theme.Spacing.md)
                                 .padding(.vertical, Theme.Spacing.sm)
                                 .background(
                                     RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
-                                        .fill(filterMultiBuyOnly ? Theme.primaryColor : Theme.primaryColor.opacity(0.2))
+                                        .fill(isMultiBuySelectionMode ? Theme.primaryColor : Theme.primaryColor.opacity(0.2))
                                 )
                         }
                         .buttonStyle(.plain)
@@ -442,6 +490,7 @@ struct UserProfileView: View {
         }
         .sheet(isPresented: $showSortSheet) { userProfileSortSheet }
         .sheet(isPresented: $showFilterSheet) { userProfileFilterSheet }
+        .sheet(isPresented: $showShopSearchSheet) { userProfileShopSearchSheetContent }
     }
 
     private var optionDivider: some View {
@@ -560,6 +609,76 @@ struct UserProfileView: View {
         }
     }
 
+    // MARK: - Shop search sheet (opened from toolbar search button)
+    private var userProfileShopSearchSheetContent: some View {
+        let query = shopSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let filteredItems = query.isEmpty
+            ? viewModel.items
+            : viewModel.items.filter { item in
+                item.title.lowercased().contains(query)
+                || (item.brand?.lowercased().contains(query) ?? false)
+                || (item.categoryName?.lowercased().contains(query) ?? false)
+                || item.category.name.lowercased().contains(query)
+                || item.description.lowercased().contains(query)
+            }
+        return NavigationStack {
+            VStack(spacing: 0) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 16))
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    TextField(L10n.string("Search shop"), text: $shopSearchQuery)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .autocorrectionDisabled()
+                }
+                .padding(Theme.Spacing.sm)
+                .background(Theme.Colors.secondaryBackground)
+                .cornerRadius(10)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.sm)
+                .padding(.bottom, Theme.Spacing.xs)
+
+                ScrollView {
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                            GridItem(.flexible(), spacing: Theme.Spacing.sm)
+                        ],
+                        spacing: Theme.Spacing.md
+                    ) {
+                        ForEach(filteredItems) { item in
+                            NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
+                                WardrobeItemCard(item: item)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.md)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.Colors.background)
+            .navigationTitle(L10n.string("Top brands"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: {
+                        showShopSearchSheet = false
+                        shopSearchQuery = ""
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
     // MARK: - Items Grid
     private var itemsGridSection: some View {
         var items = viewModel.items
@@ -586,10 +705,38 @@ struct UserProfileView: View {
             spacing: Theme.Spacing.md
         ) {
             ForEach(items) { item in
-                NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
-                    WardrobeItemCard(item: item)
+                if isMultiBuySelectionMode {
+                    Button(action: {
+                        HapticManager.selection()
+                        let id = item.id.uuidString
+                        if selectedMultiBuyItemIds.contains(id) {
+                            selectedMultiBuyItemIds.remove(id)
+                        } else {
+                            selectedMultiBuyItemIds.insert(id)
+                        }
+                    }) {
+                        WardrobeItemCard(
+                            item: item,
+                            multiBuySelectionMode: true,
+                            isSelectedForMultiBuy: selectedMultiBuyItemIds.contains(item.id.uuidString),
+                            onMultiBuySelectTap: {
+                                HapticManager.selection()
+                                let id = item.id.uuidString
+                                if selectedMultiBuyItemIds.contains(id) {
+                                    selectedMultiBuyItemIds.remove(id)
+                                } else {
+                                    selectedMultiBuyItemIds.insert(id)
+                                }
+                            }
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                } else {
+                    NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
+                        WardrobeItemCard(item: item)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
-                .buttonStyle(PlainButtonStyle())
             }
         }
         .padding(.horizontal, Theme.Spacing.md)

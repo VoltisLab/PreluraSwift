@@ -442,10 +442,19 @@ private struct AnimatedBrandRow: View {
     let maxOffset: CGFloat
     let authService: AuthService
     @Binding var animationStopped: Bool
-    
+    @Environment(\.colorScheme) private var colorScheme
+
     @State private var offset: CGFloat = 0
     @State private var driftTimer: Timer?
-    
+
+    private let shape = RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
+    private var pillBackground: Color {
+        colorScheme == .light ? Theme.Colors.background : Theme.Colors.secondaryBackground
+    }
+    private var pillBorderColor: Color {
+        colorScheme == .light ? Color.black.opacity(0.18) : Theme.Colors.glassBorder.opacity(0.5)
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.sm) {
@@ -457,13 +466,13 @@ private struct AnimatedBrandRow: View {
                     )) {
                         Text(brand)
                             .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.Colors.primaryText)
+                            .foregroundColor(colorScheme == .light ? Theme.Colors.primaryText : Theme.Colors.secondaryText)
                             .padding(.horizontal, Theme.Spacing.md)
                             .padding(.vertical, Theme.Spacing.sm)
-                            .background(RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius).fill(Theme.Colors.background))
+                            .background(shape.fill(pillBackground))
                             .overlay(
-                                RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
-                                    .strokeBorder(Color.black.opacity(0.18), lineWidth: 0.5)
+                                shape
+                                    .strokeBorder(pillBorderColor, lineWidth: 0.5)
                             )
                     }
                     .buttonStyle(.plain)

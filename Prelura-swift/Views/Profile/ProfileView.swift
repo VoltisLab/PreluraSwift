@@ -43,6 +43,10 @@ struct ProfileView: View {
     @State private var filterMultiBuyOnly: Bool = false
     @State private var showShopSearchSheet: Bool = false
     @State private var shopSearchQuery: String = ""
+    /// When true, Multi-buy button has entered selection mode: show "Select" pill on each item; tapping toggles selection; floating button shows cart.
+    @State private var isMultiBuySelectionMode: Bool = false
+    /// Item ids (uuidString) selected for multi-buy. Used when isMultiBuySelectionMode is true.
+    @State private var selectedMultiBuyItemIds: Set<String> = []
 
     private let topId = "profile_top"
 
@@ -91,7 +95,7 @@ struct ProfileView: View {
                 ScrollView {
                     if authService.isGuestMode {
                         guestModeContent
-                    } else if viewModel.isLoading && viewModel.user == nil {
+                    } else if viewModel.isLoading {
                         ProfileShimmerView()
                             .frame(minHeight: UIScreen.main.bounds.height)
                     } else {
@@ -139,10 +143,41 @@ struct ProfileView: View {
             .refreshable {
                 await viewModel.refreshAsync()
             }
+
+            // Floating button to open multi-buy bag when at least one item is selected
+            if !selectedMultiBuyItemIds.isEmpty && isMultiBuySelectionMode {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        NavigationLink(destination: MultiBuyCartView(
+                            selectedIds: $selectedMultiBuyItemIds,
+                            allItems: viewModel.userItems
+                        )) {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                Image(systemName: "cart.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text(L10n.string("View bag"))
+                                    .font(Theme.Typography.headline)
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, Theme.Spacing.lg)
+                            .padding(.vertical, Theme.Spacing.md)
+                        }
+                        .buttonStyle(.plain)
+                        .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
+                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        Spacer()
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.bottom, 100)
+                }
+                .allowsHitTesting(true)
+            }
         }
         .navigationTitle(viewModel.user?.username ?? L10n.string("Profile"))
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarHidden(viewModel.isLoading && viewModel.user == nil || authService.isGuestMode)
+        .navigationBarHidden(viewModel.isLoading || authService.isGuestMode)
         .toolbar {
             if !authService.isGuestMode {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -538,16 +573,21 @@ struct ProfileView: View {
                     if viewModel.user?.isMultibuyEnabled ?? isMultiBuyEnabled {
                         Button(action: {
                             HapticManager.selection()
-                            filterMultiBuyOnly.toggle()
+                            if isMultiBuySelectionMode {
+                                isMultiBuySelectionMode = false
+                                selectedMultiBuyItemIds = []
+                            } else {
+                                isMultiBuySelectionMode = true
+                            }
                         }) {
                             Text(L10n.string("Multi-buy"))
                                 .font(Theme.Typography.subheadline)
-                                .foregroundColor(filterMultiBuyOnly ? .white : Theme.primaryColor)
+                                .foregroundColor(isMultiBuySelectionMode ? .white : Theme.primaryColor)
                                 .padding(.horizontal, Theme.Spacing.md)
                                 .padding(.vertical, Theme.Spacing.sm)
                                 .background(
                                     RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
-                                        .fill(filterMultiBuyOnly ? Theme.primaryColor : Theme.primaryColor.opacity(0.2))
+                                        .fill(isMultiBuySelectionMode ? Theme.primaryColor : Theme.primaryColor.opacity(0.2))
                                 )
                         }
                         .buttonStyle(.plain)
@@ -865,10 +905,39 @@ struct ProfileView: View {
             spacing: Theme.Spacing.md
         ) {
             ForEach(items) { item in
-                NavigationLink(value: AppRoute.itemDetail(item)) {
-                    WardrobeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+                if isMultiBuySelectionMode {
+                    Button(action: {
+                        HapticManager.selection()
+                        let id = item.id.uuidString
+                        if selectedMultiBuyItemIds.contains(id) {
+                            selectedMultiBuyItemIds.remove(id)
+                        } else {
+                            selectedMultiBuyItemIds.insert(id)
+                        }
+                    }) {
+                        WardrobeItemCard(
+                            item: item,
+                            onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") },
+                            multiBuySelectionMode: true,
+                            isSelectedForMultiBuy: selectedMultiBuyItemIds.contains(item.id.uuidString),
+                            onMultiBuySelectTap: {
+                                HapticManager.selection()
+                                let id = item.id.uuidString
+                                if selectedMultiBuyItemIds.contains(id) {
+                                    selectedMultiBuyItemIds.remove(id)
+                                } else {
+                                    selectedMultiBuyItemIds.insert(id)
+                                }
+                            }
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                } else {
+                    NavigationLink(value: AppRoute.itemDetail(item)) {
+                        WardrobeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
-                .buttonStyle(PlainButtonStyle())
             }
         }
         .padding(.horizontal, Theme.Spacing.md)
@@ -917,6 +986,10 @@ struct BrandButton: View {
 struct WardrobeItemCard: View {
     let item: Item
     var onLikeTap: (() -> Void)? = nil
+    /// When true, show a "Select" pill on the image (top right) for multi-buy selection.
+    var multiBuySelectionMode: Bool = false
+    var isSelectedForMultiBuy: Bool = false
+    var onMultiBuySelectTap: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -996,6 +1069,24 @@ struct WardrobeItemCard: View {
                     }
                     .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
                     .padding(Theme.Spacing.xs)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if multiBuySelectionMode {
+                        Button(action: { onMultiBuySelectTap?() }) {
+                            Text(L10n.string(isSelectedForMultiBuy ? "Selected" : "Select"))
+                                .font(Theme.Typography.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(Theme.primaryColor)
+                                .padding(.horizontal, Theme.Spacing.sm)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule()
+                                        .fill(Theme.primaryColor.opacity(0.2))
+                                )
+                        }
+                        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
+                        .padding(Theme.Spacing.xs)
+                    }
                 }
             }
             .aspectRatio(1.0/1.3, contentMode: .fit)
