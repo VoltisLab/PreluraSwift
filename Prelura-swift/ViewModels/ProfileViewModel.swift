@@ -104,8 +104,7 @@ class ProfileViewModel: ObservableObject {
         await MainActor.run {
             isLoading = true
             errorMessage = nil
-            user = nil
-            userItems = []
+            // Keep user and userItems so the UI doesn't flash to empty/shimmer and break layout
         }
         await loadUserData()
     }

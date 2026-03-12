@@ -291,8 +291,9 @@ struct ProfileView: View {
                 Spacer(minLength: Theme.Spacing.xl)
             }
 
-            // Row 2: Stars (tappable → Reviews) only; location is shown below bio
+            // Row 2: Stars (tappable → Reviews) only; sale icon only when user has items on discount
             VStack(alignment: .leading, spacing: 2) {
+                let hasSaleItems = viewModel.userItems.contains { $0.discountPercentage != nil }
                 if let u = viewModel.user {
                     NavigationLink(value: AppRoute.reviews(username: u.username, rating: u.rating)) {
                         HStack(alignment: .center, spacing: 4) {
@@ -306,11 +307,13 @@ struct ProfileView: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: true)
-                            Spacer(minLength: 4)
-                            Image("SaleIcon")
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(height: 16)
+                            if hasSaleItems {
+                                Spacer(minLength: 4)
+                                Image("SaleIcon")
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(height: 16)
+                            }
                         }
                     }
                     .buttonStyle(HapticTapButtonStyle())
@@ -326,11 +329,13 @@ struct ProfileView: View {
                             .foregroundColor(Theme.Colors.secondaryText)
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: true)
-                        Spacer(minLength: 4)
-                        Image("SaleIcon")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(height: 16)
+                        if hasSaleItems {
+                            Spacer(minLength: 4)
+                            Image("SaleIcon")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 16)
+                        }
                     }
                 }
             }
@@ -530,21 +535,23 @@ struct ProfileView: View {
                     }
                     .buttonStyle(.plain)
                     Spacer()
-                    Button(action: {
-                        HapticManager.selection()
-                        filterMultiBuyOnly.toggle()
-                    }) {
-                        Text(L10n.string("Multi-buy"))
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(filterMultiBuyOnly ? .white : Theme.primaryColor)
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .padding(.vertical, Theme.Spacing.sm)
-                            .background(
-                                RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
-                                    .fill(filterMultiBuyOnly ? Theme.primaryColor : Theme.primaryColor.opacity(0.2))
-                            )
+                    if viewModel.user?.isMultibuyEnabled ?? isMultiBuyEnabled {
+                        Button(action: {
+                            HapticManager.selection()
+                            filterMultiBuyOnly.toggle()
+                        }) {
+                            Text(L10n.string("Multi-buy"))
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(filterMultiBuyOnly ? .white : Theme.primaryColor)
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.vertical, Theme.Spacing.sm)
+                                .background(
+                                    RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
+                                        .fill(filterMultiBuyOnly ? Theme.primaryColor : Theme.primaryColor.opacity(0.2))
+                                )
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.md)

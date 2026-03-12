@@ -230,12 +230,6 @@ class DiscoverViewModel: ObservableObject {
         await MainActor.run {
             isLoading = true
             errorMessage = nil
-            discoverItems = []
-            recentlyViewedItems = []
-            brandsYouLoveItems = []
-            topShops = []
-            shopBargainsItems = []
-            onSaleItems = []
         }
         
         do {

@@ -216,8 +216,6 @@ class HomeViewModel: ObservableObject {
             hasMorePages = true
             isLoading = true
             errorMessage = nil
-            allItems = []
-            filteredItems = []
         }
         
         do {

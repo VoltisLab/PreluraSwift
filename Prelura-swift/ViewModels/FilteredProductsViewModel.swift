@@ -117,7 +117,6 @@ class FilteredProductsViewModel: ObservableObject {
             isLoading = true
             currentPage = 1
             hasMorePages = true
-            items = []
         }
         
         do {

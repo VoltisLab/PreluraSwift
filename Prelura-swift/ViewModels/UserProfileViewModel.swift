@@ -50,7 +50,7 @@ class UserProfileViewModel: ObservableObject {
     }
     
     private func loadProfileAndProducts() async {
-        await MainActor.run { isLoading = true; errorMessage = nil; items = [] }
+        await MainActor.run { isLoading = true; errorMessage = nil }
         do {
             // Fetch full profile (bio, location, stats) for this username
             let profileUser = try await userService.getUserByUsername(user.username)

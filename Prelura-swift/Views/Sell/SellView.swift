@@ -98,7 +98,35 @@ struct SellView: View {
                     }
                 )
             }
+
+            // Full-screen overlay during upload: blocks all interaction and shows loader
+            if viewModel.isSubmitting {
+                Color.black.opacity(0.5)
+                    .ignoresSafeArea()
+                    .overlay {
+                        VStack(spacing: Theme.Spacing.lg) {
+                            ProgressView()
+                                .scaleEffect(1.4)
+                                .tint(Theme.Colors.primaryText)
+                            Text(L10n.string("Uploading..."))
+                                .font(Theme.Typography.headline)
+                                .foregroundColor(Theme.Colors.primaryText)
+                        }
+                        .padding(Theme.Spacing.xl)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                                .fill(Theme.Colors.background)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                                .strokeBorder(Theme.Colors.glassBorder, lineWidth: 1)
+                        )
+                    }
+                    .transition(.opacity)
+                    .allowsHitTesting(true)
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isSubmitting)
         .navigationTitle(L10n.string("Sell an item"))
         .onChange(of: viewModel.submissionSuccess) { _, success in
             if success {
