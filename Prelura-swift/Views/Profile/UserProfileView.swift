@@ -108,30 +108,47 @@ struct UserProfileView: View {
                     Spacer()
                     HStack {
                         Spacer()
-                        NavigationLink(destination: MultiBuyCartView(
-                            selectedIds: $selectedMultiBuyItemIds,
-                            allItems: viewModel.items
-                        )) {
-                            HStack(spacing: Theme.Spacing.sm) {
-                                Image(systemName: "cart.fill")
-                                    .font(.system(size: 16, weight: .semibold))
-                                Text(L10n.string("View bag"))
-                                    .font(Theme.Typography.headline)
+                        GlassEffectContainer(spacing: 0) {
+                            Group {
+                                if selectedMultiBuyItemIds.count >= 2 {
+                                    NavigationLink(destination: MultiBuyCartView(
+                                        selectedIds: $selectedMultiBuyItemIds,
+                                        allItems: viewModel.items,
+                                        sellerUserId: seller.userId
+                                    )) {
+                                        shoppingBagButtonLabel
+                                    }
+                                    .buttonStyle(.plain)
+                                } else {
+                                    shoppingBagButtonLabel
+                                        .opacity(0.6)
+                                        .allowsHitTesting(false)
+                                }
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, Theme.Spacing.lg)
                             .padding(.vertical, Theme.Spacing.md)
+                            .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
+                            .glassEffectTransition(.materialize)
                         }
-                        .buttonStyle(.plain)
-                        .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
                         .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        .animation(.easeInOut(duration: 0.35), value: selectedMultiBuyItemIds.count)
                         Spacer()
                     }
                     .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.bottom, 100)
+                    .padding(.bottom, 50)
                 }
                 .allowsHitTesting(true)
             }
+        }
+    }
+
+    private var shoppingBagButtonLabel: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            Image(systemName: "cart.fill")
+                .font(.system(size: 16, weight: .semibold))
+            Text(L10n.string("Shopping bag"))
+                .font(Theme.Typography.headline)
         }
     }
 

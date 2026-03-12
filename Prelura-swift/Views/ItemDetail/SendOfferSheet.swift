@@ -10,7 +10,6 @@ struct SendOfferSheet: View {
     private let productService = ProductService()
 
     @State private var offerAmount: String = ""
-    @State private var message: String = ""
     @State private var isSubmitting: Bool = false
     @State private var errorMessage: String?
     @FocusState private var offerFieldFocused: Bool
@@ -44,7 +43,7 @@ struct SendOfferSheet: View {
                                     }
                                 }
                                 .frame(width: 64, height: 64)
-                                .clipShape(RoundedRectangle(cornerRadius: 30))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(item.title)
@@ -77,19 +76,6 @@ struct SendOfferSheet: View {
                             .padding(Theme.Spacing.md)
                             .background(Theme.Colors.secondaryBackground)
                             .clipShape(RoundedRectangle(cornerRadius: 30))
-                        }
-
-                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                            Text(L10n.string("Message (optional)"))
-                                .font(Theme.Typography.subheadline)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                            TextField("Add a message to the seller...", text: $message, axis: .vertical)
-                                .lineLimit(3...6)
-                                .font(Theme.Typography.body)
-                                .foregroundColor(Theme.Colors.primaryText)
-                                .padding(Theme.Spacing.md)
-                                .background(Theme.Colors.secondaryBackground)
-                                .clipShape(RoundedRectangle(cornerRadius: 30))
                         }
 
                         if let err = errorMessage {
@@ -141,7 +127,7 @@ struct SendOfferSheet: View {
             defer { Task { @MainActor in isSubmitting = false } }
             productService.updateAuthToken(authService.authToken)
             do {
-                _ = try await productService.createOffer(offerPrice: value, productIds: [productId], message: message.isEmpty ? nil : message)
+                _ = try await productService.createOffer(offerPrice: value, productIds: [productId], message: nil)
                 await MainActor.run {
                     dismiss()
                     onDismiss()

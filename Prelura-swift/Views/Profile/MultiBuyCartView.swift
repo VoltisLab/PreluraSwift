@@ -1,18 +1,35 @@
 import SwiftUI
 
-/// Cart-like list of items selected for multi-buy, with checkout button at the bottom.
-/// Uses binding so removing an item updates the parent's selection and this view re-renders.
+/// Cart-like list of items selected for multi-buy. Applies seller's discount tiers (2+, 5+, 10+). Checkout disabled when only 1 item.
 struct MultiBuyCartView: View {
     @Binding var selectedIds: Set<String>
     let allItems: [Item]
+    /// Seller's user id for fetching multibuy discount tiers; nil = current user.
+    var sellerUserId: Int? = nil
+
+    @EnvironmentObject private var authService: AuthService
+    @State private var discountTiers: [MultibuyDiscount] = []
+    private let userService = UserService()
 
     private var items: [Item] {
         allItems.filter { selectedIds.contains($0.id.uuidString) }
     }
 
-    private var totalPrice: Double {
+    private var subtotal: Double {
         items.reduce(0) { $0 + $1.price }
     }
+
+    /// Discount % for item count from seller's tiers (largest minItems <= count). 2–4 → tier 2, 5–9 → tier 5, 10+ → tier 10.
+    private func discountPercent(for count: Int) -> Int {
+        let sorted = discountTiers.filter { $0.isActive && $0.minItems <= count }.sorted { $0.minItems > $1.minItems }
+        guard let tier = sorted.first else { return 0 }
+        return Int(Double(tier.discountValue) ?? 0)
+    }
+
+    private var discountPercent: Int { discountPercent(for: items.count) }
+    private var discountAmount: Double { subtotal * Double(discountPercent) / 100 }
+    private var totalPrice: Double { subtotal - discountAmount }
+    private var canCheckout: Bool { items.count >= 2 }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,12 +45,33 @@ struct MultiBuyCartView: View {
             }
             .background(Theme.Colors.background)
 
-            // Checkout bar at bottom
             VStack(spacing: Theme.Spacing.sm) {
                 HStack {
                     Text(L10n.string("Price"))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.secondaryText)
+                    Spacer()
+                    Text(String(format: "£%.2f", subtotal))
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.Colors.primaryText)
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                if discountPercent > 0 {
+                    HStack {
+                        Text(String(format: "Multi-buy discount (%d%%)", discountPercent))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.primaryColor)
+                        Spacer()
+                        Text(String(format: "-£%.2f", discountAmount))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.primaryColor)
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                }
+                HStack {
+                    Text(L10n.string("Total"))
+                        .font(Theme.Typography.headline)
+                        .foregroundColor(Theme.Colors.primaryText)
                     Spacer()
                     Text(String(format: "£%.2f", totalPrice))
                         .font(Theme.Typography.headline)
@@ -43,12 +81,22 @@ struct MultiBuyCartView: View {
 
                 PrimaryGlassButton(L10n.string("Checkout"), icon: "creditcard", action: {})
                     .padding(.horizontal, Theme.Spacing.md)
+                    .disabled(!canCheckout)
+                    .opacity(canCheckout ? 1 : 0.6)
             }
             .padding(.vertical, Theme.Spacing.md)
             .background(Theme.Colors.background)
         }
-        .navigationTitle(L10n.string("View bag"))
+        .navigationTitle(L10n.string("Shopping bag"))
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            userService.updateAuthToken(authService.authToken)
+            do {
+                discountTiers = try await userService.getMultibuyDiscounts(userId: sellerUserId)
+            } catch {
+                discountTiers = []
+            }
+        }
     }
 
     private func cartRow(item: Item) -> some View {

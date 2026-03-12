@@ -96,10 +96,12 @@ struct ShippingAddressView: View {
         }
     }
 
+    /// Required: address line 1, city, postcode. Optional: address line 2, state. Address does not save unless all required fields are non-empty.
     private var canSave: Bool {
-        !addressLine1.trimmingCharacters(in: .whitespaces).isEmpty
-            && !city.trimmingCharacters(in: .whitespaces).isEmpty
-            && !postcode.trimmingCharacters(in: .whitespaces).isEmpty
+        let a = addressLine1.trimmingCharacters(in: .whitespaces)
+        let c = city.trimmingCharacters(in: .whitespaces)
+        let p = postcode.trimmingCharacters(in: .whitespaces)
+        return !a.isEmpty && !c.isEmpty && !p.isEmpty
     }
 
     private func loadUser() {
@@ -133,11 +135,12 @@ struct ShippingAddressView: View {
 
     private func save() {
         guard canSave else { return }
-        errorMessage = nil
-        isSaving = true
         let address = addressLine1.trimmingCharacters(in: .whitespaces)
         let cityVal = city.trimmingCharacters(in: .whitespaces)
         let postcodeVal = postcode.trimmingCharacters(in: .whitespaces)
+        guard !address.isEmpty, !cityVal.isEmpty, !postcodeVal.isEmpty else { return }
+        errorMessage = nil
+        isSaving = true
         let shipping = ShippingAddress(
             address: address,
             city: cityVal,

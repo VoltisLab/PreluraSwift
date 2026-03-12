@@ -1028,6 +1028,7 @@ extension ProductService {
             
             return Item(
                 id: Item.id(fromProductId: idString),
+                productId: idString,
                 title: product.name ?? "",
                 description: product.description ?? "",
                 price: finalPrice,

@@ -120,7 +120,10 @@ struct ItemDetailView: View {
         .sheet(isPresented: $showSendOfferSheet) {
             SendOfferSheet(item: effectiveItem) { showSendOfferSheet = false }
                 .environmentObject(authService)
-                .presentationDetents([.large])
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(Theme.Colors.background)
+                .presentationCornerRadius(20)
         }
         .navigationDestination(isPresented: $showPaymentSheet) {
             PaymentView(products: [effectiveItem], totalPrice: effectiveItem.price)
@@ -242,7 +245,47 @@ struct ItemDetailView: View {
         if isCurrentUser, let url = viewModel.currentUserAvatarURL, !url.isEmpty { return url }
         return ""
     }
-    
+
+    /// Profile photo placeholder: circle with first letter of username (no shimmer).
+    private var sellerAvatarPlaceholder: some View {
+        Circle()
+            .fill(Theme.primaryColor.opacity(0.3))
+            .frame(width: 50, height: 50)
+            .overlay(
+                Text(String(effectiveItem.seller.username.prefix(1)).uppercased())
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(Theme.primaryColor)
+            )
+    }
+
+    /// Seller avatar: placeholder when no photo; otherwise AsyncImage (shimmer only while loading URL, failure → placeholder).
+    @ViewBuilder
+    private var sellerAvatarView: some View {
+        if effectiveSellerAvatarURL.isEmpty {
+            sellerAvatarPlaceholder
+        } else {
+            AsyncImage(url: URL(string: effectiveSellerAvatarURL)) { phase in
+                switch phase {
+                case .empty:
+                    Circle()
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(width: 50, height: 50)
+                        .shimmering()
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 50, height: 50)
+                        .clipShape(Circle())
+                case .failure:
+                    sellerAvatarPlaceholder
+                @unknown default:
+                    EmptyView()
+                }
+            }
+        }
+    }
+
     // MARK: - Image Carousel (aspect 585:826; extends under status bar, no black bar)
     private static let imageAspectWidth: CGFloat = 585
     private static let imageAspectHeight: CGFloat = 826
@@ -443,32 +486,7 @@ struct ItemDetailView: View {
             HStack(spacing: Theme.Spacing.sm) {
                 NavigationLink(destination: UserProfileView(seller: effectiveItem.seller, authService: authService)) {
                     HStack(spacing: Theme.Spacing.sm) {
-                        AsyncImage(url: URL(string: effectiveSellerAvatarURL)) { phase in
-                            switch phase {
-                            case .empty:
-                                Circle()
-                                    .fill(Theme.Colors.secondaryBackground)
-                                    .frame(width: 50, height: 50)
-                                    .shimmering()
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 50, height: 50)
-                                    .clipShape(Circle())
-                            case .failure:
-                                Circle()
-                                    .fill(Theme.primaryColor.opacity(0.3))
-                                    .frame(width: 50, height: 50)
-                                    .overlay(
-                                        Text(String(effectiveItem.seller.username.prefix(1)).uppercased())
-                                            .font(.system(size: 20, weight: .semibold))
-                                            .foregroundColor(Theme.primaryColor)
-                                    )
-                            @unknown default:
-                                EmptyView()
-                            }
-                        }
+                        sellerAvatarView
                         VStack(alignment: .leading, spacing: 4) {
                             Text(effectiveItem.seller.username)
                                 .font(Theme.Typography.body)
