@@ -110,7 +110,7 @@ struct DiscoverView: View {
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
                     .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.top, 24)
+                    .padding(.top, 14)
                     .padding(.bottom, Theme.Spacing.sm)
                 ContentDivider()
                 categoryCirclesSection
@@ -132,7 +132,7 @@ struct DiscoverView: View {
                     .padding(.vertical, Theme.Spacing.lg)
                 onSaleSection
             }
-            .padding(.top, Theme.Spacing.sm)
+            .padding(.top, 5)
             .padding(.bottom, Theme.Spacing.lg)
         }
         .frame(maxWidth: .infinity)
@@ -159,14 +159,15 @@ struct DiscoverView: View {
         let firstRow = Array(brandsToShow.prefix(10))
         let secondRow = Array(brandsToShow.suffix(from: min(10, brandsToShow.count)))
         
-        return VStack(spacing: 2) {
+        return VStack(spacing: 0) {
             AnimatedBrandRow(brands: firstRow, maxOffset: 50, authService: authService, animationStopped: $pillAnimationStopped)
             if !secondRow.isEmpty {
                 AnimatedBrandRow(brands: secondRow, maxOffset: 30, authService: authService, animationStopped: $pillAnimationStopped)
+                    .padding(.top, 4)
             }
         }
         .padding(.top, 2)
-        .padding(.bottom, Theme.Spacing.xs)
+        .padding(.bottom, 2)
     }
     
     // MARK: - Category List (simple list like brands on sell page; navigate to filtered category)
@@ -475,7 +476,7 @@ private struct AnimatedBrandRow: View {
             .padding(.trailing, Theme.Spacing.md)
             .offset(x: offset)
         }
-        .frame(height: 48)
+        .frame(height: 44)
         .simultaneousGesture(
             DragGesture(minimumDistance: 1).onEnded { _ in
                 animationStopped = true
