@@ -27,10 +27,18 @@ class HomeViewModel: ObservableObject {
         loadData()
     }
 
-    /// Toggle like for a product and update local state.
+    /// Toggle like for a product and update local state. Applies optimistic update so the heart/count change immediately on tap.
     func toggleLike(productId: String) {
         guard !productId.isEmpty, let item = allItems.first(where: { $0.productId == productId }) else { return }
         let newLiked = !item.isLiked
+        let newCount = item.likeCount + (newLiked ? 1 : -1)
+        let optimistic = item.with(likeCount: max(0, newCount), isLiked: newLiked)
+        if let i = allItems.firstIndex(where: { $0.productId == productId }) {
+            allItems[i] = optimistic
+        }
+        if let j = filteredItems.firstIndex(where: { $0.productId == productId }) {
+            filteredItems[j] = optimistic
+        }
         Task {
             do {
                 let (isLiked, likeCount) = try await productService.toggleLike(productId: productId, isLiked: newLiked)
@@ -44,7 +52,15 @@ class HomeViewModel: ObservableObject {
                     }
                 }
             } catch {
-                await MainActor.run { errorMessage = L10n.userFacingError(error) }
+                await MainActor.run {
+                    if let i = allItems.firstIndex(where: { $0.productId == productId }) {
+                        allItems[i] = item
+                    }
+                    if let j = filteredItems.firstIndex(where: { $0.productId == productId }) {
+                        filteredItems[j] = item
+                    }
+                    errorMessage = L10n.userFacingError(error)
+                }
             }
         }
     }

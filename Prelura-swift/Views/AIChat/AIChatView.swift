@@ -8,11 +8,13 @@ struct ChatMessage: Identifiable {
     let isFromUser: Bool
     let text: String
     var items: [Item]?
-    init(id: UUID = UUID(), isFromUser: Bool, text: String, items: [Item]? = nil) {
+    var orders: [Order]?
+    init(id: UUID = UUID(), isFromUser: Bool, text: String, items: [Item]? = nil, orders: [Order]? = nil) {
         self.id = id
         self.isFromUser = isFromUser
         self.text = text
         self.items = items
+        self.orders = orders
     }
 }
 
@@ -28,13 +30,23 @@ struct AIChatView: View {
     @State private var inputText: String = ""
     @FocusState private var isInputFocused: Bool
     @State private var isBotThinking: Bool = false
+    /// Full-sentence prompts so users are encouraged to type naturally, not just keywords.
     private static let conversationStarters: [String] = [
-        "navy blazer", "floral dress", "pink skirt", "black jacket", "green hoodie",
-        "white trainers", "denim jeans", "leather bag", "striped top", "wool coat"
+        "I'm looking for a navy blazer.",
+        "Do you have a floral dress under £30?",
+        "I need a pink skirt for a wedding.",
+        "Have you got a black jacket?",
+        "I'm after a green hoodie.",
+        "Looking for white trainers.",
+        "Any denim jeans in size 10?",
+        "Do you have a leather bag?",
+        "I want a striped top.",
+        "I need a wool coat for winter."
     ]
 
     private let aiSearch = AISearchService()
     private let productService = ProductService()
+    private let openAI = OpenAIService.shared
     private let pageSize = 20
 
     var body: some View {
@@ -119,7 +131,7 @@ struct AIChatView: View {
     private var inputBar: some View {
         HStack(alignment: .center, spacing: Theme.Spacing.sm) {
             ZStack(alignment: .leading) {
-                TextField(L10n.string("Type a message..."), text: $inputText, axis: .vertical)
+                TextField(placeholderForInputBar, text: $inputText, axis: .vertical)
                     .textFieldStyle(PlainTextFieldStyle())
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.primaryText)
@@ -159,6 +171,11 @@ struct AIChatView: View {
         )
     }
 
+    /// When the overlay is showing (empty chat, no text), use no placeholder so only the animated prompt is visible.
+    private var placeholderForInputBar: String {
+        (messages.isEmpty && inputText.isEmpty) ? "" : L10n.string("Type a message...")
+    }
+
     private var canSend: Bool {
         !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -181,136 +198,203 @@ struct AIChatView: View {
     private func respondToUserMessage(_ raw: String) async {
         let thinkingStart = Date()
         let minThinkingSeconds = Double.random(in: 1.0...3.0)
+        let conversationHistory = buildConversationHistory()
 
         if aiSearch.isGreetingOnly(raw) {
+            let openAIReply = openAI.isConfigured ? await openAI.reply(userMessage: raw, conversationHistory: conversationHistory) : nil
             await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
             await MainActor.run {
-                messages.append(ChatMessage(isFromUser: false, text: L10n.string(aiSearch.randomGreetingReply()), items: []))
+                let text = openAIReply ?? L10n.string(aiSearch.randomGreetingReply())
+                messages.append(ChatMessage(isFromUser: false, text: text, items: []))
             }
             return
         }
-        let parsed = aiSearch.parse(query: raw)
-        let inScope = isParsedInScope(parsed)
 
-        if inScope {
-            let categoryFilter = (parsed.categoryOverride == nil || parsed.categoryOverride == "All") ? nil : parsed.categoryOverride
+        // When OpenAI is not configured, fall back to parser-based search (original behavior).
+        if !openAI.isConfigured {
+            await respondWithParserOnly(raw: raw, thinkingStart: thinkingStart, minThinkingSeconds: minThinkingSeconds)
+            return
+        }
+
+        // OpenAI decides when to show products: only when the reply contains [SEARCH: query].
+        let openAIReply = await openAI.reply(userMessage: raw, conversationHistory: conversationHistory)
+        let (displayText, searchQuery) = Self.parseSearchDirective(from: openAIReply ?? "")
+
+        if let query = searchQuery, !query.trimmingCharacters(in: .whitespaces).isEmpty {
+            // Run product search only when OpenAI asked for it via [SEARCH: ...].
+            let parsed = aiSearch.parse(query: query)
             do {
-                let colourSet = Set(parsed.appliedColourNames.map { $0.lowercased() })
-                let useBroadSearch = !parsed.appliedColourNames.isEmpty
-                let useSizeFilter = parsed.sizeTerm != nil
-                let fetchCount: Int
-                if useBroadSearch { fetchCount = 50 }
-                else if useSizeFilter { fetchCount = 80 }
-                else { fetchCount = pageSize }
-
-                let candidates = parsed.searchQueryCandidates.isEmpty
-                    ? (parsed.searchText.isEmpty ? [""] : [parsed.searchText])
-                    : parsed.searchQueryCandidates
-                var visible: [Item] = []
-                var usedQuery: String?
-                for (index, candidate) in candidates.enumerated() {
-                    let searchForApi: String?
-                    if useBroadSearch {
-                        let withoutColour = candidate
-                            .split(separator: " ")
-                            .map(String.init)
-                            .filter { !colourSet.contains($0.lowercased()) }
-                            .joined(separator: " ")
-                        searchForApi = withoutColour.isEmpty ? nil : withoutColour
-                    } else {
-                        searchForApi = candidate.isEmpty ? nil : candidate
-                    }
-                    let products = try await productService.getAllProducts(
-                        pageNumber: 1,
-                        pageCount: fetchCount,
-                        search: searchForApi,
-                        parentCategory: categoryFilter,
-                        maxPrice: parsed.priceMax
-                    )
-                    var filtered = products.excludingVacationModeSellers()
-                    if useBroadSearch && !parsed.appliedColourNames.isEmpty {
-                        filtered = filtered.filter { item in
-                            item.colors.contains { c in
-                                parsed.appliedColourNames.contains { $0.caseInsensitiveCompare(c) == .orderedSame }
-                            }
-                        }
-                        if filtered.isEmpty && index == 0 {
-                            let fullQueryProducts = try await productService.getAllProducts(
-                                pageNumber: 1,
-                                pageCount: pageSize,
-                                search: parsed.searchText.isEmpty ? nil : parsed.searchText,
-                                parentCategory: categoryFilter,
-                                maxPrice: parsed.priceMax
-                            )
-                            filtered = fullQueryProducts.excludingVacationModeSellers()
-                        }
-                    }
-                    if let sizeTerm = parsed.sizeTerm, !filtered.isEmpty {
-                        let term = sizeTerm.lowercased()
-                        let sizeFiltered = filtered.filter { item in
-                            guard let s = item.size?.lowercased().trimmingCharacters(in: .whitespaces), !s.isEmpty else { return false }
-                            if s == term { return true }
-                            let normalized = s.replacingOccurrences(of: " ", with: "")
-                            if normalized == term { return true }
-                            let parts = s.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
-                            if parts.contains(term) { return true }
-                            return s.contains(term) && (s.hasPrefix(term + " ") || s.hasSuffix(" " + term) || s.contains(" " + term + " "))
-                        }
-                        if !sizeFiltered.isEmpty { filtered = sizeFiltered }
-                    }
-                    if !filtered.isEmpty {
-                        visible = filtered
-                        usedQuery = candidate
-                        break
-                    }
-                }
-
-                var usedSizeFallbackReply = false
-                if let sizeTerm = parsed.sizeTerm, !visible.isEmpty {
-                    let term = sizeTerm.lowercased()
-                    let filtered = visible.filter { item in
-                        guard let s = item.size?.lowercased().trimmingCharacters(in: .whitespaces), !s.isEmpty else { return false }
-                        if s == term { return true }
-                        let normalized = s.replacingOccurrences(of: " ", with: "")
-                        if normalized == term { return true }
-                        let parts = s.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
-                        if parts.contains(term) { return true }
-                        return s.contains(term) && (s.hasPrefix(term + " ") || s.hasSuffix(" " + term) || s.contains(" " + term + " "))
-                    }
-                    if !filtered.isEmpty {
-                        visible = filtered
-                    } else {
-                        usedSizeFallbackReply = true
-                    }
-                }
-
-                var replyText: String
-                if usedSizeFallbackReply, let sizeTerm = parsed.sizeTerm {
-                    replyText = aiSearch.replyForSizeFallback(sizeTerm: sizeTerm)
-                } else if let used = usedQuery, used != parsed.searchText, !visible.isEmpty {
-                    replyText = aiSearch.replyForFallbackResults(fallbackTerm: used)
-                } else if visible.isEmpty {
-                    replyText = aiSearch.replyForNoResults()
-                } else {
-                    replyText = aiSearch.replyForResults(parsed: parsed, hasItems: true, query: raw)
-                }
-
+                let visible = try await fetchProductsForParsed(parsed)
                 await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
                 await MainActor.run {
-                    messages.append(ChatMessage(isFromUser: false, text: replyText, items: visible))
+                    messages.append(ChatMessage(isFromUser: false, text: displayText, items: visible))
                 }
             } catch {
                 await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
                 await MainActor.run {
-                    messages.append(ChatMessage(isFromUser: false, text: L10n.string("Something went wrong. Please try again.")))
+                    let text = displayText.isEmpty ? L10n.string("Something went wrong. Please try again.") : displayText
+                    messages.append(ChatMessage(isFromUser: false, text: text))
                 }
+            }
+        } else {
+            // No [SEARCH: ...]: show only the reply, no products.
+            await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
+            await MainActor.run {
+                let text = displayText.isEmpty ? L10n.string(AISearchService.randomOutOfScopeReply()) : displayText
+                messages.append(ChatMessage(isFromUser: false, text: text, items: []))
+            }
+        }
+    }
+
+    /// Fallback when OpenAI is not configured: use parser to decide when to search (original behavior).
+    private func respondWithParserOnly(raw: String, thinkingStart: Date, minThinkingSeconds: Double) async {
+        let parsed = aiSearch.parse(query: raw)
+        let inScope = isParsedInScope(parsed)
+        let shouldRunSearch = hasProductIntent(parsed)
+        if inScope && shouldRunSearch {
+            do {
+                let visible = try await fetchProductsForParsed(parsed)
+                let ruleBasedReply = visible.isEmpty ? aiSearch.replyForNoResults() : aiSearch.replyForResults(parsed: parsed, hasItems: true, query: raw)
+                await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
+                await MainActor.run {
+                    messages.append(ChatMessage(isFromUser: false, text: ruleBasedReply, items: visible))
+                }
+            } catch {
+                await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
+                await MainActor.run {
+                    messages.append(ChatMessage(isFromUser: false, text: L10n.string("Something went wrong. Please try again."), items: nil))
+                }
+            }
+        } else if inScope && !shouldRunSearch {
+            await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
+            await MainActor.run {
+                messages.append(ChatMessage(isFromUser: false, text: L10n.string(AISearchService.replyWhenNeedMoreDetail()), items: []))
             }
         } else {
             await ensureMinThinkingTime(since: thinkingStart, minSeconds: minThinkingSeconds)
             await MainActor.run {
-                messages.append(ChatMessage(isFromUser: false, text: L10n.string(AISearchService.randomOutOfScopeReply())))
+                messages.append(ChatMessage(isFromUser: false, text: L10n.string(AISearchService.randomOutOfScopeReply()), items: []))
             }
         }
+    }
+
+    /// Parses OpenAI reply for [SEARCH: query]. Returns (displayText, searchQuery). Display text has the [SEARCH: ...] line removed.
+    private static func parseSearchDirective(from reply: String) -> (displayText: String, searchQuery: String?) {
+        let pattern = #"\[SEARCH:\s*([^\]]*)\]"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: reply, range: NSRange(reply.startIndex..., in: reply)) else {
+            return (reply.trimmingCharacters(in: .whitespacesAndNewlines), nil)
+        }
+        let fullRange = Range(match.range, in: reply)!
+        let captureRange = Range(match.range(at: 1), in: reply)!
+        let query = String(reply[captureRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        var display = reply
+        display.removeSubrange(fullRange)
+        display = display.trimmingCharacters(in: .whitespacesAndNewlines)
+        if display.hasSuffix("\n") { display = String(display.dropLast()) }
+        display = display.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (display, query.isEmpty ? nil : query)
+    }
+
+    /// Fetches and filters products for the given parsed query (same logic as before, returns items or empty).
+    private func fetchProductsForParsed(_ parsed: ParsedSearch) async throws -> [Item] {
+        let categoryFilter = (parsed.categoryOverride == nil || parsed.categoryOverride == "All") ? nil : parsed.categoryOverride
+        let colourSet = Set(parsed.appliedColourNames.map { $0.lowercased() })
+        let useBroadSearch = !parsed.appliedColourNames.isEmpty
+        let useSizeFilter = parsed.sizeTerm != nil
+        let fetchCount: Int
+        if useBroadSearch { fetchCount = 50 }
+        else if useSizeFilter { fetchCount = 80 }
+        else { fetchCount = pageSize }
+
+        let candidates = parsed.searchQueryCandidates.isEmpty
+            ? (parsed.searchText.isEmpty ? [""] : [parsed.searchText])
+            : parsed.searchQueryCandidates
+        var visible: [Item] = []
+        for (index, candidate) in candidates.enumerated() {
+            let searchForApi: String?
+            if useBroadSearch {
+                let withoutColour = candidate
+                    .split(separator: " ")
+                    .map(String.init)
+                    .filter { !colourSet.contains($0.lowercased()) }
+                    .joined(separator: " ")
+                searchForApi = withoutColour.isEmpty ? nil : withoutColour
+            } else {
+                searchForApi = candidate.isEmpty ? nil : candidate
+            }
+            let products = try await productService.getAllProducts(
+                pageNumber: 1,
+                pageCount: fetchCount,
+                search: searchForApi,
+                parentCategory: categoryFilter,
+                maxPrice: parsed.priceMax
+            )
+            var filtered = products.excludingVacationModeSellers()
+            if useBroadSearch && !parsed.appliedColourNames.isEmpty {
+                filtered = filtered.filter { item in
+                    item.colors.contains { c in
+                        parsed.appliedColourNames.contains { $0.caseInsensitiveCompare(c) == .orderedSame }
+                    }
+                }
+                if filtered.isEmpty && index == 0 {
+                    let fullQueryProducts = try await productService.getAllProducts(
+                        pageNumber: 1,
+                        pageCount: pageSize,
+                        search: parsed.searchText.isEmpty ? nil : parsed.searchText,
+                        parentCategory: categoryFilter,
+                        maxPrice: parsed.priceMax
+                    )
+                    filtered = fullQueryProducts.excludingVacationModeSellers()
+                }
+            }
+            if let sizeTerm = parsed.sizeTerm, !filtered.isEmpty {
+                let term = sizeTerm.lowercased()
+                let sizeFiltered = filtered.filter { item in
+                    guard let s = item.size?.lowercased().trimmingCharacters(in: .whitespaces), !s.isEmpty else { return false }
+                    if s == term { return true }
+                    let normalized = s.replacingOccurrences(of: " ", with: "")
+                    if normalized == term { return true }
+                    let parts = s.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+                    if parts.contains(term) { return true }
+                    return s.contains(term) && (s.hasPrefix(term + " ") || s.hasSuffix(" " + term) || s.contains(" " + term + " "))
+                }
+                if !sizeFiltered.isEmpty { filtered = sizeFiltered }
+            }
+            if !filtered.isEmpty {
+                visible = filtered
+                break
+            }
+        }
+        return visible
+    }
+
+    /// True when we have enough to run product search: a category or a product-type term (not just colours).
+    private func hasProductIntent(_ parsed: ParsedSearch) -> Bool {
+        if let cat = parsed.categoryOverride, !cat.isEmpty, cat != "All" { return true }
+        let trimmed = parsed.searchText.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+        let words = trimmed.split(separator: " ").map(String.init)
+        let colourSet = Set(parsed.appliedColourNames.map { $0.lowercased() })
+        return words.contains { !colourSet.contains($0.lowercased()) }
+    }
+
+    /// Last few user/assistant pairs for OpenAI context (max 5 pairs).
+    private func buildConversationHistory() -> [(user: String, assistant: String)] {
+        var pairs: [(user: String, assistant: String)] = []
+        var i = 0
+        while i < messages.count {
+            guard messages[i].isFromUser else { i += 1; continue }
+            let userText = messages[i].text
+            i += 1
+            if i < messages.count, !messages[i].isFromUser {
+                pairs.append((userText, messages[i].text))
+                i += 1
+            }
+        }
+        let maxPairs = 5
+        if pairs.count <= maxPairs { return pairs }
+        return Array(pairs.suffix(maxPairs))
     }
 
     /// Ensures at least minSeconds have passed since `since` before returning (shows "thinking" for a natural 1–3 seconds).
@@ -389,7 +473,6 @@ struct ChatBubbleView: View {
 
             if let items = message.items, !items.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Divider above (inset from screen edges)
                     Rectangle()
                         .fill(Theme.Colors.glassBorder)
                         .frame(height: 0.5)
@@ -420,7 +503,47 @@ struct ChatBubbleView: View {
                         }
                     }
                     .padding(.vertical, Theme.Spacing.md)
-                    // Divider below (inset from screen edges)
+                    Rectangle()
+                        .fill(Theme.Colors.glassBorder)
+                        .frame(height: 0.5)
+                        .padding(.horizontal, Theme.Spacing.md)
+                }
+                .padding(.top, Theme.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let orders = message.orders, !orders.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    Rectangle()
+                        .fill(Theme.Colors.glassBorder)
+                        .frame(height: 0.5)
+                        .padding(.horizontal, Theme.Spacing.md)
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                ForEach(orders.prefix(20)) { order in
+                                    NavigationLink(destination: OrderDetailView(order: order)) {
+                                        OrderSliderCard(order: order)
+                                            .frame(width: 160, alignment: .topLeading)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                            }
+                            .padding(.horizontal, Theme.Spacing.md)
+                        }
+                        .frame(maxWidth: .infinity)
+                        if orders.count >= 3 {
+                            NavigationLink(destination: MyOrdersView()) {
+                                Text(L10n.string("See All"))
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.primaryColor)
+                            }
+                            .buttonStyle(HapticTapButtonStyle())
+                            .padding(.leading, Theme.Spacing.md)
+                            .padding(.top, Theme.Spacing.xs)
+                        }
+                    }
+                    .padding(.vertical, Theme.Spacing.md)
                     Rectangle()
                         .fill(Theme.Colors.glassBorder)
                         .frame(height: 0.5)
@@ -431,6 +554,63 @@ struct ChatBubbleView: View {
             }
         }
         .id(message.id)
+    }
+}
+
+// MARK: - Order slider card (compact order card for Ann support chat)
+private struct OrderSliderCard: View {
+    let order: Order
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            orderImage
+            Text(order.products.first?.name ?? "Order")
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.primaryText)
+                .lineLimit(1)
+            Text("£\(order.priceTotal)")
+                .font(Theme.Typography.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(Theme.Colors.primaryText)
+            Text(orderStatusDisplay(order.status))
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+        }
+        .padding(Theme.Spacing.sm)
+        .background(Theme.Colors.secondaryBackground)
+        .cornerRadius(Theme.Glass.cornerRadius)
+    }
+
+    private var orderImage: some View {
+        Group {
+            if let url = order.products.first?.imageUrl, !url.isEmpty {
+                AsyncImage(url: URL(string: url)) { phase in
+                    switch phase {
+                    case .success(let image): image.resizable().scaledToFill()
+                    default: Rectangle().fill(Theme.Colors.tertiaryBackground)
+                    }
+                }
+            } else {
+                Rectangle()
+                    .fill(Theme.Colors.tertiaryBackground)
+                    .overlay(Image(systemName: "bag").foregroundColor(Theme.Colors.secondaryText))
+            }
+        }
+        .frame(width: 140, height: 100)
+        .clipped()
+        .cornerRadius(8)
+    }
+
+    private func orderStatusDisplay(_ status: String) -> String {
+        switch status {
+        case "PENDING": return "Pending"
+        case "CONFIRMED": return "Confirmed"
+        case "SHIPPED": return "Shipped"
+        case "DELIVERED": return "Completed"
+        case "CANCELLED": return "Cancelled"
+        case "REFUNDED": return "Refunded"
+        default: return status
+        }
     }
 }
 
@@ -468,7 +648,7 @@ struct AIResultsView: View {
 
 // MARK: - Conversation starter overlay (animated cycling suggestions before first message)
 
-private struct ConversationStarterOverlay: View {
+struct ConversationStarterOverlay: View {
     let starters: [String]
     var onTap: () -> Void
 
@@ -478,7 +658,7 @@ private struct ConversationStarterOverlay: View {
     private let fadeDuration: Double = 0.35
 
     var body: some View {
-        let starter = starters.isEmpty ? "Type a message..." : "e.g. \(starters[currentIndex % starters.count])"
+        let starter = starters.isEmpty ? "Type a message..." : starters[currentIndex % starters.count]
         Text(starter)
             .font(Theme.Typography.body)
             .foregroundColor(Theme.Colors.secondaryText.opacity(0.9))
@@ -508,7 +688,7 @@ private struct ConversationStarterOverlay: View {
 
 // MARK: - Typing indicator (animated bouncing dots)
 
-private struct TypingIndicatorView: View {
+struct TypingIndicatorView: View {
     private let dotCount = 3
     private let dotSize: CGFloat = 8
     private let period: Double = 1.2

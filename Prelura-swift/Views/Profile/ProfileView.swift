@@ -519,7 +519,7 @@ struct ProfileView: View {
     
     // MARK: - Sort sheet (Apply/Clear at bottom like filter modal)
     private var profileSortSheet: some View {
-        NavigationStack {
+        OptionsSheet(title: L10n.string("Sort"), onDismiss: { showSortSheet = false }, detents: [.large]) {
             List {
                 Section {
                     ForEach(ProfileSortOption.allCases, id: \.self) { option in
@@ -558,27 +558,12 @@ struct ProfileView: View {
                 .frame(maxWidth: .infinity)
                 .background(Theme.Colors.background)
             }
-            .navigationTitle(L10n.string("Sort"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: { showSortSheet = false }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    .buttonStyle(HapticTapButtonStyle())
-                }
-            }
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(Theme.Colors.background)
     }
     
     // MARK: - Filter sheet
     private var profileFilterSheet: some View {
-        NavigationStack {
+        OptionsSheet(title: L10n.string("Filter"), onDismiss: { showFilterSheet = false }, detents: [.large]) {
             List {
                 Section {
                     ForEach(profileConditionOptions, id: \.raw) { option in
@@ -631,22 +616,7 @@ struct ProfileView: View {
                 .frame(maxWidth: .infinity)
                 .background(Theme.Colors.background)
             }
-            .navigationTitle(L10n.string("Filter"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: { showFilterSheet = false }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    .buttonStyle(HapticTapButtonStyle())
-                }
-            }
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(Theme.Colors.background)
     }
     
     // MARK: - Items Grid Section

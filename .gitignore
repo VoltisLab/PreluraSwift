@@ -17,3 +17,6 @@ xcuserdata/
 
 # macOS
 .DS_Store
+
+# API keys (paste your key in Secrets.plist; do not commit)
+Prelura-swift/Secrets.plist

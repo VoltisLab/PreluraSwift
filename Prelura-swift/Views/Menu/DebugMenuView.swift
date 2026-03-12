@@ -44,6 +44,22 @@ struct DebugMenuView: View {
                         Text("Black screens")
                     }
                 }
+                NavigationLink(destination: DashboardView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "chart.bar.doc.horizontal")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Dashboard")
+                    }
+                }
+                NavigationLink(destination: OrderScreenDebugView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "doc.text")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Order screen")
+                    }
+                }
             }
         }
         .listStyle(.insetGrouped)

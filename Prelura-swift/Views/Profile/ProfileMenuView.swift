@@ -14,7 +14,7 @@ struct ProfileMenuView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 if listingCount > 0 {
-                    MenuItemRow(title: L10n.string("Shop Value"), icon: "chart.bar.fill", action: { onDismiss(); onSelect(.shopValue) })
+                    MenuItemRow(title: L10n.string("Dashboard"), icon: "chart.bar.fill", action: { onDismiss(); onSelect(.shopValue) })
                     menuDivider
                 }
                 
@@ -61,12 +61,19 @@ struct MenuRowContent: View {
     var subtitle: String? = nil
     let icon: String
     var isDestructive: Bool = false
-    
+    /// When set, use this for icon and subtitle instead of Theme.primaryColor (e.g. grey in options sheet).
+    var iconAndSubtitleColor: Color? = nil
+
+    private var effectiveIconColor: Color {
+        if isDestructive { return .red }
+        return iconAndSubtitleColor ?? Theme.primaryColor
+    }
+
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(isDestructive ? .red : Theme.primaryColor)
+                .foregroundColor(effectiveIconColor)
                 .frame(width: 24, alignment: .leading)
             
             VStack(alignment: .leading, spacing: 2) {
@@ -76,14 +83,14 @@ struct MenuRowContent: View {
                 if let subtitle = subtitle {
                     Text(subtitle)
                         .font(.system(size: 14))
-                        .foregroundColor(Theme.primaryColor)
+                        .foregroundColor(effectiveIconColor)
                 }
             }
             
             Spacer()
         }
         .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.sm)
+        .padding(.vertical, Theme.Spacing.md)
     }
 }
 
@@ -93,10 +100,11 @@ struct MenuItemRow: View {
     let icon: String
     let action: () -> Void
     var isDestructive: Bool = false
+    var iconAndSubtitleColor: Color? = nil
     
     var body: some View {
         Button(action: action) {
-            MenuRowContent(title: title, subtitle: subtitle, icon: icon, isDestructive: isDestructive)
+            MenuRowContent(title: title, subtitle: subtitle, icon: icon, isDestructive: isDestructive, iconAndSubtitleColor: iconAndSubtitleColor)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -211,9 +219,18 @@ struct AboutPreluraMenuView: View {
     }
 }
 
-// MARK: - Help Centre (Flutter HelpCentre). Search, FAQ cards, topics, Start conversation → HelpChatView.
+// MARK: - Help Centre (Flutter HelpCentre). Search, FAQ list, topics list, Start conversation → HelpChatView.
 struct HelpCentreView: View {
     @State private var searchText: String = ""
+
+    private var faqTitles: [String] {
+        [
+            L10n.string("How can I cancel an existing order"),
+            L10n.string("How long does a refund normally take?"),
+            L10n.string("When will I receive my item?"),
+            L10n.string("How will I know if my order has been shipped?")
+        ]
+    }
 
     private var moreTopicsLocalized: [String] {
         [
@@ -222,6 +239,13 @@ struct HelpCentreView: View {
             L10n.string("What's Vacation mode?"),
             L10n.string("How do I earn a trusted seller badge?")
         ]
+    }
+
+    private var helpListDivider: some View {
+        Rectangle()
+            .fill(Theme.Colors.glassBorder)
+            .frame(height: 0.5)
+            .padding(.horizontal, Theme.Spacing.md)
     }
 
     var body: some View {
@@ -244,32 +268,25 @@ struct HelpCentreView: View {
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
 
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: Theme.Spacing.md) {
-                            faqCard(L10n.string("How can I cancel an existing order"))
-                            faqCard(L10n.string("How long does a refund normally take?"))
-                            faqCard(L10n.string("When will I receive my item?"))
-                            faqCard(L10n.string("How will I know if my order has been shipped?"))
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(faqTitles.enumerated()), id: \.offset) { index, title in
+                            MenuItemRow(title: title, icon: "questionmark.circle", action: {})
+                            if index < faqTitles.count - 1 { helpListDivider }
                         }
-                        .padding(.horizontal, Theme.Spacing.md)
                     }
+                    .padding(.vertical, Theme.Spacing.sm)
 
                     Text(L10n.string("More topics"))
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
 
-                    VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(moreTopicsLocalized.enumerated()), id: \.offset) { index, title in
-                            helpTopicRow(title)
-                                .overlay(alignment: .bottom) {
-                                    if index < moreTopicsLocalized.count - 1 {
-                                        ContentDivider()
-                                    }
-                                }
+                            MenuItemRow(title: title, icon: "doc.text", action: {})
+                            if index < moreTopicsLocalized.count - 1 { helpListDivider }
                         }
                     }
-                    .background(Theme.Colors.secondaryBackground)
-                    .cornerRadius(Theme.Glass.cornerRadius)
+                    .padding(.vertical, Theme.Spacing.sm)
 
                     Color.clear.frame(height: 100)
                 }
@@ -280,7 +297,7 @@ struct HelpCentreView: View {
             .background(Theme.Colors.background)
 
             PrimaryButtonBar {
-                NavigationLink(destination: HelpChatView()) {
+                NavigationLink(destination: AnnChatView()) {
                     HStack(spacing: Theme.Spacing.sm) {
                         Image(systemName: "bubble.left.and.bubble.right")
                             .font(.system(size: 16, weight: .semibold))
@@ -298,39 +315,6 @@ struct HelpCentreView: View {
         }
         .navigationTitle(L10n.string("Help Centre"))
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func faqCard(_ title: String) -> some View {
-        Text(title)
-            .font(Theme.Typography.headline)
-            .foregroundColor(.white)
-            .frame(width: 140, height: 120, alignment: .bottomLeading)
-            .padding(Theme.Spacing.md)
-            .background(
-                LinearGradient(
-                    colors: [Color(hex: "D78D8D"), Color(hex: "714A4A")],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func helpTopicRow(_ title: String) -> some View {
-        Button(action: {}) {
-            HStack {
-                Text(title)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
-                Spacer()
-                Image(systemName: "arrow.up.right")
-                    .font(.caption)
-                    .foregroundColor(Theme.Colors.secondaryText)
-            }
-            .padding(.vertical, Theme.Spacing.sm)
-            .padding(.horizontal, Theme.Spacing.md)
-        }
-        .buttonStyle(PlainButtonStyle())
     }
 }
 

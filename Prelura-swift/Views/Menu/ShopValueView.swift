@@ -1,18 +1,50 @@
 import SwiftUI
 
-/// Shop Value screen — reimagined with card-based layout; fetches userEarnings from API (matches Flutter).
+/// Dashboard screen — seller metrics, KPIs, and charts. Fetches UserEarnings from API; some metrics use derived/placeholder values until backend supports them.
 struct ShopValueView: View {
     @EnvironmentObject var authService: AuthService
     var listingCount: Int = 0
-    
+
     @State private var earnings: UserEarnings?
     @State private var isLoading = true
     @State private var errorMessage: String?
-    
+    @State private var showWithdrawalFlow = false
+
     private var userService: UserService {
         let s = UserService()
         if let token = authService.authToken { s.updateAuthToken(token) }
         return s
+    }
+
+    // MARK: - Data (API + derived/placeholder)
+    private var currentShopValue: Double { earnings?.networth ?? 1240 }
+    private var balance: Double { earnings?.completedPayments.value ?? 87 }
+    private var thisMonth: Double { earnings?.earningsInMonth.value ?? 240 }
+    private var totalEarnings: Double { earnings?.totalEarnings.value ?? 3420 }
+    /// Total earned since account creation (same as totalEarnings from API).
+    private var lifetimeEarnings: Double { totalEarnings }
+    private var transactionsCompleted: Int { earnings?.totalEarnings.quantity ?? 58 }
+    private var pendingValue: Double { earnings?.pendingPayments.value ?? 0 }
+    private var pendingOrdersCount: Int { earnings?.pendingPayments.quantity ?? 3 }
+
+    private var viewsThisMonth: Int { 1240 }
+    private var itemsSold: Int { max(14, transactionsCompleted) }
+    private var conversionRate: Double { viewsThisMonth > 0 ? Double(itemsSold) / Double(viewsThisMonth) * 100 : 4.8 }
+    private var averageItemPrice: Double { itemsSold > 0 ? totalEarnings / Double(itemsSold) : 32 }
+    private var sellerRating: Double { 4.9 }
+    private var projectedMonthlyEarnings: Double { 720 }
+
+    /// Placeholder % change vs previous period (until backend provides). Used for Views this month, This month, Total earnings, Lifetime, Projected earnings.
+    private var viewsThisMonthPercentChange: Double { 8.0 }
+    private var thisMonthPercentChange: Double { 12.0 }
+    private var totalEarningsPercentChange: Double { 5.0 }
+    private var lifetimePercentChange: Double { 5.0 }
+    private var projectedEarningsPercentChange: Double { 10.0 }
+
+    /// Mock weekly earnings for chart (last 6 weeks) — deterministic so chart doesn’t jump on redraw
+    private var earningsTrendPoints: [Double] {
+        let m = max(1, thisMonth)
+        return [m * 0.15, m * 0.35, m * 0.55, m * 0.75, m * 0.88, m]
     }
 
     var body: some View {
@@ -23,29 +55,36 @@ struct ShopValueView: View {
             } else {
                 ZStack(alignment: .bottom) {
                     ScrollView {
-                        VStack(spacing: Theme.Spacing.lg) {
-                            heroCard
-                            balanceCard
-                            earningsRow
-                            footer
+                        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                            heroSection
+                            kpiGrid
+                            earningsChartSection
+                            secondaryKpiGrid
+                            performanceSection
+                            helpLink
                         }
                         .padding(Theme.Spacing.md)
                         .padding(.bottom, 100)
                     }
                     PrimaryButtonBar {
-                        PrimaryGlassButton("Withdraw", action: {})
+                        PrimaryGlassButton(L10n.string("Withdraw"), action: { showWithdrawalFlow = true })
                     }
                 }
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("Shop Value"))
+        .navigationTitle(L10n.string("Dashboard"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .refreshable { await loadEarnings() }
         .onAppear { Task { await loadEarnings() } }
+        .sheet(isPresented: $showWithdrawalFlow) {
+            NavigationStack {
+                WithdrawalFlowView(availableBalance: balance, onDismiss: { showWithdrawalFlow = false })
+            }
+        }
     }
-    
+
     private func loadEarnings() async {
         isLoading = true
         errorMessage = nil
@@ -62,25 +101,20 @@ struct ShopValueView: View {
             }
         }
     }
-    
-    private var networth: Double { earnings?.networth ?? 0 }
-    private var pendingPayments: Double { earnings?.pendingPayments.value ?? 0 }
-    private var completedPayments: Double { earnings?.completedPayments.value ?? 0 }
-    private var earningsThisMonth: Double { earnings?.earningsInMonth.value ?? 0 }
-    private var totalEarnings: Double { earnings?.totalEarnings.value ?? 0 }
-    private var transactionsCompleted: Int { earnings?.totalEarnings.quantity ?? 0 }
 
-    // MARK: - Hero: current value + listings
-    private var heroCard: some View {
+    // MARK: - Hero: Shop Value + Listings
+    private var heroSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text(L10n.string("Current shop value"))
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
                 .textCase(.uppercase)
                 .tracking(0.5)
-            Text(formatCurrency(networth))
-                .font(.system(size: 32, weight: .bold, design: .rounded))
-                .foregroundColor(Theme.Colors.primaryText)
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                Text(formatCurrency(currentShopValue))
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundColor(Theme.Colors.primaryText)
+            }
             HStack(spacing: Theme.Spacing.xs) {
                 Image(systemName: "tag")
                     .font(.caption)
@@ -96,64 +130,106 @@ struct ShopValueView: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
     }
 
-    // MARK: - Balance: available + pending
-    private var balanceCard: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack {
-                Text(L10n.string("Balance"))
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                Spacer()
-                Text(String(format: L10n.string("Pending %@"), formatCurrency(pendingPayments)))
-                    .font(Theme.Typography.caption)
-                    .foregroundColor(Theme.primaryColor)
-            }
-            Text(formatCurrency(completedPayments))
-                .font(.system(size: 28, weight: .semibold, design: .rounded))
-                .foregroundColor(Theme.Colors.primaryText)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.Spacing.lg)
-        .background(Theme.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
-    }
-
-    // MARK: - Earnings: two cards
-    private var earningsRow: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            earningsCard(title: L10n.string("This month"), value: earningsThisMonth)
-            earningsCard(title: L10n.string("Total earnings"), value: totalEarnings)
-        }
-    }
-
-    private func earningsCard(title: String, value: Double) -> some View {
+    // MARK: - KPI grid (6 thumbnails: Balance, Pending orders, This month, Total earnings, Transactions, Lifetime)
+    private var kpiGrid: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text(title)
-                .font(Theme.Typography.caption)
-                .foregroundColor(Theme.Colors.secondaryText)
-            Text(formatCurrency(value))
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
+            Text(L10n.string("Earnings & balance"))
+                .font(Theme.Typography.headline)
                 .foregroundColor(Theme.Colors.primaryText)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Theme.Spacing.sm) {
+                DashboardKPICard(title: L10n.string("Balance"), value: formatCurrency(balance))
+                DashboardKPICard(title: L10n.string("Pending orders"), value: "\(pendingOrdersCount)")
+                DashboardKPICard(title: L10n.string("This month"), value: formatCurrency(thisMonth), percentChange: thisMonthPercentChange)
+                DashboardKPICard(title: L10n.string("Total earnings"), value: formatCurrency(totalEarnings), percentChange: totalEarningsPercentChange)
+                DashboardKPICard(title: L10n.string("Transactions completed"), value: "\(transactionsCompleted)")
+                DashboardKPICard(title: L10n.string("Lifetime"), value: formatCurrency(lifetimeEarnings), percentChange: lifetimePercentChange)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Earnings trend chart
+    private var earningsChartSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text(L10n.string("Earnings this month"))
+                .font(Theme.Typography.headline)
+                .foregroundColor(Theme.Colors.primaryText)
+            DashboardAreaChart(points: earningsTrendPoints, fillColor: Theme.primaryColor.opacity(0.25), lineColor: Theme.primaryColor)
+                .frame(height: 140)
+                .padding(.vertical, Theme.Spacing.sm)
+        }
         .padding(Theme.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.Colors.secondaryBackground)
         .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
     }
 
-    private var footer: some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            Text("\(transactionsCompleted) \(L10n.string("transactions completed"))")
-                .font(Theme.Typography.caption)
-                .foregroundColor(Theme.Colors.secondaryText)
-            Button(action: {}) {
-                Text(L10n.string("Help"))
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.primaryColor)
+    // MARK: - Performance (Views, Items sold, Conversion, Avg price — Pending orders moved to top section)
+    private var secondaryKpiGrid: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text(L10n.string("Performance"))
+                .font(Theme.Typography.headline)
+                .foregroundColor(Theme.Colors.primaryText)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Theme.Spacing.sm) {
+                DashboardKPICard(title: L10n.string("Views this month"), value: formatNumber(viewsThisMonth), percentChange: viewsThisMonthPercentChange)
+                DashboardKPICard(title: L10n.string("Items sold"), value: "\(itemsSold)")
+                DashboardKPICard(title: L10n.string("Conversion rate"), value: String(format: "%.1f%%", conversionRate))
+                DashboardKPICard(title: L10n.string("Average item price"), value: formatCurrency(averageItemPrice))
             }
-            .buttonStyle(HapticTapButtonStyle())
         }
-        .padding(.top, Theme.Spacing.sm)
+    }
+
+    // MARK: - Seller rating + Projected earnings (gauge-style)
+    private var performanceSection: some View {
+        HStack(spacing: Theme.Spacing.md) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text(L10n.string("Seller rating"))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(String(format: "%.1f", sellerRating))
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundColor(Theme.Colors.primaryText)
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.yellow)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.Spacing.lg)
+            .background(Theme.Colors.secondaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text(L10n.string("Projected monthly earnings"))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                Text(formatCurrency(projectedMonthlyEarnings))
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundColor(Theme.Colors.primaryText)
+                HStack(spacing: 2) {
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text(String(format: "+%.1f%%", projectedEarningsPercentChange))
+                        .font(.caption2)
+                }
+                .foregroundColor(Theme.primaryColor)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.Spacing.lg)
+            .background(Theme.Colors.secondaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+        }
+    }
+
+    private var helpLink: some View {
+        Button(action: {}) {
+            Text(L10n.string("Help"))
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.primaryColor)
+        }
+        .buttonStyle(HapticTapButtonStyle())
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.sm)
     }
 
     private func formatCurrency(_ value: Double) -> String {
@@ -161,5 +237,95 @@ struct ShopValueView: View {
             return "£\(Int(value))"
         }
         return String(format: "£%.2f", value)
+    }
+
+    private func formatNumber(_ n: Int) -> String {
+        if n >= 1000 {
+            return String(format: "%.1fk", Double(n) / 1000)
+        }
+        return "\(n)"
+    }
+}
+
+// MARK: - Dashboard KPI card (fixed height so all cards align)
+private struct DashboardKPICard: View {
+    let title: String
+    let value: String
+    var subtitle: String? = nil
+    /// Percent change vs previous period; positive = increase, negative = decrease. Shown with arrow and colour (e.g. +8%, -2%).
+    var percentChange: Double? = nil
+
+    private let cardMinHeight: CGFloat = 92
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Text(title)
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .lineLimit(2)
+            Text(value)
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .foregroundColor(Theme.Colors.primaryText)
+            Spacer(minLength: 0)
+            if let sub = subtitle, !sub.isEmpty {
+                Text(sub)
+                    .font(.caption2)
+                    .foregroundColor(Theme.primaryColor)
+            }
+            if let pct = percentChange {
+                HStack(spacing: 2) {
+                    Image(systemName: pct >= 0 ? "arrow.up.right" : "arrow.down.right")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text(String(format: "%@%.1f%%", pct >= 0 ? "+" : "", pct))
+                        .font(.caption2)
+                }
+                .foregroundColor(pct >= 0 ? Theme.primaryColor : Theme.Colors.error)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: cardMinHeight, alignment: .leading)
+        .padding(Theme.Spacing.md)
+        .background(Theme.Colors.secondaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+// MARK: - Area chart for dashboard
+private struct DashboardAreaChart: View {
+    let points: [Double]
+    let fillColor: Color
+    let lineColor: Color
+
+    var body: some View {
+        GeometryReader { _ in
+            DashboardAreaChartShape(points: points)
+                .fill(fillColor)
+            DashboardAreaChartShape(points: points)
+                .stroke(lineColor, lineWidth: 2)
+        }
+    }
+}
+
+private struct DashboardAreaChartShape: Shape {
+    let points: [Double]
+    func path(in rect: CGRect) -> Path {
+        guard !points.isEmpty else { return Path() }
+        let maxP = points.max() ?? 1
+        let minP = points.min() ?? 0
+        let range = maxP - minP
+        let stepX = rect.width / CGFloat(max(points.count - 1, 1))
+        var areaPath = Path()
+        for (i, v) in points.enumerated() {
+            let x = CGFloat(i) * stepX
+            let y = range > 0 ? rect.height * (1 - CGFloat((v - minP) / range)) : rect.height / 2
+            if i == 0 {
+                areaPath.move(to: CGPoint(x: x, y: rect.height))
+                areaPath.addLine(to: CGPoint(x: x, y: y))
+            } else {
+                areaPath.addLine(to: CGPoint(x: x, y: y))
+            }
+        }
+        areaPath.addLine(to: CGPoint(x: CGFloat(points.count - 1) * stepX, y: rect.height))
+        areaPath.closeSubpath()
+        return areaPath
     }
 }

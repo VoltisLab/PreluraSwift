@@ -74,7 +74,7 @@ struct MyOrdersView: View {
                 ScrollView {
                     LazyVStack(spacing: Theme.Spacing.sm) {
                         ForEach(filteredOrders) { order in
-                            NavigationLink(destination: OrderDetailView(order: order)) {
+                            NavigationLink(destination: OrderDetailView(order: order, isSeller: isSold)) {
                                 OrderRowView(order: order, isSold: isSold)
                             }
                             .buttonStyle(.plain)

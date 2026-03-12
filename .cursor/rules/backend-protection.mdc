@@ -10,7 +10,8 @@ description: Protection rule to prevent backend modifications
 **The Prelura Swift app must NEVER modify backend code, GraphQL schema, or API endpoints.**
 
 ### Why This Rule Exists
-- The backend at `https://prelura.voltislabs.uk/graphql/` is shared by multiple apps (Flutter app, web, etc.)
+- The backend is shared by multiple apps (Flutter app, web, etc.). **Backend repo:** https://github.com/VoltisLab/prelura-app
+- The Swift app talks to the API at `https://prelura.voltislabs.uk/graphql/`
 - Other applications depend on the existing backend structure
 - Modifying the backend would break compatibility with other clients
 
@@ -35,7 +36,10 @@ When integrating with the backend:
 - Treat the backend as a read-only API (from our perspective)
 
 ### Reference
-The Flutter app's GraphQL configuration is at:
-`/Users/user/prelura-workspace/PreluraApp/lib/core/di.dart`
+- **Backend repository (server code; do not modify from this client):** https://github.com/VoltisLab/prelura-app
+- **API base (this app points here):** `https://prelura.voltislabs.uk/graphql/`
+- **Backend secrets:** `OPENAI_API_KEY` is set in the backend repo for LLM features; the Swift app never uses the key directly.
+- **Lenny system prompt (canonical):** `docs/lenny-system-prompt.txt` in this repo — backend should use as OpenAI system message.
+- Flutter app GraphQL config: `/Users/user/prelura-workspace/PreluraApp/lib/core/di.dart`
 
 **Remember: We are adding a new client, not modifying the server.**

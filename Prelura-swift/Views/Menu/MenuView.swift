@@ -22,7 +22,7 @@ struct MenuView: View {
             }
             if listingCount > 0 {
                 NavigationLink(destination: ShopValueView(listingCount: listingCount)) {
-                    menuRow(L10n.string("Shop Value"), icon: "chart.bar")
+                    menuRow(L10n.string("Dashboard"), icon: "chart.bar")
                 }
             }
             NavigationLink(destination: MyOrdersView()) {

@@ -131,11 +131,45 @@ struct HomeView: View {
             pinnedViews: []
         ) {
             ForEach(viewModel.filteredItems) { item in
-                            NavigationLink(value: AppRoute.itemDetail(item)) {
-                    HomeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                ZStack(alignment: .topLeading) {
+                    NavigationLink(value: AppRoute.itemDetail(item)) {
+                        HomeItemCard(item: item, onLikeTap: nil, hideLikeButton: true)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    // Like button outside NavigationLink so taps go to button; overlay aligned over image (seller row then image)
+                    VStack(spacing: 0) {
+                        Color.clear.frame(height: 28)
+                        VStack(spacing: 0) {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                Button(action: { viewModel.toggleLike(productId: item.productId ?? "") }) {
+                                    HStack(spacing: Theme.Spacing.xs) {
+                                        Image(systemName: item.isLiked ? "heart.fill" : "heart")
+                                            .font(.system(size: 14, weight: .medium))
+                                        Text("\(item.likeCount)")
+                                            .font(Theme.Typography.caption)
+                                    }
+                                    .foregroundColor(item.isLiked ? .red : .white)
+                                    .shadow(color: .black.opacity(0.4), radius: 1, x: 0, y: 1)
+                                    .padding(.horizontal, Theme.Spacing.sm)
+                                    .padding(.vertical, 6)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
+                                .padding(Theme.Spacing.xs)
+                            }
+                        }
+                        .aspectRatio(1.0/1.3, contentMode: .fit)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .allowsHitTesting(true)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .id("\(item.id)-\(item.isLiked)-\(item.likeCount)")
                 .onAppear {
                     // Load more when the last few items appear
                     if item.id == viewModel.filteredItems.suffix(4).first?.id {
@@ -164,6 +198,8 @@ struct HomeView: View {
 struct HomeItemCard: View {
     let item: Item
     var onLikeTap: (() -> Void)? = nil
+    /// When true, the like overlay is hidden (caller draws it outside NavigationLink so it's tappable).
+    var hideLikeButton: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -278,25 +314,9 @@ struct HomeItemCard: View {
                     .clipped()
                     .cornerRadius(8)
                     
-                    // Like count overlay - tappable
-                    Button(action: { onLikeTap?() }) {
-                        HStack(spacing: Theme.Spacing.xs) {
-                            Image(systemName: item.isLiked ? "heart.fill" : "heart")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white)
-                            Text("\(item.likeCount)")
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(.white)
-                        }
-                        .padding(.horizontal, Theme.Spacing.sm)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(Color.black.opacity(0.6))
-                        )
+                    if !hideLikeButton {
+                        likeButtonContent
                     }
-                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
-                    .padding(Theme.Spacing.xs)
                 }
             }
             .aspectRatio(1.0/1.3, contentMode: .fit)
@@ -349,6 +369,27 @@ struct HomeItemCard: View {
                 }
             }
         }
+    }
+    
+    @ViewBuilder
+    private var likeButtonContent: some View {
+        Button(action: { onLikeTap?() }) {
+            HStack(spacing: Theme.Spacing.xs) {
+                Image(systemName: item.isLiked ? "heart.fill" : "heart")
+                    .font(.system(size: 14, weight: .medium))
+                Text("\(item.likeCount)")
+                    .font(Theme.Typography.caption)
+            }
+            .foregroundColor(item.isLiked ? .red : .white)
+            .shadow(color: .black.opacity(0.4), radius: 1, x: 0, y: 1)
+            .padding(.horizontal, Theme.Spacing.sm)
+            .padding(.vertical, 6)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
+        .padding(Theme.Spacing.xs)
     }
 }
 

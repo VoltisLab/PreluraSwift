@@ -211,7 +211,7 @@ struct FilteredProductsView: View {
     }
 
     private var filteredProductsSortSheet: some View {
-        NavigationStack {
+        OptionsSheet(title: L10n.string("Sort"), onDismiss: { showSortSheet = false }, detents: [.large]) {
             List {
                 Section {
                     ForEach(FilteredProductsSortOption.allCases, id: \.self) { option in
@@ -250,25 +250,11 @@ struct FilteredProductsView: View {
                 .frame(maxWidth: .infinity)
                 .background(Theme.Colors.background)
             }
-            .navigationTitle(L10n.string("Sort"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: { showSortSheet = false }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                }
-            }
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(Theme.Colors.background)
     }
 
     private var filteredProductsFilterSheet: some View {
-        NavigationStack {
+        OptionsSheet(title: L10n.string("Filter"), onDismiss: { showFilterSheet = false }, detents: [.large]) {
             List {
                 Section(header: Text(L10n.string("Condition"))) {
                     ForEach(profileConditionOptions, id: \.raw) { option in
@@ -327,20 +313,6 @@ struct FilteredProductsView: View {
                 .frame(maxWidth: .infinity)
                 .background(Theme.Colors.background)
             }
-            .navigationTitle(L10n.string("Filter"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: { showFilterSheet = false }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                }
-            }
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(Theme.Colors.background)
     }
 }

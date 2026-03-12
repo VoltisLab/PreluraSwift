@@ -1381,8 +1381,18 @@ final class AISearchService {
         return Self.salutations.contains(withoutLenny) || Self.socialGreetingPhrases.contains(withoutLenny)
     }
 
-    /// Greeting replies when user says "hi", "hello", or social questions like "how are you?". Picked at random so Lenny feels natural. 55+ variants with Lenny introducing himself and welcoming the user. Used for both salutations and social Q&A.
+    /// Greeting replies when user says "hi", "hello", or social questions. Lenny always identifies himself and welcomes to Prelura. Used for both salutations and social Q&A.
     private static let greetingReplies: [String] = [
+        "Hi, I'm Lenny — welcome to Prelura. How can I help?",
+        "Hello! I'm Lenny, welcome to Prelura. What can I help you find today?",
+        "Hey there! Lenny here — welcome to Prelura. How can I help you?",
+        "Hi! I'm Lenny, welcome to Prelura. How can I help?",
+        "Hello! Welcome to Prelura — I'm Lenny. How can I help you today?",
+        "Hey! I'm Lenny, welcome to Prelura. What are you looking for?",
+        "Hi there! Lenny here. Welcome to Prelura — how can I help?",
+        "Hello! I'm Lenny, welcome to Prelura. How can I help you find something?",
+        "Hi! Welcome to Prelura. I'm Lenny — how can I help?",
+        "Hey there! I'm Lenny, welcome to Prelura. What can I help you with?",
         "Hello! Welcome to the chat — I'm Lenny, and I'm here to help with whatever you need. Just type what you're looking for to get started.",
         "Hey there! I'm Lenny. Great to have you here. Tell me what you're after — a colour and item like leather jacket or denim jeans works a treat.",
         "Hi! Lenny here. Welcome in. I'm here to help you find something lovely — try typing something like black jacket or green dress.",
@@ -1473,6 +1483,17 @@ final class AISearchService {
         "Hello! Lenny here. Welcome. I'm here to assist you with whatever you need. You can start by typing — red dress or blue shoes.",
         "Hey! I'm Lenny — good to have you. I'm here to help you find something. Type what you're looking for; try checked shirt or desert boots.",
         "Hi! Welcome to the chat. I'm Lenny, and I'm here to help you shop. Just type what you're after to get started — try vest or espadrilles."
+    ]
+
+    /// When the query is in scope but we don't have a product type yet (e.g. only colours). Ask for category so we don't run search too early.
+    static func replyWhenNeedMoreDetail() -> String {
+        needMoreDetailReplies.randomElement() ?? needMoreDetailReplies[0]
+    }
+
+    private static let needMoreDetailReplies: [String] = [
+        "What type of item are you looking for? For example, dress, jacket, shoes, or bag.",
+        "I'd love to help — what kind of product do you have in mind? Dress, coat, trainers, etc.",
+        "Got it. What are you after — dress, jacket, shoes, or something else?"
     ]
 
     /// Out-of-scope replies when the query isn't about products. Varied so the bot doesn't feel robotic.

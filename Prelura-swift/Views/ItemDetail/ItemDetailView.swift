@@ -770,15 +770,16 @@ struct FullScreenImageViewer: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea()
             
-            // Close button
+            // Close button — visible in both light and dark mode
             VStack {
                 HStack {
                     Spacer()
                     Button(action: onDismiss) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 28))
-                            .foregroundColor(.white.opacity(0.9))
+                            .foregroundStyle(Theme.Colors.primaryText)
                             .symbolRenderingMode(.hierarchical)
+                            .background(Circle().fill(.ultraThinMaterial))
                     }
                     .buttonStyle(HapticTapButtonStyle())
                     .padding(.trailing, Theme.Spacing.md)
@@ -830,7 +831,7 @@ struct EditListingPlaceholderView: View {
     }
 }
 
-// MARK: - Product options sheet (3-dot menu; modal list design like ProfileMenuView)
+// MARK: - Product options sheet (uses OptionsSheet component)
 struct ProductOptionsSheet: View {
     let item: Item
     let isCurrentUser: Bool
@@ -846,54 +847,38 @@ struct ProductOptionsSheet: View {
 
     private var optionDivider: some View {
         Rectangle()
+            .fill(Theme.Colors.glassBorder)
             .frame(height: 0.5)
-            .foregroundColor(Theme.Colors.glassBorder.opacity(0.3))
             .padding(.horizontal, Theme.Spacing.md)
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    if isCurrentUser {
-                        MenuItemRow(title: L10n.string("Edit listing"), icon: "square.and.pencil", action: { onEdit() })
-                        optionDivider
-                        MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() })
-                        optionDivider
-                        MenuItemRow(title: L10n.string("Mark as sold"), icon: "checkmark.circle", action: { onMarkAsSold() })
-                        optionDivider
-                        MenuItemRow(title: L10n.string("Delete listing"), icon: "trash", action: { onDelete() }, isDestructive: true)
-                    } else {
-                        MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() })
-                        optionDivider
-                        MenuItemRow(title: L10n.string("Report listing"), icon: "flag", action: { onReport() })
-                        optionDivider
-                        MenuItemRow(title: L10n.string("Copy link"), icon: "link", action: { onCopyLink() })
-                    }
+        OptionsSheet(title: L10n.string("Options"), onDismiss: onDismiss, detents: [.height(300)]) {
+            VStack(alignment: .leading, spacing: 0) {
+                if isCurrentUser {
+                    MenuItemRow(title: L10n.string("Edit listing"), icon: "square.and.pencil", action: { onEdit() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                    optionDivider
+                    MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                    optionDivider
+                    MenuItemRow(title: L10n.string("Mark as sold"), icon: "checkmark.circle", action: { onMarkAsSold() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                    optionDivider
+                    MenuItemRow(title: L10n.string("Delete listing"), icon: "trash", action: { onDelete() }, isDestructive: true)
+                } else {
+                    MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                    optionDivider
+                    MenuItemRow(title: L10n.string("Report listing"), icon: "flag", action: { onReport() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                    optionDivider
+                    MenuItemRow(title: L10n.string("Copy link"), icon: "link", action: { onCopyLink() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
                 }
-                .padding(.vertical, Theme.Spacing.sm)
             }
-            .frame(maxWidth: .infinity)
+            .padding(.vertical, Theme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
                     .fill(colorScheme == .dark ? Color.black.opacity(0.3) : Color.white.opacity(0.1))
             )
-            .navigationTitle(L10n.string("Options"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: onDismiss) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                }
-            }
         }
-        .presentationDetents([.medium])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(Theme.Colors.background)
     }
 }
 

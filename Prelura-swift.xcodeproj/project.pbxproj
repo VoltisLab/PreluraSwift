@@ -52,6 +52,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = CE4600632F5E830F00F6B13D /* Build configuration list for PBXNativeTarget "Prelura-swift" */;
 			buildPhases = (
+				CE4600692F5E831000F6B13D /* Copy Secrets.plist from example if missing */,
 				CE4600542F5E830D00F6B13D /* Sources */,
 				CE4600552F5E830D00F6B13D /* Frameworks */,
 				CE4600562F5E830D00F6B13D /* Resources */,
@@ -126,6 +127,27 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		CE4600692F5E831000F6B13D /* Copy Secrets.plist from example if missing */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy Secrets.plist from example if missing";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ ! -f \"${SRCROOT}/Prelura-swift/Secrets.plist\" ]; then cp \"${SRCROOT}/Prelura-swift/Secrets.plist.example\" \"${SRCROOT}/Prelura-swift/Secrets.plist\"; fi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
 		CE4600562F5E830D00F6B13D /* Resources */ = {
@@ -277,6 +299,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSContactsUsageDescription = "Prelura uses your contacts so you can invite friends to the app.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -321,6 +344,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSContactsUsageDescription = "Prelura uses your contacts so you can invite friends to the app.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

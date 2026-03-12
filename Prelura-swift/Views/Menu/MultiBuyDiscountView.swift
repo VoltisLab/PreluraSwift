@@ -112,8 +112,9 @@ struct MultiBuyDiscountView: View {
     private func percentFor(minItems: Int) -> String {
         let d = discounts.first { $0.minItems == minItems }
         guard let d = d else { return "0" }
-        let num = Int(d.discountValue.replacingOccurrences(of: ".", with: "")) ?? Int(d.discountValue) ?? 0
-        return String(num)
+        // Backend may return "10" or "10.00" for 10%; parse as Double to avoid showing 1000% when value is "10.00"
+        let pct = Double(d.discountValue) ?? 0
+        return String(Int(pct))
     }
 
     private func turnOff() async {
