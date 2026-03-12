@@ -8,6 +8,7 @@ struct HomeView: View {
     @State private var searchText: String = ""
     @State private var scrollPosition: String? = "home_top"
     @State private var showAIChat: Bool = false
+    @State private var showGuestSignInPrompt: Bool = false
 
     let categories = ["All", "Women", "Men", "Kids", "Toddlers"]
 
@@ -108,6 +109,9 @@ struct HomeView: View {
             }
             .hidden()
         )
+        .fullScreenCover(isPresented: $showGuestSignInPrompt) {
+            GuestSignInPromptView()
+        }
     }
 
     // MARK: - Category Filters
@@ -154,7 +158,10 @@ struct HomeView: View {
                             Spacer()
                             HStack {
                                 Spacer()
-                                LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: { viewModel.toggleLike(productId: item.productId ?? "") })
+                                LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: {
+                                    if authService.isGuestMode { showGuestSignInPrompt = true }
+                                    else { viewModel.toggleLike(productId: item.productId ?? "") }
+                                })
                                 .padding(Theme.Spacing.xs)
                             }
                         }

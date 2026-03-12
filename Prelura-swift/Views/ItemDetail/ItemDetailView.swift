@@ -20,6 +20,7 @@ struct ItemDetailView: View {
     @State private var showMarkSoldError: Bool = false
     @State private var deleteErrorMessage: String?
     @State private var markSoldErrorMessage: String?
+    @State private var showGuestSignInPrompt: Bool = false
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authService: AuthService
     
@@ -112,6 +113,9 @@ struct ItemDetailView: View {
                 selectedIndex: $selectedImageIndex,
                 onDismiss: { showFullScreenImages = false }
             )
+        }
+        .fullScreenCover(isPresented: $showGuestSignInPrompt) {
+            GuestSignInPromptView()
         }
         .sheet(isPresented: $showSendOfferSheet) {
             SendOfferSheet(item: effectiveItem) { showSendOfferSheet = false }
@@ -300,7 +304,10 @@ struct ItemDetailView: View {
                     LikeButtonView(
                         isLiked: viewModel.isLiked,
                         likeCount: viewModel.likeCount,
-                        action: { if let productId = item.productId { viewModel.toggleLike(productId: productId) } }
+                        action: {
+                            if authService.isGuestMode { showGuestSignInPrompt = true }
+                            else if let productId = item.productId { viewModel.toggleLike(productId: productId) }
+                        }
                     )
                     .padding(.trailing, 15)
                     .padding(.bottom, 15)

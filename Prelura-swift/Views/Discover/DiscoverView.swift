@@ -10,6 +10,7 @@ struct DiscoverView: View {
     @State private var scrollPosition: String? = "discover_top"
     /// When true, pill tag rows stop their drift animation (set on scroll or tap).
     @State private var pillAnimationStopped: Bool = false
+    @State private var showGuestSignInPrompt: Bool = false
 
     private static let categories = ["Women", "Men", "Boys", "Girls"]
 
@@ -63,6 +64,9 @@ struct DiscoverView: View {
         }
         .fullScreenCover(isPresented: $showSearchMembersResults) {
             SearchMembersView(query: searchText)
+        }
+        .fullScreenCover(isPresented: $showGuestSignInPrompt) {
+            GuestSignInPromptView()
         }
     }
 
@@ -222,7 +226,10 @@ struct DiscoverView: View {
                 LazyHStack(spacing: Theme.Spacing.sm) {
                     ForEach(viewModel.recentlyViewedItems) { item in
                         NavigationLink(value: AppRoute.itemDetail(item)) {
-                            DiscoverItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+                            DiscoverItemCard(item: item, onLikeTap: {
+                                if authService.isGuestMode { showGuestSignInPrompt = true }
+                                else { viewModel.toggleLike(productId: item.productId ?? "") }
+                            })
                                 .frame(width: 160)
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -261,7 +268,10 @@ struct DiscoverView: View {
                 LazyHStack(spacing: Theme.Spacing.sm) {
                     ForEach(viewModel.brandsYouLoveItems) { item in
                         NavigationLink(value: AppRoute.itemDetail(item)) {
-                            DiscoverItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+                            DiscoverItemCard(item: item, onLikeTap: {
+                                if authService.isGuestMode { showGuestSignInPrompt = true }
+                                else { viewModel.toggleLike(productId: item.productId ?? "") }
+                            })
                                 .frame(width: 160)
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -421,7 +431,10 @@ struct DiscoverView: View {
                 LazyHStack(spacing: Theme.Spacing.sm) {
                     ForEach(viewModel.onSaleItems) { item in
                         NavigationLink(value: AppRoute.itemDetail(item)) {
-                            DiscoverItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+                            DiscoverItemCard(item: item, onLikeTap: {
+                                if authService.isGuestMode { showGuestSignInPrompt = true }
+                                else { viewModel.toggleLike(productId: item.productId ?? "") }
+                            })
                                 .frame(width: 160)
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -455,59 +468,69 @@ private struct AnimatedBrandRow: View {
         colorScheme == .light ? Color.black.opacity(0.18) : Theme.Colors.glassBorder.opacity(0.5)
     }
 
+    private let pillRowId = "pill_row_start"
+
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Spacing.sm) {
-                ForEach(brands, id: \.self) { brand in
-                    NavigationLink(destination: FilteredProductsView(
-                        title: brand,
-                        filterType: .byBrand(brandName: brand),
-                        authService: authService
-                    )) {
-                        Text(brand)
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(colorScheme == .light ? Theme.Colors.primaryText : Theme.Colors.secondaryText)
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .padding(.vertical, Theme.Spacing.sm)
-                            .background(shape.fill(pillBackground))
-                            .overlay(
-                                shape
-                                    .strokeBorder(pillBorderColor, lineWidth: 0.5)
-                            )
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Color.clear
+                        .frame(width: 0)
+                        .id(pillRowId)
+                    ForEach(brands, id: \.self) { brand in
+                        NavigationLink(destination: FilteredProductsView(
+                            title: brand,
+                            filterType: .byBrand(brandName: brand),
+                            authService: authService
+                        )) {
+                            Text(brand)
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(colorScheme == .light ? Theme.Colors.primaryText : Theme.Colors.secondaryText)
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.vertical, Theme.Spacing.sm)
+                                .background(shape.fill(pillBackground))
+                                .overlay(
+                                    shape
+                                        .strokeBorder(pillBorderColor, lineWidth: 0.5)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .simultaneousGesture(TapGesture().onEnded { _ in
+                            animationStopped = true
+                        })
                     }
-                    .buttonStyle(.plain)
-                    .simultaneousGesture(TapGesture().onEnded { _ in
-                        animationStopped = true
-                    })
                 }
+                .padding(.leading, Theme.Spacing.md)
+                .padding(.trailing, Theme.Spacing.md)
+                .offset(x: offset)
             }
-            .padding(.leading, Theme.Spacing.md)
-            .padding(.trailing, Theme.Spacing.md)
-            .offset(x: offset)
-        }
-        .frame(height: 44)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 1).onEnded { _ in
-                animationStopped = true
-            }
-        )
-        .onAppear {
-            startDriftIfNeeded()
-        }
-        .onChange(of: animationStopped) { _, stopped in
-            if stopped {
-                driftTimer?.invalidate()
-                driftTimer = nil
-                withAnimation(.easeOut(duration: 0.25)) {
-                    offset = 0
+            .frame(height: 44)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 1).onEnded { _ in
+                    animationStopped = true
                 }
-            } else {
+            )
+            .onAppear {
                 startDriftIfNeeded()
             }
-        }
-        .onDisappear {
-            driftTimer?.invalidate()
-            driftTimer = nil
+            .onChange(of: animationStopped) { _, stopped in
+                if stopped {
+                    driftTimer?.invalidate()
+                    driftTimer = nil
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        offset = 0
+                    }
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        proxy.scrollTo(pillRowId, anchor: .leading)
+                    }
+                } else {
+                    startDriftIfNeeded()
+                }
+            }
+            .onDisappear {
+                driftTimer?.invalidate()
+                driftTimer = nil
+            }
         }
     }
     
@@ -616,36 +639,23 @@ struct DiscoverItemCard: View {
                         )
                         .frame(width: imageWidth, height: imageHeight)
                     
-                    // Product Image - fixed size container to prevent movement
-                    Group {
-                        if let firstImageURL = item.imageURLs.first, let url = URL(string: firstImageURL) {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .empty:
-                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
-                                        .frame(width: imageWidth, height: imageHeight)
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: imageWidth, height: imageHeight)
-                                        .clipped()
-                                case .failure:
-                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
-                                        .frame(width: imageWidth, height: imageHeight)
-                                @unknown default:
-                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
-                                        .frame(width: imageWidth, height: imageHeight)
-                                }
-                            }
-                        } else {
+                    // Product Image - fixed size; retries once on failure to avoid stuck placeholders
+                    RetryAsyncImage(
+                        url: item.imageURLs.first.flatMap { URL(string: $0) },
+                        width: imageWidth,
+                        height: imageHeight,
+                        cornerRadius: 8,
+                        placeholder: {
                             ImageShimmerPlaceholderFilled(cornerRadius: 8)
                                 .frame(width: imageWidth, height: imageHeight)
+                        },
+                        failurePlaceholder: {
+                            Image(systemName: "photo")
+                                .font(.system(size: 40))
+                                .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                .frame(width: imageWidth, height: imageHeight)
                         }
-                    }
-                    .frame(width: imageWidth, height: imageHeight)
-                    .clipped()
-                    .cornerRadius(8)
+                    )
                     
                     // Like count overlay - tappable
                     LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: { onLikeTap?() })

@@ -17,7 +17,12 @@ struct ChatListView: View {
     
     var body: some View {
         Group {
-            if isLoading && conversations.isEmpty {
+            if authService.isGuestMode {
+                GuestSignInPromptView()
+                    .navigationTitle(L10n.string("Messages"))
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbarBackground(Theme.Colors.background, for: .navigationBar)
+            } else if isLoading && conversations.isEmpty {
                 InboxShimmerView()
                     .navigationBarHidden(true)
             } else if conversations.isEmpty && !isLoading {
@@ -99,6 +104,14 @@ struct ChatListView: View {
                     .navigationTitle(L10n.string("Messages"))
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbarBackground(Theme.Colors.background, for: .navigationBar)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            HStack(spacing: Theme.Spacing.xs) {
+                                GlassIconButton(icon: "line.3.horizontal.decrease", iconColor: Theme.Colors.primaryText, action: {})
+                                GlassIconButton(icon: "arrow.up.arrow.down", iconColor: Theme.Colors.primaryText, action: {})
+                            }
+                        }
+                    }
                     .refreshable {
                         await loadConversationsAsync()
                     }
@@ -117,6 +130,7 @@ struct ChatListView: View {
             tabCoordinator.registerRefresh(tab: 3) {
                 Task { await loadConversationsAsync() }
             }
+            guard !authService.isGuestMode else { return }
             if let token = authService.authToken {
                 chatService.updateAuthToken(token)
             }

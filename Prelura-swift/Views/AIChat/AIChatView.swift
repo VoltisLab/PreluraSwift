@@ -421,6 +421,7 @@ struct ChatBubbleView: View {
     let isLastMessage: Bool
     @ObservedObject var viewModel: HomeViewModel
     @EnvironmentObject private var authService: AuthService
+    @State private var showGuestSignInPrompt: Bool = false
 
     /// Typewriter effect for bot messages: only animates when this message is the last (newly added).
     @State private var visibleCharCount: Int = 0
@@ -482,7 +483,10 @@ struct ChatBubbleView: View {
                             HStack(spacing: Theme.Spacing.sm) {
                                 ForEach(Array(items.prefix(20))) { item in
                                     NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
-                                        HomeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+                                        HomeItemCard(item: item, onLikeTap: {
+                                if authService.isGuestMode { showGuestSignInPrompt = true }
+                                else { viewModel.toggleLike(productId: item.productId ?? "") }
+                            })
                                             .frame(width: 140, alignment: .topLeading)
                                     }
                                     .buttonStyle(PlainButtonStyle())
@@ -554,6 +558,9 @@ struct ChatBubbleView: View {
             }
         }
         .id(message.id)
+        .fullScreenCover(isPresented: $showGuestSignInPrompt) {
+            GuestSignInPromptView()
+        }
     }
 }
 
@@ -620,6 +627,7 @@ struct AIResultsView: View {
     let items: [Item]
     @ObservedObject var viewModel: HomeViewModel
     @EnvironmentObject private var authService: AuthService
+    @State private var showGuestSignInPrompt: Bool = false
 
     private let columns = [
         GridItem(.flexible(), spacing: Theme.Spacing.sm),
@@ -631,7 +639,10 @@ struct AIResultsView: View {
             LazyVGrid(columns: columns, alignment: .leading, spacing: Theme.Spacing.md) {
                 ForEach(items) { item in
                     NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
-                        HomeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+                        HomeItemCard(item: item, onLikeTap: {
+                                if authService.isGuestMode { showGuestSignInPrompt = true }
+                                else { viewModel.toggleLike(productId: item.productId ?? "") }
+                            })
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -643,6 +654,9 @@ struct AIResultsView: View {
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Results"))
         .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(isPresented: $showGuestSignInPrompt) {
+            GuestSignInPromptView()
+        }
     }
 }
 

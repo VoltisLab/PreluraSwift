@@ -145,37 +145,28 @@ private struct FavouriteItemCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            ZStack(alignment: .bottomTrailing) {
-                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                    .fill(Theme.Colors.secondaryBackground)
-                    .aspectRatio(1, contentMode: .fit)
-                if let first = item.imageURLs.first, let url = URL(string: first) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .empty:
+            GeometryReader { geometry in
+                let size = min(geometry.size.width, geometry.size.height)
+                ZStack(alignment: .bottomTrailing) {
+                    RetryAsyncImage(
+                        url: item.imageURLs.first.flatMap { URL(string: $0) },
+                        width: size,
+                        height: size,
+                        cornerRadius: Theme.Glass.cornerRadius,
+                        placeholder: {
                             ImageShimmerPlaceholderFilled(cornerRadius: Theme.Glass.cornerRadius)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        case .failure:
+                                .frame(width: size, height: size)
+                        },
+                        failurePlaceholder: {
                             Image(systemName: "photo")
                                 .font(.system(size: 28))
                                 .foregroundColor(Theme.Colors.secondaryText)
-                        @unknown default:
-                            EmptyView()
+                                .frame(width: size, height: size)
                         }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                    .cornerRadius(Theme.Glass.cornerRadius)
-                } else {
-                    Image(systemName: "photo")
-                        .font(.system(size: 28))
-                        .foregroundColor(Theme.Colors.secondaryText)
+                    )
                 }
             }
+            .aspectRatio(1, contentMode: .fit)
 
             Text(item.title)
                 .font(Theme.Typography.subheadline)

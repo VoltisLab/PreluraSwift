@@ -50,40 +50,6 @@ struct ProfileView: View {
 
     private let topId = "profile_top"
 
-    /// Shown when user chose "Continue as guest": prompt to sign in (clears guest mode and shows login).
-    private var guestModeContent: some View {
-        VStack(spacing: Theme.Spacing.xl) {
-            Color.clear.frame(height: 1).id(topId)
-            Spacer(minLength: 60)
-            Image(systemName: "person.crop.circle.badge.questionmark")
-                .font(.system(size: 64))
-                .foregroundColor(Theme.Colors.secondaryText)
-            Text(L10n.string("You're browsing as guest"))
-                .font(Theme.Typography.title3)
-                .foregroundColor(Theme.Colors.primaryText)
-                .multilineTextAlignment(.center)
-            Text(L10n.string("Sign in to see your profile, listings and messages."))
-                .font(Theme.Typography.body)
-                .foregroundColor(Theme.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            Button(action: { authService.clearGuestMode() }) {
-                Text(L10n.string("Sign in"))
-                    .font(Theme.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-            }
-            .background(Theme.primaryColor)
-            .cornerRadius(24)
-            .padding(.horizontal, Theme.Spacing.xl)
-            .padding(.top, Theme.Spacing.sm)
-            Spacer(minLength: 60)
-        }
-        .frame(maxWidth: .infinity)
-    }
-    
     init(tabCoordinator: TabCoordinator) {
         self.tabCoordinator = tabCoordinator
         _viewModel = StateObject(wrappedValue: ProfileViewModel(authService: nil))
@@ -94,7 +60,8 @@ struct ProfileView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     if authService.isGuestMode {
-                        guestModeContent
+                        Color.clear.frame(height: 1).id(topId)
+                        GuestSignInPromptView()
                     } else if viewModel.isLoading {
                         ProfileShimmerView()
                             .frame(minHeight: UIScreen.main.bounds.height)
@@ -326,9 +293,10 @@ struct ProfileView: View {
                 Spacer(minLength: Theme.Spacing.xl)
             }
 
-            // Row 2: Stars (tappable → Reviews) only; sale icon only when user has items on discount
+            // Row 2: Stars (tappable → Reviews) only; sale icon only when user has items on discount and vacation mode is off
             VStack(alignment: .leading, spacing: 2) {
                 let hasSaleItems = viewModel.userItems.contains { $0.discountPercentage != nil }
+                let showSaleIcon = hasSaleItems && (viewModel.user?.isVacationMode != true)
                 if let u = viewModel.user {
                     NavigationLink(value: AppRoute.reviews(username: u.username, rating: u.rating)) {
                         HStack(alignment: .center, spacing: 4) {
@@ -342,7 +310,7 @@ struct ProfileView: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: true)
-                            if hasSaleItems {
+                            if showSaleIcon {
                                 Spacer(minLength: 4)
                                 Image("SaleIcon")
                                     .resizable()
@@ -364,7 +332,7 @@ struct ProfileView: View {
                             .foregroundColor(Theme.Colors.secondaryText)
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: true)
-                        if hasSaleItems {
+                        if showSaleIcon {
                             Spacer(minLength: 4)
                             Image("SaleIcon")
                                 .resizable()
@@ -1013,42 +981,23 @@ struct WardrobeItemCard: View {
                         )
                         .frame(width: imageWidth, height: imageHeight)
                     
-                    // Product Image - fixed size container to prevent movement
-                    Group {
-                        if let firstImageURL = item.imageURLs.first, let url = URL(string: firstImageURL) {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .empty:
-                                    ImageShimmerPlaceholderFilled(cornerRadius: Theme.Glass.cornerRadius)
-                                        .frame(width: imageWidth, height: imageHeight)
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: imageWidth, height: imageHeight)
-                                        .clipped()
-                                case .failure:
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
-                                        .frame(width: imageWidth, height: imageHeight)
-                                @unknown default:
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
-                                        .frame(width: imageWidth, height: imageHeight)
-                                }
-                            }
-                        } else {
+                    // Product Image - fixed size; retries once on failure to avoid stuck placeholders
+                    RetryAsyncImage(
+                        url: item.imageURLs.first.flatMap { URL(string: $0) },
+                        width: imageWidth,
+                        height: imageHeight,
+                        cornerRadius: Theme.Glass.cornerRadius,
+                        placeholder: {
+                            ImageShimmerPlaceholderFilled(cornerRadius: Theme.Glass.cornerRadius)
+                                .frame(width: imageWidth, height: imageHeight)
+                        },
+                        failurePlaceholder: {
                             Image(systemName: "photo")
                                 .font(.system(size: 40))
                                 .foregroundColor(Theme.primaryColor.opacity(0.5))
                                 .frame(width: imageWidth, height: imageHeight)
                         }
-                    }
-                    .frame(width: imageWidth, height: imageHeight)
-                    .clipped()
-                    .cornerRadius(8)
+                    )
                     
                     // Like count overlay - tappable
                     Button(action: { onLikeTap?() }) {
