@@ -31,6 +31,9 @@ struct MenuView: View {
             NavigationLink(destination: MyFavouritesView()) {
                 menuRow(L10n.string("Favourites"), icon: "heart")
             }
+            NavigationLink(destination: ShopToolsView()) {
+                menuRow(L10n.string("Shop tools"), icon: "wrench.and.screwdriver")
+            }
             NavigationLink(destination: MultiBuyDiscountView()) {
                 HStack {
                     menuRow(L10n.string("Multi-buy discounts"), icon: "tag")

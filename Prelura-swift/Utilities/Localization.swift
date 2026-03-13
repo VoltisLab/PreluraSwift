@@ -64,6 +64,8 @@ enum L10n {
         "Shop Categories": "Κατηγορίες Καταστήματος",
         "Orders": "Παραγγελίες",
         "Favourites": "Αγαπημένα",
+        "Shop tools": "Εργαλεία Καταστήματος",
+        "Background replacer": "Αντικατάσταση Φόντου",
         "Multi-buy discounts": "Εκπτώσεις πολλαπλών αγορών",
         "Multi-buy discount (%d%%)": "Εκπτωση πολλαπλών αγορών (%d%%)",
         "On": "Ενεργό",

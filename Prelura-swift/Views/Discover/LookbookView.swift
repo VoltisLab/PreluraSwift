@@ -14,8 +14,9 @@ struct LookbookEntry: Identifiable {
     let imageNames: [String]
 }
 
-private let lookbookGridColumns = 3
-private let lookbookSpacing: CGFloat = 2
+private let lookbookGridColumns = 2
+/// Spacing between cells. No overlap so no photo has >40% covered.
+private let lookbookSpacing: CGFloat = 8
 
 /// Static lookbook content. Some entries have multiple images for slider.
 private let lookbookEntries: [LookbookEntry] = [
@@ -58,6 +59,8 @@ struct LookbookView: View {
     @State private var gridHasAppeared: Bool = false
     @State private var overlayTransitionIndex: Int = 0
     @State private var modalTransitionIndex: Int = 0
+    /// Front-to-back order for tap-to-bring-forward. Last = front.
+    @State private var frontToBackIds: [UUID] = lookbookEntries.map(\.id)
 
     var body: some View {
         ZStack {
@@ -68,7 +71,9 @@ struct LookbookView: View {
                     }
                 }
                 .padding(lookbookSpacing)
+                .padding(.top, Theme.Spacing.lg)
             }
+            .scrollContentBackground(.hidden)
             .background(Theme.Colors.background)
             .onAppear {
                 withAnimation(.easeOut(duration: 0.5)) {
@@ -79,11 +84,14 @@ struct LookbookView: View {
             if let entry = overlayEntry {
                 lookbookOverlay(entry: entry)
                     .transition(transitionForIndex(overlayTransitionIndex))
-                    .zIndex(1)
+                    .zIndex(1000)
             }
         }
         .navigationTitle(L10n.string("Lookbooks"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Theme.Colors.background, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .fullScreenCover(item: $modalEntry) { entry in
             LookbookFullScreenView(entry: entry, initialIndex: fullScreenIndex) {
                 modalEntry = nil
@@ -94,11 +102,9 @@ struct LookbookView: View {
 
     private func lookbookCell(entry: LookbookEntry, index: Int) -> some View {
         let name = entry.imageNames[0]
+        let zOrder = frontToBackIds.firstIndex(of: entry.id) ?? 0
         return Button(action: {
-            overlayTransitionIndex = Int.random(in: 0..<entranceTransitions.count)
-            withAnimation(.easeInOut(duration: 0.3)) {
-                overlayEntry = entry
-            }
+            bringToFront(entry: entry)
         }) {
             Image(name)
                 .resizable()
@@ -107,11 +113,27 @@ struct LookbookView: View {
         .buttonStyle(.plain)
         .aspectRatio(1, contentMode: .fill)
         .clipped()
+        .contentShape(Rectangle())
+        .zIndex(Double(zOrder))
         .opacity(gridHasAppeared ? 1 : 0)
         .scaleEffect(gridHasAppeared ? 1 : scaleForEntrance(index % 10))
         .offset(offsetForEntrance(index % 10, appeared: gridHasAppeared))
         .animation(.easeOut(duration: 0.4).delay(Double(index % 12) * 0.03), value: gridHasAppeared)
         .transition(transitionForIndex(index))
+        .onTapGesture(count: 2) {
+            overlayTransitionIndex = Int.random(in: 0..<entranceTransitions.count)
+            withAnimation(.easeInOut(duration: 0.3)) {
+                overlayEntry = entry
+            }
+        }
+    }
+
+    private func bringToFront(entry: LookbookEntry) {
+        guard let idx = frontToBackIds.firstIndex(of: entry.id), idx < frontToBackIds.count - 1 else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            frontToBackIds.remove(at: idx)
+            frontToBackIds.append(entry.id)
+        }
     }
 
     private func scaleForEntrance(_ style: Int) -> CGFloat {

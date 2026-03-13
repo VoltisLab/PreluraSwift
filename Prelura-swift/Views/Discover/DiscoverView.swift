@@ -144,7 +144,7 @@ struct DiscoverView: View {
                 ContentDivider()
                 categoryCirclesSection
                 shopByStyleAndLookbooksBanners
-                    .padding(.top, Theme.Spacing.md)
+                    .padding(.top, max(0, Theme.Spacing.md - 10))
                     .padding(.bottom, Theme.Spacing.lg)
                 recentlyViewedSection
                 ContentDivider()
@@ -190,7 +190,7 @@ struct DiscoverView: View {
             authService: authService,
             offersAllowed: false
         )) {
-            ZStack {
+            ZStack(alignment: .topTrailing) {
                 Image("Rectangle 11 2")
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -216,6 +216,14 @@ struct DiscoverView: View {
                 }
                 .animation(.easeOut(duration: 0.12), value: tryCartVisibleCount)
                 .animation(.easeInOut(duration: 0.35), value: tryCartPhase)
+                Text("BETA")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.black.opacity(0.6)))
+                    .padding(.top, 10)
+                    .padding(.trailing, 10)
             }
             .contentShape(Rectangle())
         }
