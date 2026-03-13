@@ -29,6 +29,18 @@ class FilteredProductsViewModel: ObservableObject {
     @Published var filterMaxPrice: String = "" {
         didSet { applyFilters() }
     }
+    /// Shop All only: selected category pill (Men, Women, Boys, Girls, Toddlers). nil = all.
+    @Published var selectedParentCategory: String? = nil
+    /// Shop All: when user selects a sub or sub-sub pill, filter by this category id.
+    @Published var selectedCategoryId: Int? = nil
+    /// Shop All: root categories (Women, Men, Boys, Girls, Toddlers) from API.
+    @Published var shopAllRootCategories: [APICategory] = []
+    /// Shop All: subcategories of selected parent (row 2).
+    @Published var shopAllSubCategories: [APICategory] = []
+    /// Shop All: sub-subcategories of selected sub (row 3).
+    @Published var shopAllSubSubCategories: [APICategory] = []
+    /// Shop All: selected subcategory (for loading sub-sub).
+    @Published var selectedSubCategory: APICategory? = nil
     @Published var isLoading: Bool = false
     @Published var isLoadingMore: Bool = false
     @Published var errorMessage: String?
@@ -39,6 +51,7 @@ class FilteredProductsViewModel: ObservableObject {
     private let filterType: ProductFilterType
     private var currentPage = 1
     private let pageSize = 20
+    private let categoriesService = CategoriesService()
     
     init(filterType: ProductFilterType, authService: AuthService? = nil) {
         self.filterType = filterType
@@ -185,12 +198,117 @@ class FilteredProductsViewModel: ObservableObject {
                 pageCount: pageSize,
                 parentCategory: categoryName
             )
+        case .tryCartSearch:
+            let query = searchText.trimmingCharacters(in: .whitespaces)
+            return try await productService.getAllProducts(
+                pageNumber: page,
+                pageCount: pageSize,
+                search: query.isEmpty ? nil : query,
+                parentCategory: selectedParentCategory,
+                categoryId: selectedCategoryId
+            )
         }
     }
     
+    // MARK: - Shop All category hierarchy (All = nil; max 3 rows: main, sub, sub-sub)
+    private static let shopAllMainPillOrder = ["Women", "Men", "Boys", "Girls", "Toddlers"]
+
+    func loadShopAllRootCategoriesIfNeeded() {
+        guard case .tryCartSearch = filterType, shopAllRootCategories.isEmpty else { return }
+        Task {
+            do {
+                let root = try await categoriesService.fetchCategories(parentId: nil)
+                let ordered = root.sorted { a, b in
+                    let i1 = Self.shopAllMainPillOrder.firstIndex(of: a.name) ?? Self.shopAllMainPillOrder.count
+                    let i2 = Self.shopAllMainPillOrder.firstIndex(of: b.name) ?? Self.shopAllMainPillOrder.count
+                    return i1 < i2
+                }
+                await MainActor.run { shopAllRootCategories = ordered }
+            } catch {
+                await MainActor.run { shopAllRootCategories = [] }
+            }
+        }
+    }
+
+    /// Select "All": clear category filters and load all products.
+    func selectShopAllAll() {
+        selectedParentCategory = nil
+        selectedCategoryId = nil
+        selectedSubCategory = nil
+        shopAllSubCategories = []
+        shopAllSubSubCategories = []
+        loadData()
+    }
+
+    /// Select a main pill (e.g. Women). Load subcategories and products for that parent.
+    func selectShopAllMain(_ name: String) {
+        selectedParentCategory = name
+        selectedCategoryId = nil
+        selectedSubCategory = nil
+        shopAllSubSubCategories = []
+        loadData()
+        loadShopAllSubCategories(forParent: name)
+    }
+
+    /// Load row 2 subcategories for the selected main (by parent name; we need root id).
+    func loadShopAllSubCategories(forParent parentName: String) {
+        Task {
+            do {
+                let root = try await categoriesService.fetchCategories(parentId: nil)
+                guard let parent = root.first(where: { $0.name == parentName }),
+                      let parentId = Int(parent.id) else {
+                    await MainActor.run { shopAllSubCategories = [] }
+                    return
+                }
+                let children = try await categoriesService.fetchCategories(parentId: parentId)
+                await MainActor.run { shopAllSubCategories = children }
+            } catch {
+                await MainActor.run { shopAllSubCategories = [] }
+            }
+        }
+    }
+
+    /// Select a sub pill. Filter by this category id; if it has children, also load row 3.
+    func selectShopAllSub(_ category: APICategory) {
+        selectedSubCategory = category
+        guard let catId = Int(category.id) else {
+            selectedCategoryId = nil
+            shopAllSubSubCategories = []
+            loadData()
+            return
+        }
+        selectedCategoryId = catId
+        loadData()
+        if category.hasChildren == true {
+            loadShopAllSubSubCategories(parentId: catId)
+        } else {
+            shopAllSubSubCategories = []
+        }
+    }
+
+    /// Load row 3 sub-subcategories.
+    func loadShopAllSubSubCategories(parentId: Int) {
+        Task {
+            do {
+                let children = try await categoriesService.fetchCategories(parentId: parentId)
+                await MainActor.run { shopAllSubSubCategories = children }
+            } catch {
+                await MainActor.run { shopAllSubSubCategories = [] }
+            }
+        }
+    }
+
+    /// Select a sub-sub pill (leaf). Filter by this category id.
+    func selectShopAllSubSub(_ category: APICategory) {
+        selectedCategoryId = Int(category.id)
+        loadData()
+    }
+
     private func applyFilters() {
         var result = items
-        if !searchText.isEmpty {
+        if case .tryCartSearch = filterType {
+            // Server already filtered by searchText; only apply sort/filters here
+        } else if !searchText.isEmpty {
             result = result.filter {
                 $0.title.localizedCaseInsensitiveContains(searchText) ||
                 $0.description.localizedCaseInsensitiveContains(searchText) ||

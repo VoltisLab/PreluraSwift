@@ -721,6 +721,80 @@ class UserService: ObservableObject {
         }
     }
 
+    /// Search members by name/username. Uses backend query searchUsers(search: String!). Matches Flutter SearchUser.
+    func searchUsers(search: String) async throws -> [User] {
+        let query = """
+        query SearchUser($search: String!) {
+          searchUsers(search: $search) {
+            id
+            username
+            displayName
+            profilePictureUrl
+            noOfFollowing
+            noOfFollowers
+            isFollowing
+            listing
+            location { locationName }
+            reviewStats { noOfReviews rating }
+          }
+        }
+        """
+        struct Payload: Decodable { let searchUsers: [UserProfileData]? }
+        let response: Payload = try await client.execute(
+            query: query,
+            variables: ["search": search],
+            responseType: Payload.self
+        )
+        guard let list = response.searchUsers else { return [] }
+        return list.compactMap { userData -> User? in
+            let idString: String
+            let userIdInt: Int?
+            if let anyCodable = userData.id {
+                if let intValue = anyCodable.value as? Int {
+                    idString = String(intValue)
+                    userIdInt = intValue
+                } else if let stringValue = anyCodable.value as? String {
+                    idString = stringValue
+                    userIdInt = Int(stringValue)
+                } else {
+                    idString = String(describing: anyCodable.value)
+                    userIdInt = nil
+                }
+            } else {
+                return nil
+            }
+            let username = userData.username ?? ""
+            guard !username.isEmpty else { return nil }
+            let locationName = userData.location?.locationName
+            let reviewCount = userData.reviewStats?.noOfReviews ?? 0
+            let rating = userData.reviewStats?.rating ?? 5.0
+            return User(
+                id: UUID(uuidString: idString) ?? UUID(),
+                userId: userIdInt,
+                username: username,
+                displayName: userData.displayName ?? username,
+                avatarURL: userData.profilePictureUrl,
+                bio: userData.bio,
+                location: locationName,
+                locationAbbreviation: extractLocationAbbreviation(from: locationName),
+                rating: rating,
+                reviewCount: reviewCount,
+                listingsCount: userData.listing ?? 0,
+                followingsCount: userData.noOfFollowing ?? 0,
+                followersCount: userData.noOfFollowers ?? 0,
+                isStaff: false,
+                isVacationMode: userData.isVacationMode ?? false,
+                isMultibuyEnabled: userData.isMultibuyEnabled ?? false,
+                email: nil,
+                phoneDisplay: nil,
+                dateOfBirth: nil,
+                gender: nil,
+                shippingAddress: nil,
+                isFollowing: userData.isFollowing
+            )
+        }
+    }
+
     /// Fetch current payment method. Matches Flutter getUserPaymentMethod (query userPaymentMethods).
     func getUserPaymentMethod() async throws -> PaymentMethod? {
         let query = """
@@ -1222,18 +1296,23 @@ class UserService: ObservableObject {
             // Extract image URLs from imagesUrl array
             let imageURLs = extractImageURLs(from: product.imagesUrl)
             
-            // Extract seller id
+            // Extract seller id (string for UUID, int for backend userId / multibuy)
             let sellerIdString: String
+            let sellerUserIdInt: Int?
             if let sellerId = product.seller?.id {
                 if let intValue = sellerId.value as? Int {
                     sellerIdString = String(intValue)
+                    sellerUserIdInt = intValue
                 } else if let stringValue = sellerId.value as? String {
                     sellerIdString = stringValue
+                    sellerUserIdInt = Int(stringValue)
                 } else {
                     sellerIdString = String(describing: sellerId.value)
+                    sellerUserIdInt = nil
                 }
             } else {
                 sellerIdString = ""
+                sellerUserIdInt = nil
             }
             
             // Parse discountPrice (it's a percentage string, e.g., "20" for 20% off)
@@ -1271,6 +1350,7 @@ class UserService: ObservableObject {
                 categoryName: product.category?.name, // Store actual category name from API (subcategory)
                 seller: User(
                     id: UUID(uuidString: sellerIdString) ?? UUID(),
+                    userId: sellerUserIdInt,
                     username: product.seller?.username ?? "",
                     displayName: product.seller?.displayName ?? "",
                     avatarURL: product.seller?.profilePictureUrl,

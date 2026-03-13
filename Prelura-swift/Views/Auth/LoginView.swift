@@ -4,24 +4,28 @@ struct LoginView: View {
     @EnvironmentObject var authService: AuthService
     @State private var username: String = ""
     @State private var password: String = ""
+    @State private var showPassword: Bool = false
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
     @State private var showSignup: Bool = false
     @State private var showForgotPassword: Bool = false
+    @State private var loginVideoURL: URL?
 
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
+                VideoBackgroundView(videoURL: loginVideoURL, overlayOpacity: 0.45)
                 ScrollView {
                     VStack(spacing: Theme.Spacing.lg) {
                         // Header
                         VStack(spacing: Theme.Spacing.sm) {
-                            Text("Prelura")
-                                .font(.system(size: 48, weight: .bold))
-                                .foregroundColor(Theme.primaryColor)
+                            Image("PreluraLogo")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 44)
                             Text(L10n.string("Welcome back"))
                                 .font(Theme.Typography.title2)
-                                .foregroundColor(Theme.Colors.primaryText)
+                                .foregroundColor(Theme.Colors.authOverVideoText)
                         }
                         .padding(.top, Theme.Spacing.xl)
 
@@ -30,7 +34,7 @@ struct LoginView: View {
                             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                                 Text(L10n.string("Username"))
                                     .font(Theme.Typography.subheadline)
-                                    .foregroundColor(Theme.Colors.secondaryText)
+                                    .foregroundColor(Theme.Colors.authOverVideoText)
                                 TextField(L10n.string("Enter your username"), text: $username)
                                     .textFieldStyle(PlainTextFieldStyle())
                                     .padding(Theme.Spacing.md)
@@ -41,13 +45,27 @@ struct LoginView: View {
                             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                                 Text(L10n.string("Password"))
                                     .font(Theme.Typography.subheadline)
-                                    .foregroundColor(Theme.Colors.secondaryText)
-                                SecureField(L10n.string("Enter your password"), text: $password)
+                                    .foregroundColor(Theme.Colors.authOverVideoText)
+                                HStack(spacing: Theme.Spacing.sm) {
+                                    Group {
+                                        if showPassword {
+                                            TextField(L10n.string("Enter your password"), text: $password)
+                                        } else {
+                                            SecureField(L10n.string("Enter your password"), text: $password)
+                                        }
+                                    }
                                     .textFieldStyle(PlainTextFieldStyle())
-                                    .padding(Theme.Spacing.md)
-                                    .background(Theme.Colors.secondaryBackground)
-                                    .cornerRadius(30)
                                     .foregroundColor(Theme.Colors.primaryText)
+                                    Button(action: { showPassword.toggle() }) {
+                                        Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                                            .font(.system(size: 18))
+                                            .foregroundColor(Theme.Colors.authOverVideoText)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(Theme.Spacing.md)
+                                .background(Theme.Colors.secondaryBackground)
+                                .cornerRadius(30)
                             }
                             if let error = errorMessage {
                                 Text(error)
@@ -67,7 +85,7 @@ struct LoginView: View {
                         HStack {
                             Text(L10n.string("Don't have an account?"))
                                 .font(Theme.Typography.body)
-                                .foregroundColor(Theme.Colors.secondaryText)
+                                .foregroundColor(Theme.Colors.authOverVideoText)
                             Button(action: { showSignup = true }) {
                                 Text(L10n.string("Sign up"))
                                     .font(Theme.Typography.body)
@@ -80,24 +98,30 @@ struct LoginView: View {
                         Button(action: { authService.continueAsGuest() }) {
                             Text(L10n.string("Continue as guest"))
                                 .font(Theme.Typography.body)
-                                .foregroundColor(Theme.Colors.secondaryText)
+                                .foregroundColor(Theme.Colors.authOverVideoText)
                         }
                         .buttonStyle(HapticTapButtonStyle())
                         .padding(.bottom, 100)
                     }
                 }
 
-                PrimaryButtonBar {
-                    PrimaryGlassButton(
-                        L10n.string("Login"),
-                        isEnabled: !username.isEmpty && !password.isEmpty,
-                        isLoading: isLoading,
-                        action: handleLogin
-                    )
+                PrimaryGlassButton(
+                    L10n.string("Login"),
+                    isEnabled: !username.isEmpty && !password.isEmpty,
+                    isLoading: isLoading,
+                    action: handleLogin
+                )
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.sm)
+                .padding(.bottom, 24)
+                .frame(maxWidth: .infinity)
+            }
+            .navigationBarHidden(true)
+            .onAppear {
+                if loginVideoURL == nil {
+                    loginVideoURL = AuthVideo.randomLoginVideoURL()
                 }
             }
-            .background(Theme.Colors.background)
-            .navigationBarHidden(true)
             .sheet(isPresented: $showSignup) {
                 SignupView()
             }
@@ -106,6 +130,7 @@ struct LoginView: View {
                     ForgotPasswordView()
                         .environmentObject(authService)
                 }
+                .scrollContentBackground(.hidden)
             }
         }
     }

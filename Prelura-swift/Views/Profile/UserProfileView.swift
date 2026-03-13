@@ -93,13 +93,9 @@ struct UserProfileView: View {
         .onAppear {
             viewModel.load()
         }
-        .fullScreenCover(isPresented: $showProfilePhotoFullScreen) {
-            if let urlString = viewModel.user.avatarURL, !urlString.isEmpty {
-                FullScreenImageViewer(
-                    imageURLs: [urlString],
-                    selectedIndex: .constant(0),
-                    onDismiss: { showProfilePhotoFullScreen = false }
-                )
+        .overlay {
+            if showProfilePhotoFullScreen, let urlString = viewModel.user.avatarURL, !urlString.isEmpty, let url = URL(string: urlString) {
+                profilePhotoExpandedOverlay(url: url)
             }
         }
 
@@ -114,7 +110,7 @@ struct UserProfileView: View {
                                     NavigationLink(destination: MultiBuyCartView(
                                         selectedIds: $selectedMultiBuyItemIds,
                                         allItems: viewModel.items,
-                                        sellerUserId: seller.userId
+                                        sellerUserId: viewModel.user.userId
                                     )) {
                                         shoppingBagButtonLabel
                                     }
@@ -136,7 +132,7 @@ struct UserProfileView: View {
                         Spacer()
                     }
                     .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.bottom, 50)
+                    .padding(.bottom, 15)
                 }
                 .allowsHitTesting(true)
             }
@@ -153,6 +149,21 @@ struct UserProfileView: View {
     }
 
     private static let profilePhotoSize: CGFloat = 88
+    private static let profilePhotoExpandedSize: CGFloat = 240
+
+    /// Overlay: dimmed background (tap to dismiss) + expanded circular profile image with ring, subtle animation.
+    private func profilePhotoExpandedOverlay(url: URL) -> some View {
+        ProfilePhotoExpandedOverlay(
+            url: url,
+            expandedSize: Self.profilePhotoExpandedSize,
+            ringBorderColor: Theme.Colors.profileRingBorder,
+            onDismiss: {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    showProfilePhotoFullScreen = false
+                }
+            }
+        )
+    }
 
     private var profileHeaderSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -182,8 +193,18 @@ struct UserProfileView: View {
                             .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
                         }
                         .buttonStyle(.plain)
+                        .overlay(
+                            Circle()
+                                .stroke(Theme.Colors.profileRingBorder, lineWidth: 2.5)
+                                .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                        )
                     } else {
                         profilePhotoPlaceholder
+                            .overlay(
+                                Circle()
+                                    .stroke(Theme.Colors.profileRingBorder, lineWidth: 2.5)
+                                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                            )
                     }
                 }
 
@@ -677,7 +698,7 @@ struct UserProfileView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.Colors.background)
-            .navigationTitle(L10n.string("Top brands"))
+            .navigationTitle(L10n.string("Search"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -758,5 +779,72 @@ struct UserProfileView: View {
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
+    }
+}
+
+// MARK: - Expanded profile photo overlay (circular + ring, tap overlay to dismiss)
+private struct ProfilePhotoExpandedOverlay: View {
+    let url: URL
+    let expandedSize: CGFloat
+    let ringBorderColor: Color
+    let onDismiss: () -> Void
+
+    @State private var appeared: Bool = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .opacity(appeared ? 1 : 0)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    closeWithAnimation()
+                }
+
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: expandedSize, height: expandedSize)
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(ringBorderColor, lineWidth: 3)
+                                .frame(width: expandedSize, height: expandedSize)
+                        )
+                case .empty, .failure:
+                    Circle()
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(width: expandedSize, height: expandedSize)
+                        .overlay(
+                            Circle()
+                                .stroke(ringBorderColor, lineWidth: 3)
+                                .frame(width: expandedSize, height: expandedSize)
+                        )
+                @unknown default:
+                    EmptyView()
+                }
+            }
+            .frame(width: expandedSize, height: expandedSize)
+            .contentShape(Circle())
+            .onTapGesture { closeWithAnimation() }
+            .scaleEffect(appeared ? 1 : 0.4)
+            .opacity(appeared ? 1 : 0)
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.28)) {
+                appeared = true
+            }
+        }
+    }
+
+    private func closeWithAnimation() {
+        withAnimation(.easeIn(duration: 0.22)) {
+            appeared = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+            onDismiss()
+        }
     }
 }

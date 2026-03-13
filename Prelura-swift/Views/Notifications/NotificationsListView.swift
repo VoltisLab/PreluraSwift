@@ -52,6 +52,8 @@ struct NotificationsListView: View {
                         }
                         .buttonStyle(.plain)
                         .listRowBackground(Theme.Colors.background)
+                        .listRowInsets(EdgeInsets(top: 4, leading: Theme.Spacing.md, bottom: 4, trailing: Theme.Spacing.md))
+                        .navigationLinkIndicatorVisibility(.hidden)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 deleteNotification(notification)
@@ -370,7 +372,7 @@ private struct NotificationRowView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, Theme.Spacing.sm)
+        .padding(.vertical, Theme.Spacing.xs)
     }
 
     private func formatDate(_ date: Date) -> String {

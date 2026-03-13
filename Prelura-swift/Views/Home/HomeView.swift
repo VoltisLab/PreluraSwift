@@ -202,6 +202,9 @@ struct HomeItemCard: View {
     var onLikeTap: (() -> Void)? = nil
     /// When true, the like overlay is hidden (caller draws it outside NavigationLink so it's tappable).
     var hideLikeButton: Bool = false
+    /// When true, show "Add to bag" button (e.g. Shop All). Tap adds via onAddToBag without navigating.
+    var showAddToBag: Bool = false
+    var onAddToBag: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -303,6 +306,12 @@ struct HomeItemCard: View {
                 }
             }
             .aspectRatio(1.0/1.3, contentMode: .fit)
+            
+            if showAddToBag, let onAddToBag = onAddToBag {
+                PrimaryGlassButton(L10n.string("Add to bag"), icon: "bag.badge.plus", action: onAddToBag)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Theme.Spacing.xs)
+            }
             
             // Product details section with consistent spacing
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {

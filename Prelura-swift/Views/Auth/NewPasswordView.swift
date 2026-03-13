@@ -9,6 +9,8 @@ struct NewPasswordView: View {
     @State private var code: String = ""
     @State private var newPassword: String = ""
     @State private var confirmPassword: String = ""
+    @State private var showNewPassword: Bool = false
+    @State private var showConfirmPassword: Bool = false
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var success = false
@@ -36,23 +38,51 @@ struct NewPasswordView: View {
                         Text("New password")
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.Colors.secondaryText)
-                        SecureField("At least 8 characters", text: $newPassword)
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Group {
+                                if showNewPassword {
+                                    TextField("At least 8 characters", text: $newPassword)
+                                } else {
+                                    SecureField("At least 8 characters", text: $newPassword)
+                                }
+                            }
                             .textFieldStyle(PlainTextFieldStyle())
-                            .padding(Theme.Spacing.md)
-                            .background(Theme.Colors.secondaryBackground)
-                            .cornerRadius(30)
                             .foregroundColor(Theme.Colors.primaryText)
+                            Button(action: { showNewPassword.toggle() }) {
+                                Image(systemName: showNewPassword ? "eye.slash.fill" : "eye.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(Theme.Spacing.md)
+                        .background(Theme.Colors.secondaryBackground)
+                        .cornerRadius(30)
                     }
                     VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                         Text("Confirm password")
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.Colors.secondaryText)
-                        SecureField("Confirm new password", text: $confirmPassword)
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Group {
+                                if showConfirmPassword {
+                                    TextField("Confirm new password", text: $confirmPassword)
+                                } else {
+                                    SecureField("Confirm new password", text: $confirmPassword)
+                                }
+                            }
                             .textFieldStyle(PlainTextFieldStyle())
-                            .padding(Theme.Spacing.md)
-                            .background(Theme.Colors.secondaryBackground)
-                            .cornerRadius(30)
                             .foregroundColor(Theme.Colors.primaryText)
+                            Button(action: { showConfirmPassword.toggle() }) {
+                                Image(systemName: showConfirmPassword ? "eye.slash.fill" : "eye.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(Theme.Spacing.md)
+                        .background(Theme.Colors.secondaryBackground)
+                        .cornerRadius(30)
                     }
                     if let err = errorMessage {
                         Text(err)

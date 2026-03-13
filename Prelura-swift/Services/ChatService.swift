@@ -362,6 +362,9 @@ class ChatService: ObservableObject {
     private func parseDate(_ dateString: String?) -> Date? {
         guard let dateString = dateString else { return nil }
         let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: dateString) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
         return formatter.date(from: dateString)
     }
 }

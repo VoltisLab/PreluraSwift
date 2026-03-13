@@ -104,9 +104,13 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         let idStr = (json["id"] as? Int).map { String($0) } ?? (json["id"] as? String) ?? UUID().uuidString
         let uuid = UUID(uuidString: idStr) ?? UUID()
         let createdAt: Date = {
-            if let s = json["createdAt"] as? String { return ISO8601DateFormatter().date(from: s) ?? Date() }
-            if let s = json["created_at"] as? String { return ISO8601DateFormatter().date(from: s) ?? Date() }
-            return Date()
+            let s = (json["createdAt"] as? String) ?? (json["created_at"] as? String)
+            guard let s = s else { return Date() }
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let d = formatter.date(from: s) { return d }
+            formatter.formatOptions = [.withInternetDateTime]
+            return formatter.date(from: s) ?? Date()
         }()
         let isItem = (json["isItem"] as? Bool) ?? (json["is_item"] as? Bool) ?? false
         let itemId = (json["itemId"] as? Int).map { String($0) } ?? (json["item_id"] as? Int).map { String($0) }

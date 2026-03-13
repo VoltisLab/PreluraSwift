@@ -9,6 +9,8 @@ enum ProductFilterType: Equatable {
     case bySize(sizeName: String)
     /// Discover category: Men, Women, Boys, Girls (parent category filter).
     case byParentCategory(categoryName: String)
+    /// Try Cart: free search, add to bag only (offers disabled).
+    case tryCartSearch
 }
 
 struct FilteredProductsView: View {
@@ -20,13 +22,18 @@ struct FilteredProductsView: View {
     @State private var showFilterSheet = false
     @State private var userSearchHistory: [SearchHistoryItem] = []
     @State private var recommendedSearchHistory: [SearchHistoryItem] = []
+    @State private var tryCartSearchTask: Task<Void, Never>?
+    @StateObject private var shopAllBag = ShopAllBagStore()
 
     let title: String
     let filterType: ProductFilterType
+    /// When false, item detail shows only Buy now (no Send an offer). Used for Try Cart.
+    let offersAllowed: Bool
 
-    init(title: String, filterType: ProductFilterType, authService: AuthService? = nil) {
+    init(title: String, filterType: ProductFilterType, authService: AuthService? = nil, offersAllowed: Bool = true) {
         self.title = title
         self.filterType = filterType
+        self.offersAllowed = offersAllowed
         _viewModel = StateObject(wrappedValue: FilteredProductsViewModel(filterType: filterType, authService: authService))
     }
 
@@ -39,7 +46,7 @@ struct FilteredProductsView: View {
             // Search Bar (same position as feed / discover / inbox)
             DiscoverSearchField(
                 text: Binding(get: { viewModel.searchText }, set: { viewModel.searchText = $0 }),
-                placeholder: L10n.string("Search items, brands or styles"),
+                placeholder: filterType == .tryCartSearch ? "Search anything to add to bag" : L10n.string("Search items, brands or styles"),
                 showClearButton: true,
                 onClear: { viewModel.searchText = "" },
                 topPadding: Theme.Spacing.xs
@@ -49,6 +56,95 @@ struct FilteredProductsView: View {
             // Search history (recent + recommended) when search is empty and user is logged in
             if showSearchHistory && (!userSearchHistory.isEmpty || !recommendedSearchHistory.isEmpty) {
                 searchHistorySection
+            }
+
+            // Shop All: Row 1 = All + main categories (Women, Men, Boys, Girls, Toddlers)
+            if case .tryCartSearch = filterType {
+                VStack(alignment: .leading, spacing: 0) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            PillTag(
+                                title: L10n.string("All"),
+                                isSelected: viewModel.selectedParentCategory == nil,
+                                accentWhenUnselected: true,
+                                action: {
+                                    withAnimation(.easeInOut(duration: 0.25)) {
+                                        viewModel.selectShopAllAll()
+                                    }
+                                }
+                            )
+                            ForEach(["Women", "Men", "Boys", "Girls", "Toddlers"], id: \.self) { category in
+                                PillTag(
+                                    title: L10n.string(category),
+                                    isSelected: viewModel.selectedParentCategory == category,
+                                    accentWhenUnselected: true,
+                                    action: {
+                                        withAnimation(.easeInOut(duration: 0.25)) {
+                                            viewModel.selectShopAllMain(category)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
+                    }
+                    .padding(.vertical, Theme.Spacing.sm)
+
+                    // Row 2: subcategories (slide in/out when a main is selected)
+                    if viewModel.selectedParentCategory != nil {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                ForEach(viewModel.shopAllSubCategories, id: \.id) { sub in
+                                    PillTag(
+                                        title: sub.name,
+                                        isSelected: viewModel.selectedSubCategory?.id == sub.id,
+                                        accentWhenUnselected: true,
+                                        action: {
+                                            withAnimation(.easeInOut(duration: 0.25)) {
+                                                viewModel.selectShopAllSub(sub)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                            .padding(.horizontal, Theme.Spacing.md)
+                        }
+                        .padding(.vertical, Theme.Spacing.sm)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .move(edge: .top).combined(with: .opacity)
+                        ))
+                    }
+
+                    // Row 3: sub-subcategories (slide in/out when a sub with children is selected)
+                    if viewModel.selectedSubCategory != nil && !viewModel.shopAllSubSubCategories.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                ForEach(viewModel.shopAllSubSubCategories, id: \.id) { subSub in
+                                    PillTag(
+                                        title: subSub.name,
+                                        isSelected: viewModel.selectedCategoryId == Int(subSub.id),
+                                        accentWhenUnselected: true,
+                                        action: {
+                                            withAnimation(.easeInOut(duration: 0.25)) {
+                                                viewModel.selectShopAllSubSub(subSub)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                            .padding(.horizontal, Theme.Spacing.md)
+                        }
+                        .padding(.vertical, Theme.Spacing.sm)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .move(edge: .top).combined(with: .opacity)
+                        ))
+                    }
+                }
+                .animation(.easeInOut(duration: 0.25), value: viewModel.selectedParentCategory)
+                .animation(.easeInOut(duration: 0.25), value: viewModel.selectedSubCategory?.id)
+                .animation(.easeInOut(duration: 0.25), value: viewModel.shopAllSubSubCategories.count)
             }
 
             // Pill tags for main categories (Women, Men, Boys, Girls): Condition, Style, Colour, Price
@@ -152,9 +248,13 @@ struct FilteredProductsView: View {
                         spacing: Theme.Spacing.md
                     ) {
                         ForEach(viewModel.filteredItems) { item in
-                            NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
-                                HomeItemCard(item: item)
-                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                            NavigationLink(destination: ItemDetailView(item: item, authService: authService, offersAllowed: offersAllowed, shopAllBag: filterType == .tryCartSearch ? shopAllBag : nil)) {
+                                HomeItemCard(
+                                    item: item,
+                                    showAddToBag: filterType == .tryCartSearch,
+                                    onAddToBag: filterType == .tryCartSearch ? { shopAllBag.add(item) } : nil
+                                )
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
                             }
                             .buttonStyle(PlainButtonStyle())
                             .onAppear {
@@ -200,6 +300,18 @@ struct FilteredProductsView: View {
             }
             viewModel.loadData()
         }
+        .onChange(of: viewModel.searchText) { _, _ in
+            if case .tryCartSearch = filterType {
+                tryCartSearchTask?.cancel()
+                tryCartSearchTask = Task {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run {
+                        viewModel.loadData()
+                    }
+                }
+            }
+        }
         .onChange(of: authService.authToken) { oldToken, newToken in
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(newToken)
@@ -210,8 +322,65 @@ struct FilteredProductsView: View {
                 viewModel.loadData()
             }
         }
+        .onChange(of: viewModel.selectedParentCategory) { _, _ in
+            if case .tryCartSearch = filterType {
+                viewModel.loadData()
+            }
+        }
+        .toolbar {
+            if case .tryCartSearch = filterType {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink(destination: MyFavouritesView(fromShopAll: true, shopAllBag: shopAllBag)) {
+                        Image(systemName: "heart")
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if case .tryCartSearch = filterType {
+                shopAllFloatingBar
+            }
+        }
         .sheet(isPresented: $showSortSheet) { filteredProductsSortSheet }
         .sheet(isPresented: $showFilterSheet) { filteredProductsFilterSheet }
+    }
+
+    /// Multi-buy style: floating primary-colour glassy pill (bag icon + "Shopping bag" + total).
+    private var shopAllFloatingBar: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                GlassEffectContainer(spacing: 0) {
+                    NavigationLink(destination: ShopAllBagView(store: shopAllBag).environmentObject(authService)) {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "cart.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text(L10n.string("Shopping bag"))
+                                .font(Theme.Typography.headline)
+                            Spacer(minLength: 0)
+                            Text(shopAllBag.formattedTotal)
+                                .font(Theme.Typography.headline)
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, Theme.Spacing.lg)
+                        .padding(.vertical, Theme.Spacing.md)
+                        .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
+                        .glassEffectTransition(.materialize)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                Spacer()
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.bottom, 15)
+        }
+        .allowsHitTesting(true)
     }
 
     private var searchHistorySection: some View {

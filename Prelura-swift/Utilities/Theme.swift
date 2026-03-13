@@ -35,6 +35,11 @@ struct Theme {
             Color(uiColor: UIColor.tertiaryLabel)
         }
 
+        /// Text over video on auth screens (login/signup): always light for readability in both light and dark mode.
+        static var authOverVideoText: Color {
+            Color.white.opacity(0.95)
+        }
+
         /// Error/destructive text and controls
         static var error: Color {
             Color(uiColor: .systemRed)
@@ -51,6 +56,13 @@ struct Theme {
             effectiveColorScheme == .dark
                 ? Color.white.opacity(0.2)
                 : Color.black.opacity(0.12)
+        }
+
+        /// Ring border around profile image (visible in light and dark mode).
+        static var profileRingBorder: Color {
+            effectiveColorScheme == .dark
+                ? Color.white.opacity(0.35)
+                : Color.black.opacity(0.2)
         }
     }
     

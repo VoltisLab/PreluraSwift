@@ -37,13 +37,21 @@ struct PaymentView: View {
     @State private var isSubmitting = false
     @State private var showPaymentSuccess = false
     @State private var errorMessage: String?
+    @State private var discountTiers: [MultibuyDiscount] = []
 
     private let userService = UserService()
     private let productService = ProductService()
 
-    private var orderSubtotal: Double { totalPrice }
-    private var multiBuyDiscountPercent: Int { 0 } // TODO: from seller multi-buy if multiple products
-    private var multiBuyDiscountAmount: Double { totalPrice * Double(multiBuyDiscountPercent) / 100 }
+    /// Sum of all product prices (before multi-buy discount).
+    private var orderSubtotal: Double { products.reduce(0) { $0 + $1.price } }
+    /// Multi-buy discount % from seller's tiers (when all items from same seller and count qualifies).
+    private func discountPercent(for count: Int) -> Int {
+        let sorted = discountTiers.filter { $0.isActive && $0.minItems <= count }.sorted { $0.minItems > $1.minItems }
+        guard let tier = sorted.first else { return 0 }
+        return Int(Double(tier.discountValue) ?? 0)
+    }
+    private var multiBuyDiscountPercent: Int { discountPercent(for: products.count) }
+    private var multiBuyDiscountAmount: Double { orderSubtotal * Double(multiBuyDiscountPercent) / 100 }
     private var afterDiscount: Double { orderSubtotal - multiBuyDiscountAmount }
     private var buyerProtectionFee: Double {
         let p = afterDiscount
@@ -54,6 +62,13 @@ struct PaymentView: View {
     }
     private var total: Double {
         afterDiscount + selectedDelivery.shippingFee + (buyerProtectionEnabled ? buyerProtectionFee : 0)
+    }
+
+    /// When all products share the same seller, returns that seller's userId for multibuy fetch.
+    private var commonSellerUserId: Int? {
+        guard let first = products.first?.seller.userId else { return nil }
+        let allSame = products.allSatisfy { $0.seller.userId == first }
+        return allSame ? first : nil
     }
 
     private func formatAddress(_ addr: ShippingAddress?) -> String {
@@ -102,15 +117,30 @@ struct PaymentView: View {
 
                     sectionHeader("\(products.count) \(products.count == 1 ? "Item" : "Items")")
                     VStack(spacing: 0) {
-                        infoRow("Order", String(format: "£%.2f", totalPrice))
-                        infoRow("Postage", String(format: "£%.2f", selectedDelivery.shippingFee))
+                        ForEach(products) { item in
+                            HStack(alignment: .top) {
+                                Text(item.title)
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                    .lineLimit(2)
+                                Spacer()
+                                Text(item.formattedPrice)
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                            }
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.sm)
+                            .overlay(ContentDivider(), alignment: .bottom)
+                        }
+                        infoRow(L10n.string("Price"), String(format: "£%.2f", orderSubtotal))
                         if products.count > 1 && multiBuyDiscountPercent > 0 {
-                            infoRow("Multi-buy discount (\(multiBuyDiscountPercent)%)", String(format: "-£%.2f", multiBuyDiscountAmount), valueColor: Theme.primaryColor)
+                            infoRow(String(format: L10n.string("Multi-buy discount (%d%%)"), multiBuyDiscountPercent), String(format: "-£%.2f", multiBuyDiscountAmount), valueColor: Theme.primaryColor)
                         }
+                        infoRow("Postage", String(format: "£%.2f", selectedDelivery.shippingFee))
                         if buyerProtectionEnabled {
-                            infoRow("Buyer protection fee", String(format: "£%.2f", buyerProtectionFee))
+                            infoRow(L10n.string("Buyer protection fee"), String(format: "£%.2f", buyerProtectionFee))
                         }
-                        infoRow("Total", String(format: "£%.2f", total), isBold: true)
+                        infoRow(L10n.string("Total"), String(format: "£%.2f", total), isBold: true)
                     }
                     .background(Theme.Colors.background)
                     .overlay(
@@ -180,6 +210,18 @@ struct PaymentView: View {
             Task {
                 await loadUser()
                 await loadPaymentMethod()
+            }
+        }
+        .task(id: "multibuy-\(products.count)-\(commonSellerUserId ?? -1)") {
+            guard products.count > 1, let sellerId = commonSellerUserId else {
+                discountTiers = []
+                return
+            }
+            userService.updateAuthToken(authService.authToken)
+            do {
+                discountTiers = try await userService.getMultibuyDiscounts(userId: sellerId)
+            } catch {
+                discountTiers = []
             }
         }
         .toolbar(.hidden, for: .tabBar)

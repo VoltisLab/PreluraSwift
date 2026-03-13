@@ -79,10 +79,14 @@ struct MultiBuyCartView: View {
                 }
                 .padding(.horizontal, Theme.Spacing.md)
 
-                PrimaryGlassButton(L10n.string("Checkout"), icon: "creditcard", action: {})
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .disabled(!canCheckout)
-                    .opacity(canCheckout ? 1 : 0.6)
+                NavigationLink(destination: PaymentView(products: items, totalPrice: totalPrice)
+                    .environmentObject(authService)) {
+                    PrimaryGlassButton(L10n.string("Checkout"), icon: "creditcard", action: {})
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, Theme.Spacing.md)
+                .disabled(!canCheckout)
+                .opacity(canCheckout ? 1 : 0.6)
             }
             .padding(.vertical, Theme.Spacing.md)
             .background(Theme.Colors.background)
@@ -91,8 +95,10 @@ struct MultiBuyCartView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             userService.updateAuthToken(authService.authToken)
+            // Use seller's id so their multi-buy settings apply for any buyer (not just when seller views own bag).
+            let effectiveSellerId = sellerUserId ?? items.first?.seller.userId
             do {
-                discountTiers = try await userService.getMultibuyDiscounts(userId: sellerUserId)
+                discountTiers = try await userService.getMultibuyDiscounts(userId: effectiveSellerId)
             } catch {
                 discountTiers = []
             }

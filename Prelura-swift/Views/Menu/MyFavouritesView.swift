@@ -3,6 +3,10 @@ import SwiftUI
 /// Favourites: fetch liked products, grid, search, empty state. Matches Flutter MyFavouriteScreen.
 struct MyFavouritesView: View {
     @EnvironmentObject var authService: AuthService
+    /// When true, opened from Shop All: show Add to bag on cards and item detail shows Add to bag only.
+    var fromShopAll: Bool = false
+    /// Bag to add to when fromShopAll (Shop All floating bar).
+    var shopAllBag: ShopAllBagStore? = nil
     @State private var searchText: String = ""
     @State private var items: [Item] = []
     @State private var totalNumber: Int = 0
@@ -72,8 +76,8 @@ struct MyFavouritesView: View {
                         pinnedViews: []
                     ) {
                         ForEach(filteredItems) { item in
-                            NavigationLink(destination: ItemDetailView(item: item)) {
-                                FavouriteItemCard(item: item)
+                            NavigationLink(destination: ItemDetailView(item: item, authService: authService, offersAllowed: !fromShopAll, shopAllBag: fromShopAll ? shopAllBag : nil)) {
+                                FavouriteItemCard(item: item, showAddToBag: fromShopAll && shopAllBag != nil, onAddToBag: fromShopAll ? { shopAllBag?.add($0) } : nil)
                                     .frame(maxWidth: .infinity, alignment: .topLeading)
                             }
                             .buttonStyle(.plain)
@@ -139,9 +143,11 @@ struct MyFavouritesView: View {
     }
 }
 
-// MARK: - Card for favourites grid (image + title + price)
+// MARK: - Card for favourites grid (image + optional Add to bag + title + price)
 private struct FavouriteItemCard: View {
     let item: Item
+    var showAddToBag: Bool = false
+    var onAddToBag: ((Item) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -167,6 +173,13 @@ private struct FavouriteItemCard: View {
                 }
             }
             .aspectRatio(1, contentMode: .fit)
+
+            if showAddToBag, let onAddToBag = onAddToBag {
+                PrimaryGlassButton(L10n.string("Add to bag"), icon: "bag.badge.plus", action: {
+                    onAddToBag(item)
+                })
+                .frame(maxWidth: .infinity)
+            }
 
             Text(item.title)
                 .font(Theme.Typography.subheadline)

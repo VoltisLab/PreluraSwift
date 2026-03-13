@@ -11,8 +11,20 @@ struct DiscoverView: View {
     /// When true, pill tag rows stop their drift animation (set on scroll or tap).
     @State private var pillAnimationStopped: Bool = false
     @State private var showGuestSignInPrompt: Bool = false
+    /// Try Cart banner: typewriter phase (0..<3) and visible character count (0...8).
+    @State private var tryCartPhase: Int = 0
+    @State private var tryCartVisibleCount: Int = 0
+    @State private var tryCartHoldTicks: Int = 0
+    @State private var tryCartTimer: Timer?
 
-    private static let categories = ["Women", "Men", "Boys", "Girls"]
+    private static let categories = ["Women", "Men"]
+    private static let tryCartText = "Try Cart"
+    /// 3 font styles for Try Cart cycle: bold default, rounded, serif.
+    private static let tryCartFonts: [Font] = [
+        .system(size: 28, weight: .bold, design: .default),
+        .system(size: 26, weight: .bold, design: .rounded),
+        .system(size: 24, weight: .semibold, design: .serif)
+    ]
 
     init(tabCoordinator: TabCoordinator) {
         self.tabCoordinator = tabCoordinator
@@ -46,6 +58,11 @@ struct DiscoverView: View {
                     viewModel.refreshRecentlyViewedSection()
                 }
             }
+            startTryCartTypewriterTimer()
+        }
+        .onDisappear {
+            tryCartTimer?.invalidate()
+            tryCartTimer = nil
         }
         .onChange(of: authService.isAuthenticated) { _, isAuthenticated in
             if isAuthenticated {
@@ -109,6 +126,7 @@ struct DiscoverView: View {
             .padding(.trailing, Theme.Spacing.sm)
             .padding(.bottom, 2)
             brandFiltersSection
+            tryCartBanner
             VStack(alignment: .leading, spacing: 0) {
                 Text(L10n.string("Shop Categories"))
                     .font(Theme.Typography.headline)
@@ -120,7 +138,9 @@ struct DiscoverView: View {
                 categoryCirclesSection
                 ContentDivider()
                     .padding(.top, Theme.Spacing.sm - 5)
-                    .padding(.bottom, 30)
+                shopByStyleAndLookbooksBanners
+                    .padding(.top, Theme.Spacing.md)
+                    .padding(.bottom, Theme.Spacing.lg)
                 recentlyViewedSection
                 ContentDivider()
                     .padding(.horizontal, Theme.Spacing.md)
@@ -157,6 +177,69 @@ struct DiscoverView: View {
         }
     }
     
+    // MARK: - Try Cart banner (below pill tags; Rectangle 11 2 image + overlay + typewriter text → Shop All page; height 150pt)
+    private var tryCartBanner: some View {
+        NavigationLink(destination: FilteredProductsView(
+            title: "Shop All",
+            filterType: .tryCartSearch,
+            authService: authService,
+            offersAllowed: false
+        )) {
+            ZStack {
+                Image("Rectangle 11 2")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: 150)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                Color.black.opacity(0.4)
+                    .frame(height: 150)
+                    .frame(maxWidth: .infinity)
+                let visiblePrefix = String(Self.tryCartText.prefix(tryCartVisibleCount))
+                let font = Self.tryCartFonts[tryCartPhase]
+                HStack(spacing: 2) {
+                    Text(visiblePrefix)
+                        .font(font)
+                        .foregroundColor(.white)
+                    TimelineView(.animation(minimumInterval: 0.05)) { context in
+                        let blink = 0.5 + 0.5 * sin(context.date.timeIntervalSinceReferenceDate * .pi * 2)
+                        Text("|")
+                            .font(font)
+                            .foregroundColor(.white)
+                            .opacity(blink)
+                    }
+                }
+                .animation(.easeOut(duration: 0.12), value: tryCartVisibleCount)
+                .animation(.easeInOut(duration: 0.35), value: tryCartPhase)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, Theme.Spacing.sm)
+    }
+
+    private func startTryCartTypewriterTimer() {
+        tryCartTimer?.invalidate()
+        let fullCount = Self.tryCartText.count
+        let holdTicksNeeded = 14 // ~2.1s at 0.15s per tick
+        tryCartTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { _ in
+            DispatchQueue.main.async {
+                if tryCartVisibleCount < fullCount {
+                    tryCartVisibleCount += 1
+                    tryCartHoldTicks = 0
+                } else {
+                    tryCartHoldTicks += 1
+                    if tryCartHoldTicks >= holdTicksNeeded {
+                        tryCartPhase = (tryCartPhase + 1) % 3
+                        tryCartVisibleCount = 0
+                        tryCartHoldTicks = 0
+                    }
+                }
+            }
+        }
+        RunLoop.main.add(tryCartTimer!, forMode: .common)
+    }
+
     // MARK: - Brand Filters (2 rows, slow drift; tap or scroll stops animation)
     private var brandFiltersSection: some View {
         let brandsToShow = Array(brands.prefix(20))
@@ -164,9 +247,9 @@ struct DiscoverView: View {
         let secondRow = Array(brandsToShow.suffix(from: min(10, brandsToShow.count)))
         
         return VStack(spacing: 0) {
-            AnimatedBrandRow(brands: firstRow, maxOffset: 50, authService: authService, animationStopped: $pillAnimationStopped)
+            AnimatedBrandRow(brands: firstRow, maxOffset: 30, authService: authService, animationStopped: $pillAnimationStopped)
             if !secondRow.isEmpty {
-                AnimatedBrandRow(brands: secondRow, maxOffset: 30, authService: authService, animationStopped: $pillAnimationStopped)
+                AnimatedBrandRow(brands: secondRow, maxOffset: 17, authService: authService, animationStopped: $pillAnimationStopped)
                     .padding(.top, 4)
             }
         }
@@ -202,6 +285,57 @@ struct DiscoverView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Shop by style & Lookbooks (portrait banners side by side)
+    private var shopByStyleAndLookbooksBanners: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            portraitBannerCard(
+                title: L10n.string("Shop by style"),
+                destination: FilteredProductsView(
+                    title: L10n.string("Shop by style"),
+                    filterType: .tryCartSearch,
+                    authService: authService,
+                    offersAllowed: false
+                )
+            )
+            portraitBannerCard(
+                title: L10n.string("Lookbooks"),
+                destination: FilteredProductsView(
+                    title: L10n.string("Lookbooks"),
+                    filterType: .tryCartSearch,
+                    authService: authService,
+                    offersAllowed: false
+                )
+            )
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .frame(height: 200)
+    }
+
+    private func portraitBannerCard<Destination: View>(title: String, destination: Destination) -> some View {
+        NavigationLink(destination: destination) {
+            ZStack {
+                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                    .fill(
+                        LinearGradient(
+                            colors: [Theme.primaryColor.opacity(0.85), Theme.primaryColor.opacity(0.6)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Text(title)
+                    .font(Theme.Typography.title3)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(Theme.Spacing.md)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 200)
+            .clipped()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
     
     // MARK: - Recently Viewed Section (Products)
@@ -449,7 +583,7 @@ struct DiscoverView: View {
 
 // MARK: - Supporting Views
 
-/// One row of brand pills: slow drift (50px top row, 30px second row) then loop back. Stops when user scrolls or taps.
+/// One row of brand pills: slow drift (30px top row, 17px second row) then loop back. Stops when user scrolls or taps.
 private struct AnimatedBrandRow: View {
     let brands: [String]
     let maxOffset: CGFloat

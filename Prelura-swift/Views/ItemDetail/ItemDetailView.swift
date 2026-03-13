@@ -4,6 +4,10 @@ import UIKit
 
 struct ItemDetailView: View {
     let item: Item
+    /// When false, only Buy now is shown (no Send an offer). Used for Try Cart.
+    var offersAllowed: Bool = true
+    /// When set (e.g. from Shop All), show "Add to bag" and add to this store instead of Buy now/Offer.
+    var shopAllBag: ShopAllBagStore? = nil
     @StateObject private var viewModel: ItemDetailViewModel
     @State private var displayedItem: Item? = nil
     @State private var selectedImageIndex: Int = 0
@@ -24,8 +28,10 @@ struct ItemDetailView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authService: AuthService
     
-    init(item: Item, authService: AuthService? = nil) {
+    init(item: Item, authService: AuthService? = nil, offersAllowed: Bool = true, shopAllBag: ShopAllBagStore? = nil) {
         self.item = item
+        self.offersAllowed = offersAllowed
+        self.shopAllBag = shopAllBag
         _viewModel = StateObject(wrappedValue: ItemDetailViewModel(authService: authService))
     }
     
@@ -92,9 +98,10 @@ struct ItemDetailView: View {
                 if authService.isAuthenticated {
                     viewModel.recordRecentlyViewed(productId: productId)
                 }
-                // Refetch to get latest status (e.g. sold) in case list had stale data
+                // Refetch to get latest status (e.g. sold, like) in case list had stale data
                 if let updated = await viewModel.loadProduct(productId: productId) {
                     displayedItem = updated
+                    viewModel.syncLikeState(isLiked: updated.isLiked, likeCount: updated.likeCount)
                 }
             }
             viewModel.loadMemberItems(username: item.seller.username, excludeProductId: item.id, includeInListIfEmpty: isCurrentUser ? effectiveItem : nil)
@@ -332,12 +339,7 @@ struct ItemDetailView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(width: w, height: h)
             .ignoresSafeArea(edges: .top)
-            
-            // Full-screen tap to open gallery (separate layer so like button can receive touches)
-            Color.clear
-                .contentShape(Rectangle())
-                .frame(width: w, height: h)
-                .onTapGesture { showFullScreenImages = true }
+            .onTapGesture { showFullScreenImages = true }
             
             // Heart Icon Overlay (bottom right) — on top so it always receives touch
             VStack {
@@ -349,7 +351,7 @@ struct ItemDetailView: View {
                         likeCount: viewModel.likeCount,
                         action: {
                             if authService.isGuestMode { showGuestSignInPrompt = true }
-                            else if let productId = item.productId { viewModel.toggleLike(productId: productId) }
+                            else if let productId = effectiveItem.productId, !productId.isEmpty { viewModel.toggleLike(productId: productId) }
                         }
                     )
                     .padding(.trailing, 15)
@@ -754,15 +756,25 @@ struct ItemDetailView: View {
     // MARK: - Bottom Action Buttons
     private var bottomActionButtons: some View {
         PrimaryButtonBar {
-            HStack(spacing: Theme.Spacing.sm) {
-                BorderGlassButton("Send an Offer", action: {
-                    showSendOfferSheet = true
+            if let bag = shopAllBag {
+                PrimaryGlassButton(L10n.string("Add to bag"), icon: "bag.badge.plus", action: {
+                    bag.add(item)
+                    dismiss()
                 })
                 .frame(maxWidth: .infinity)
-                PrimaryGlassButton("Buy now", action: {
-                    showPaymentSheet = true
-                })
-                .frame(maxWidth: .infinity)
+            } else {
+                HStack(spacing: Theme.Spacing.sm) {
+                    if offersAllowed {
+                        BorderGlassButton("Send an Offer", action: {
+                            showSendOfferSheet = true
+                        })
+                        .frame(maxWidth: .infinity)
+                    }
+                    PrimaryGlassButton("Buy now", action: {
+                        showPaymentSheet = true
+                    })
+                    .frame(maxWidth: .infinity)
+                }
             }
         }
     }

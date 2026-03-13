@@ -130,16 +130,21 @@ class ProductService: ObservableObject {
             }
             let imageURLs = extractImageURLs(from: product.imagesUrl)
             let sellerIdString: String
+            let sellerUserIdInt: Int?
             if let sellerId = product.seller?.id {
                 if let intValue = sellerId.value as? Int {
                     sellerIdString = String(intValue)
+                    sellerUserIdInt = intValue
                 } else if let stringValue = sellerId.value as? String {
                     sellerIdString = stringValue
+                    sellerUserIdInt = Int(stringValue)
                 } else {
                     sellerIdString = String(describing: sellerId.value)
+                    sellerUserIdInt = nil
                 }
             } else {
                 sellerIdString = ""
+                sellerUserIdInt = nil
             }
             let originalPrice = product.price ?? 0.0
             let discountPercentage: Double? = {
@@ -169,6 +174,7 @@ class ProductService: ObservableObject {
                 categoryName: product.category?.name,
                 seller: User(
                     id: UUID(uuidString: sellerIdString) ?? UUID(),
+                    userId: sellerUserIdInt,
                     username: product.seller?.username ?? "",
                     displayName: product.seller?.displayName ?? "",
                     avatarURL: product.seller?.profilePictureUrl,
@@ -980,18 +986,23 @@ extension ProductService {
                 idString = UUID().uuidString
             }
             
-            // Extract seller id
+            // Extract seller id (string for UUID, int for backend userId / multibuy)
             let sellerIdString: String
+            let sellerUserIdInt: Int?
             if let sellerId = product.seller?.id {
                 if let intValue = sellerId.value as? Int {
                     sellerIdString = String(intValue)
+                    sellerUserIdInt = intValue
                 } else if let stringValue = sellerId.value as? String {
                     sellerIdString = stringValue
+                    sellerUserIdInt = Int(stringValue)
                 } else {
                     sellerIdString = String(describing: sellerId.value)
+                    sellerUserIdInt = nil
                 }
             } else {
                 sellerIdString = ""
+                sellerUserIdInt = nil
             }
             
             // Parse discountPrice (it's a percentage string, e.g., "20" for 20% off)
@@ -1038,6 +1049,7 @@ extension ProductService {
                 categoryName: product.category?.name, // Store actual category name from API (subcategory)
                 seller: User(
                     id: UUID(uuidString: sellerIdString) ?? UUID(),
+                    userId: sellerUserIdInt,
                     username: product.seller?.username ?? "",
                     displayName: product.seller?.displayName ?? "",
                     avatarURL: product.seller?.profilePictureUrl,
@@ -1206,18 +1218,23 @@ extension ProductService {
             idString = UUID().uuidString
         }
         
-        // Extract seller id
+        // Extract seller id (string for UUID, int for backend userId / multibuy)
         let sellerIdString: String
+        let sellerUserIdInt: Int?
         if let sellerId = product.seller?.id {
             if let intValue = sellerId.value as? Int {
                 sellerIdString = String(intValue)
+                sellerUserIdInt = intValue
             } else if let stringValue = sellerId.value as? String {
                 sellerIdString = stringValue
+                sellerUserIdInt = Int(stringValue)
             } else {
                 sellerIdString = String(describing: sellerId.value)
+                sellerUserIdInt = nil
             }
         } else {
             sellerIdString = ""
+            sellerUserIdInt = nil
         }
         
         // Parse discountPrice (it's a percentage string, e.g., "20" for 20% off)
@@ -1264,6 +1281,7 @@ extension ProductService {
             categoryName: product.category?.name,
             seller: User(
                 id: UUID(uuidString: sellerIdString) ?? UUID(),
+                userId: sellerUserIdInt,
                 username: product.seller?.username ?? "",
                 displayName: product.seller?.displayName ?? "",
                 avatarURL: product.seller?.profilePictureUrl,

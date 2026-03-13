@@ -145,7 +145,7 @@ struct ProfileView: View {
                         Spacer()
                     }
                     .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.bottom, 50)
+                    .padding(.bottom, 15)
                 }
                 .allowsHitTesting(true)
             }
@@ -293,6 +293,11 @@ struct ProfileView: View {
                             .clipShape(Circle())
                     }
                 }
+                .overlay(
+                    Circle()
+                        .stroke(Theme.Colors.profileRingBorder, lineWidth: 2.5)
+                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                )
                 .alert("Profile photo", isPresented: Binding(
                     get: { viewModel.profilePhotoUploadError != nil },
                     set: { if !$0 { viewModel.profilePhotoUploadError = nil } }
@@ -826,7 +831,7 @@ struct ProfileView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.Colors.background)
-            .navigationTitle(L10n.string("Top brands"))
+            .navigationTitle(L10n.string("Search"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

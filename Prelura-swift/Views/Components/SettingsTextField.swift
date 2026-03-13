@@ -13,6 +13,7 @@ struct SettingsTextField: View {
     /// When true, adds a grey border and no shadow (e.g. Filter modal price fields).
     var bordered: Bool = false
 
+    @State private var passwordVisible: Bool = false
     private let cornerRadius: CGFloat = 30
 
     var body: some View {
@@ -30,12 +31,29 @@ struct SettingsTextField: View {
                 }
                 .buttonStyle(.plain)
             } else if isSecure {
-                SecureField(placeholder, text: $text)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .textContentType(textContentType ?? .password)
+                HStack(spacing: Theme.Spacing.sm) {
+                    Group {
+                        if passwordVisible {
+                            TextField(placeholder, text: $text)
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.primaryText)
+                                .textContentType(textContentType ?? .password)
+                        } else {
+                            SecureField(placeholder, text: $text)
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.primaryText)
+                                .textContentType(textContentType ?? .password)
+                        }
+                    }
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.md)
+                    Button(action: { passwordVisible.toggle() }) {
+                        Image(systemName: passwordVisible ? "eye.slash.fill" : "eye.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(Theme.Colors.secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                }
             } else {
                 TextField(placeholder, text: $text)
                     .font(Theme.Typography.body)

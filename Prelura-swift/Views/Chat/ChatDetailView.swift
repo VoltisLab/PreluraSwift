@@ -189,10 +189,12 @@ struct ChatDetailView: View {
                let idx = messages.firstIndex(where: { $0.id.uuidString == pending }) {
                 messages[idx] = msg
                 pendingMessageUUID = nil
+                messages.sort { $0.timestamp < $1.timestamp }
                 return
             }
             if messages.contains(where: { $0.id == msg.id }) { return }
             messages.append(msg)
+            messages.sort { $0.timestamp < $1.timestamp }
         }
         webSocket = ws
         ws.connect()
