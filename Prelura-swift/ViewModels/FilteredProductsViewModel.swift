@@ -41,6 +41,8 @@ class FilteredProductsViewModel: ObservableObject {
     @Published var shopAllSubSubCategories: [APICategory] = []
     /// Shop All: selected subcategory (for loading sub-sub).
     @Published var selectedSubCategory: APICategory? = nil
+    /// Shop by style: selected style filter (StyleEnum raw value, e.g. PARTY_DRESS). nil = all.
+    @Published var selectedStyle: String? = nil
     @Published var isLoading: Bool = false
     @Published var isLoadingMore: Bool = false
     @Published var errorMessage: String?
@@ -207,6 +209,14 @@ class FilteredProductsViewModel: ObservableObject {
                 parentCategory: selectedParentCategory,
                 categoryId: selectedCategoryId
             )
+        case .shopByStyle:
+            let query = searchText.trimmingCharacters(in: .whitespaces)
+            return try await productService.getAllProducts(
+                pageNumber: page,
+                pageCount: pageSize,
+                search: query.isEmpty ? nil : query,
+                style: selectedStyle
+            )
         }
     }
     
@@ -302,6 +312,36 @@ class FilteredProductsViewModel: ObservableObject {
     func selectShopAllSubSub(_ category: APICategory) {
         selectedCategoryId = Int(category.id)
         loadData()
+    }
+
+    /// Toggle like for a product; updates items and filteredItems optimistically then syncs with server.
+    func toggleLike(productId: String) {
+        guard let idx = items.firstIndex(where: { $0.productId == productId }) else { return }
+        let item = items[idx]
+        let newLiked = !item.isLiked
+        let newCount = item.likeCount + (newLiked ? 1 : -1)
+        let optimistic = item.with(likeCount: max(0, newCount), isLiked: newLiked)
+        items[idx] = optimistic
+        applyFilters()
+        Task {
+            do {
+                let result = try await productService.toggleLike(productId: productId, isLiked: newLiked)
+                await MainActor.run {
+                    if let i = items.firstIndex(where: { $0.productId == productId }) {
+                        let count = result.likeCount ?? items[i].likeCount
+                        items[i] = items[i].with(likeCount: count, isLiked: result.isLiked)
+                        applyFilters()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    if let i = items.firstIndex(where: { $0.productId == productId }) {
+                        items[i] = item
+                        applyFilters()
+                    }
+                }
+            }
+        }
     }
 
     private func applyFilters() {

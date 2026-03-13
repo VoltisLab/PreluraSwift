@@ -757,11 +757,20 @@ struct ItemDetailView: View {
     private var bottomActionButtons: some View {
         PrimaryButtonBar {
             if let bag = shopAllBag {
-                PrimaryGlassButton(L10n.string("Add to bag"), icon: "bag.badge.plus", action: {
-                    bag.add(item)
-                    dismiss()
-                })
-                .frame(maxWidth: .infinity)
+                let isInBag = bag.items.contains(where: { $0.id == effectiveItem.id })
+                if isInBag {
+                    BorderGlassButton(L10n.string("Remove"), icon: "minus.circle", action: {
+                        bag.remove(effectiveItem)
+                        dismiss()
+                    })
+                    .frame(maxWidth: .infinity)
+                } else {
+                    BorderGlassButton(L10n.string("Add to bag"), icon: "bag.badge.plus", action: {
+                        bag.add(effectiveItem)
+                        dismiss()
+                    })
+                    .frame(maxWidth: .infinity)
+                }
             } else {
                 HStack(spacing: Theme.Spacing.sm) {
                     if offersAllowed {

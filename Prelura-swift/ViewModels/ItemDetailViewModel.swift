@@ -122,10 +122,10 @@ class ItemDetailViewModel: ObservableObject {
         likeCount = max(0, newCount)
         Task {
             do {
-                let (serverIsLiked, serverCount) = try await productService.toggleLike(productId: productId, isLiked: newLiked)
+                let result = try await productService.toggleLike(productId: productId, isLiked: newLiked)
                 await MainActor.run {
-                    self.isLiked = serverIsLiked
-                    self.likeCount = serverCount
+                    self.isLiked = result.isLiked
+                    if let count = result.likeCount { self.likeCount = count }
                 }
             } catch {
                 await MainActor.run {

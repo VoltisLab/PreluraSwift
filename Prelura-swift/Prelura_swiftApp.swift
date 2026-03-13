@@ -16,17 +16,24 @@ struct Prelura_swiftApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var authService = AuthService()
     @StateObject private var appRouter = AppRouter()
+    @State private var showSplash = true
 
     var body: some Scene {
         WindowGroup {
-            AppearanceRootView()
-                .environmentObject(authService)
-                .environmentObject(appRouter)
-                .onOpenURL { url in
-                    Task { @MainActor in
-                        appRouter.handle(url: url)
-                    }
+            Group {
+                if showSplash {
+                    SplashView(onFinish: { showSplash = false })
+                } else {
+                    AppearanceRootView()
                 }
+            }
+            .environmentObject(authService)
+            .environmentObject(appRouter)
+            .onOpenURL { url in
+                Task { @MainActor in
+                    appRouter.handle(url: url)
+                }
+            }
         }
     }
 }
@@ -55,10 +62,15 @@ struct AppearanceRootView: View {
 
     var body: some View {
         content
-            .id("\(appLanguage)_\(effectiveScheme)")
+            .id("\(L10n.currentLanguage)_\(effectiveScheme)")
             .preferredColorScheme(resolvedScheme)
             .tint(Theme.primaryColor)
-            .onAppear { syncThemeScheme() }
+            .onAppear {
+                syncThemeScheme()
+                if appLanguage != "en" && appLanguage != "el" {
+                    appLanguage = "en"
+                }
+            }
             .onChange(of: appearanceMode) { _, _ in syncThemeScheme() }
             .onChange(of: colorScheme) { _, _ in syncThemeScheme() }
             .fullScreenCover(item: $appRouter.pendingItem) { item in

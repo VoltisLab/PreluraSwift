@@ -118,9 +118,10 @@ class ProfileViewModel: ObservableObject {
         userItems = userItems.replacingItem(productId: productId, with: optimistic)
         Task {
             do {
-                let (isLiked, likeCount) = try await productService.toggleLike(productId: productId, isLiked: newLiked)
+                let result = try await productService.toggleLike(productId: productId, isLiked: newLiked)
                 await MainActor.run {
-                    userItems = userItems.replacingItem(productId: productId, with: item.with(likeCount: likeCount, isLiked: isLiked))
+                    let count = result.likeCount ?? optimistic.likeCount
+                    userItems = userItems.replacingItem(productId: productId, with: item.with(likeCount: count, isLiked: result.isLiked))
                 }
             } catch {
                 await MainActor.run { errorMessage = L10n.userFacingError(error) }

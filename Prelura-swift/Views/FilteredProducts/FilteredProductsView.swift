@@ -11,6 +11,8 @@ enum ProductFilterType: Equatable {
     case byParentCategory(categoryName: String)
     /// Try Cart: free search, add to bag only (offers disabled).
     case tryCartSearch
+    /// Shop by style: style filter via toolbar "Styles" modal (no category pills).
+    case shopByStyle
 }
 
 struct FilteredProductsView: View {
@@ -20,20 +22,29 @@ struct FilteredProductsView: View {
     @StateObject private var searchHistoryService = SearchHistoryService()
     @State private var showSortSheet = false
     @State private var showFilterSheet = false
+    @State private var showStylesSheet = false
     @State private var userSearchHistory: [SearchHistoryItem] = []
     @State private var recommendedSearchHistory: [SearchHistoryItem] = []
     @State private var tryCartSearchTask: Task<Void, Never>?
     @StateObject private var shopAllBag = ShopAllBagStore()
+    @State private var showGuestSignInPrompt: Bool = false
 
     let title: String
     let filterType: ProductFilterType
     /// When false, item detail shows only Buy now (no Send an offer). Used for Try Cart.
     let offersAllowed: Bool
+    /// When false, hide Add to bag on grid and floating Shopping bag bar (e.g. Shop by style). When nil, use (filterType == .tryCartSearch).
+    var showAddToBag: Bool? = nil
 
-    init(title: String, filterType: ProductFilterType, authService: AuthService? = nil, offersAllowed: Bool = true) {
+    private var effectiveShowAddToBag: Bool {
+        showAddToBag ?? (filterType == .tryCartSearch)
+    }
+
+    init(title: String, filterType: ProductFilterType, authService: AuthService? = nil, offersAllowed: Bool = true, showAddToBag: Bool? = nil) {
         self.title = title
         self.filterType = filterType
         self.offersAllowed = offersAllowed
+        self.showAddToBag = showAddToBag
         _viewModel = StateObject(wrappedValue: FilteredProductsViewModel(filterType: filterType, authService: authService))
     }
 
@@ -41,12 +52,82 @@ struct FilteredProductsView: View {
         viewModel.searchText.isEmpty && authService.isAuthenticated && !authService.isGuestMode
     }
 
+    private func likeAction(for item: Item) -> () -> Void {
+        return { [self] in
+            if authService.isGuestMode { showGuestSignInPrompt = true }
+            else { viewModel.toggleLike(productId: item.productId ?? "") }
+        }
+    }
+
+    @ViewBuilder
+    private var productGridContent: some View {
+        if viewModel.isLoading && viewModel.items.isEmpty {
+            FeedShimmerView()
+        } else if viewModel.items.isEmpty {
+            VStack(spacing: Theme.Spacing.md) {
+                Spacer()
+                Image(systemName: "bag")
+                    .font(.system(size: 60))
+                    .foregroundColor(Theme.Colors.secondaryText)
+                Text(L10n.string("No products found"))
+                    .font(Theme.Typography.title3)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                        GridItem(.flexible(), spacing: Theme.Spacing.sm)
+                    ],
+                    spacing: Theme.Spacing.md
+                ) {
+                    ForEach(viewModel.filteredItems) { item in
+                        NavigationLink(destination: ItemDetailView(item: item, authService: authService, offersAllowed: offersAllowed, shopAllBag: effectiveShowAddToBag ? shopAllBag : nil)) {
+                            HomeItemCard(
+                                item: item,
+                                onLikeTap: likeAction(for: item),
+                                showAddToBag: effectiveShowAddToBag,
+                                onAddToBag: effectiveShowAddToBag ? { shopAllBag.add(item) } : nil,
+                                isInBag: effectiveShowAddToBag && shopAllBag.items.contains(where: { $0.id == item.id }),
+                                onRemove: effectiveShowAddToBag ? { shopAllBag.remove(item) } : nil
+                            )
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .onAppear {
+                            if item.id == viewModel.filteredItems.suffix(4).first?.id {
+                                viewModel.loadMore()
+                            }
+                        }
+                    }
+                    if viewModel.isLoadingMore {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                                .padding()
+                            Spacer()
+                        }
+                        .gridCellColumns(2)
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
+            }
+            .refreshable {
+                await viewModel.refreshAsync()
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Search Bar (same position as feed / discover / inbox)
             DiscoverSearchField(
                 text: Binding(get: { viewModel.searchText }, set: { viewModel.searchText = $0 }),
-                placeholder: filterType == .tryCartSearch ? "Search anything to add to bag" : L10n.string("Search items, brands or styles"),
+                placeholder: effectiveShowAddToBag ? "Search anything to add to bag" : L10n.string("Search items, brands or styles"),
                 showClearButton: true,
                 onClear: { viewModel.searchText = "" },
                 topPadding: Theme.Spacing.xs
@@ -58,7 +139,38 @@ struct FilteredProductsView: View {
                 searchHistorySection
             }
 
-            // Shop All: Row 1 = All + main categories (Women, Men, Boys, Girls, Toddlers)
+            // Shop by style: pill tags under search bar for style filters
+            if case .shopByStyle = filterType {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        PillTag(
+                            title: L10n.string("All"),
+                            isSelected: viewModel.selectedStyle == nil,
+                            accentWhenUnselected: true,
+                            action: {
+                                viewModel.selectedStyle = nil
+                                viewModel.loadData()
+                            }
+                        )
+                        ForEach(Self.styleFilterOptions, id: \.self) { raw in
+                            let displayName = StyleSelectionView.displayName(for: raw)
+                            PillTag(
+                                title: displayName,
+                                isSelected: viewModel.selectedStyle == raw,
+                                accentWhenUnselected: true,
+                                action: {
+                                    viewModel.selectedStyle = raw
+                                    viewModel.loadData()
+                                }
+                            )
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                }
+                .padding(.vertical, Theme.Spacing.sm)
+            }
+
+            // Shop All only: Row 1 = All + main categories (Women, Men, Boys, Girls, Toddlers).
             if case .tryCartSearch = filterType {
                 VStack(alignment: .leading, spacing: 0) {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -224,65 +336,7 @@ struct FilteredProductsView: View {
             .background(Theme.Colors.background)
 
             // Product Grid
-            if viewModel.isLoading && viewModel.items.isEmpty {
-                FeedShimmerView()
-            } else if viewModel.items.isEmpty {
-                VStack(spacing: Theme.Spacing.md) {
-                    Spacer()
-                    Image(systemName: "bag")
-                        .font(.system(size: 60))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    Text(L10n.string("No products found"))
-                        .font(Theme.Typography.title3)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVGrid(
-                        columns: [
-                            GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                            GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                        ],
-                        spacing: Theme.Spacing.md
-                    ) {
-                        ForEach(viewModel.filteredItems) { item in
-                            NavigationLink(destination: ItemDetailView(item: item, authService: authService, offersAllowed: offersAllowed, shopAllBag: filterType == .tryCartSearch ? shopAllBag : nil)) {
-                                HomeItemCard(
-                                    item: item,
-                                    showAddToBag: filterType == .tryCartSearch,
-                                    onAddToBag: filterType == .tryCartSearch ? { shopAllBag.add(item) } : nil
-                                )
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .onAppear {
-                                // Load more when near the end
-                                if item.id == viewModel.filteredItems.suffix(4).first?.id {
-                                    viewModel.loadMore()
-                                }
-                            }
-                        }
-                        
-                        // Loading indicator
-                        if viewModel.isLoadingMore {
-                            HStack {
-                                Spacer()
-                                ProgressView()
-                                    .padding()
-                                Spacer()
-                            }
-                            .gridCellColumns(2)
-                        }
-                    }
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.md)
-                }
-                .refreshable {
-                    await viewModel.refreshAsync()
-                }
-            }
+            productGridContent
         }
         .background(Theme.Colors.background)
         .navigationTitle(title)
@@ -311,6 +365,16 @@ struct FilteredProductsView: View {
                     }
                 }
             }
+            if case .shopByStyle = filterType {
+                tryCartSearchTask?.cancel()
+                tryCartSearchTask = Task {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run {
+                        viewModel.loadData()
+                    }
+                }
+            }
         }
         .onChange(of: authService.authToken) { oldToken, newToken in
             if authService.isAuthenticated {
@@ -328,7 +392,15 @@ struct FilteredProductsView: View {
             }
         }
         .toolbar {
-            if case .tryCartSearch = filterType {
+            if case .shopByStyle = filterType {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(L10n.string("Styles")) {
+                        showStylesSheet = true
+                    }
+                    .foregroundColor(Theme.Colors.primaryText)
+                }
+            }
+            if effectiveShowAddToBag {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink(destination: MyFavouritesView(fromShopAll: true, shopAllBag: shopAllBag)) {
                         Image(systemName: "heart")
@@ -341,12 +413,14 @@ struct FilteredProductsView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if case .tryCartSearch = filterType {
+            if effectiveShowAddToBag {
                 shopAllFloatingBar
             }
         }
         .sheet(isPresented: $showSortSheet) { filteredProductsSortSheet }
         .sheet(isPresented: $showFilterSheet) { filteredProductsFilterSheet }
+        .sheet(isPresented: $showStylesSheet) { stylesSheetContent }
+        .fullScreenCover(isPresented: $showGuestSignInPrompt) { GuestSignInPromptView() }
     }
 
     /// Multi-buy style: floating primary-colour glassy pill (bag icon + "Shopping bag" + total).
@@ -529,6 +603,74 @@ struct FilteredProductsView: View {
             }
             .padding(.vertical, Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                    .fill(Theme.Colors.background)
+            )
+        }
+    }
+
+    /// Style filter options (StyleEnum raw values; same set as StyleSelectionView in SellView).
+    private static let styleFilterOptions: [String] = [
+        "WORKWEAR", "WORKOUT", "CASUAL", "PARTY_DRESS", "PARTY_OUTFIT", "FORMAL_WEAR", "EVENING_WEAR",
+        "WEDDING_GUEST", "LOUNGEWEAR", "VACATION_RESORT_WEAR", "FESTIVAL_WEAR", "ACTIVEWEAR", "NIGHTWEAR",
+        "VINTAGE", "Y2K", "BOHO", "MINIMALIST", "GRUNGE", "CHIC", "STREETWEAR", "PREPPY", "RETRO",
+        "COTTAGECORE", "GLAM", "SUMMER_STYLES", "WINTER_ESSENTIALS", "SPRING_FLORALS", "AUTUMN_LAYERS",
+        "RAINY_DAY_WEAR", "DENIM_JEANS", "DRESSES_GOWNS", "JACKETS_COATS", "KNITWEAR_SWEATERS",
+        "SKIRTS_SHORTS", "SUITS_BLAZERS", "TOPS_BLOUSES", "SHOES_FOOTWEAR", "TRAVEL_FRIENDLY",
+        "MATERNITY_WEAR", "ATHLEISURE", "ECO_FRIENDLY", "FESTIVAL_READY", "DATE_NIGHT", "ETHNIC_WEAR",
+        "OFFICE_PARTY_OUTFIT", "COCKTAIL_ATTIRE", "PROM_DRESSES", "MUSIC_CONCERT_WEAR", "OVERSIZED",
+        "SLIM_FIT", "RELAXED_FIT", "CHRISTMAS", "SCHOOL_UNIFORMS"
+    ]
+
+    private var stylesSheetContent: some View {
+        OptionsSheet(title: L10n.string("Styles"), onDismiss: { showStylesSheet = false }, detents: [.height(500), .large], useCustomCornerRadius: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Self.styleFilterOptions, id: \.self) { raw in
+                            Button(action: {
+                                viewModel.selectedStyle = viewModel.selectedStyle == raw ? nil : raw
+                            }) {
+                                HStack {
+                                    Text(StyleSelectionView.displayName(for: raw))
+                                        .font(Theme.Typography.body)
+                                        .foregroundColor(Theme.Colors.primaryText)
+                                    Spacer()
+                                    if viewModel.selectedStyle == raw {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(Theme.primaryColor)
+                                    }
+                                }
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.vertical, Theme.Spacing.md)
+                            }
+                            .buttonStyle(HapticTapButtonStyle())
+                            if raw != Self.styleFilterOptions.last {
+                                optionDivider
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: .infinity)
+                optionDivider
+                VStack(spacing: Theme.Spacing.sm) {
+                    BorderGlassButton(L10n.string("Clear")) {
+                        viewModel.selectedStyle = nil
+                        viewModel.loadData()
+                        showStylesSheet = false
+                    }
+                    PrimaryGlassButton(L10n.string("Apply")) {
+                        viewModel.loadData()
+                        showStylesSheet = false
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.top, Theme.Spacing.sm)
             .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)

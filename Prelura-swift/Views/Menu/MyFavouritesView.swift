@@ -77,8 +77,15 @@ struct MyFavouritesView: View {
                     ) {
                         ForEach(filteredItems) { item in
                             NavigationLink(destination: ItemDetailView(item: item, authService: authService, offersAllowed: !fromShopAll, shopAllBag: fromShopAll ? shopAllBag : nil)) {
-                                FavouriteItemCard(item: item, showAddToBag: fromShopAll && shopAllBag != nil, onAddToBag: fromShopAll ? { shopAllBag?.add($0) } : nil)
-                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                HomeItemCard(
+                                    item: item,
+                                    onLikeTap: { unfavourite(item) },
+                                    showAddToBag: fromShopAll && shopAllBag != nil,
+                                    onAddToBag: fromShopAll ? { shopAllBag?.add(item) } : nil,
+                                    isInBag: fromShopAll && (shopAllBag?.items.contains(where: { $0.id == item.id }) ?? false),
+                                    onRemove: fromShopAll ? { shopAllBag?.remove(item) } : nil
+                                )
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
                             }
                             .buttonStyle(.plain)
                             .onAppear {
@@ -141,54 +148,20 @@ struct MyFavouritesView: View {
             isLoadingMore = false
         }
     }
-}
 
-// MARK: - Card for favourites grid (image + optional Add to bag + title + price)
-private struct FavouriteItemCard: View {
-    let item: Item
-    var showAddToBag: Bool = false
-    var onAddToBag: ((Item) -> Void)? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            GeometryReader { geometry in
-                let size = min(geometry.size.width, geometry.size.height)
-                ZStack(alignment: .bottomTrailing) {
-                    RetryAsyncImage(
-                        url: item.imageURLs.first.flatMap { URL(string: $0) },
-                        width: size,
-                        height: size,
-                        cornerRadius: Theme.Glass.cornerRadius,
-                        placeholder: {
-                            ImageShimmerPlaceholderFilled(cornerRadius: Theme.Glass.cornerRadius)
-                                .frame(width: size, height: size)
-                        },
-                        failurePlaceholder: {
-                            Image(systemName: "photo")
-                                .font(.system(size: 28))
-                                .foregroundColor(Theme.Colors.secondaryText)
-                                .frame(width: size, height: size)
-                        }
-                    )
+    /// Unfavourite (toggle like off) and remove from list.
+    private func unfavourite(_ item: Item) {
+        guard let productId = item.productId, !productId.isEmpty else { return }
+        items.removeAll { $0.id == item.id }
+        Task {
+            do {
+                _ = try await productService.toggleLike(productId: productId, isLiked: false)
+            } catch {
+                await MainActor.run {
+                    items.append(item)
                 }
             }
-            .aspectRatio(1, contentMode: .fit)
-
-            if showAddToBag, let onAddToBag = onAddToBag {
-                PrimaryGlassButton(L10n.string("Add to bag"), icon: "bag.badge.plus", action: {
-                    onAddToBag(item)
-                })
-                .frame(maxWidth: .infinity)
-            }
-
-            Text(item.title)
-                .font(Theme.Typography.subheadline)
-                .foregroundColor(Theme.Colors.primaryText)
-                .lineLimit(2)
-
-            Text(item.formattedPrice)
-                .font(Theme.Typography.headline)
-                .foregroundColor(Theme.primaryColor)
         }
     }
 }
+

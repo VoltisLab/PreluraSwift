@@ -120,6 +120,13 @@ struct DiscoverView: View {
             DiscoverSearchField(
                 text: $searchText,
                 placeholder: L10n.string("Search members"),
+                animatedPlaceholders: [
+                    L10n.string("Search by name"),
+                    L10n.string("Find members"),
+                    L10n.string("Search username"),
+                    L10n.string("Discover people"),
+                    L10n.string("Find sellers"),
+                ],
                 onSubmit: { showSearchMembersResults = true },
                 topPadding: Theme.Spacing.xs
             )
@@ -136,8 +143,6 @@ struct DiscoverView: View {
                     .padding(.bottom, Theme.Spacing.sm)
                 ContentDivider()
                 categoryCirclesSection
-                ContentDivider()
-                    .padding(.top, Theme.Spacing.sm - 5)
                 shopByStyleAndLookbooksBanners
                     .padding(.top, Theme.Spacing.md)
                     .padding(.bottom, Theme.Spacing.lg)
@@ -287,55 +292,99 @@ struct DiscoverView: View {
         }
     }
 
-    // MARK: - Shop by style & Lookbooks (portrait banners side by side)
+    // MARK: - Shop by style & Lookbooks (portrait banners side by side; image + overlay + text)
+    @State private var shopByStyleImageIndex: Int = 0
+
+    private static let bannerHeight: CGFloat = 215
+
     private var shopByStyleAndLookbooksBanners: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            portraitBannerCard(
-                title: L10n.string("Shop by style"),
-                destination: FilteredProductsView(
-                    title: L10n.string("Shop by style"),
-                    filterType: .tryCartSearch,
-                    authService: authService,
-                    offersAllowed: false
-                )
-            )
-            portraitBannerCard(
-                title: L10n.string("Lookbooks"),
-                destination: FilteredProductsView(
-                    title: L10n.string("Lookbooks"),
-                    filterType: .tryCartSearch,
-                    authService: authService,
-                    offersAllowed: false
-                )
-            )
+        GeometryReader { geo in
+            let totalPadding = Theme.Spacing.md * 2
+            let gap = Theme.Spacing.sm
+            let bannerWidth = (geo.size.width - totalPadding - gap) / 2
+            HStack(spacing: gap) {
+                shopByStyleBanner(containerWidth: bannerWidth)
+                lookbooksBanner(containerWidth: bannerWidth)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
         }
-        .padding(.horizontal, Theme.Spacing.md)
-        .frame(height: 200)
+        .frame(height: Self.bannerHeight)
     }
 
-    private func portraitBannerCard<Destination: View>(title: String, destination: Destination) -> some View {
-        NavigationLink(destination: destination) {
+    private func shopByStyleBanner(containerWidth: CGFloat) -> some View {
+        NavigationLink(destination: FilteredProductsView(
+            title: L10n.string("Shop by style"),
+            filterType: .shopByStyle,
+            authService: authService,
+            offersAllowed: false,
+            showAddToBag: false
+        )) {
             ZStack {
-                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                    .fill(
-                        LinearGradient(
-                            colors: [Theme.primaryColor.opacity(0.85), Theme.primaryColor.opacity(0.6)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                Text(title)
+                Image(shopByStyleImageIndex == 0 ? "ShopByStyle1" : "ShopByStyle2")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: containerWidth, height: Self.bannerHeight)
+                    .clipped()
+                    .animation(.easeInOut(duration: 1.2), value: shopByStyleImageIndex)
+                Color.black.opacity(0.45)
+                    .frame(width: containerWidth, height: Self.bannerHeight)
+                Text(L10n.string("Shop by style"))
                     .font(Theme.Typography.title3)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .padding(Theme.Spacing.md)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 200)
-            .clipped()
+            .frame(width: containerWidth, height: Self.bannerHeight)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .frame(width: containerWidth, height: Self.bannerHeight)
+        .onAppear {
+            startShopByStyleImageTimer()
+        }
+        .onDisappear {
+            shopByStyleImageTimer?.invalidate()
+            shopByStyleImageTimer = nil
+        }
+    }
+
+    @State private var shopByStyleImageTimer: Timer?
+
+    private func startShopByStyleImageTimer() {
+        shopByStyleImageTimer?.invalidate()
+        shopByStyleImageTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 1.2)) {
+                    shopByStyleImageIndex = 1 - shopByStyleImageIndex
+                }
+            }
+        }
+        RunLoop.main.add(shopByStyleImageTimer!, forMode: .common)
+    }
+
+    private func lookbooksBanner(containerWidth: CGFloat) -> some View {
+        NavigationLink(destination: LookbookView()) {
+            ZStack {
+                Image("LookbookBanner")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: containerWidth, height: Self.bannerHeight)
+                    .clipped()
+                Color.black.opacity(0.45)
+                    .frame(width: containerWidth, height: Self.bannerHeight)
+                Text(L10n.string("Lookbooks"))
+                    .font(Theme.Typography.title3)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(Theme.Spacing.md)
+            }
+            .frame(width: containerWidth, height: Self.bannerHeight)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(width: containerWidth, height: Self.bannerHeight)
     }
     
     // MARK: - Recently Viewed Section (Products)
@@ -756,7 +805,7 @@ struct DiscoverItemCard: View {
             // Image with like count overlay - matching feed/profile design
             GeometryReader { geometry in
                 let imageWidth = geometry.size.width
-                let imageHeight = imageWidth * 1.3 // 1:1.3 width:height ratio
+                let imageHeight = imageWidth * 1.43 // 1:1.43 (10% taller than 1.3) for thumbnail
                 
                 ZStack(alignment: .bottomTrailing) {
                     // Background container - fixed size
@@ -796,9 +845,10 @@ struct DiscoverItemCard: View {
                     .padding(Theme.Spacing.xs)
                 }
             }
-            .aspectRatio(1.0/1.3, contentMode: .fit)
+            .aspectRatio(1.0 / 1.43, contentMode: .fit)
+            .clipped()
             
-            // Product details section with consistent spacing
+            // Product details section with consistent spacing (kept below image, no overlap)
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 // Brand (purple)
                 if let brand = item.brand {

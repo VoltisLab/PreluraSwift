@@ -21,7 +21,7 @@ class ProductService: ObservableObject {
         client.setAuthToken(token)
     }
     
-    func getAllProducts(pageNumber: Int = 1, pageCount: Int = 20, search: String? = nil, parentCategory: String? = nil, categoryId: Int? = nil, discountPrice: Bool? = nil, minPrice: Double? = nil, maxPrice: Double? = nil) async throws -> [Item] {
+    func getAllProducts(pageNumber: Int = 1, pageCount: Int = 20, search: String? = nil, parentCategory: String? = nil, categoryId: Int? = nil, discountPrice: Bool? = nil, minPrice: Double? = nil, maxPrice: Double? = nil, style: String? = nil) async throws -> [Item] {
         let query = """
         query AllProducts($pageNumber: Int, $pageCount: Int, $search: String, $filters: ProductFiltersInput) {
           allProducts(pageNumber: $pageNumber, pageCount: $pageCount, search: $search, filters: $filters) {
@@ -95,6 +95,9 @@ class ProductService: ObservableObject {
         }
         if let maxPrice = maxPrice {
             filters["maxPrice"] = maxPrice
+        }
+        if let style = style, !style.isEmpty {
+            filters["style"] = style
         }
         
         if !filters.isEmpty {
@@ -1159,48 +1162,53 @@ extension ProductService {
         }
     }
     
-    func toggleLike(productId: String, isLiked: Bool) async throws -> (isLiked: Bool, likeCount: Int) {
-        let mutation = """
-        mutation ToggleLike($productId: Int!, $isLiked: Boolean!) {
-          toggleLikeProduct(productId: $productId, isLiked: $isLiked) {
-            isLiked
-            likeCount
-          }
-        }
-        """
-        
+    /// Result of toggling a like: isLiked state and optional likeCount (nil when server doesn't return it, e.g. when using likeProduct fallback).
+    struct ToggleLikeResult {
+        let isLiked: Bool
+        let likeCount: Int?
+    }
+
+    func toggleLike(productId: String, isLiked: Bool) async throws -> ToggleLikeResult {
         guard let productIdInt = Int(productId) else {
             throw NSError(domain: "ProductService", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid product ID"])
         }
-        
-        var variables: [String: Any] = [
-            "productId": productIdInt,
-            "isLiked": isLiked
-        ]
-        
-        struct ToggleLikeResponse: Decodable {
-            let toggleLikeProduct: ToggleLikeData?
+
+        // Prefer toggleLikeProduct (returns isLiked + likeCount). Fall back to likeProduct (toggle) if backend only has that.
+        do {
+            let mutation = """
+            mutation ToggleLike($productId: Int!, $isLiked: Boolean!) {
+              toggleLikeProduct(productId: $productId, isLiked: $isLiked) {
+                isLiked
+                likeCount
+              }
+            }
+            """
+            struct ToggleLikeResponse: Decodable {
+                let toggleLikeProduct: ToggleLikeData?
+            }
+            struct ToggleLikeData: Decodable {
+                let isLiked: Bool?
+                let likeCount: Int?
+            }
+            let variables: [String: Any] = ["productId": productIdInt, "isLiked": isLiked]
+            let response: ToggleLikeResponse = try await client.execute(
+                query: mutation,
+                variables: variables,
+                responseType: ToggleLikeResponse.self
+            )
+            guard let data = response.toggleLikeProduct else {
+                throw NSError(domain: "ProductService", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed to toggle like"])
+            }
+            return ToggleLikeResult(
+                isLiked: data.isLiked ?? isLiked,
+                likeCount: data.likeCount
+            )
+        } catch {
+            // Fallback: backend may only expose likeProduct (often implemented as toggle: like/unlike)
+            let success = try await likeProduct(productId: productIdInt)
+            if !success { throw error }
+            return ToggleLikeResult(isLiked: isLiked, likeCount: nil)
         }
-        
-        struct ToggleLikeData: Decodable {
-            let isLiked: Bool?
-            let likeCount: Int?
-        }
-        
-        let response: ToggleLikeResponse = try await client.execute(
-            query: mutation,
-            variables: variables,
-            responseType: ToggleLikeResponse.self
-        )
-        
-        guard let data = response.toggleLikeProduct else {
-            throw NSError(domain: "ProductService", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed to toggle like"])
-        }
-        
-        return (
-            isLiked: data.isLiked ?? isLiked,
-            likeCount: data.likeCount ?? 0
-        )
     }
     
     private func mapProductToItem(product: ProductData) -> Item? {

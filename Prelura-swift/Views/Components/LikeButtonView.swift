@@ -32,7 +32,6 @@ struct LikeButtonView: View {
                 }
             )
         }
-        .buttonStyle(PlainButtonStyle())
         .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
     }
 }

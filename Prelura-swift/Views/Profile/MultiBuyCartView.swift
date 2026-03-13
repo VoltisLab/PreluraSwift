@@ -9,6 +9,7 @@ struct MultiBuyCartView: View {
 
     @EnvironmentObject private var authService: AuthService
     @State private var discountTiers: [MultibuyDiscount] = []
+    @State private var showPayment: Bool = false
     private let userService = UserService()
 
     private var items: [Item] {
@@ -79,11 +80,21 @@ struct MultiBuyCartView: View {
                 }
                 .padding(.horizontal, Theme.Spacing.md)
 
-                NavigationLink(destination: PaymentView(products: items, totalPrice: totalPrice)
-                    .environmentObject(authService)) {
-                    PrimaryGlassButton(L10n.string("Checkout"), icon: "creditcard", action: {})
+                Button(action: { showPayment = true }) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        Image(systemName: "creditcard")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(L10n.string("Checkout"))
+                            .font(Theme.Typography.headline)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, Theme.Spacing.lg)
+                    .padding(.vertical, Theme.Spacing.md)
+                    .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
+                    .glassEffectTransition(.materialize)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                 .padding(.horizontal, Theme.Spacing.md)
                 .disabled(!canCheckout)
                 .opacity(canCheckout ? 1 : 0.6)
@@ -93,6 +104,21 @@ struct MultiBuyCartView: View {
         }
         .navigationTitle(L10n.string("Shopping bag"))
         .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(isPresented: $showPayment) {
+            NavigationStack {
+                PaymentView(products: items, totalPrice: totalPrice)
+                    .environmentObject(authService)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(action: { showPayment = false }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundStyle(Theme.Colors.secondaryText)
+                            }
+                        }
+                    }
+            }
+        }
         .task {
             userService.updateAuthToken(authService.authToken)
             // Use seller's id so their multi-buy settings apply for any buyer (not just when seller views own bag).

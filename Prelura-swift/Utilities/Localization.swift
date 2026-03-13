@@ -10,20 +10,31 @@ import Foundation
 /// UserDefaults key for selected app language: "en" | "el"
 let kAppLanguage = "app_language"
 
+/// Valid app language codes. Stored value is normalized to one of these to avoid crashes when device language or storage changes.
+private let kValidAppLanguages = ["en", "el"]
+
 enum L10n {
 
     /// Returns the localized string for the current app language. English uses the key as text; Greek uses translations.
     static func string(_ key: String) -> String {
-        let lang = UserDefaults.standard.string(forKey: kAppLanguage) ?? "en"
+        let lang = validatedAppLanguage()
         if lang == "el" {
             return greek[key] ?? key
         }
         return key
     }
 
-    /// Current language code for conditional logic if needed
+    /// Current language code for conditional logic if needed. Always "en" or "el".
     static var currentLanguage: String {
-        UserDefaults.standard.string(forKey: kAppLanguage) ?? "en"
+        validatedAppLanguage()
+    }
+
+    /// Returns stored app language if valid; otherwise "en". Persists correction to avoid repeat crashes after device language change.
+    static func validatedAppLanguage() -> String {
+        let raw = UserDefaults.standard.string(forKey: kAppLanguage) ?? "en"
+        if kValidAppLanguages.contains(raw) { return raw }
+        UserDefaults.standard.set("en", forKey: kAppLanguage)
+        return "en"
     }
 
     static var isGreek: Bool { currentLanguage == "el" }

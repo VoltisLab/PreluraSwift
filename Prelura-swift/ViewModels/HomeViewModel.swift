@@ -41,9 +41,10 @@ class HomeViewModel: ObservableObject {
         }
         Task {
             do {
-                let (isLiked, likeCount) = try await productService.toggleLike(productId: productId, isLiked: newLiked)
+                let result = try await productService.toggleLike(productId: productId, isLiked: newLiked)
                 await MainActor.run {
-                    let updated = item.with(likeCount: likeCount, isLiked: isLiked)
+                    let count = result.likeCount ?? optimistic.likeCount
+                    let updated = item.with(likeCount: count, isLiked: result.isLiked)
                     if let i = allItems.firstIndex(where: { $0.productId == productId }) {
                         allItems[i] = updated
                     }

@@ -1,23 +1,39 @@
 import SwiftUI
 
 /// Reusable discover-style search field with 30pt corner radius.
-/// Use this component for all search bars to ensure consistent styling and position.
+/// When animatedPlaceholders is set, cycles through them with a fade; otherwise uses static placeholder.
 struct DiscoverSearchField: View {
     @Binding var text: String
     @FocusState private var isFocused: Bool
     var placeholder: String = "Search members"
+    /// When non-empty, placeholder cycles through these with animation (e.g. Discover tab member search).
+    var animatedPlaceholders: [String]? = nil
     var onSubmit: (() -> Void)? = nil
     var onChange: ((String) -> Void)? = nil
     var showClearButton: Bool = false
     var onClear: (() -> Void)? = nil
-    /// When true (default), adds horizontal and vertical outer padding so the field keeps the same position as Discover. Set false when parent already provides horizontal padding (e.g. Browse).
     var outerPadding: Bool = true
-    /// Top padding above the search field. Default nil uses Theme.Spacing.sm. Set to Theme.Spacing.xs (or 0) for a tighter layout under the header (e.g. Home).
     var topPadding: CGFloat? = nil
-    /// When set, uses this as the search field background instead of secondaryBackground (e.g. Theme.Colors.background to match the page).
     var fieldBackground: Color? = nil
 
+    @State private var placeholderIndex: Int = 0
+    @State private var placeholderOpacity: Double = 1
+    @State private var cycleTimer: Timer?
+    @State private var placeholders: [String] = []
+
     private let cornerRadius: CGFloat = 30
+
+    private var useAnimatedPlaceholders: Bool {
+        guard let list = animatedPlaceholders, !list.isEmpty else { return false }
+        return true
+    }
+
+    private var currentPlaceholderText: String {
+        if useAnimatedPlaceholders, !placeholders.isEmpty {
+            return placeholders[placeholderIndex % placeholders.count]
+        }
+        return placeholder
+    }
 
     var body: some View {
         HStack(spacing: Theme.Spacing.sm) {
@@ -25,16 +41,20 @@ struct DiscoverSearchField: View {
                 .font(.system(size: 16, weight: .medium))
                 .foregroundColor(Theme.Colors.secondaryText)
 
-            TextField(placeholder, text: $text)
-                .font(Theme.Typography.body)
-                .foregroundColor(Theme.Colors.primaryText)
-                .focused($isFocused)
-                .onSubmit {
-                    onSubmit?()
+            ZStack(alignment: .leading) {
+                if text.isEmpty {
+                    Text(currentPlaceholderText)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .opacity(placeholderOpacity)
                 }
-                .onChange(of: text) { oldValue, newValue in
-                    onChange?(newValue)
-                }
+                TextField("", text: $text)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .focused($isFocused)
+                    .onSubmit { onSubmit?() }
+                    .onChange(of: text) { _, newValue in onChange?(newValue) }
+            }
 
             if showClearButton && !text.isEmpty {
                 Button(action: {
@@ -47,6 +67,16 @@ struct DiscoverSearchField: View {
                 }
             }
         }
+        .onAppear {
+            if useAnimatedPlaceholders {
+                placeholders = (animatedPlaceholders ?? []).shuffled()
+                startPlaceholderCycle()
+            }
+        }
+        .onDisappear {
+            cycleTimer?.invalidate()
+            cycleTimer = nil
+        }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.md)
         .background(fieldBackground ?? Theme.Colors.secondaryBackground)
@@ -56,6 +86,25 @@ struct DiscoverSearchField: View {
                 .stroke(isFocused ? Theme.primaryColor : Color.clear, lineWidth: 2)
         )
         .modifier(DiscoverSearchFieldOuterPadding(outerPadding: outerPadding, topPadding: topPadding))
+    }
+
+    private func startPlaceholderCycle() {
+        cycleTimer?.invalidate()
+        guard placeholders.count > 1 else { return }
+        cycleTimer = Timer.scheduledTimer(withTimeInterval: 3.2, repeats: true) { _ in
+            DispatchQueue.main.async {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    placeholderOpacity = 0
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    placeholderIndex = (placeholderIndex + 1) % placeholders.count
+                    withAnimation(.easeIn(duration: 0.25)) {
+                        placeholderOpacity = 1
+                    }
+                }
+            }
+        }
+        RunLoop.main.add(cycleTimer!, forMode: .common)
     }
 }
 

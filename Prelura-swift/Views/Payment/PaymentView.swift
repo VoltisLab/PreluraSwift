@@ -143,8 +143,9 @@ struct PaymentView: View {
                         infoRow(L10n.string("Total"), String(format: "£%.2f", total), isBold: true)
                     }
                     .background(Theme.Colors.background)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 0)
+                        RoundedRectangle(cornerRadius: 10)
                             .stroke(Theme.Colors.glassBorder, lineWidth: 0.5)
                     )
 
