@@ -235,9 +235,14 @@ struct BackgroundReplacerView: View {
                     step = .preview
                     isProcessing = false
                 }
+            } catch let err as BackgroundRemovalError {
+                await MainActor.run {
+                    errorMessage = err.errorDescription ?? "Could not process image."
+                    isProcessing = false
+                }
             } catch {
                 await MainActor.run {
-                    errorMessage = "Could not process image. Try a photo with a clear subject."
+                    errorMessage = error.localizedDescription
                     isProcessing = false
                 }
             }

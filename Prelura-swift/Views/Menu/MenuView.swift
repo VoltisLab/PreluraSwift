@@ -77,7 +77,7 @@ struct MenuView: View {
             Section {
                 EmptyView()
             } footer: {
-                Text(L10n.string("© Prelura 2026"))
+                Text(L10n.string("© Voltis Labs 2026"))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
                     .frame(maxWidth: .infinity)

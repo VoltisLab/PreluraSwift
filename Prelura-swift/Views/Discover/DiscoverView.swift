@@ -190,7 +190,7 @@ struct DiscoverView: View {
             authService: authService,
             offersAllowed: false
         )) {
-            ZStack(alignment: .topTrailing) {
+            ZStack {
                 Image("Rectangle 11 2")
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -222,6 +222,7 @@ struct DiscoverView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Capsule().fill(Color.black.opacity(0.6)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     .padding(.top, 10)
                     .padding(.trailing, 10)
             }
@@ -702,6 +703,8 @@ private struct AnimatedBrandRow: View {
                 }
             )
             .onAppear {
+                offset = 0
+                proxy.scrollTo(pillRowId, anchor: .leading)
                 startDriftIfNeeded()
             }
             .onChange(of: animationStopped) { _, stopped in
@@ -711,10 +714,10 @@ private struct AnimatedBrandRow: View {
                     withAnimation(.easeOut(duration: 0.25)) {
                         offset = 0
                     }
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        proxy.scrollTo(pillRowId, anchor: .leading)
-                    }
+                    proxy.scrollTo(pillRowId, anchor: .leading)
                 } else {
+                    offset = 0
+                    proxy.scrollTo(pillRowId, anchor: .leading)
                     startDriftIfNeeded()
                 }
             }
@@ -728,6 +731,7 @@ private struct AnimatedBrandRow: View {
     private func startDriftIfNeeded() {
         guard !animationStopped else { return }
         driftTimer?.invalidate()
+        offset = 0
         driftTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
             Task { @MainActor in
                 guard !animationStopped else { return }

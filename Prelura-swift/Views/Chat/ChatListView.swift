@@ -106,9 +106,19 @@ struct ChatListView: View {
                     .toolbarBackground(Theme.Colors.background, for: .navigationBar)
                     .toolbar {
                         ToolbarItem(placement: .navigationBarTrailing) {
-                            HStack(spacing: Theme.Spacing.xs) {
-                                GlassIconButton(icon: "line.3.horizontal.decrease", iconColor: Theme.Colors.primaryText, action: {})
-                                GlassIconButton(icon: "arrow.up.arrow.down", iconColor: Theme.Colors.primaryText, action: {})
+                            HStack(spacing: 16) {
+                                Button(action: {}) {
+                                    Image(systemName: "line.3.horizontal.decrease")
+                                        .font(.system(size: 17, weight: .regular))
+                                        .foregroundColor(Theme.Colors.primaryText)
+                                }
+                                .buttonStyle(.plain)
+                                Button(action: {}) {
+                                    Image(systemName: "arrow.up.arrow.down")
+                                        .font(.system(size: 17, weight: .regular))
+                                        .foregroundColor(Theme.Colors.primaryText)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }

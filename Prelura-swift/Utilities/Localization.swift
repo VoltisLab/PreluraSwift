@@ -130,6 +130,7 @@ enum L10n {
         // Menu (navigation)
         "Menu": "Μενού",
         "© Prelura 2026": "© Prelura 2026",
+        "© Voltis Labs 2026": "© Voltis Labs 2026",
         "Debug": "Εντοπισμός σφαλμάτων",
 
         // Home

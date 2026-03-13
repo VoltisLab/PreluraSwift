@@ -2,8 +2,8 @@
 //  BackgroundRemovalService.swift
 //  Prelura-swift
 //
-//  Uses Vision VNGeneratePersonSegmentationRequest and Core Image blendWithMask
-//  to remove background and composite subject onto a theme background.
+//  On-device background removal: Vision person segmentation + Core Image CIBlendWithMask.
+//  Same approach as Outfeatz. Not supported in Simulator.
 //
 
 import Foundation
@@ -11,10 +11,24 @@ import Vision
 import CoreImage
 import UIKit
 
-enum BackgroundRemovalError: Error {
+enum BackgroundRemovalError: LocalizedError {
     case noPersonInImage
+    case simulatorUnsupported
     case segmentationFailed
     case compositeFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .noPersonInImage:
+            return "No person detected. Use a photo with a clear person."
+        case .simulatorUnsupported:
+            return "Background removal isn't supported in the Simulator. Try on a device."
+        case .segmentationFailed:
+            return "Could not analyze the image."
+        case .compositeFailed:
+            return "Could not apply the theme."
+        }
+    }
 }
 
 /// Theme background for shop photos (no custom upload – app-provided only).
@@ -72,59 +86,90 @@ extension ThemeBackground {
 final class BackgroundRemovalService {
     private let context = CIContext(options: [.useSoftwareRenderer: false])
 
-    /// Removes background from image using person segmentation, then composites onto the theme background.
-    /// Works best with photos containing a person (e.g. clothing on model). If no person is detected, returns original composited on theme.
+    /// Max dimension for Vision input (balance quality vs speed).
+    private let maxDimension: CGFloat = 1024
+
+    /// Removes background using Vision person segmentation, then composites onto the theme.
+    /// Flow: normalize image → Vision mask → CIBlendWithMask (person kept, background = theme).
+    /// On Simulator, Vision is unsupported → throws .simulatorUnsupported.
     func removeBackground(from image: UIImage, theme: ThemeBackground) async throws -> UIImage {
-        guard let inputCIImage = CIImage(image: image) else { throw BackgroundRemovalError.compositeFailed }
+        #if targetEnvironment(simulator)
+        throw BackgroundRemovalError.simulatorUnsupported
+        #endif
+
+        let normalized = normalizeImage(image)
+        guard let inputCIImage = CIImage(image: normalized) else { throw BackgroundRemovalError.compositeFailed }
         let size = inputCIImage.extent.size
+
         let request = VNGeneratePersonSegmentationRequest()
-        request.qualityLevel = .accurate
+        request.qualityLevel = .balanced
         request.outputPixelFormat = kCVPixelFormatType_OneComponent8
 
-        let handler = VNImageRequestHandler(ciImage: inputCIImage, options: [:])
-        try handler.perform([request])
+        let handler: VNImageRequestHandler
+        if inputCIImage.extent.origin != .zero {
+            let translated = inputCIImage.transformed(by: CGAffineTransform(translationX: -inputCIImage.extent.origin.x, y: -inputCIImage.extent.origin.y))
+            handler = VNImageRequestHandler(ciImage: translated, options: [:])
+        } else {
+            handler = VNImageRequestHandler(ciImage: inputCIImage, options: [:])
+        }
+
+        do {
+            try handler.perform([request])
+        } catch {
+            throw BackgroundRemovalError.segmentationFailed
+        }
 
         guard let result = request.results?.first else {
-            return try compositeFullImage(inputCIImage, theme: theme, size: size)
+            throw BackgroundRemovalError.noPersonInImage
         }
 
         let maskBuffer = result.pixelBuffer
         let maskImage = CIImage(cvPixelBuffer: maskBuffer)
 
         guard let background = theme.ciImage(size: size) else {
-            return try compositeFullImage(inputCIImage, theme: theme, size: size)
+            throw BackgroundRemovalError.compositeFailed
         }
 
         let maskExt = maskImage.extent
         let scaleX = size.width / maskExt.width
         let scaleY = size.height / maskExt.height
         let scaledMask = maskImage.transformed(by: CGAffineTransform(translationX: -maskExt.minX, y: -maskExt.minY).scaledBy(x: scaleX, y: scaleY))
-        let blend = CIFilter(name: "CIBlendWithMask")
-        blend?.setValue(inputCIImage, forKey: kCIInputImageKey)
-        blend?.setValue(background, forKey: kCIInputBackgroundImageKey)
-        blend?.setValue(scaledMask, forKey: kCIInputMaskImageKey)
 
-        guard let output = blend?.outputImage else {
-            return try compositeFullImage(inputCIImage, theme: theme, size: size)
+        guard let blend = CIFilter(name: "CIBlendWithMask") else {
+            throw BackgroundRemovalError.compositeFailed
+        }
+        blend.setValue(inputCIImage, forKey: kCIInputImageKey)
+        blend.setValue(background, forKey: kCIInputBackgroundImageKey)
+        blend.setValue(scaledMask, forKey: kCIInputMaskImageKey)
+
+        guard let output = blend.outputImage else {
+            throw BackgroundRemovalError.compositeFailed
         }
 
         let cropRect = output.extent
         guard let cgImage = context.createCGImage(output, from: cropRect) else {
             throw BackgroundRemovalError.compositeFailed
         }
-        return UIImage(cgImage: cgImage, scale: image.scale, orientation: image.imageOrientation)
+        return UIImage(cgImage: cgImage, scale: normalized.scale, orientation: .up)
     }
 
-    private func compositeFullImage(_ input: CIImage, theme: ThemeBackground, size: CGSize) throws -> UIImage {
-        guard let background = theme.ciImage(size: size) else { throw BackgroundRemovalError.compositeFailed }
-        let blend = CIFilter(name: "CISourceOverCompositing")
-        blend?.setValue(input, forKey: kCIInputImageKey)
-        blend?.setValue(background, forKey: kCIInputBackgroundImageKey)
-        // CISourceOverCompositing: backgroundImage = bottom, inputImage = on top
-        guard let output = blend?.outputImage,
-              let cgImage = context.createCGImage(output, from: output.extent) else {
-            throw BackgroundRemovalError.compositeFailed
+    /// Normalize to single orientation and reasonable resolution for Vision.
+    private func normalizeImage(_ image: UIImage) -> UIImage {
+        let targetSize = scaledSize(for: image.size, maxDimension: maxDimension)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        let normalized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
         }
-        return UIImage(cgImage: cgImage, scale: UIScreen.main.scale, orientation: .up)
+        return normalized
+    }
+
+    private func scaledSize(for size: CGSize, maxDimension: CGFloat) -> CGSize {
+        let maxSide = max(size.width, size.height)
+        guard maxSide > maxDimension else { return size }
+        let scale = maxDimension / maxSide
+        return CGSize(width: size.width * scale, height: size.height * scale)
     }
 }
