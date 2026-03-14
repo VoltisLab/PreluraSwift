@@ -48,7 +48,9 @@ struct UserProfileView: View {
                             vacationModeSection(isLoggedInUser: false)
                         } else {
                             followRow
-                            filtersSection
+                            if !viewModel.items.isEmpty {
+                                filtersSection
+                            }
                             itemsGridSection
                         }
                     }
@@ -540,45 +542,7 @@ struct UserProfileView: View {
 
     private var userProfileSortSheet: some View {
         OptionsSheet(title: L10n.string("Sort"), onDismiss: { showSortSheet = false }, detents: [.height(380)], useCustomCornerRadius: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(ProfileSortOption.allCases.enumerated()), id: \.offset) { index, option in
-                    Button(action: { profileSort = option }) {
-                        HStack {
-                            Text(L10n.string(option.rawValue))
-                                .font(Theme.Typography.body)
-                                .foregroundColor(Theme.Colors.primaryText)
-                            Spacer()
-                            if profileSort == option {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(Theme.primaryColor)
-                            }
-                        }
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.vertical, Theme.Spacing.md)
-                    }
-                    .buttonStyle(.plain)
-                    if index < ProfileSortOption.allCases.count - 1 { optionDivider }
-                }
-                optionDivider
-                VStack(spacing: Theme.Spacing.sm) {
-                    BorderGlassButton(L10n.string("Clear")) {
-                        profileSort = .relevance
-                    }
-                    PrimaryGlassButton(L10n.string("Apply")) {
-                        showSortSheet = false
-                    }
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.md)
-                .padding(.bottom, Theme.Spacing.md)
-            }
-            .padding(.vertical, Theme.Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                    .fill(Theme.Colors.background)
-            )
+            SortSheetContent(selectedSort: $profileSort, onApply: { showSortSheet = false })
         }
     }
 
@@ -735,29 +699,20 @@ struct UserProfileView: View {
         case .priceAsc: items = items.sorted { $0.price < $1.price }
         case .priceDesc: items = items.sorted { $0.price > $1.price }
         }
-        return LazyVGrid(
-            columns: [
-                GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                GridItem(.flexible(), spacing: Theme.Spacing.sm)
-            ],
-            spacing: Theme.Spacing.md
-        ) {
-            ForEach(items) { item in
-                if isMultiBuySelectionMode {
-                    Button(action: {
-                        HapticManager.selection()
-                        let id = item.id.uuidString
-                        if selectedMultiBuyItemIds.contains(id) {
-                            selectedMultiBuyItemIds.remove(id)
-                        } else {
-                            selectedMultiBuyItemIds.insert(id)
-                        }
-                    }) {
-                        WardrobeItemCard(
-                            item: item,
-                            multiBuySelectionMode: true,
-                            isSelectedForMultiBuy: selectedMultiBuyItemIds.contains(item.id.uuidString),
-                            onMultiBuySelectTap: {
+        return Group {
+            if items.isEmpty {
+                profileListingsEmptyState(hasAnyListings: !viewModel.items.isEmpty)
+            } else {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                        GridItem(.flexible(), spacing: Theme.Spacing.sm)
+                    ],
+                    spacing: Theme.Spacing.md
+                ) {
+                    ForEach(items) { item in
+                        if isMultiBuySelectionMode {
+                            Button(action: {
                                 HapticManager.selection()
                                 let id = item.id.uuidString
                                 if selectedMultiBuyItemIds.contains(id) {
@@ -765,20 +720,58 @@ struct UserProfileView: View {
                                 } else {
                                     selectedMultiBuyItemIds.insert(id)
                                 }
+                            }) {
+                                WardrobeItemCard(
+                                    item: item,
+                                    multiBuySelectionMode: true,
+                                    isSelectedForMultiBuy: selectedMultiBuyItemIds.contains(item.id.uuidString),
+                                    onMultiBuySelectTap: {
+                                        HapticManager.selection()
+                                        let id = item.id.uuidString
+                                        if selectedMultiBuyItemIds.contains(id) {
+                                            selectedMultiBuyItemIds.remove(id)
+                                        } else {
+                                            selectedMultiBuyItemIds.insert(id)
+                                        }
+                                    }
+                                )
                             }
-                        )
+                            .buttonStyle(PlainButtonStyle())
+                        } else {
+                            NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
+                                WardrobeItemCard(item: item)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
                     }
-                    .buttonStyle(PlainButtonStyle())
-                } else {
-                    NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
-                        WardrobeItemCard(item: item)
-                    }
-                    .buttonStyle(PlainButtonStyle())
                 }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
             }
         }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.md)
+    }
+
+    /// Shown when the profile listings grid is empty: no listings yet, or no items match filters.
+    private func profileListingsEmptyState(hasAnyListings: Bool) -> some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            Spacer(minLength: 40)
+            Image(systemName: "tshirt")
+                .font(.system(size: 56))
+                .foregroundColor(Theme.Colors.secondaryText.opacity(0.7))
+            Text(hasAnyListings ? L10n.string("No items match your filters") : L10n.string("No listings yet"))
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Theme.Spacing.xl)
+            if hasAnyListings {
+                Text(L10n.string("Try adjusting your filters"))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+            Spacer(minLength: 40)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.xl)
     }
 }
 

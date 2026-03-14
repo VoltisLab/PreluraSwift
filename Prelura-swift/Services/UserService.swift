@@ -42,6 +42,7 @@ class UserService: ObservableObject {
             noOfFollowers
             isVacationMode
             isMultibuyEnabled
+            isStaff
             reviewStats {
               noOfReviews
               rating

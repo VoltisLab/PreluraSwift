@@ -256,7 +256,8 @@ struct HelpCentreView: View {
                         text: $searchText,
                         placeholder: L10n.string("e.g. How do I change my profile photo?"),
                         outerPadding: false,
-                        topPadding: Theme.Spacing.xs
+                        topPadding: Theme.Spacing.xs,
+                        singleLineFixedHeight: true
                     )
                     .padding(.trailing, Theme.Spacing.sm)
 

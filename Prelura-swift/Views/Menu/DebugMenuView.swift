@@ -68,6 +68,14 @@ struct DebugMenuView: View {
                         Text("Lookbooks Upload")
                     }
                 }
+                NavigationLink(destination: ShopToolsView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "wrench.and.screwdriver")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text(L10n.string("Shop tools"))
+                    }
+                }
             }
         }
         .listStyle(.insetGrouped)

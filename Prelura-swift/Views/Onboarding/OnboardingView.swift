@@ -22,10 +22,22 @@ struct OnboardingView: View {
                         imageName: "bag.fill"
                     )
                     .tag(1)
+                    onboardingPage(
+                        title: "Stay in the Loop",
+                        bodyText: "Get notified when items you love go on sale or when someone messages you.",
+                        imageName: "bell.badge.fill"
+                    )
+                    .tag(2)
+                    onboardingPage(
+                        title: "You're All Set",
+                        bodyText: "Your feed is ready. Start exploring and make your first sustainable find.",
+                        imageName: "sparkles"
+                    )
+                    .tag(3)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 HStack(spacing: 6) {
-                    ForEach(0..<2, id: \.self) { i in
+                    ForEach(0..<4, id: \.self) { i in
                         Circle()
                             .fill(page == i ? Theme.primaryColor : Theme.Colors.secondaryText.opacity(0.4))
                             .frame(width: 8, height: 8)

@@ -3,13 +3,20 @@ import PhotosUI
 
 // MARK: - Chat message model
 
+/// Pairs an order with role so Ann can show "placed" vs "sold" and open OrderDetailView with correct isSeller.
+struct OrderContext: Identifiable {
+    let order: Order
+    let isSeller: Bool
+    var id: String { order.id }
+}
+
 struct ChatMessage: Identifiable {
     let id: UUID
     let isFromUser: Bool
     let text: String
     var items: [Item]?
-    var orders: [Order]?
-    init(id: UUID = UUID(), isFromUser: Bool, text: String, items: [Item]? = nil, orders: [Order]? = nil) {
+    var orders: [OrderContext]?
+    init(id: UUID = UUID(), isFromUser: Bool, text: String, items: [Item]? = nil, orders: [OrderContext]? = nil) {
         self.id = id
         self.isFromUser = isFromUser
         self.text = text
@@ -420,6 +427,8 @@ struct ChatBubbleView: View {
     let message: ChatMessage
     let isLastMessage: Bool
     @ObservedObject var viewModel: HomeViewModel
+    /// When set (e.g. Ann), tapping an order calls this instead of navigating; use to show help sheet.
+    var onOrderTapped: ((Order, Bool) -> Void)? = nil
     @EnvironmentObject private var authService: AuthService
     @State private var showGuestSignInPrompt: Bool = false
 
@@ -525,12 +534,22 @@ struct ChatBubbleView: View {
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: Theme.Spacing.sm) {
-                                ForEach(orders.prefix(20)) { order in
-                                    NavigationLink(destination: OrderDetailView(order: order)) {
-                                        OrderSliderCard(order: order)
-                                            .frame(width: 160, alignment: .topLeading)
+                                ForEach(Array(orders.prefix(20))) { ctx in
+                                    if let onTap = onOrderTapped {
+                                        Button {
+                                            onTap(ctx.order, ctx.isSeller)
+                                        } label: {
+                                            OrderSliderCard(order: ctx.order, isSeller: ctx.isSeller)
+                                                .frame(width: 160, alignment: .topLeading)
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
+                                    } else {
+                                        NavigationLink(destination: OrderDetailView(order: ctx.order, isSeller: ctx.isSeller)) {
+                                            OrderSliderCard(order: ctx.order, isSeller: ctx.isSeller)
+                                                .frame(width: 160, alignment: .topLeading)
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
                                     }
-                                    .buttonStyle(PlainButtonStyle())
                                 }
                             }
                             .padding(.horizontal, Theme.Spacing.md)
@@ -567,10 +586,17 @@ struct ChatBubbleView: View {
 // MARK: - Order slider card (compact order card for Ann support chat)
 private struct OrderSliderCard: View {
     let order: Order
+    /// When set, show "Sold" or "Bought" badge so user knows context.
+    var isSeller: Bool? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             orderImage
+            if isSeller != nil {
+                Text(isSeller == true ? "Sold" : "Bought")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
             Text(order.products.first?.name ?? "Order")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.primaryText)

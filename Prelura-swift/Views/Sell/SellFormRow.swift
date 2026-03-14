@@ -5,22 +5,24 @@ import SwiftUI
 struct SellFormRow: View {
     let title: String
     let value: String?
+    /// When true, title and value use secondary (grey) styling like unset fields (e.g. Discount Price).
+    let preferSecondaryStyle: Bool
 
-    init(title: String, value: String? = nil) {
+    init(title: String, value: String? = nil, preferSecondaryStyle: Bool = false) {
         self.title = title
         self.value = value
+        self.preferSecondaryStyle = preferSecondaryStyle
     }
 
-    private var hasValue: Bool {
-        guard let v = value, !v.isEmpty else { return false }
-        return true
+    private var useSecondaryStyle: Bool {
+        preferSecondaryStyle || (value == nil || (value?.isEmpty ?? true))
     }
 
     var body: some View {
         HStack {
             Text(title)
                 .font(Theme.Typography.body)
-                .foregroundColor(hasValue ? Theme.Colors.primaryText : Theme.Colors.secondaryText)
+                .foregroundColor(useSecondaryStyle ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
 
             Spacer()
 

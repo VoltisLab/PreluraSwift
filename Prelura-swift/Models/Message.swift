@@ -48,21 +48,38 @@ struct Message: Identifiable {
         return str
     }
 
-    /// Human-readable text for bubbles: show "Order issue" / "Order update" / "New offer" for JSON, else plain content.
-    var displayContent: String {
+    /// True when content is offer payload (JSON type "offer" or backend sending Python-style e.g. {'offer_id': 323}).
+    var isOfferContent: Bool {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("{"),
-              let data = trimmed.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = json["type"] as? String else {
-            return content
+        if trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if json["type"] as? String == "offer" { return true }
+            if json["offer_id"] != nil { return true }
         }
-        switch type {
-        case "order_issue": return "Order issue"
-        case "order": return "Order update"
-        case "offer": return "New offer"
-        default: return content
+        if trimmed.contains("offer_id") { return true }
+        return false
+    }
+
+    /// Human-readable text for bubbles: show "Order issue" / "Order update" / "Offer sent"|"New offer" for JSON or offer payload, else plain content.
+    /// Pass isFromCurrentUser so we show "Offer sent" for sender and "New offer" for recipient.
+    func displayContentForBubble(isFromCurrentUser: Bool) -> String {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let type = json["type"] as? String {
+            switch type {
+            case "order_issue": return "Order issue"
+            case "order": return "Order update"
+            case "offer": return isFromCurrentUser ? "Offer sent" : "New offer"
+            default: break
+            }
         }
+        if isOfferContent {
+            return isFromCurrentUser ? "Offer sent" : "New offer"
+        }
+        return content
+    }
+
+    /// Human-readable text for list preview; does not need sender context.
+    var displayContent: String {
+        displayContentForBubble(isFromCurrentUser: false)
     }
 
     /// True when content is JSON with type "sold_confirmation" (show banner instead of bubble).

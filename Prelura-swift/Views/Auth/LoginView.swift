@@ -9,6 +9,7 @@ struct LoginView: View {
     @State private var errorMessage: String?
     @State private var showSignup: Bool = false
     @State private var showForgotPassword: Bool = false
+    @State private var showEmailVerificationCode: Bool = false
     @State private var loginVideoURL: URL?
 
     var body: some View {
@@ -93,25 +94,22 @@ struct LoginView: View {
                             }
                             .buttonStyle(HapticTapButtonStyle())
                         }
-                        .padding(.bottom, Theme.Spacing.sm)
-
-                        Button(action: { authService.continueAsGuest() }) {
-                            Text(L10n.string("Continue as guest"))
-                                .font(Theme.Typography.body)
-                                .foregroundColor(Theme.Colors.authOverVideoText)
-                        }
-                        .buttonStyle(HapticTapButtonStyle())
                         .padding(.bottom, 100)
                     }
                 }
 
-                PrimaryGlassButton(
-                    L10n.string("Login"),
-                    isEnabled: !username.isEmpty && !password.isEmpty,
-                    isLoading: isLoading,
-                    action: handleLogin
-                )
-                .padding(.horizontal, Theme.Spacing.md)
+                VStack(spacing: Theme.Spacing.md) {
+                    BorderGlassButton(L10n.string("Continue as guest"), action: { authService.continueAsGuest() })
+                        .padding(.horizontal, Theme.Spacing.md)
+
+                    PrimaryGlassButton(
+                        L10n.string("Login"),
+                        isEnabled: !username.isEmpty && !password.isEmpty,
+                        isLoading: isLoading,
+                        action: handleLogin
+                    )
+                    .padding(.horizontal, Theme.Spacing.md)
+                }
                 .padding(.top, Theme.Spacing.sm)
                 .padding(.bottom, 24)
                 .frame(maxWidth: .infinity)
@@ -132,6 +130,20 @@ struct LoginView: View {
                 }
                 .scrollContentBackground(.hidden)
             }
+            .fullScreenCover(isPresented: $showEmailVerificationCode) {
+                NavigationStack {
+                    EmailVerificationCodeView(
+                        username: username,
+                        password: password,
+                        onDismiss: { showEmailVerificationCode = false },
+                        onVerifiedAndLoggedIn: {
+                            showEmailVerificationCode = false
+                            authService.shouldShowOnboardingAfterLogin = true
+                        }
+                    )
+                    .environmentObject(authService)
+                }
+            }
         }
     }
     
@@ -148,7 +160,12 @@ struct LoginView: View {
                 isLoading = false
             } catch {
                 isLoading = false
-                errorMessage = error.localizedDescription
+                let msg = error.localizedDescription
+                if msg.localizedCaseInsensitiveContains("verify") && msg.localizedCaseInsensitiveContains("email") {
+                    showEmailVerificationCode = true
+                } else {
+                    errorMessage = msg
+                }
             }
         }
     }

@@ -183,7 +183,7 @@ class ChatService: ObservableObject {
                 id
                 username
                 displayName
-                avatarUrl
+                profilePictureUrl
               }
             }
           }

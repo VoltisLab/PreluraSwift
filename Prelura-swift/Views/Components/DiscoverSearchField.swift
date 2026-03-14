@@ -15,6 +15,8 @@ struct DiscoverSearchField: View {
     var outerPadding: Bool = true
     var topPadding: CGFloat? = nil
     var fieldBackground: Color? = nil
+    /// When true, keeps the field at a fixed single-line height; text scrolls horizontally instead of wrapping or growing.
+    var singleLineFixedHeight: Bool = false
 
     @State private var placeholderIndex: Int = 0
     @State private var placeholderOpacity: Double = 1
@@ -22,6 +24,7 @@ struct DiscoverSearchField: View {
     @State private var placeholders: [String] = []
 
     private let cornerRadius: CGFloat = 30
+    private static let singleLineHeight: CGFloat = 44
 
     private var useAnimatedPlaceholders: Bool {
         guard let list = animatedPlaceholders, !list.isEmpty else { return false }
@@ -47,14 +50,19 @@ struct DiscoverSearchField: View {
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .opacity(placeholderOpacity)
+                        .lineLimit(singleLineFixedHeight ? 1 : nil)
+                        .truncationMode(singleLineFixedHeight ? .tail : .tail)
                 }
                 TextField("", text: $text)
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.primaryText)
                     .focused($isFocused)
+                    .lineLimit(singleLineFixedHeight ? 1 : nil)
                     .onSubmit { onSubmit?() }
                     .onChange(of: text) { _, newValue in onChange?(newValue) }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clipped()
 
             if showClearButton && !text.isEmpty {
                 Button(action: {
@@ -78,7 +86,8 @@ struct DiscoverSearchField: View {
             cycleTimer = nil
         }
         .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.md)
+        .padding(.vertical, singleLineFixedHeight ? 0 : Theme.Spacing.md)
+        .frame(height: singleLineFixedHeight ? Self.singleLineHeight : nil)
         .background(fieldBackground ?? Theme.Colors.secondaryBackground)
         .cornerRadius(cornerRadius)
         .overlay(

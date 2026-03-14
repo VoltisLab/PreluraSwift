@@ -144,7 +144,10 @@ struct ChatListView: View {
             if let token = authService.authToken {
                 chatService.updateAuthToken(token)
             }
-            loadConversations()
+            // Only load when we have no data (first visit); otherwise persist like Home/Discover
+            if conversations.isEmpty && !isLoading {
+                loadConversations()
+            }
         }
         .onChange(of: authService.authToken) { oldValue, newToken in
             chatService.updateAuthToken(newToken)

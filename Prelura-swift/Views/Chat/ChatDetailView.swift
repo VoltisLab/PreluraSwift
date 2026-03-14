@@ -105,28 +105,51 @@ struct ChatDetailView: View {
         .background(Theme.Colors.background)
     }
 
+    /// True when this message is from the other user and is the first in a run (show avatar). Also show avatar after a sold-confirmation banner so "Order issue" etc. have the avatar.
+    private func showAvatarForMessage(at index: Int) -> Bool {
+        let msg = messages[index]
+        let isOther = msg.senderUsername != authService.username
+        guard isOther else { return false }
+        if index == 0 { return true }
+        let prev = messages[index - 1]
+        if prev.isSoldConfirmation { return true }
+        return prev.senderUsername == authService.username
+    }
+
+    private static let chatAvatarSize: CGFloat = 32
+
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    if let item = item {
-                        ChatProductCardView(item: item)
-                            .padding(.bottom, Theme.Spacing.xs)
-                        Rectangle()
-                            .fill(Theme.Colors.glassBorder)
-                            .frame(height: 0.5)
-                            .padding(.vertical, Theme.Spacing.xs)
-                    }
-                    ForEach(messages) { message in
-                        if message.isSoldConfirmation {
-                            SoldConfirmationBannerView(
-                                message: message,
-                                isSeller: message.senderUsername != authService.username,
-                                conversationId: conversation.id
-                            )
-                            .id(message.id)
-                        } else {
-                            MessageBubbleView(message: message, isCurrentUser: message.senderUsername == authService.username)
+        VStack(spacing: 0) {
+            if let item = item {
+                ChatProductCardView(item: item)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+                    .background(Theme.Colors.background)
+                Rectangle()
+                    .fill(Theme.Colors.glassBorder)
+                    .frame(height: 0.5)
+            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                        ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                            if message.isSoldConfirmation {
+                                SoldConfirmationBannerView(
+                                    message: message,
+                                    isSeller: message.senderUsername != authService.username,
+                                    conversationId: conversation.id
+                                )
+                                .id(message.id)
+                            } else {
+                                let isCurrentUser = message.senderUsername == authService.username
+                                let showAvatar = showAvatarForMessage(at: index)
+                                MessageBubbleView(
+                                    message: message,
+                                    isCurrentUser: isCurrentUser,
+                                    showAvatar: showAvatar,
+                                    avatarURL: showAvatar ? conversation.recipient.avatarURL : nil,
+                                    recipientUsername: conversation.recipient.username
+                                )
                                 .id(message.id)
                                 .contextMenu {
                                     if message.senderUsername == authService.username, let backendId = message.backendId {
@@ -135,29 +158,43 @@ struct ChatDetailView: View {
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: messages.count) { _, _ in
+                    if let lastMessage = messages.last {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
                         }
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.sm)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .onChange(of: messages.count) { _, _ in
-                if let lastMessage = messages.last {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                    }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    messageInputBar
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                messageInputBar
-            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
-        .navigationTitle(recipientTitle)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(false)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                NavigationLink(destination: UserProfileView(seller: conversation.recipient, authService: authService)) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        chatTitleAvatar(url: conversation.recipient.avatarURL, username: conversation.recipient.username)
+                        Text(recipientTitle)
+                            .font(.headline)
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .lineLimit(1)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: conversation.id)) {
                     Image(systemName: "questionmark.circle")
@@ -178,6 +215,39 @@ struct ChatDetailView: View {
             webSocket?.disconnect()
             webSocket = nil
         }
+    }
+
+    private func chatTitleAvatar(url: String?, username: String) -> some View {
+        Group {
+            if let u = url, !u.isEmpty, let parsed = URL(string: u) {
+                AsyncImage(url: parsed) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFill()
+                    case .failure:
+                        chatAvatarPlaceholder(username: username)
+                    case .empty:
+                        chatAvatarPlaceholder(username: username)
+                    @unknown default:
+                        chatAvatarPlaceholder(username: username)
+                    }
+                }
+            } else {
+                chatAvatarPlaceholder(username: username)
+            }
+        }
+        .frame(width: Self.chatAvatarSize, height: Self.chatAvatarSize)
+        .clipShape(Circle())
+    }
+
+    private func chatAvatarPlaceholder(username: String) -> some View {
+        Circle()
+            .fill(Theme.Colors.secondaryBackground)
+            .overlay(
+                Text(String((username.isEmpty ? "?" : username).prefix(1)).uppercased())
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Theme.Colors.secondaryText)
+            )
     }
 
     private func connectWebSocket() {
@@ -398,14 +468,59 @@ struct SoldConfirmationBannerView: View {
 struct MessageBubbleView: View {
     let message: Message
     let isCurrentUser: Bool
+    /// When true and not current user, show avatar to the left of the bubble (first in group).
+    var showAvatar: Bool = false
+    var avatarURL: String? = nil
+    var recipientUsername: String = ""
 
     private var bubbleMaxWidth: CGFloat { UIScreen.main.bounds.width * 0.78 }
+    private static let messageAvatarSize: CGFloat = 28
+    /// Vertical offset so the avatar is centered with a single-line bubble. This position is kept for multi-line bubbles (avatar does not re-center).
+    private static let avatarTopOffsetForSingleLineCenter: CGFloat = 4
+
+    private var messageAvatarView: some View {
+        Group {
+            if let u = avatarURL, !u.isEmpty, let url = URL(string: u) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img): img.resizable().scaledToFill()
+                    default: messageAvatarPlaceholder
+                    }
+                }
+            } else {
+                messageAvatarPlaceholder
+            }
+        }
+        .frame(width: Self.messageAvatarSize, height: Self.messageAvatarSize)
+        .clipShape(Circle())
+    }
+
+    private var messageAvatarPlaceholder: some View {
+        Circle()
+            .fill(Theme.Colors.tertiaryBackground)
+            .overlay(
+                Text(String((recipientUsername.isEmpty ? "?" : recipientUsername).prefix(1)).uppercased())
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Theme.Colors.secondaryText)
+            )
+    }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: Theme.Spacing.xs) {
+        HStack(alignment: .top, spacing: Theme.Spacing.xs) {
             if isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
+            if !isCurrentUser {
+                Group {
+                    if showAvatar {
+                        messageAvatarView
+                            .offset(y: Self.avatarTopOffsetForSingleLineCenter)
+                    } else {
+                        Color.clear
+                            .frame(width: Self.messageAvatarSize, height: Self.messageAvatarSize)
+                    }
+                }
+            }
             VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 4) {
-                Text(message.displayContent)
+                Text(message.displayContentForBubble(isFromCurrentUser: isCurrentUser))
                     .font(Theme.Typography.body)
                     .foregroundColor(isCurrentUser ? .white : Theme.Colors.primaryText)
                     .padding(.horizontal, Theme.Spacing.md)

@@ -82,8 +82,10 @@ struct ProfileView: View {
                             if viewModel.user?.isVacationMode == true {
                                 vacationModeSection
                             } else {
-                                // Categories, Multi-buy, Top Brands, Filter/Sort
-                                filtersSection
+                                // Categories, Multi-buy, Top Brands, Filter/Sort — only when user has products
+                                if !viewModel.userItems.isEmpty {
+                                    filtersSection
+                                }
                                 // Items Grid
                                 itemsGridSection
                             }
@@ -160,7 +162,8 @@ struct ProfileView: View {
                         listingCount: viewModel.user?.listingsCount ?? 0,
                         isMultiBuyEnabled: viewModel.user?.isMultibuyEnabled ?? isMultiBuyEnabled,
                         isVacationMode: viewModel.user?.isVacationMode ?? isVacationMode,
-                        isStaff: viewModel.user?.isStaff ?? false
+                        isStaff: viewModel.user?.isStaff ?? false,
+                        username: viewModel.user?.username
                     ))) {
                         Image(systemName: "line.3.horizontal")
                             .foregroundColor(Theme.Colors.primaryText)
@@ -175,7 +178,10 @@ struct ProfileView: View {
             if authService.isGuestMode { return }
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
-                viewModel.refresh()
+                // Only load when we have no data (first visit); otherwise persist like Home/Discover
+                if viewModel.user == nil {
+                    viewModel.refresh()
+                }
             }
         }
         .onChange(of: authService.isGuestMode) { _, isGuest in
@@ -670,45 +676,7 @@ struct ProfileView: View {
     // MARK: - Sort sheet (same presentation as product Options sheet)
     private var profileSortSheet: some View {
         OptionsSheet(title: L10n.string("Sort"), onDismiss: { showSortSheet = false }, detents: [.height(380)], useCustomCornerRadius: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(ProfileSortOption.allCases.enumerated()), id: \.offset) { index, option in
-                    Button(action: { profileSort = option }) {
-                        HStack {
-                            Text(L10n.string(option.rawValue))
-                                .font(Theme.Typography.body)
-                                .foregroundColor(Theme.Colors.primaryText)
-                            Spacer()
-                            if profileSort == option {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(Theme.primaryColor)
-                            }
-                        }
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.vertical, Theme.Spacing.md)
-                    }
-                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
-                    if index < ProfileSortOption.allCases.count - 1 { optionDivider }
-                }
-                optionDivider
-                VStack(spacing: Theme.Spacing.sm) {
-                    BorderGlassButton(L10n.string("Clear")) {
-                        profileSort = .relevance
-                    }
-                    PrimaryGlassButton(L10n.string("Apply")) {
-                        showSortSheet = false
-                    }
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.md)
-                .padding(.bottom, Theme.Spacing.md)
-            }
-            .padding(.vertical, Theme.Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                    .fill(Theme.Colors.background)
-            )
+            SortSheetContent(selectedSort: $profileSort, onApply: { showSortSheet = false })
         }
     }
 
@@ -886,31 +854,21 @@ struct ProfileView: View {
         case .priceDesc:
             items = items.sorted { $0.price > $1.price }
         }
-        
-        return LazyVGrid(
-            columns: [
-                GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                GridItem(.flexible(), spacing: Theme.Spacing.sm)
-            ],
-            spacing: Theme.Spacing.md
-        ) {
-            ForEach(items) { item in
-                if isMultiBuySelectionMode {
-                    Button(action: {
-                        HapticManager.selection()
-                        let id = item.id.uuidString
-                        if selectedMultiBuyItemIds.contains(id) {
-                            selectedMultiBuyItemIds.remove(id)
-                        } else {
-                            selectedMultiBuyItemIds.insert(id)
-                        }
-                    }) {
-                        WardrobeItemCard(
-                            item: item,
-                            onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") },
-                            multiBuySelectionMode: true,
-                            isSelectedForMultiBuy: selectedMultiBuyItemIds.contains(item.id.uuidString),
-                            onMultiBuySelectTap: {
+
+        return Group {
+            if items.isEmpty {
+                profileListingsEmptyState(hasAnyListings: !viewModel.userItems.isEmpty)
+            } else {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                        GridItem(.flexible(), spacing: Theme.Spacing.sm)
+                    ],
+                    spacing: Theme.Spacing.md
+                ) {
+                    ForEach(items) { item in
+                        if isMultiBuySelectionMode {
+                            Button(action: {
                                 HapticManager.selection()
                                 let id = item.id.uuidString
                                 if selectedMultiBuyItemIds.contains(id) {
@@ -918,20 +876,58 @@ struct ProfileView: View {
                                 } else {
                                     selectedMultiBuyItemIds.insert(id)
                                 }
+                            }) {
+                                WardrobeItemCard(
+                                    item: item,
+                                    onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") },
+                                    multiBuySelectionMode: true,
+                                    isSelectedForMultiBuy: selectedMultiBuyItemIds.contains(item.id.uuidString),
+                                    onMultiBuySelectTap: {
+                                        HapticManager.selection()
+                                        let id = item.id.uuidString
+                                        if selectedMultiBuyItemIds.contains(id) {
+                                            selectedMultiBuyItemIds.remove(id)
+                                        } else {
+                                            selectedMultiBuyItemIds.insert(id)
+                                        }
+                                    }
+                                )
                             }
-                        )
+                            .buttonStyle(PlainButtonStyle())
+                        } else {
+                            NavigationLink(value: AppRoute.itemDetail(item)) {
+                                WardrobeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
                     }
-                    .buttonStyle(PlainButtonStyle())
-                } else {
-                    NavigationLink(value: AppRoute.itemDetail(item)) {
-                        WardrobeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
-                    }
-                    .buttonStyle(PlainButtonStyle())
                 }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
             }
         }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.md)
+    }
+
+    private func profileListingsEmptyState(hasAnyListings: Bool) -> some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            Spacer(minLength: 40)
+            Image(systemName: "tshirt")
+                .font(.system(size: 56))
+                .foregroundColor(Theme.Colors.secondaryText.opacity(0.7))
+            Text(hasAnyListings ? L10n.string("No items match your filters") : L10n.string("No listings yet"))
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Theme.Spacing.xl)
+            if hasAnyListings {
+                Text(L10n.string("Try adjusting your filters"))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+            Spacer(minLength: 40)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.xl)
     }
 }
 
@@ -1021,24 +1017,8 @@ struct WardrobeItemCard: View {
                         }
                     )
                     
-                    // Like count overlay - tappable
-                    Button(action: { onLikeTap?() }) {
-                        HStack(spacing: Theme.Spacing.xs) {
-                            Image(systemName: item.isLiked ? "heart.fill" : "heart")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white)
-                            Text("\(item.likeCount)")
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(.white)
-                        }
-                        .padding(.horizontal, Theme.Spacing.sm)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(Color.black.opacity(0.6))
-                        )
-                    }
-                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
+                    // Like count overlay - shared component (56pt tap area, same visual)
+                    LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: { onLikeTap?() })
                     .padding(Theme.Spacing.xs)
                 }
                 .overlay(alignment: .topTrailing) {

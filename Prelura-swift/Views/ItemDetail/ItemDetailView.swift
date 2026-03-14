@@ -14,6 +14,7 @@ struct ItemDetailView: View {
     @State private var selectedTab: Int = 0
     @State private var showFullScreenImages: Bool = false
     @State private var showSendOfferSheet: Bool = false
+    @State private var offerSheetSortOption: ProfileSortOption = .relevance
     @State private var showPaymentSheet: Bool = false
     @State private var showProductOptionsSheet: Bool = false
     @State private var showReportSheet: Bool = false
@@ -125,12 +126,10 @@ struct ItemDetailView: View {
             GuestSignInPromptView()
         }
         .sheet(isPresented: $showSendOfferSheet) {
-            SendOfferSheet(item: effectiveItem) { showSendOfferSheet = false }
-                .environmentObject(authService)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(Theme.Colors.background)
-                .presentationCornerRadius(20)
+            OptionsSheet(title: L10n.string("Send an offer"), onDismiss: { showSendOfferSheet = false }, detents: [.height(480)], useCustomCornerRadius: false) {
+                SendOfferSheetContent(item: effectiveItem, onDismiss: { showSendOfferSheet = false })
+                    .environmentObject(authService)
+            }
         }
         .navigationDestination(isPresented: $showPaymentSheet) {
             PaymentView(products: [effectiveItem], totalPrice: effectiveItem.price)

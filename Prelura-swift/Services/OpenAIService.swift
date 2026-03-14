@@ -83,13 +83,16 @@ final class OpenAIService {
         !apiKey.isEmpty
     }
 
-    /// Sends the user message (and optional recent conversation) to OpenAI and returns the assistant reply, or nil on failure. Use assistant to switch between Lenny (shopping) and Ann (support).
-    func reply(userMessage: String, conversationHistory: [(user: String, assistant: String)] = [], assistant: Assistant = .lenny) async -> String? {
+    /// Sends the user message (and optional recent conversation) to OpenAI and returns the assistant reply, or nil on failure. Use assistant to switch between Lenny (shopping) and Ann (support). For Ann, pass orderContext to inject the user's orders (placed vs sold) so Ann can reference them.
+    func reply(userMessage: String, conversationHistory: [(user: String, assistant: String)] = [], assistant: Assistant = .lenny, orderContext: String? = nil) async -> String? {
         guard isConfigured else { return nil }
 
-        let systemPrompt = assistant == .ann ? Self.annSystemPrompt : Self.lennySystemPrompt
+        var systemContent = assistant == .ann ? Self.annSystemPrompt : Self.lennySystemPrompt
+        if assistant == .ann, let ctx = orderContext, !ctx.isEmpty {
+            systemContent += "\n\n" + ctx
+        }
         var messages: [[String: String]] = [
-            ["role": "system", "content": systemPrompt]
+            ["role": "system", "content": systemContent]
         ]
         for (u, a) in conversationHistory {
             messages.append(["role": "user", "content": u])

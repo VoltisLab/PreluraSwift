@@ -8,6 +8,8 @@ struct MenuView: View {
     var isMultiBuyEnabled: Bool = false
     var isVacationMode: Bool = false
     var isStaff: Bool = false
+    /// When "Admin", show Admin Dashboard in menu.
+    var username: String? = nil
 
     @State private var displayedMultiBuy: Bool = false
     @State private var displayedVacation: Bool = false
@@ -20,6 +22,11 @@ struct MenuView: View {
             NavigationLink(destination: DebugMenuView()) {
                 menuRow(L10n.string("Debug"), icon: "ladybug")
             }
+            if isStaff {
+                NavigationLink(destination: AdminDashboardView()) {
+                    menuRow(L10n.string("Admin Dashboard"), icon: "shield.lefthalf.filled")
+                }
+            }
             if listingCount > 0 {
                 NavigationLink(destination: ShopValueView(listingCount: listingCount)) {
                     menuRow(L10n.string("Dashboard"), icon: "chart.bar")
@@ -30,9 +37,6 @@ struct MenuView: View {
             }
             NavigationLink(destination: MyFavouritesView()) {
                 menuRow(L10n.string("Favourites"), icon: "heart")
-            }
-            NavigationLink(destination: ShopToolsView()) {
-                menuRow(L10n.string("Shop tools"), icon: "wrench.and.screwdriver")
             }
             NavigationLink(destination: MultiBuyDiscountView()) {
                 HStack {

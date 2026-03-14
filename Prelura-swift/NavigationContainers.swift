@@ -98,7 +98,8 @@ struct ProfileNavigation: View {
                             listingCount: context.listingCount,
                             isMultiBuyEnabled: context.isMultiBuyEnabled,
                             isVacationMode: context.isVacationMode,
-                            isStaff: context.isStaff
+                            isStaff: context.isStaff,
+                            username: context.username
                         )
                     case .reviews(let username, let rating):
                         ReviewsView(username: username, rating: rating)

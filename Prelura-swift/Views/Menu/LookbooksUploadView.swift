@@ -24,6 +24,12 @@ struct LookbookUploadRecord: Codable {
     var tags: [LookbookTagData]
 }
 
+/// Wraps UIImage for item-based fullScreenCover so the cropper always receives the image when presented.
+private struct LookbookCropItem: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
 // MARK: - Store
 
 private enum LookbookUploadStore {
@@ -62,8 +68,7 @@ struct LookbooksUploadView: View {
     @EnvironmentObject var authService: AuthService
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImage: UIImage?
-    @State private var uncroppedImage: UIImage?
-    @State private var showCropper = false
+    @State private var cropItem: LookbookCropItem?
     @State private var uploadState: UploadState = .idle
     @State private var showTagScreen = false
     @State private var uploadedRecord: LookbookUploadRecord?
@@ -111,7 +116,7 @@ struct LookbooksUploadView: View {
             .onChange(of: selectedItems) { _, newValue in
                 Task { await loadImage(from: newValue.first) }
             }
-            .disabled(showCropper)
+            .disabled(cropItem != nil)
 
             Spacer(minLength: 24)
 
@@ -157,22 +162,18 @@ struct LookbooksUploadView: View {
         .navigationTitle("Lookbooks Upload")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .fullScreenCover(isPresented: $showCropper) {
-            if let image = uncroppedImage {
-                ZoomableImageCropView(
-                    image: image,
-                    onSave: { cropped in
-                        selectedImage = cropped
-                        uncroppedImage = nil
-                        showCropper = false
-                    },
-                    onCancel: {
-                        uncroppedImage = nil
-                        selectedItems = []
-                        showCropper = false
-                    }
-                )
-            }
+        .fullScreenCover(item: $cropItem) { item in
+            ZoomableImageCropView(
+                image: item.image,
+                onSave: { cropped in
+                    selectedImage = cropped
+                    cropItem = nil
+                },
+                onCancel: {
+                    cropItem = nil
+                    selectedItems = []
+                }
+            )
         }
         .fullScreenCover(isPresented: $showTagScreen) {
             if let image = selectedImage {
@@ -193,16 +194,15 @@ struct LookbooksUploadView: View {
         return dir.appending(path: "lookbooks").appending(path: path)
     }
 
-    private func loadImage(from item: PhotosPickerItem?) async {
-        guard let item = item else {
-            uncroppedImage = nil
+    private func loadImage(from pickerItem: PhotosPickerItem?) async {
+        guard let pickerItem = pickerItem else {
+            cropItem = nil
             return
         }
-        guard let data = try? await item.loadTransferable(type: Data.self),
+        guard let data = try? await pickerItem.loadTransferable(type: Data.self),
               let image = UIImage(data: data) else { return }
         await MainActor.run {
-            uncroppedImage = image
-            showCropper = true
+            cropItem = LookbookCropItem(image: image)
         }
     }
 
@@ -340,8 +340,13 @@ final class ZoomableCropViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let size = view.bounds.size
+        var size = scrollView.bounds.size
+        if size.width <= 0 || size.height <= 0 {
+            size = view.bounds.size
+        }
+        guard size.width > 0, size.height > 0 else { return }
         let imgSize = image.size
+        guard imgSize.width > 0, imgSize.height > 0 else { return }
         let scale = min(size.width / imgSize.width, size.height / imgSize.height)
         let displayW = imgSize.width * scale
         let displayH = imgSize.height * scale
@@ -432,16 +437,7 @@ struct LookbookTagProductsView: View {
                         if imageFrame != .zero {
                             ForEach(tags) { tag in
                                 if let item = resolvedItems[tag.productId] {
-                                    let px = imageFrame.minX + imageFrame.width * tag.x
-                                    let py = imageFrame.minY + imageFrame.height * tag.y
-                                    Button(action: { selectedItemForDetail = item }) {
-                                        Circle()
-                                            .fill(Color.orange.opacity(0.9))
-                                            .frame(width: 24, height: 24)
-                                            .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .position(x: px, y: py)
+                                    lookbookTagBadge(tag: tag, item: item, imageFrame: imageFrame)
                                 }
                             }
                             draggableDot(geo: geo)
@@ -538,6 +534,59 @@ struct LookbookTagProductsView: View {
         } else {
             Color.gray
         }
+    }
+
+    private func lookbookTagBadge(tag: LookbookTagData, item: Item, imageFrame: CGRect) -> some View {
+        let px = imageFrame.minX + imageFrame.width * tag.x
+        let py = imageFrame.minY + imageFrame.height * tag.y
+        let pointerSize: CGFloat = 24
+        let thumbSize: CGFloat = 32
+        let cardWidth: CGFloat = 100
+        let spacing: CGFloat = 6
+        let totalWidth = pointerSize + spacing + cardWidth
+        return Button(action: { selectedItemForDetail = item }) {
+            HStack(alignment: .center, spacing: spacing) {
+                Circle()
+                    .fill(Color.orange.opacity(0.9))
+                    .frame(width: pointerSize, height: pointerSize)
+                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                HStack(spacing: 6) {
+                    Group {
+                        if let urlString = item.imageURLs.first, let url = URL(string: urlString) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let img): img.resizable().scaledToFill()
+                                case .failure, .empty:
+                                    Rectangle()
+                                        .fill(Theme.Colors.secondaryBackground)
+                                        .overlay(Image(systemName: "photo").font(.caption2).foregroundColor(Theme.Colors.secondaryText))
+                                @unknown default: EmptyView()
+                                }
+                            }
+                        } else {
+                            Rectangle()
+                                .fill(Theme.Colors.secondaryBackground)
+                                .overlay(Image(systemName: "photo").font(.caption2).foregroundColor(Theme.Colors.secondaryText))
+                        }
+                    }
+                    .frame(width: thumbSize, height: thumbSize)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    Text(item.brand ?? item.title)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(Color.black.opacity(0.75))
+                .cornerRadius(8)
+                .frame(width: cardWidth, alignment: .leading)
+            }
+            .frame(width: totalWidth, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .position(x: px - pointerSize / 2 + totalWidth / 2, y: py)
     }
 
     private func draggableDot(geo: GeometryProxy) -> some View {

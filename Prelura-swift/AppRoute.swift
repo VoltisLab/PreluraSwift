@@ -14,4 +14,6 @@ struct MenuContext: Hashable {
     var isMultiBuyEnabled: Bool
     var isVacationMode: Bool
     var isStaff: Bool
+    /// When "Admin", show Admin Dashboard in menu.
+    var username: String?
 }

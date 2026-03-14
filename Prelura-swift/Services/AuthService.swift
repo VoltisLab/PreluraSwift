@@ -9,8 +9,11 @@ class AuthService: ObservableObject {
     @Published var username: String?
     /// When true, user chose "Continue as guest" and can browse without logging in. No auth sent for feed/product APIs.
     @Published var isGuestMode: Bool = false
-    
+    /// Set to true after email verification + login so the app shows onboarding then feed.
+    @Published var shouldShowOnboardingAfterLogin: Bool = false
+
     private static let kGuestMode = "IS_GUEST_MODE"
+    private static let kOnboardingCompleted = "ONBOARDING_COMPLETED"
     
     init(client: GraphQLClient = GraphQLClient()) {
         self.client = client
@@ -111,7 +114,26 @@ class AuthService: ObservableObject {
         )
         return response.verifyAccount?.success ?? false
     }
-    
+
+    /// Resend verification code to the given email. No auth required. Use when user didn't receive the code.
+    func resendActivationEmail(email: String) async throws -> Bool {
+        let mutation = """
+        mutation ResendActivationEmail($email: String!) {
+          resendActivationEmail(email: $email) {
+            success
+          }
+        }
+        """
+        struct Payload: Decodable { let resendActivationEmail: ResendResult? }
+        struct ResendResult: Decodable { let success: Bool? }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["email": email],
+            responseType: Payload.self
+        )
+        return response.resendActivationEmail?.success ?? false
+    }
+
     func register(
         email: String,
         firstName: String,
@@ -251,6 +273,17 @@ class AuthService: ObservableObject {
     
     var isAuthenticated: Bool {
         authToken != nil
+    }
+
+    /// Call after user completes onboarding (e.g. after verify-email flow). Hides onboarding and persists so we don't show again.
+    func markOnboardingCompleted() {
+        shouldShowOnboardingAfterLogin = false
+        UserDefaults.standard.set(true, forKey: Self.kOnboardingCompleted)
+    }
+
+    /// Whether we should show onboarding (e.g. first time after verification). Respects kOnboardingCompleted.
+    var hasCompletedOnboarding: Bool {
+        UserDefaults.standard.bool(forKey: Self.kOnboardingCompleted)
     }
 }
 

@@ -45,6 +45,9 @@ struct AppearanceRootView: View {
     @EnvironmentObject var appRouter: AppRouter
     @AppStorage(kAppearanceMode) private var appearanceMode: String = "system"
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(kAppLanguage) private var appLanguage: String = "en"
+    /// Identity for content so language/scheme changes refresh the UI. Updated asynchronously on language change to avoid heavy teardown in same run loop (prevents crash when switching to Greek).
+    @State private var contentIdentity: String = ""
 
     private var resolvedScheme: ColorScheme? {
         switch appearanceMode {
@@ -58,11 +61,9 @@ struct AppearanceRootView: View {
         resolvedScheme ?? colorScheme
     }
 
-    @AppStorage(kAppLanguage) private var appLanguage: String = "en"
-
     var body: some View {
         content
-            .id("\(L10n.currentLanguage)_\(effectiveScheme)")
+            .id(contentIdentity.isEmpty ? "initial" : contentIdentity)
             .preferredColorScheme(resolvedScheme)
             .tint(Theme.primaryColor)
             .onAppear {
@@ -70,9 +71,23 @@ struct AppearanceRootView: View {
                 if appLanguage != "en" && appLanguage != "el" {
                     appLanguage = "en"
                 }
+                if contentIdentity.isEmpty {
+                    contentIdentity = "\(appLanguage)_\(effectiveScheme)"
+                }
             }
-            .onChange(of: appearanceMode) { _, _ in syncThemeScheme() }
+            .onChange(of: appearanceMode) { _, _ in
+                syncThemeScheme()
+                contentIdentity = "\(appLanguage)_\(effectiveScheme)"
+            }
             .onChange(of: colorScheme) { _, _ in syncThemeScheme() }
+            .onChange(of: appLanguage) { _, newLang in
+                guard newLang == "en" || newLang == "el" else { return }
+                let scheme = effectiveScheme
+                // Defer identity update to next run loop so we don't tear down the whole tree in the same cycle as the language picker (avoids crash when switching to Greek).
+                DispatchQueue.main.async {
+                    contentIdentity = "\(newLang)_\(scheme)"
+                }
+            }
             .fullScreenCover(item: $appRouter.pendingItem) { item in
             DeepLinkOverlayView(item: item, onDismiss: { appRouter.clearPending() })
                 .environmentObject(authService)
@@ -95,6 +110,19 @@ struct AppearanceRootView: View {
                 LoginView()
             }
         }
+        .fullScreenCover(
+            isPresented: Binding(
+                get: { authService.shouldShowOnboardingAfterLogin },
+                set: { if !$0 { authService.markOnboardingCompleted() } }
+            )
+        ) {
+            OnboardingView(onComplete: {
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    authService.markOnboardingCompleted()
+                }
+            })
+        }
+        .animation(.easeInOut(duration: 0.35), value: authService.shouldShowOnboardingAfterLogin)
     }
 
     private func syncThemeScheme() {

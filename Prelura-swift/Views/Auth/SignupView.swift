@@ -8,6 +8,7 @@ struct SignupView: View {
     @State private var firstName: String = ""
     @State private var lastName: String = ""
     @State private var username: String = ""
+    @State private var usernameIsValid: Bool = false
     @State private var password: String = ""
     @State private var confirmPassword: String = ""
     @State private var showPassword: Bool = false
@@ -72,13 +73,26 @@ struct SignupView: View {
                                 Text(L10n.string("Username"))
                                     .font(Theme.Typography.subheadline)
                                     .foregroundColor(Theme.Colors.authOverVideoText)
-                                TextField("Choose a username", text: $username)
-                                    .textFieldStyle(PlainTextFieldStyle())
-                                    .autocapitalization(.none)
-                                    .padding(Theme.Spacing.md)
-                                    .background(Theme.Colors.secondaryBackground)
-                                    .cornerRadius(30)
-                                    .foregroundColor(Theme.Colors.primaryText)
+                                HStack(spacing: Theme.Spacing.sm) {
+                                    TextField("Choose a username", text: $username)
+                                        .textFieldStyle(PlainTextFieldStyle())
+                                        .autocapitalization(.none)
+                                        .foregroundColor(Theme.Colors.primaryText)
+                                        .onChange(of: username) { _, newValue in
+                                            usernameIsValid = isUsernameFormatValid(newValue)
+                                        }
+                                    if usernameIsValid {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundColor(.white)
+                                            .frame(width: 28, height: 28)
+                                            .background(Theme.primaryColor)
+                                            .clipShape(Circle())
+                                    }
+                                }
+                                .padding(Theme.Spacing.md)
+                                .background(Theme.Colors.secondaryBackground)
+                                .cornerRadius(30)
                             }
                             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                                 Text("Password")
@@ -165,6 +179,7 @@ struct SignupView: View {
                 if signupVideoURL == nil {
                     signupVideoURL = AuthVideo.signupVideoURL()
                 }
+                usernameIsValid = isUsernameFormatValid(username)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -179,11 +194,20 @@ struct SignupView: View {
         }
     }
     
+    /// Username format: at least 3 characters, alphanumeric + underscore only (matches common backend rules).
+    private func isUsernameFormatValid(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= 3 else { return false }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
+        return trimmed.unicodeScalars.allSatisfy { allowed.contains($0) }
+    }
+
     private var isFormValid: Bool {
         !email.isEmpty &&
         !firstName.isEmpty &&
         !lastName.isEmpty &&
         !username.isEmpty &&
+        isUsernameFormatValid(username) &&
         !password.isEmpty &&
         !confirmPassword.isEmpty &&
         password == confirmPassword

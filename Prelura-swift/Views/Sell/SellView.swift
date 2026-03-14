@@ -3,6 +3,8 @@ import PhotosUI
 import Shimmer
 
 struct SellView: View {
+    private static let sellFormColourNames = ["Black", "White", "Red", "Blue", "Green", "Yellow", "Pink", "Purple", "Orange", "Brown", "Grey", "Beige", "Navy", "Maroon", "Teal"]
+
     @Binding var selectedTab: Int
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authService: AuthService
@@ -23,9 +25,11 @@ struct SellView: View {
     @State private var price: Double? = nil
     @State private var discountPrice: Double? = nil
     @State private var parcelSize: String? = nil
-    @State private var draftCount: Int = 5 // TODO: Fetch from backend
+    @State private var draftCount: Int = 0
     @State private var showPhotoPicker: Bool = false
     @State private var showCategoryPicker: Bool = false
+    @State private var showDraftsSheet: Bool = false
+    @State private var showSaveDraftConfirmation: Bool = false
 
     private var discountPercentText: String {
         guard let price = price, let discountPrice = discountPrice, price > 0 else { return "0%" }
@@ -157,13 +161,104 @@ struct SellView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if !selectedImages.isEmpty {
+                        Button(L10n.string("Save draft")) {
+                            saveCurrentAsDraft()
+                        }
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.primaryColor)
+                    } else if draftCount > 0 {
+                        Button(L10n.string("Drafts")) {
+                            showDraftsSheet = true
+                        }
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.primaryColor)
+                    }
+                }
             }
+            .onAppear {
+                draftCount = SellDraftStore.draftCount
+            }
+            .sheet(isPresented: $showDraftsSheet) {
+                SellDraftsListSheet(
+                    onSelect: { draftId in
+                        loadDraft(id: draftId)
+                        // Dismiss after state updates so the form re-renders with loaded data
+                        DispatchQueue.main.async {
+                            showDraftsSheet = false
+                        }
+                    },
+                    onDismiss: {
+                        showDraftsSheet = false
+                        draftCount = SellDraftStore.draftCount
+                    }
+                )
+            }
+            .alert(L10n.string("Draft saved"), isPresented: $showSaveDraftConfirmation) {
+                Button(L10n.string("OK")) { }
+            } message: {
+                Text(L10n.string("Your listing has been saved as a draft. Open it from \"Upload from drafts\"."))
+            }
+    }
+
+    private var canSaveAsDraft: Bool {
+        !selectedImages.isEmpty || !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func saveCurrentAsDraft() {
+        guard canSaveAsDraft else { return }
+        do {
+            _ = try SellDraftStore.saveDraft(
+                title: title,
+                description: description,
+                category: category,
+                brand: brand,
+                condition: condition,
+                colours: colours,
+                sizeId: sizeId,
+                sizeName: sizeName,
+                measurements: measurements ?? "",
+                material: material,
+                styles: styles,
+                price: price,
+                discountPrice: discountPrice,
+                parcelSize: parcelSize,
+                images: selectedImages
+            )
+            draftCount = SellDraftStore.draftCount
+            showSaveDraftConfirmation = true
+        } catch {
+            // Silent or show error
+        }
+    }
+
+    private func loadDraft(id: String) {
+        guard let result = SellDraftStore.loadDraft(id: id) else { return }
+        let d = result.draft
+        selectedImages = result.images
+        selectedPhotos = []
+        title = d.title
+        description = d.description
+        category = d.category?.toSellCategory
+        brand = d.brand
+        condition = d.condition
+        colours = d.colours
+        sizeId = d.sizeId
+        sizeName = d.sizeName
+        measurements = d.measurements
+        material = d.material
+        styles = d.styles
+        price = d.price
+        discountPrice = d.discountPrice
+        parcelSize = d.parcelSize
+        draftCount = SellDraftStore.draftCount
     }
     
     // MARK: - Drafts Section
     private var draftsSection: some View {
         Button(action: {
-            // TODO: Navigate to drafts
+            showDraftsSheet = true
         }) {
             HStack {
                 Text(L10n.string("Upload from drafts"))
@@ -212,7 +307,7 @@ struct SellView: View {
                 var loaded: [UIImage] = []
                 for item in newItems {
                     if let data = try? await item.loadTransferable(type: Data.self),
-                       let image = UIImage(data: data) {
+                       let image = UIImage(data: data)?.normalizedForDisplay() {
                         loaded.append(image)
                     }
                 }
@@ -494,7 +589,8 @@ extension SellView {
             NavigationLink(destination: DiscountPriceInputView(price: $price, discountPrice: $discountPrice)) {
                 SellFormRow(
                     title: L10n.string("Discount Price (Optional)"),
-                    value: discountPercentText
+                    value: discountPercentText,
+                    preferSecondaryStyle: true
                 )
             }
             .buttonStyle(.plain)
@@ -526,6 +622,154 @@ extension SellView {
         }
     }
     
+}
+
+// MARK: - Drafts list sheet (Upload from drafts)
+private struct SellDraftsListSheet: View {
+    var onSelect: (String) -> Void
+    var onDismiss: () -> Void
+    @State private var drafts: [SellDraft] = []
+    @State private var isSelectionMode: Bool = false
+    @State private var selectedDraftIds: Set<String> = []
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(drafts) { draft in
+                    if isSelectionMode {
+                        draftRowSelectable(draft: draft)
+                    } else {
+                        Button(action: {
+                            onSelect(draft.id)
+                        }) {
+                            draftRowContent(draft: draft, showChevron: true)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .background(Theme.Colors.background)
+            .navigationTitle(isSelectionMode ? L10n.string("Select drafts") : L10n.string("Upload from drafts"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    if isSelectionMode {
+                        Button(L10n.string("Cancel")) {
+                            isSelectionMode = false
+                            selectedDraftIds.removeAll()
+                        }
+                        .foregroundColor(Theme.primaryColor)
+                    } else {
+                        Button(L10n.string("Cancel")) {
+                            onDismiss()
+                        }
+                        .foregroundColor(Theme.primaryColor)
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    if isSelectionMode {
+                        if selectedDraftIds.isEmpty {
+                            EmptyView()
+                        } else {
+                            Button(L10n.string("Delete") + " (\(selectedDraftIds.count))") {
+                                deleteSelectedDrafts()
+                            }
+                            .foregroundColor(.red)
+                        }
+                    } else {
+                        if !drafts.isEmpty {
+                            Button(action: {
+                                isSelectionMode = true
+                            }) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(Theme.primaryColor)
+                            }
+                        }
+                    }
+                }
+            }
+            .onAppear {
+                drafts = SellDraftStore.listDrafts()
+            }
+        }
+    }
+
+    private func draftRowSelectable(draft: SellDraft) -> some View {
+        Button(action: {
+            if selectedDraftIds.contains(draft.id) {
+                selectedDraftIds.remove(draft.id)
+            } else {
+                selectedDraftIds.insert(draft.id)
+            }
+        }) {
+            HStack(spacing: Theme.Spacing.md) {
+                Image(systemName: selectedDraftIds.contains(draft.id) ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22))
+                    .foregroundColor(selectedDraftIds.contains(draft.id) ? Theme.primaryColor : Theme.Colors.secondaryText)
+                draftRowContent(draft: draft, showChevron: false)
+            }
+            .padding(.vertical, Theme.Spacing.xs)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func draftRowContent(draft: SellDraft, showChevron: Bool) -> some View {
+        HStack(spacing: Theme.Spacing.md) {
+            draftThumbnail(draftId: draft.id)
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.Colors.secondaryBackground))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(draft.title.isEmpty ? L10n.string("Untitled draft") : draft.title)
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .lineLimit(1)
+                Text(formatDate(draft.savedAt))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+            Spacer()
+            if showChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+        }
+    }
+
+    private func deleteSelectedDrafts() {
+        for id in selectedDraftIds {
+            SellDraftStore.deleteDraft(id: id)
+        }
+        selectedDraftIds.removeAll()
+        isSelectionMode = false
+        drafts = SellDraftStore.listDrafts()
+    }
+
+    @ViewBuilder
+    private func draftThumbnail(draftId: String) -> some View {
+        if let result = SellDraftStore.loadDraft(id: draftId),
+           let first = result.images.first {
+            Image(uiImage: first)
+                .resizable()
+                .scaledToFill()
+        } else {
+            Image(systemName: "photo")
+                .font(.system(size: 24))
+                .foregroundColor(Theme.Colors.secondaryText)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
 }
 
 // MARK: - Category Selection View (hierarchical + search all categories/subs)
@@ -1757,23 +2001,53 @@ private struct PriceSimilarItemCard: View {
     }
 }
 
-// MARK: - Discount Price Input View (same UI as Price screen: scroll, single field, tip, Done)
+// MARK: - Discount Price Input View (Sale price or Amount off)
+enum DiscountInputMode: String, CaseIterable {
+    case salePrice = "Sale price"
+    case amountOff = "Amount off"
+}
+
 struct DiscountPriceInputView: View {
     @Binding var price: Double?
     @Binding var discountPrice: Double?
     @Environment(\.presentationMode) var presentationMode
     @State private var discountPriceText: String = ""
+    @State private var inputMode: DiscountInputMode = .salePrice
     @FocusState private var isFocused: Bool
-    
-    private var discountPercent: Int {
-        guard let price = price, let discountPrice = discountPrice, price > 0 else { return 0 }
-        return Int(((price - discountPrice) / price) * 100)
+
+    /// Parsed number from the text field.
+    private var parsedValue: Double? {
+        guard !discountPriceText.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return Double(discountPriceText.replacingOccurrences(of: ",", with: "."))
     }
-    
+
+    /// Live discount % while editing: from sale price (mode salePrice) or from amount off (mode amountOff).
+    private var liveDiscountPercent: Int? {
+        guard let p = price, p > 0, let val = parsedValue, val > 0 else { return nil }
+        switch inputMode {
+        case .salePrice:
+            guard val < p else { return nil }
+            return Int(((p - val) / p) * 100)
+        case .amountOff:
+            guard val < p else { return nil }
+            return Int((val / p) * 100)
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                // Discount price field — same styling as Price screen (rounded container)
+                // Mode: Sale price vs Amount off
+                Picker("", selection: $inputMode) {
+                    ForEach(DiscountInputMode.allCases, id: \.self) { mode in
+                        Text(L10n.string(mode.rawValue)).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.sm)
+
+                // Amount field — same styling as Price screen
                 HStack(spacing: Theme.Spacing.sm) {
                     Text("£")
                         .font(Theme.Typography.body)
@@ -1789,17 +2063,18 @@ struct DiscountPriceInputView: View {
                 .background(Theme.Colors.secondaryBackground)
                 .cornerRadius(30)
                 .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.sm)
 
-                // Tip / state message
+                // Tip / live discount %
                 if let p = price, p > 0 {
-                    if let discount = Double(discountPriceText.replacingOccurrences(of: ",", with: ".")), discount > 0, discountPercent > 0 {
-                        Text(String(format: L10n.string("Discount: %d%%"), discountPercent))
+                    if let percent = liveDiscountPercent, percent > 0 {
+                        Text(String(format: L10n.string("Discount: %d%%"), percent))
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.primaryColor)
                             .padding(.horizontal, Theme.Spacing.md)
                     } else {
-                        Text(L10n.string("Optional. Enter the discounted price; the discount % is calculated from the main price."))
+                        Text(inputMode == .salePrice
+                             ? L10n.string("Optional. Enter the discounted price; the discount % is calculated from the main price.")
+                             : L10n.string("Enter the amount to take off the price (e.g. 13 for £13 off)."))
                             .font(Theme.Typography.caption)
                             .foregroundColor(Theme.Colors.secondaryText)
                             .padding(.horizontal, Theme.Spacing.md)
@@ -1821,21 +2096,44 @@ struct DiscountPriceInputView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(L10n.string("Done")) {
-                    let parsed = Double(discountPriceText.replacingOccurrences(of: ",", with: "."))
-                    discountPrice = parsed
-                    presentationMode.wrappedValue.dismiss()
+                    applyAndDismiss()
                 }
                 .foregroundColor(Theme.primaryColor)
             }
         }
         .onAppear {
-            if let d = discountPrice, d > 0 {
+            if let d = discountPrice, d > 0, let p = price, p > 0 {
                 discountPriceText = String(format: "%.0f", d)
+                inputMode = .salePrice
             }
             if price != nil && (price ?? 0) > 0 {
                 isFocused = true
             }
         }
+    }
+
+    private func applyAndDismiss() {
+        guard let p = price, p > 0, let val = parsedValue, val > 0 else {
+            discountPrice = nil
+            presentationMode.wrappedValue.dismiss()
+            return
+        }
+        switch inputMode {
+        case .salePrice:
+            if val < p {
+                discountPrice = val
+            } else {
+                discountPrice = nil
+            }
+        case .amountOff:
+            let salePrice = p - val
+            if salePrice > 0 && salePrice < p {
+                discountPrice = salePrice
+            } else {
+                discountPrice = nil
+            }
+        }
+        presentationMode.wrappedValue.dismiss()
     }
 }
 
