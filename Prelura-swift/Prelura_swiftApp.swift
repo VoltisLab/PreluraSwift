@@ -137,7 +137,9 @@ struct ContentView: View {
 
 // Root tab controller: TabView at root with custom tab bar for tap-to-refresh. Each tab has its own NavigationStack.
 struct MainTabView: View {
+    @EnvironmentObject private var authService: AuthService
     @StateObject private var tabCoordinator = TabCoordinator()
+    @StateObject private var discoverViewModel = DiscoverViewModel(authService: nil)
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(kAppearanceMode) private var appearanceMode: String = "system"
 
@@ -158,7 +160,7 @@ struct MainTabView: View {
                 .tabItem { Label(L10n.string("Home"), systemImage: "house.fill") }
                 .tag(0)
 
-            DiscoverNavigation(tabCoordinator: tabCoordinator)
+            DiscoverNavigation(tabCoordinator: tabCoordinator, discoverViewModel: discoverViewModel)
                 .tabItem { Label(L10n.string("Discover"), systemImage: "magnifyingglass") }
                 .tag(1)
 
@@ -178,9 +180,21 @@ struct MainTabView: View {
                 .tag(4)
         }
         .accentColor(Theme.primaryColor)
-        .onAppear { applyTabBarAppearance() }
+        .onAppear {
+            applyTabBarAppearance()
+            discoverViewModel.updateAuthToken(authService.authToken)
+            if authService.isAuthenticated && discoverViewModel.discoverItems.isEmpty {
+                discoverViewModel.refresh()
+            }
+        }
         .onChange(of: appearanceMode) { _, _ in applyTabBarAppearance() }
         .onChange(of: colorScheme) { _, _ in applyTabBarAppearance() }
+        .onChange(of: authService.authToken) { _, token in
+            discoverViewModel.updateAuthToken(token)
+            if authService.isAuthenticated && discoverViewModel.discoverItems.isEmpty {
+                discoverViewModel.refresh()
+            }
+        }
     }
 
     private func applyTabBarAppearance() {

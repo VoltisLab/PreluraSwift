@@ -22,12 +22,7 @@ struct LookbookUploadRecord: Codable {
     let id: String
     let imagePath: String
     var tags: [LookbookTagData]
-}
-
-/// Wraps UIImage for item-based fullScreenCover so the cropper always receives the image when presented.
-private struct LookbookCropItem: Identifiable {
-    let id = UUID()
-    let image: UIImage
+    var caption: String?
 }
 
 // MARK: - Store
@@ -68,7 +63,7 @@ struct LookbooksUploadView: View {
     @EnvironmentObject var authService: AuthService
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImage: UIImage?
-    @State private var cropItem: LookbookCropItem?
+    @State private var caption: String = ""
     @State private var uploadState: UploadState = .idle
     @State private var showTagScreen = false
     @State private var uploadedRecord: LookbookUploadRecord?
@@ -76,7 +71,7 @@ struct LookbooksUploadView: View {
     enum UploadState {
         case idle
         case uploading
-        case uploaded(LookbookUploadRecord)
+        case uploaded
         case failed(String)
     }
 
@@ -93,7 +88,8 @@ struct LookbooksUploadView: View {
                     if let image = selectedImage {
                         Image(uiImage: image)
                             .resizable()
-                            .aspectRatio(contentMode: .fill)
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
                     } else {
                         VStack(spacing: Theme.Spacing.md) {
                             Image(systemName: "photo.badge.plus")
@@ -110,13 +106,24 @@ struct LookbooksUploadView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 200)
-                .clipped()
                 .contentShape(Rectangle())
             }
             .onChange(of: selectedItems) { _, newValue in
                 Task { await loadImage(from: newValue.first) }
             }
-            .disabled(cropItem != nil)
+
+            if selectedImage != nil {
+                TextField("Caption", text: $caption, axis: .vertical)
+                    .lineLimit(3...6)
+                    .textFieldStyle(.plain)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .padding(Theme.Spacing.sm)
+                    .background(Theme.Colors.secondaryBackground)
+                    .cornerRadius(Theme.Spacing.xs)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.md)
+            }
 
             Spacer(minLength: 24)
 
@@ -162,26 +169,13 @@ struct LookbooksUploadView: View {
         .navigationTitle("Lookbooks Upload")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .fullScreenCover(item: $cropItem) { item in
-            ZoomableImageCropView(
-                image: item.image,
-                onSave: { cropped in
-                    selectedImage = cropped
-                    cropItem = nil
-                },
-                onCancel: {
-                    cropItem = nil
-                    selectedItems = []
-                }
-            )
-        }
         .fullScreenCover(isPresented: $showTagScreen) {
             if let image = selectedImage {
                 LookbookTagProductsView(
                     image: image,
                     imageURL: uploadedRecord.flatMap { lookbookImageURL($0.imagePath) },
-                    imageId: uploadedRecord?.id ?? "draft",
-                    initialTags: uploadedRecord?.tags ?? LookbookUploadStore.loadTags(imageId: "draft"),
+                    imageId: uploadedRecord?.id ?? UUID().uuidString,
+                    initialTags: uploadedRecord?.tags ?? [],
                     onDismiss: { showTagScreen = false }
                 )
                 .environmentObject(authService)
@@ -196,45 +190,43 @@ struct LookbooksUploadView: View {
 
     private func loadImage(from pickerItem: PhotosPickerItem?) async {
         guard let pickerItem = pickerItem else {
-            cropItem = nil
+            selectedImage = nil
             return
         }
         guard let data = try? await pickerItem.loadTransferable(type: Data.self),
               let image = UIImage(data: data) else { return }
         await MainActor.run {
-            cropItem = LookbookCropItem(image: image)
+            selectedImage = image
         }
     }
 
     private func uploadImage() {
-        guard let image = selectedImage else { return }
-        uploadState = .uploading
-        let id = UUID().uuidString
-        let fileName = "\(id).jpg"
-        guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            uploadState = .failed("Could not access documents")
+        guard let image = selectedImage,
+              let imageData = image.jpegData(compressionQuality: 0.85) else {
+            uploadState = .failed("Could not encode image")
             return
         }
-        let lookbooksDir = dir.appending(path: "lookbooks")
-        do {
-            try FileManager.default.createDirectory(at: lookbooksDir, withIntermediateDirectories: true)
-            let fileURL = lookbooksDir.appending(path: fileName)
-            guard let data = image.jpegData(compressionQuality: 0.85) else {
-                uploadState = .failed("Could not encode image")
-                return
+        uploadState = .uploading
+        let client = GraphQLClient()
+        client.setAuthToken(authService.authToken)
+        let service = LookbookService(client: client)
+        service.setAuthToken(authService.authToken)
+        Task {
+            do {
+                let imageUrl = try await service.uploadLookbookImage(imageData)
+                _ = try await service.createLookbook(imageUrl: imageUrl, caption: caption.isEmpty ? nil : caption)
+                await MainActor.run {
+                    uploadState = .idle
+                    selectedImage = nil
+                    caption = ""
+                    selectedItems = []
+                    uploadedRecord = nil
+                }
+            } catch {
+                await MainActor.run {
+                    uploadState = .failed(error.localizedDescription)
+                }
             }
-            try data.write(to: fileURL)
-            var tagsToUse = LookbookUploadStore.loadTags(imageId: id)
-            if tagsToUse.isEmpty {
-                tagsToUse = LookbookUploadStore.loadTags(imageId: "draft")
-                LookbookUploadStore.saveTags(imageId: "draft", tags: [])
-            }
-            let record = LookbookUploadRecord(id: id, imagePath: fileName, tags: tagsToUse)
-            LookbookUploadStore.saveCurrent(record: record)
-            uploadState = .uploaded(record)
-            uploadedRecord = record
-        } catch {
-            uploadState = .failed(error.localizedDescription)
         }
     }
 }
@@ -437,7 +429,9 @@ struct LookbookTagProductsView: View {
                         if imageFrame != .zero {
                             ForEach(tags) { tag in
                                 if let item = resolvedItems[tag.productId] {
-                                    lookbookTagBadge(tag: tag, item: item, imageFrame: imageFrame)
+                                    lookbookTagBadge(tag: tag, item: item, imageFrame: imageFrame) { newX, newY in
+                                        updateTagPosition(tag: tag, newX: newX, newY: newY)
+                                    }
                                 }
                             }
                             draggableDot(geo: geo)
@@ -536,9 +530,7 @@ struct LookbookTagProductsView: View {
         }
     }
 
-    private func lookbookTagBadge(tag: LookbookTagData, item: Item, imageFrame: CGRect) -> some View {
-        let px = imageFrame.minX + imageFrame.width * tag.x
-        let py = imageFrame.minY + imageFrame.height * tag.y
+    private func lookbookTagBadge(tag: LookbookTagData, item: Item, imageFrame: CGRect, onMove: @escaping (Double, Double) -> Void) -> some View {
         let pointerSize: CGFloat = 24
         let thumbSize: CGFloat = 32
         let cardWidth: CGFloat = 100
@@ -586,7 +578,23 @@ struct LookbookTagProductsView: View {
             .frame(width: totalWidth, alignment: .leading)
         }
         .buttonStyle(.plain)
-        .position(x: px - pointerSize / 2 + totalWidth / 2, y: py)
+        .position(x: imageFrame.minX + imageFrame.width * tag.x - pointerSize / 2 + totalWidth / 2, y: imageFrame.minY + imageFrame.height * tag.y)
+        .contentShape(Rectangle())
+        .highPriorityGesture(
+            DragGesture(coordinateSpace: .named("lookbookContainer"))
+                .onEnded { value in
+                    let nx = (value.location.x - imageFrame.minX) / imageFrame.width
+                    let ny = (value.location.y - imageFrame.minY) / imageFrame.height
+                    let clampedX = min(1, max(0, nx))
+                    let clampedY = min(1, max(0, ny))
+                    onMove(clampedX, clampedY)
+                }
+        )
+    }
+
+    private func updateTagPosition(tag: LookbookTagData, newX: Double, newY: Double) {
+        guard let idx = tags.firstIndex(where: { $0.productId == tag.productId && $0.x == tag.x && $0.y == tag.y }) else { return }
+        tags[idx] = LookbookTagData(productId: tag.productId, x: newX, y: newY)
     }
 
     private func draggableDot(geo: GeometryProxy) -> some View {
@@ -654,6 +662,10 @@ struct ProductSearchSheet: View {
                     }
                 }
 
+                if !searching && results.isEmpty {
+                    emptyStatePlaceholder
+                }
+
                 ForEach(results) { item in
                     Button(action: { onSelect(item) }) {
                         HStack(spacing: Theme.Spacing.md) {
@@ -689,6 +701,27 @@ struct ProductSearchSheet: View {
             .onAppear { runSearch() }
             .onChange(of: query) { _, _ in runSearch() }
         }
+    }
+
+    private var emptyStatePlaceholder: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: "tag")
+                .font(.system(size: 44))
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text(query.trimmingCharacters(in: .whitespaces).isEmpty ? "Search for products to tag" : "No products found")
+                .font(.subheadline)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+            if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                Text("Try a different search term")
+                    .font(.caption)
+                    .foregroundColor(Theme.Colors.secondaryText.opacity(0.8))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.xxl)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     private func runSearch() {

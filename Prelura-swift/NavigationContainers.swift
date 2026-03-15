@@ -28,10 +28,11 @@ struct HomeNavigation: View {
 struct DiscoverNavigation: View {
     @EnvironmentObject var authService: AuthService
     @ObservedObject var tabCoordinator: TabCoordinator
+    @ObservedObject var discoverViewModel: DiscoverViewModel
 
     var body: some View {
         NavigationStack {
-            DiscoverView(tabCoordinator: tabCoordinator)
+            DiscoverView(tabCoordinator: tabCoordinator, viewModel: discoverViewModel)
                 .navigationDestination(for: AppRoute.self) { route in
                     switch route {
                     case .itemDetail(let item):

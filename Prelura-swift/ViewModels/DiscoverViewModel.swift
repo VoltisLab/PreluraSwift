@@ -49,29 +49,21 @@ class DiscoverViewModel: ObservableObject {
         
         Task {
             do {
-                // Fetch all products for discover page
-                let allProducts = try await productService.getAllProducts(
-                    pageNumber: 1,
-                    pageCount: 50 // Get more products for different sections
+                // Preload: run all network fetches in parallel to reduce wait time
+                async let allProductsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50)
+                async let onSaleTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, discountPrice: true)
+                async let shopBargainsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, maxPrice: 15.0)
+                async let recentlyViewedTask = productService.getRecentlyViewedProducts()
+                async let recommendedTask = userService.getRecommendedSellers(pageNumber: 1, pageCount: 20)
+
+                let (allProducts, onSaleProducts, shopBargainsProducts, recentlyViewedProducts) = try await (
+                    allProductsTask,
+                    onSaleTask,
+                    shopBargainsTask,
+                    recentlyViewedTask
                 )
-                
-                // Fetch discounted products separately using GraphQL filter (like Flutter)
-                let onSaleProducts = try await productService.getAllProducts(
-                    pageNumber: 1,
-                    pageCount: 50,
-                    discountPrice: true
-                )
-                
-                // Fetch shop bargains (under £15) using GraphQL filter (like Flutter)
-                let shopBargainsProducts = try await productService.getAllProducts(
-                    pageNumber: 1,
-                    pageCount: 50,
-                    maxPrice: 15.0
-                )
-                
-                // Fetch recently viewed products from backend (like Flutter)
-                let recentlyViewedProducts = try await productService.getRecentlyViewedProducts()
-                
+                let recommended = try? await recommendedTask
+
                 // Exclude items from sellers in vacation mode (hidden from catalogues) and sold items
                 let allVisible = allProducts.excludingVacationModeSellers().excludingSold()
                 let onSaleVisible = onSaleProducts.excludingVacationModeSellers().excludingSold()
@@ -115,14 +107,12 @@ class DiscoverViewModel: ObservableObject {
                 // Update used product IDs
                 usedProductIds.formUnion(Set(self.brandsYouLoveItems.map { $0.id }))
                 
-                // Top Shops - use getRecommendedSellers API when available (matches Flutter recommendedSellersProvider)
-                do {
-                    let recommended = try await userService.getRecommendedSellers(pageNumber: 1, pageCount: 20)
+                // Top Shops - use preloaded recommended or fallback from all products
+                if let recommended = recommended {
                     self.topShops = recommended.map { rec in
                         ShopInfo(username: rec.seller.username, avatarURL: rec.seller.avatarURL)
                     }
-                } catch {
-                    // Fallback: extract unique seller info from all products
+                } else {
                     var shopMap: [String: (username: String, avatarURL: String?)] = [:]
                     for product in allVisible {
                         let username = product.seller.username
@@ -234,28 +224,18 @@ class DiscoverViewModel: ObservableObject {
         }
         
         do {
-            let allProducts = try await productService.getAllProducts(
-                pageNumber: 1,
-                pageCount: 50
+            async let allProductsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50)
+            async let onSaleTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, discountPrice: true)
+            async let shopBargainsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, maxPrice: 15.0)
+            async let recentlyViewedTask = productService.getRecentlyViewedProducts()
+
+            let (allProducts, onSaleProducts, shopBargainsProducts, recentlyViewedProducts) = try await (
+                allProductsTask,
+                onSaleTask,
+                shopBargainsTask,
+                recentlyViewedTask
             )
-            
-            // Fetch discounted products separately using GraphQL filter (like Flutter)
-            let onSaleProducts = try await productService.getAllProducts(
-                pageNumber: 1,
-                pageCount: 50,
-                discountPrice: true
-            )
-            
-            // Fetch shop bargains (under £15) using GraphQL filter (like Flutter)
-            let shopBargainsProducts = try await productService.getAllProducts(
-                pageNumber: 1,
-                pageCount: 50,
-                maxPrice: 15.0
-            )
-            
-            // Fetch recently viewed products from backend (like Flutter)
-            let recentlyViewedProducts = try await productService.getRecentlyViewedProducts()
-            
+
             let allVisible = allProducts.excludingVacationModeSellers().excludingSold()
             let onSaleVisible = onSaleProducts.excludingVacationModeSellers().excludingSold()
             let shopBargainsVisible = shopBargainsProducts.excludingVacationModeSellers().excludingSold()

@@ -7,16 +7,44 @@
 
 import SwiftUI
 
-/// One lookbook post: image(s), poster, likes, comments, styles for filtering.
+/// One lookbook post: image(s), poster, likes, comments, styles for filtering. Server-only (imageUrl) or legacy local (documentImagePath/imageNames).
 struct LookbookEntry: Identifiable {
-    let id = UUID()
+    let id: UUID
     let imageNames: [String]
+    /// When set, first image is loaded from Documents (legacy local).
+    let documentImagePath: String?
+    /// When set, image is loaded from server URL.
+    let imageUrl: String?
     let posterUsername: String
     var likesCount: Int
     var commentsCount: Int
     var isLiked: Bool
-    /// Style raw values (e.g. "CASUAL", "VINTAGE") for filter pills; matches upload Style enum.
     let styles: [String]
+
+    init(id: UUID? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, posterUsername: String, likesCount: Int, commentsCount: Int, isLiked: Bool, styles: [String]) {
+        self.id = id ?? UUID()
+        self.imageNames = imageNames
+        self.documentImagePath = documentImagePath
+        self.imageUrl = imageUrl
+        self.posterUsername = posterUsername
+        self.likesCount = likesCount
+        self.commentsCount = commentsCount
+        self.isLiked = isLiked
+        self.styles = styles
+    }
+
+    /// Entry from server (feed).
+    init(from serverPost: ServerLookbookPost) {
+        self.id = UUID(uuidString: serverPost.id) ?? UUID()
+        self.imageNames = []
+        self.documentImagePath = nil
+        self.imageUrl = serverPost.imageUrl
+        self.posterUsername = serverPost.username
+        self.likesCount = serverPost.likesCount ?? 0
+        self.commentsCount = serverPost.commentsCount ?? 0
+        self.isLiked = serverPost.userLiked ?? false
+        self.styles = []
+    }
 }
 
 private let lookbookSpacing: CGFloat = 12
@@ -29,26 +57,11 @@ private let lookbookStylePillValues: [String] = [
     "SUMMER_STYLES", "WINTER_ESSENTIALS", "ATHLEISURE", "DATE_NIGHT", "VACATION_RESORT_WEAR"
 ]
 
-/// Static lookbook content with mock poster, engagement, and styles.
-private func makeLookbookEntries() -> [LookbookEntry] {
-    [
-        LookbookEntry(imageNames: ["LookbookGrid1"], posterUsername: "stylebyjade", likesCount: 234, commentsCount: 12, isLiked: false, styles: ["CASUAL", "MINIMALIST"]),
-        LookbookEntry(imageNames: ["LookbookGrid2", "LookbookGrid3"], posterUsername: "preloved_em", likesCount: 89, commentsCount: 5, isLiked: false, styles: ["VINTAGE", "BOHO"]),
-        LookbookEntry(imageNames: ["LookbookGrid4"], posterUsername: "thriftqueen", likesCount: 412, commentsCount: 28, isLiked: false, styles: ["STREETWEAR", "Y2K"]),
-        LookbookEntry(imageNames: ["LookbookGrid5", "LookbookGrid6"], posterUsername: "vintagevibes_", likesCount: 156, commentsCount: 9, isLiked: false, styles: ["VINTAGE", "FORMAL_WEAR"]),
-        LookbookEntry(imageNames: ["LookbookGrid7"], posterUsername: "secondhandstories", likesCount: 67, commentsCount: 3, isLiked: false, styles: ["LOUNGEWEAR", "CASUAL"]),
-        LookbookEntry(imageNames: ["LookbookGrid8"], posterUsername: "curatedbykate", likesCount: 521, commentsCount: 41, isLiked: false, styles: ["CHIC", "DRESSES_GOWNS"]),
-        LookbookEntry(imageNames: ["LookbookGrid1", "LookbookGrid2"], posterUsername: "slowfashion_uk", likesCount: 198, commentsCount: 14, isLiked: false, styles: ["SUMMER_STYLES", "BOHO"]),
-        LookbookEntry(imageNames: ["LookbookGrid3"], posterUsername: "rewearcollective", likesCount: 73, commentsCount: 6, isLiked: false, styles: ["MINIMALIST", "DENIM_JEANS"]),
-        LookbookEntry(imageNames: ["LookbookGrid4", "LookbookGrid5", "LookbookGrid6"], posterUsername: "prelura_faves", likesCount: 302, commentsCount: 22, isLiked: false, styles: ["PARTY_DRESS", "DATE_NIGHT"]),
-        LookbookEntry(imageNames: ["LookbookGrid7"], posterUsername: "stylebyjade", likesCount: 145, commentsCount: 8, isLiked: false, styles: ["ACTIVEWEAR", "ATHLEISURE"]),
-        LookbookEntry(imageNames: ["LookbookGrid8"], posterUsername: "thriftqueen", likesCount: 267, commentsCount: 19, isLiked: false, styles: ["WINTER_ESSENTIALS", "CHIC"]),
-        LookbookEntry(imageNames: ["LookbookGrid1"], posterUsername: "vintagevibes_", likesCount: 94, commentsCount: 4, isLiked: false, styles: ["VACATION_RESORT_WEAR", "SUMMER_STYLES"]),
-    ]
-}
-
 struct LookbookView: View {
-    @State private var entries: [LookbookEntry] = makeLookbookEntries()
+    @EnvironmentObject private var authService: AuthService
+    @State private var entries: [LookbookEntry] = []
+    @State private var feedLoading = false
+    @State private var feedError: String?
     @State private var scrollPosition: String? = lookbookTopId
     @State private var selectedStylePills: Set<String> = []
     @State private var showSearchSheet: Bool = false
@@ -85,15 +98,25 @@ struct LookbookView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                Color.clear.frame(height: 1).id(lookbookTopId)
-                stylePillsRow
-                ForEach(filteredEntries) { entry in
-                    lookbookPostCard(entry: entry)
+        GeometryReader { geometry in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    Color.clear.frame(height: 1).id(lookbookTopId)
+                    stylePillsRow
+                if feedLoading && entries.isEmpty {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Theme.Spacing.xxl)
+                } else if filteredEntries.isEmpty {
+                    emptyPlaceholder(minHeight: geometry.size.height - 120)
+                } else {
+                        ForEach(filteredEntries) { entry in
+                            lookbookPostCard(entry: entry)
+                        }
+                    }
                 }
+                .padding(.bottom, Theme.Spacing.xl)
             }
-            .padding(.bottom, Theme.Spacing.xl)
         }
         .scrollPosition(id: $scrollPosition, anchor: .top)
         .scrollContentBackground(.hidden)
@@ -121,6 +144,63 @@ struct LookbookView: View {
         .sheet(isPresented: $showSearchSheet) {
             LookbookSearchSheet(searchText: $searchText, entries: filteredEntries)
         }
+        .onAppear { loadFeedFromServer() }
+        .refreshable { await loadFeedFromServerAsync() }
+    }
+
+    private func loadFeedFromServer() {
+        Task { await loadFeedFromServerAsync() }
+    }
+
+    private func loadFeedFromServerAsync() async {
+        guard authService.isAuthenticated else {
+            entries = []
+            return
+        }
+        await MainActor.run { feedLoading = true; feedError = nil }
+        let client = GraphQLClient()
+        client.setAuthToken(authService.authToken)
+        let service = LookbookService(client: client)
+        service.setAuthToken(authService.authToken)
+        do {
+            let posts = try await service.fetchLookbooks()
+            await MainActor.run {
+                entries = posts.map { LookbookEntry(from: $0) }
+                feedLoading = false
+                feedError = nil
+            }
+        } catch {
+            await MainActor.run {
+                entries = []
+                feedLoading = false
+                feedError = error.localizedDescription
+            }
+        }
+    }
+
+    private func emptyPlaceholder(minHeight: CGFloat) -> some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 48))
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text("No lookbooks yet")
+                .font(Theme.Typography.title3)
+                .foregroundColor(Theme.Colors.primaryText)
+            Text("Upload from the menu to add your first look.")
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Theme.Spacing.xl)
+            if let err = feedError, !err.isEmpty {
+                Text(err)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Theme.Spacing.xl)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minHeight: max(minHeight, 200))
     }
 
     private func lookbookPostCard(entry: LookbookEntry) -> some View {
@@ -152,9 +232,11 @@ struct LookbookView: View {
     }
 }
 
-// MARK: - Feed image: double-tap to like, pinch with 2 fingers to zoom
+// MARK: - Feed image: double-tap to like, pinch with 2 fingers to zoom. Supports server URL, document path, or asset name.
 private struct LookbookFeedImage: View {
     let imageName: String
+    let documentImagePath: String?
+    let imageUrl: String?
     let onDoubleTapLike: () -> Void
     @State private var scale: CGFloat = 1
     @State private var anchorScale: CGFloat = 1
@@ -162,10 +244,33 @@ private struct LookbookFeedImage: View {
     private let minScale: CGFloat = 1
     private let maxScale: CGFloat = 4
 
+    private var imageView: some View {
+        Group {
+            if let urlString = imageUrl, let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image): image.resizable().scaledToFit()
+                    case .failure: Image(systemName: "photo").resizable().scaledToFit().foregroundStyle(Theme.Colors.secondaryText)
+                    default: ProgressView().frame(maxWidth: .infinity).frame(minHeight: 200)
+                    }
+                }
+            } else if let path = documentImagePath,
+               let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appending(path: path),
+               let data = try? Data(contentsOf: url),
+               let uiImage = UIImage(data: data) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(imageName)
+                    .resizable()
+                    .scaledToFit()
+            }
+        }
+    }
+
     var body: some View {
-        Image(imageName)
-            .resizable()
-            .scaledToFit()
+        imageView
             .scaleEffect(scale)
             .contentShape(Rectangle())
             .onTapGesture(count: 2, perform: onDoubleTapLike)
@@ -223,7 +328,17 @@ private struct LookbookPostCard: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
 
-            LookbookFeedImage(imageName: entry.imageNames[0], onDoubleTapLike: onImageDoubleTap)
+            LookbookFeedImage(
+                imageName: entry.imageNames.first ?? "",
+                documentImagePath: entry.documentImagePath,
+                imageUrl: entry.imageUrl,
+                onDoubleTapLike: {
+                if !isLiked {
+                    isLiked = true
+                    likesCount += 1
+                }
+                onImageDoubleTap()
+            })
                 .frame(maxWidth: .infinity)
 
             HStack(spacing: Theme.Spacing.lg) {
@@ -327,6 +442,40 @@ struct LookbookCommentsSheet: View {
     }
 }
 
+// MARK: - Thumbnail for search / list (server URL, document image, or asset)
+private struct LookbookEntryThumbnail: View {
+    let entry: LookbookEntry
+    var body: some View {
+        Group {
+            if let urlString = entry.imageUrl, let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image): image.resizable().scaledToFill()
+                    case .failure: Image(systemName: "photo").resizable().scaledToFit().foregroundStyle(Theme.Colors.secondaryText)
+                    default: ProgressView()
+                    }
+                }
+            } else if let path = entry.documentImagePath,
+               let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appending(path: path),
+               let data = try? Data(contentsOf: url),
+               let uiImage = UIImage(data: data) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+            } else if let first = entry.imageNames.first {
+                Image(first)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "photo")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(Theme.Colors.secondaryText)
+            }
+        }
+    }
+}
+
 // MARK: - Search sheet (filter by search text in username/caption)
 struct LookbookSearchSheet: View {
     @Binding var searchText: String
@@ -360,9 +509,7 @@ struct LookbookSearchSheet: View {
                     LazyVStack(spacing: Theme.Spacing.sm) {
                         ForEach(filteredBySearch) { entry in
                             HStack(spacing: Theme.Spacing.sm) {
-                                Image(entry.imageNames[0])
-                                    .resizable()
-                                    .scaledToFill()
+                                LookbookEntryThumbnail(entry: entry)
                                     .frame(width: 50, height: 50)
                                     .clipped()
                                     .cornerRadius(8)
@@ -403,6 +550,7 @@ struct LookbookView_Previews: PreviewProvider {
     static var previews: some View {
         NavigationStack {
             LookbookView()
+                .environmentObject(AuthService())
         }
     }
 }

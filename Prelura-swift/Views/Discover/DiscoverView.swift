@@ -4,7 +4,7 @@ import Shimmer
 struct DiscoverView: View {
     @EnvironmentObject var authService: AuthService
     @ObservedObject var tabCoordinator: TabCoordinator
-    @StateObject private var viewModel: DiscoverViewModel
+    @ObservedObject var viewModel: DiscoverViewModel
     @State private var searchText: String = ""
     @State private var showSearchMembersResults: Bool = false
     @State private var scrollPosition: String? = "discover_top"
@@ -26,9 +26,9 @@ struct DiscoverView: View {
         .system(size: 24, weight: .semibold, design: .serif)
     ]
 
-    init(tabCoordinator: TabCoordinator) {
+    init(tabCoordinator: TabCoordinator, viewModel: DiscoverViewModel) {
         self.tabCoordinator = tabCoordinator
-        _viewModel = StateObject(wrappedValue: DiscoverViewModel(authService: nil))
+        self.viewModel = viewModel
     }
     
     let brands = ["New Look", "Nike", "Next", "adidas", "Bo", "Ralph Lauren", "Prettylittlething", "River Island", "Zara", "H&M", "ASOS", "Topshop", "Mango", "Bershka", "Pull & Bear", "Stradivarius", "Massimo Dutti", "COS", "Arket", "Weekday"]
@@ -948,6 +948,6 @@ private struct CategoryPrimaryButton: View {
 }
 
 #Preview {
-    DiscoverView(tabCoordinator: TabCoordinator())
+    DiscoverView(tabCoordinator: TabCoordinator(), viewModel: DiscoverViewModel(authService: nil))
         .preferredColorScheme(.dark)
 }
