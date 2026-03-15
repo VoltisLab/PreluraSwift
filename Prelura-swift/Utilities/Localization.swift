@@ -396,6 +396,7 @@ enum L10n {
 
         // Settings (extended)
         "Saved": "Αποθηκεύτηκε",
+        "Your postage settings have been saved.": "Οι ρυθμίσεις αποστολής σας αποθηκεύτηκαν.",
         "Unlock your account": "Ξεκλειδώστε τον λογαριασμό σας",
         "Verify your identity to access all features and build trust with buyers.": "Επαληθεύστε την ταυτότητά σας για πρόσβαση σε όλες τις λειτουργίες και να δημιουργήσετε εμπιστοσύνη με αγοραστές.",
         "Current Password": "Τρέχων κωδικός",

@@ -43,11 +43,13 @@ class UserService: ObservableObject {
             isVacationMode
             isMultibuyEnabled
             isStaff
+            isVerified
             reviewStats {
               noOfReviews
               rating
             }
             shippingAddress
+            meta
           }
         }
         """
@@ -100,6 +102,7 @@ class UserService: ObservableObject {
             return fallback.date(from: dob)
         }()
 
+        let postageOptions = SellerPostageOptions.from(decoded: userData.meta?.value?.postage)
         return User(
             id: UUID(uuidString: idString) ?? UUID(),
             username: userData.username ?? "",
@@ -114,13 +117,15 @@ class UserService: ObservableObject {
             followingsCount: userData.noOfFollowing ?? 0,
             followersCount: userData.noOfFollowers ?? 0,
             isStaff: userData.isStaff ?? false,
+            isVerified: userData.isVerified ?? false,
             isVacationMode: userData.isVacationMode ?? false,
             isMultibuyEnabled: userData.isMultibuyEnabled ?? false,
             email: userData.email,
             phoneDisplay: phoneDisplay,
             dateOfBirth: dobDate,
             gender: userData.gender,
-            shippingAddress: parseShippingAddress(userData.shippingAddress)
+            shippingAddress: parseShippingAddress(userData.shippingAddress),
+            postageOptions: postageOptions
         )
     }
     
@@ -232,33 +237,49 @@ class UserService: ObservableObject {
     
     /// Update profile. Matches Flutter userRepo.updateProfile(Variables$Mutation$UpdateProfile(...)).
     /// Pass only fields that changed; nil means don't update.
+    /// Profile-only fields: username, bio, location (also used by Profile settings).
     func updateProfile(
         isVacationMode: Bool? = nil,
         displayName: String? = nil,
+        firstName: String? = nil,
+        lastName: String? = nil,
         gender: String? = nil,
         dob: Date? = nil,
         phoneNumber: (countryCode: String, number: String)? = nil,
         bio: String? = nil,
-        shippingAddress: ShippingAddress? = nil
+        username: String? = nil,
+        location: String? = nil,
+        shippingAddress: ShippingAddress? = nil,
+        meta: [String: Any]? = nil
     ) async throws {
         let mutation = """
         mutation UpdateProfile(
           $isVacationMode: Boolean
           $displayName: String
+          $firstName: String
+          $lastName: String
           $gender: String
           $dob: String
           $phoneNumber: PhoneInputType
           $bio: String
+          $username: String
+          $location: LocationInputType
           $shippingAddress: ShippingAddressInputType
+          $meta: JSONString
         ) {
           updateProfile(
             isVacationMode: $isVacationMode
             displayName: $displayName
+            firstName: $firstName
+            lastName: $lastName
             gender: $gender
             dob: $dob
             phoneNumber: $phoneNumber
             bio: $bio
+            username: $username
+            location: $location
             shippingAddress: $shippingAddress
+            meta: $meta
           ) {
             message
           }
@@ -267,6 +288,8 @@ class UserService: ObservableObject {
         var variables: [String: Any] = [:]
         if let v = isVacationMode { variables["isVacationMode"] = v }
         if let v = displayName, !v.isEmpty { variables["displayName"] = v }
+        if let v = firstName, !v.isEmpty { variables["firstName"] = v }
+        if let v = lastName, !v.isEmpty { variables["lastName"] = v }
         if let v = gender, !v.isEmpty { variables["gender"] = v }
         if let d = dob {
             let formatter = DateFormatter()
@@ -281,6 +304,15 @@ class UserService: ObservableObject {
             ]
         }
         if let v = bio { variables["bio"] = v }
+        if let v = username, !v.isEmpty { variables["username"] = v }
+        if let v = location?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
+            // Backend accounts_userlocation has NOT NULL latitude/longitude; send placeholders when only updating name.
+            variables["location"] = [
+                "locationName": v,
+                "latitude": "0",
+                "longitude": "0"
+            ]
+        }
         if let s = shippingAddress {
             variables["shippingAddress"] = [
                 "address": s.address,
@@ -288,6 +320,12 @@ class UserService: ObservableObject {
                 "country": s.country,
                 "postcode": s.postcode
             ]
+        }
+        if let m = meta, !m.isEmpty {
+            // Backend expects JSONString (a string), not a raw object.
+            if let data = try? JSONSerialization.data(withJSONObject: m), let str = String(data: data, encoding: .utf8) {
+                variables["meta"] = str
+            }
         }
         _ = try await client.execute(
             query: mutation,
@@ -1438,7 +1476,10 @@ struct UserProfileData: Decodable {
     let isVacationMode: Bool?
     let isMultibuyEnabled: Bool?
     let isStaff: Bool?
+    let isVerified: Bool?
     let reviewStats: ReviewStatsData?
+    /// Backend may send meta as object or JSON string; decoded safely so viewMe never fails.
+    let meta: SafeMetaDecode?
 }
 
 struct UserPhoneData: Decodable {
@@ -1455,8 +1496,128 @@ struct ShippingAddress: Hashable {
     var postcode: String
 }
 
+/// Seller postage options stored in User.meta["postage"]. Used in PostageSettingsView and at checkout.
+struct SellerPostageOptions: Hashable {
+    var royalMailEnabled: Bool
+    var royalMailStandardPrice: Double?
+    var royalMailFirstClassPrice: Double?
+    var dpdEnabled: Bool
+    var dpdPrice: Double?
+
+    static let empty = SellerPostageOptions(royalMailEnabled: false, royalMailStandardPrice: nil, royalMailFirstClassPrice: nil, dpdEnabled: false, dpdPrice: nil)
+
+    /// Build list of delivery options for checkout (name, provider, type, fee). Order: Royal Mail Standard, First Class, DPD.
+    func toDeliveryOptions() -> [SellerDeliveryOption] {
+        var list: [SellerDeliveryOption] = []
+        if royalMailEnabled, let p = royalMailStandardPrice, p >= 0 {
+            list.append(SellerDeliveryOption(name: "Royal Mail Standard", deliveryProvider: "ROYAL_MAIL", deliveryType: "HOME_DELIVERY", shippingFee: p))
+        }
+        if royalMailEnabled, let p = royalMailFirstClassPrice, p >= 0 {
+            list.append(SellerDeliveryOption(name: "Royal Mail First Class (Next day)", deliveryProvider: "ROYAL_MAIL", deliveryType: "HOME_DELIVERY", shippingFee: p))
+        }
+        if dpdEnabled, let p = dpdPrice, p >= 0 {
+            list.append(SellerDeliveryOption(name: "DPD Standard", deliveryProvider: "DPD", deliveryType: "HOME_DELIVERY", shippingFee: p))
+        }
+        return list
+    }
+
+    /// From backend meta dict (e.g. meta["postage"]).
+    static func from(metaPostage: [String: Any]?) -> SellerPostageOptions? {
+        guard let p = metaPostage else { return nil }
+        let royalMail = p["royalMail"] as? [String: Any]
+        let dpd = p["dpd"] as? [String: Any]
+        func num(_ v: Any?) -> Double? {
+            if let n = v as? Double { return n }
+            if let n = v as? Int { return Double(n) }
+            if let s = v as? String { return Double(s) }
+            return nil
+        }
+        let rmEnabled = (royalMail?["enabled"] as? Bool) ?? false
+        let dpdEnabled = (dpd?["enabled"] as? Bool) ?? false
+        return SellerPostageOptions(
+            royalMailEnabled: rmEnabled,
+            royalMailStandardPrice: num(royalMail?["standardPrice"]),
+            royalMailFirstClassPrice: num(royalMail?["firstClassPrice"]),
+            dpdEnabled: dpdEnabled,
+            dpdPrice: num(dpd?["standardPrice"])
+        )
+    }
+
+    /// From decoded GraphQL meta.postage.
+    static func from(decoded postage: PostageMetaDecode?) -> SellerPostageOptions? {
+        guard let p = postage else { return nil }
+        let rm = p.royalMail
+        let dpd = p.dpd
+        return SellerPostageOptions(
+            royalMailEnabled: rm?.enabled ?? false,
+            royalMailStandardPrice: rm?.standardPrice,
+            royalMailFirstClassPrice: rm?.firstClassPrice,
+            dpdEnabled: dpd?.enabled ?? false,
+            dpdPrice: dpd?.standardPrice
+        )
+    }
+
+    /// To meta["postage"] for updateProfile(meta:).
+    func toMetaPostage() -> [String: Any] {
+        var royalMail: [String: Any] = ["enabled": royalMailEnabled]
+        if let p = royalMailStandardPrice { royalMail["standardPrice"] = p }
+        if let p = royalMailFirstClassPrice { royalMail["firstClassPrice"] = p }
+        var dpd: [String: Any] = ["enabled": dpdEnabled]
+        if let p = dpdPrice { dpd["standardPrice"] = p }
+        return ["royalMail": royalMail, "dpd": dpd]
+    }
+}
+
+/// One delivery option at checkout (from seller's postage). Used in PaymentView.
+struct SellerDeliveryOption: Hashable {
+    let name: String
+    let deliveryProvider: String
+    let deliveryType: String
+    let shippingFee: Double
+}
+
 struct LocationData: Decodable {
     let locationName: String?
+}
+
+/// Decoded meta.postage from viewMe/seller meta (GraphQL JSON).
+struct MetaDecode: Decodable {
+    let postage: PostageMetaDecode?
+}
+
+/// Decodes backend `meta` whether it comes as a JSON object or a JSON string (GraphQL JSONString can be either). Used by UserService and ProductService.
+struct SafeMetaDecode: Decodable {
+    var value: MetaDecode?
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            value = nil
+            return
+        }
+        if let m = try? container.decode(MetaDecode.self) {
+            value = m
+            return
+        }
+        if let s = try? container.decode(String.self), let data = s.data(using: .utf8), let m = try? JSONDecoder().decode(MetaDecode.self, from: data) {
+            value = m
+        } else {
+            value = nil
+        }
+    }
+}
+
+struct PostageMetaDecode: Decodable {
+    let royalMail: RoyalMailMetaDecode?
+    let dpd: DpdMetaDecode?
+}
+struct RoyalMailMetaDecode: Decodable {
+    let enabled: Bool?
+    let standardPrice: Double?
+    let firstClassPrice: Double?
+}
+struct DpdMetaDecode: Decodable {
+    let enabled: Bool?
+    let standardPrice: Double?
 }
 
 struct ReviewStatsData: Decodable {

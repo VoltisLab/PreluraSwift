@@ -178,10 +178,11 @@ struct SellView: View {
                 }
             }
             .onAppear {
-                draftCount = SellDraftStore.draftCount
+                draftCount = SellDraftStore.draftCount(username: authService.username)
             }
             .sheet(isPresented: $showDraftsSheet) {
                 SellDraftsListSheet(
+                    username: authService.username,
                     onSelect: { draftId in
                         loadDraft(id: draftId)
                         // Dismiss after state updates so the form re-renders with loaded data
@@ -191,7 +192,7 @@ struct SellView: View {
                     },
                     onDismiss: {
                         showDraftsSheet = false
-                        draftCount = SellDraftStore.draftCount
+                        draftCount = SellDraftStore.draftCount(username: authService.username)
                     }
                 )
             }
@@ -210,7 +211,8 @@ struct SellView: View {
         guard canSaveAsDraft else { return }
         do {
             _ = try SellDraftStore.saveDraft(
-                title: title,
+        username: authService.username,
+        title: title,
                 description: description,
                 category: category,
                 brand: brand,
@@ -226,7 +228,7 @@ struct SellView: View {
                 parcelSize: parcelSize,
                 images: selectedImages
             )
-            draftCount = SellDraftStore.draftCount
+            draftCount = SellDraftStore.draftCount(username: authService.username)
             showSaveDraftConfirmation = true
         } catch {
             // Silent or show error
@@ -234,7 +236,7 @@ struct SellView: View {
     }
 
     private func loadDraft(id: String) {
-        guard let result = SellDraftStore.loadDraft(id: id) else { return }
+        guard let result = SellDraftStore.loadDraft(id: id, username: authService.username) else { return }
         let d = result.draft
         selectedImages = result.images
         selectedPhotos = []
@@ -252,7 +254,7 @@ struct SellView: View {
         price = d.price
         discountPrice = d.discountPrice
         parcelSize = d.parcelSize
-        draftCount = SellDraftStore.draftCount
+        draftCount = SellDraftStore.draftCount(username: authService.username)
     }
     
     // MARK: - Drafts Section
@@ -626,6 +628,7 @@ extension SellView {
 
 // MARK: - Drafts list sheet (Upload from drafts)
 private struct SellDraftsListSheet: View {
+    var username: String?
     var onSelect: (String) -> Void
     var onDismiss: () -> Void
     @State private var drafts: [SellDraft] = []
@@ -691,7 +694,7 @@ private struct SellDraftsListSheet: View {
                 }
             }
             .onAppear {
-                drafts = SellDraftStore.listDrafts()
+                drafts = SellDraftStore.listDrafts(username: username)
             }
         }
     }
@@ -742,16 +745,16 @@ private struct SellDraftsListSheet: View {
 
     private func deleteSelectedDrafts() {
         for id in selectedDraftIds {
-            SellDraftStore.deleteDraft(id: id)
+            SellDraftStore.deleteDraft(id: id, username: username)
         }
         selectedDraftIds.removeAll()
         isSelectionMode = false
-        drafts = SellDraftStore.listDrafts()
+        drafts = SellDraftStore.listDrafts(username: username)
     }
 
     @ViewBuilder
     private func draftThumbnail(draftId: String) -> some View {
-        if let result = SellDraftStore.loadDraft(id: draftId),
+        if let result = SellDraftStore.loadDraft(id: draftId, username: username),
            let first = result.images.first {
             Image(uiImage: first)
                 .resizable()

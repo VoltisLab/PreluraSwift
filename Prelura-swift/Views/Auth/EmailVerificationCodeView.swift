@@ -1,19 +1,24 @@
 import SwiftUI
 
 /// Shown when login fails with "verify your email": enter 4-digit code from email, then verify and log in. After success, caller should show onboarding and feed.
-/// No user-editable email field (security: user cannot enter another address). Four separate digit boxes with auto-advance.
+/// Optional email: when provided (e.g. from signup), "Didn't get the code?" calls resend API; otherwise user can enter email to request a new code.
 struct EmailVerificationCodeView: View {
     let username: String
     let password: String
+    /// Email for resend. When nil, user can enter their email in the optional field to request a new code.
+    var emailForResend: String? = nil
     var onDismiss: () -> Void
     var onVerifiedAndLoggedIn: () -> Void
 
     @EnvironmentObject var authService: AuthService
-    @State private var digits: [String] = ["", "", "", ""]
+    /// Single source of truth for the 4-character code (avoids sync issues and spurious clears).
+    @State private var codeString: String = ""
     @State private var isVerifying: Bool = false
     @State private var isResending: Bool = false
     @State private var resendMessage: String?
     @State private var errorMessage: String?
+    /// User-entered email for resend when emailForResend was not provided (e.g. from login).
+    @State private var resendEmailInput: String = ""
     @FocusState private var focusedIndex: Int?
 
     private let codeLength = 4
@@ -22,7 +27,7 @@ struct EmailVerificationCodeView: View {
 
     /// Code string sent to API (digits + letters, letters always uppercase).
     private var codeTrimmed: String {
-        digits.joined()
+        String(codeString.prefix(codeLength)).uppercased()
     }
     private var canSubmit: Bool {
         codeTrimmed.count == codeLength
@@ -63,6 +68,26 @@ struct EmailVerificationCodeView: View {
                             .padding(.horizontal)
                     }
 
+                    // Email for resend: use provided email or let user enter (e.g. when coming from login)
+                    if emailForResend == nil {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                            Text("Email (for resend)")
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                            TextField("Enter the email linked to your account", text: $resendEmailInput)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .keyboardType(.emailAddress)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .padding(Theme.Spacing.md)
+                                .background(Theme.Colors.secondaryBackground)
+                                .cornerRadius(12)
+                                .foregroundColor(Theme.Colors.primaryText)
+                        }
+                        .padding(.horizontal, Theme.Spacing.lg)
+                        .padding(.top, Theme.Spacing.sm)
+                    }
+
                     Button("Didn't get the code?") {
                         resendCode()
                     }
@@ -95,7 +120,7 @@ struct EmailVerificationCodeView: View {
         }
     }
 
-    /// Allowed: 0-9 and A-Z. Lowercase letters are converted to uppercase (small letters not allowed).
+    /// Allowed: 0-9 and A-Z. Lowercase letters are converted to uppercase.
     private static func normalizedCodeCharacter(_ c: Character) -> Character? {
         if c.isNumber { return c }
         if c.isLetter { return Character(c.uppercased()) }
@@ -104,31 +129,55 @@ struct EmailVerificationCodeView: View {
 
     private func digitField(index: Int) -> some View {
         TextField("", text: Binding(
-            get: { digits[index] },
+            get: {
+                guard index < codeString.count else { return "" }
+                let i = codeString.index(codeString.startIndex, offsetBy: index)
+                return String(codeString[i])
+            },
             set: { newValue in
                 let uppercased = newValue.uppercased()
                 let allowed = uppercased.compactMap { Self.normalizedCodeCharacter($0) }
+                var newCode = codeString
                 if allowed.count > 1 {
-                    let chars = Array(allowed).prefix(codeLength)
-                    for i in 0..<min(chars.count, codeLength) {
-                        digits[i] = String(chars[i])
-                    }
+                    // Paste: replace with up to 4 allowed characters
+                    newCode = String(allowed.prefix(codeLength)).uppercased()
+                    codeString = newCode
                     DispatchQueue.main.async {
-                        if chars.count >= codeLength {
+                        if newCode.count >= codeLength {
                             focusedIndex = nil
                         } else {
-                            focusedIndex = min(chars.count, codeLength - 1)
+                            focusedIndex = min(newCode.count, codeLength - 1)
+                        }
+                    }
+                    return
+                }
+                let newChar = allowed.first.map { String($0) }
+                if let ch = newChar {
+                    // Insert or replace at index
+                    if index < newCode.count {
+                        let i = newCode.index(newCode.startIndex, offsetBy: index)
+                        newCode.replaceSubrange(i...i, with: ch)
+                    } else {
+                        newCode.append(ch)
+                    }
+                    newCode = String(newCode.prefix(codeLength))
+                    codeString = newCode
+                    DispatchQueue.main.async {
+                        if index < codeLength - 1 && newCode.count > index + 1 {
+                            focusedIndex = index + 1
+                        } else if newCode.count >= codeLength {
+                            focusedIndex = nil
                         }
                     }
                 } else {
-                    let newChar = allowed.first.map { String($0) } ?? ""
-                    digits[index] = newChar
-                    // Defer focus change so the TextField commits the character before we move focus (avoids "can't type" when field gets cleared on focus loss)
-                    DispatchQueue.main.async {
-                        if !newChar.isEmpty && index < codeLength - 1 {
-                            focusedIndex = index + 1
-                        } else if newChar.isEmpty && index > 0 {
-                            focusedIndex = index - 1
+                    // Backspace: remove character at index (only when user explicitly cleared)
+                    if index < newCode.count {
+                        let i = newCode.index(newCode.startIndex, offsetBy: index)
+                        newCode.remove(at: i)
+                        codeString = newCode
+                        DispatchQueue.main.async {
+                            let next = min(index, newCode.count)
+                            focusedIndex = next >= 0 ? next : 0
                         }
                     }
                 }
@@ -169,23 +218,57 @@ struct EmailVerificationCodeView: View {
             } catch {
                 await MainActor.run {
                     isVerifying = false
-                    errorMessage = error.localizedDescription
+                    errorMessage = verificationErrorMessage(from: error)
                 }
             }
         }
     }
 
-    /// Resend does not accept user-provided email (security). We only have username; show guidance.
+    /// Map backend/GraphQL errors to user-facing messages: invalid vs expired.
+    private func verificationErrorMessage(from error: Error) -> String {
+        let msg = error.localizedDescription
+        // Backend: OTP_CODE_EXPIRED = "Verification code expired." / WRONG_OTP_CODE = "Invalid verification code."
+        if msg.localizedCaseInsensitiveContains("expired") {
+            return "This code has expired. Tap \"Didn't get the code?\" to request a new one."
+        }
+        if msg.localizedCaseInsensitiveContains("invalid") && (msg.localizedCaseInsensitiveContains("code") || msg.localizedCaseInsensitiveContains("verification")) {
+            return "Invalid verification code. Please check and try again."
+        }
+        return msg
+    }
+
+    /// Resend: use emailForResend if provided, else resendEmailInput. Calls API when we have a valid email.
     private func resendCode() {
         errorMessage = nil
         resendMessage = nil
+        let email = (emailForResend?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+            ?? (resendEmailInput.trimmingCharacters(in: .whitespacesAndNewlines)).nilIfEmpty
+        guard let emailToUse = email else {
+            resendMessage = "Enter your email above to resend the code."
+            return
+        }
+        guard emailToUse.contains("@"), emailToUse.contains(".") else {
+            resendMessage = "Enter a valid email address to resend the code."
+            return
+        }
         isResending = true
         Task {
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            await MainActor.run {
-                isResending = false
-                resendMessage = "Check your email inbox and spam folder. The code was sent to the email linked to your account."
+            do {
+                _ = try await authService.resendActivationEmail(email: emailToUse)
+                await MainActor.run {
+                    isResending = false
+                    resendMessage = "Verification code sent. Check your email."
+                }
+            } catch {
+                await MainActor.run {
+                    isResending = false
+                    resendMessage = error.localizedDescription
+                }
             }
         }
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

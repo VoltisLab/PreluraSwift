@@ -1,17 +1,15 @@
 import SwiftUI
 
-/// Account Settings (from Flutter account_setting_view). Form: full name, email, phone, DOB, gender, bio.
-/// Uses same API as Flutter: ViewMe for load, updateProfile + changeEmail for save. No backend changes.
+/// Account Settings (from Flutter account_setting_view). Form: first name, last name, email, phone, DOB, gender (no profile-only fields).
+/// Uses same API as Flutter: ViewMe for load, updateProfile + changeEmail for save. Bio/username/location are in Profile settings.
 struct AccountSettingsView: View {
-    @State private var fullName: String = ""
+    @State private var firstName: String = ""
+    @State private var lastName: String = ""
     @State private var email: String = ""
     @State private var phone: String = ""
     @State private var dateOfBirth: Date?
     @State private var dateOfBirthText: String = ""
     @State private var gender: String = ""
-    @State private var bio: String = ""
-
-    private let bioMaxLength = 100
 
     @State private var isLoading = false
     @State private var isSaving = false
@@ -21,21 +19,31 @@ struct AccountSettingsView: View {
     @State private var showSuccess = false
     @FocusState private var focusedField: Field?
     @State private var loadedUser: User?
+    /// When non-nil, we've requested an email change; show verification sheet so user enters the new code.
+    @State private var pendingEmailVerification: PendingEmail?
+    @EnvironmentObject private var authService: AuthService
 
     private let userService = UserService()
 
-    private enum Field { case fullName, email, phone, bio }
+    private enum Field { case firstName, lastName, email, phone }
 
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.md) {
                     SettingsTextField(
-                        placeholder: "Full name",
-                        text: $fullName,
-                        textContentType: .name
+                        placeholder: L10n.string("First name"),
+                        text: $firstName,
+                        textContentType: .givenName
                     )
-                    .focused($focusedField, equals: .fullName)
+                    .focused($focusedField, equals: .firstName)
+
+                    SettingsTextField(
+                        placeholder: L10n.string("Last name"),
+                        text: $lastName,
+                        textContentType: .familyName
+                    )
+                    .focused($focusedField, equals: .lastName)
 
                     SettingsTextField(
                         placeholder: "Email",
@@ -61,24 +69,11 @@ struct AccountSettingsView: View {
                     )
 
                     SettingsTextField(
-                        placeholder: "Gender",
+                        placeholder: L10n.string("Gender"),
                         text: $gender,
                         isEnabled: false,
                         onTap: { showGenderPicker = true }
                     )
-
-                    Button("AutoFill") {
-                        focusedField = .fullName
-                    }
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .background(Theme.Colors.secondaryBackground)
-                    .cornerRadius(30)
-
-                    SettingsTextEditor(placeholder: "Bio", text: $bio, minHeight: 100)
-                        .focused($focusedField, equals: .bio)
 
                     if let err = errorMessage {
                         Text(err)
@@ -96,13 +91,25 @@ struct AccountSettingsView: View {
                 PrimaryGlassButton("Save", isLoading: isSaving, action: save)
             }
         }
-        .navigationTitle(L10n.string("Account Settings"))
+        .navigationTitle(L10n.string("Account"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .onAppear(perform: loadUser)
         .sheet(isPresented: $showDatePicker) { datePickerSheet }
         .sheet(isPresented: $showGenderPicker) { genderPickerSheet }
-        .alert("Saved", isPresented: $showSuccess) {
+        .sheet(item: $pendingEmailVerification) { wrapper in
+            EmailChangeVerificationView(
+                newEmail: wrapper.email,
+                onDismiss: { pendingEmailVerification = nil },
+                onVerified: {
+                    pendingEmailVerification = nil
+                    showSuccess = true
+                    loadUser()
+                }
+            )
+            .environmentObject(authService)
+        }
+        .alert(L10n.string("Saved"), isPresented: $showSuccess) {
             Button("OK", role: .cancel) { }
         } message: {
             Text(L10n.string("Your account settings have been updated."))
@@ -156,13 +163,14 @@ struct AccountSettingsView: View {
                 let user = try await userService.getUser()
                 await MainActor.run {
                     loadedUser = user
-                    fullName = user.displayName.isEmpty ? (user.email ?? "") : user.displayName
+                    let (first, last) = Self.splitDisplayName(user.displayName)
+                    firstName = first
+                    lastName = last
                     email = user.email ?? ""
                     phone = user.phoneDisplay ?? ""
                     dateOfBirth = user.dateOfBirth
                     dateOfBirthText = user.dateOfBirth.map { formatDOB($0) } ?? ""
                     gender = user.gender ?? ""
-                    bio = String((user.bio ?? "").prefix(bioMaxLength))
                     isLoading = false
                 }
             } catch {
@@ -174,25 +182,50 @@ struct AccountSettingsView: View {
         }
     }
 
+    /// Split "First Last" into (first, last); single word becomes (word, "").
+    private static func splitDisplayName(_ displayName: String) -> (String, String) {
+        let parts = displayName.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        if parts.count >= 2 {
+            return (String(parts[0]), String(parts[1]))
+        }
+        if parts.count == 1 {
+            return (String(parts[0]), "")
+        }
+        return ("", "")
+    }
+
     private func save() {
         guard let user = loadedUser else { return }
         isSaving = true
         errorMessage = nil
+        let emailTrimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let emailChanged = emailTrimmed != (user.email ?? "")
         Task {
             do {
-                let modifiedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines) != (user.email ?? "")
-                if modifiedEmail {
-                    try await userService.changeEmail(email.trimmingCharacters(in: .whitespacesAndNewlines))
+                if emailChanged {
+                    try await userService.changeEmail(emailTrimmed)
+                    await MainActor.run {
+                        isSaving = false
+                        pendingEmailVerification = PendingEmail(email: emailTrimmed)
+                    }
+                    return
                 }
-                let displayNameToSend = fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let firstTrimmed = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let lastTrimmed = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
                 let genderToSend = gender.isEmpty ? nil : gender
                 let phoneParsed = parsePhone(phone.trimmingCharacters(in: .whitespacesAndNewlines), existing: user.phoneDisplay)
+                let displayNameToSend: String? = {
+                    if firstTrimmed.isEmpty && lastTrimmed.isEmpty { return nil }
+                    if lastTrimmed.isEmpty { return firstTrimmed }
+                    return "\(firstTrimmed) \(lastTrimmed)"
+                }()
                 try await userService.updateProfile(
-                    displayName: displayNameToSend.isEmpty ? nil : displayNameToSend,
+                    displayName: displayNameToSend,
+                    firstName: firstTrimmed.isEmpty ? nil : firstTrimmed,
+                    lastName: lastTrimmed.isEmpty ? nil : lastTrimmed,
                     gender: genderToSend,
                     dob: dateOfBirth,
-                    phoneNumber: phoneParsed,
-                    bio: bio.isEmpty ? nil : bio
+                    phoneNumber: phoneParsed
                 )
                 await MainActor.run {
                     isSaving = false
@@ -222,4 +255,10 @@ struct AccountSettingsView: View {
         }
         return ("44", digits)
     }
+}
+
+/// Identifiable wrapper for presenting email-change verification sheet.
+private struct PendingEmail: Identifiable {
+    let id = UUID()
+    let email: String
 }

@@ -18,6 +18,8 @@ struct User: Identifiable, Hashable {
     let followersCount: Int
     /// When true, show Admin Actions in Settings. Backend can set via isStaff/isSuperuser.
     let isStaff: Bool
+    /// When true, email has been verified (from viewMe isVerified).
+    let isVerified: Bool
     let isVacationMode: Bool
     let isMultibuyEnabled: Bool
     /// Account settings (from ViewMe)
@@ -29,6 +31,8 @@ struct User: Identifiable, Hashable {
     let shippingAddress: ShippingAddress?
     /// When viewing another user's profile: true if current user follows them (from getUser isFollowing).
     let isFollowing: Bool?
+    /// Seller postage options (from viewMe/seller meta). Used at checkout to show delivery options.
+    let postageOptions: SellerPostageOptions?
 
     init(
         id: UUID = UUID(),
@@ -46,6 +50,7 @@ struct User: Identifiable, Hashable {
         followingsCount: Int = 0,
         followersCount: Int = 0,
         isStaff: Bool = false,
+        isVerified: Bool = false,
         isVacationMode: Bool = false,
         isMultibuyEnabled: Bool = false,
         email: String? = nil,
@@ -53,7 +58,8 @@ struct User: Identifiable, Hashable {
         dateOfBirth: Date? = nil,
         gender: String? = nil,
         shippingAddress: ShippingAddress? = nil,
-        isFollowing: Bool? = nil
+        isFollowing: Bool? = nil,
+        postageOptions: SellerPostageOptions? = nil
     ) {
         self.id = id
         self.userId = backendUserId
@@ -70,6 +76,7 @@ struct User: Identifiable, Hashable {
         self.followingsCount = followingsCount
         self.followersCount = followersCount
         self.isStaff = isStaff
+        self.isVerified = isVerified
         self.isVacationMode = isVacationMode
         self.isMultibuyEnabled = isMultibuyEnabled
         self.email = email
@@ -78,6 +85,7 @@ struct User: Identifiable, Hashable {
         self.gender = gender
         self.shippingAddress = shippingAddress
         self.isFollowing = isFollowing
+        self.postageOptions = postageOptions
     }
     
     var formattedRating: String {

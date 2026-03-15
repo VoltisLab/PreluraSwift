@@ -12,9 +12,12 @@ struct SettingsTextField: View {
     var onTap: (() -> Void)? = nil
     /// When true, adds a grey border and no shadow (e.g. Filter modal price fields).
     var bordered: Bool = false
+    /// When true, uses smaller vertical padding for a shorter field (e.g. Postage price).
+    var compact: Bool = false
 
     @State private var passwordVisible: Bool = false
     private let cornerRadius: CGFloat = 30
+    private var verticalPadding: CGFloat { compact ? Theme.Spacing.sm : Theme.Spacing.md }
 
     var body: some View {
         Group {
@@ -27,7 +30,7 @@ struct SettingsTextField: View {
                         Spacer()
                     }
                     .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.md)
+                    .padding(.vertical, verticalPadding)
                 }
                 .buttonStyle(.plain)
             } else if isSecure {
@@ -46,7 +49,7 @@ struct SettingsTextField: View {
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.md)
+                    .padding(.vertical, verticalPadding)
                     Button(action: { passwordVisible.toggle() }) {
                         Image(systemName: passwordVisible ? "eye.slash.fill" : "eye.fill")
                             .font(.system(size: 18))
@@ -61,9 +64,10 @@ struct SettingsTextField: View {
                     .keyboardType(keyboardType)
                     .textContentType(textContentType)
                     .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.md)
+                    .padding(.vertical, verticalPadding)
             }
         }
+        .contentShape(Rectangle())
         .background(Theme.Colors.secondaryBackground)
         .cornerRadius(cornerRadius)
         .overlay(

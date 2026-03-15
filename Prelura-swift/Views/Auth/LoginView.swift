@@ -73,6 +73,14 @@ struct LoginView: View {
                                     .font(Theme.Typography.caption)
                                     .foregroundColor(.red)
                                     .padding(.horizontal, Theme.Spacing.md)
+                                if error.localizedCaseInsensitiveContains("verify") && error.localizedCaseInsensitiveContains("email") {
+                                    Button("Enter verification code") {
+                                        showEmailVerificationCode = true
+                                    }
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.primaryColor)
+                                    .padding(.top, Theme.Spacing.xs)
+                                }
                             }
                             Button(L10n.string("Forgot password?")) {
                                 showForgotPassword = true
@@ -161,11 +169,8 @@ struct LoginView: View {
             } catch {
                 isLoading = false
                 let msg = error.localizedDescription
-                if msg.localizedCaseInsensitiveContains("verify") && msg.localizedCaseInsensitiveContains("email") {
-                    showEmailVerificationCode = true
-                } else {
-                    errorMessage = msg
-                }
+                errorMessage = msg
+                // Do not auto-open verify screen: user stays on login and can tap "Enter verification code" if needed
             }
         }
     }

@@ -181,7 +181,8 @@ class ProductService: ObservableObject {
                     username: product.seller?.username ?? "",
                     displayName: product.seller?.displayName ?? "",
                     avatarURL: product.seller?.profilePictureUrl,
-                    isVacationMode: product.seller?.isVacationMode ?? false
+                    isVacationMode: product.seller?.isVacationMode ?? false,
+                    postageOptions: SellerPostageOptions.from(decoded: product.seller?.meta?.value?.postage)
                 ),
                 condition: product.condition ?? "",
                 size: product.size?.name,
@@ -248,7 +249,7 @@ class ProductService: ObservableObject {
             size { id name }
             brand { id name }
             customBrand likes views userLiked
-            seller { id username displayName profilePictureUrl isVacationMode }
+            seller { id username displayName profilePictureUrl isVacationMode meta }
             category { id name }
             color status
           }
@@ -293,7 +294,7 @@ class ProductService: ObservableObject {
             size { id name }
             brand { id name }
             customBrand likes views userLiked
-            seller { id username displayName profilePictureUrl isVacationMode }
+            seller { id username displayName profilePictureUrl isVacationMode meta }
             category { id name }
             color status
           }
@@ -614,7 +615,7 @@ class ProductService: ObservableObject {
               likes
               views
               userLiked
-            seller { id username displayName profilePictureUrl isVacationMode }
+            seller { id username displayName profilePictureUrl isVacationMode meta }
             category { id name }
             color
             }
@@ -816,6 +817,8 @@ struct SellerData: Decodable {
     let displayName: String?
     let profilePictureUrl: String?
     let isVacationMode: Bool?
+    /// Backend may send meta as object or JSON string; use SafeMetaDecode so decoding never fails.
+    let meta: SafeMetaDecode?
 }
 
 struct CategoryData: Decodable {
@@ -900,7 +903,7 @@ extension ProductService {
             likes
             views
             userLiked
-            seller { id username displayName profilePictureUrl isVacationMode }
+            seller { id username displayName profilePictureUrl isVacationMode meta }
             category { id name }
             color
             status
@@ -1056,7 +1059,8 @@ extension ProductService {
                     username: product.seller?.username ?? "",
                     displayName: product.seller?.displayName ?? "",
                     avatarURL: product.seller?.profilePictureUrl,
-                    isVacationMode: product.seller?.isVacationMode ?? false
+                    isVacationMode: product.seller?.isVacationMode ?? false,
+                    postageOptions: SellerPostageOptions.from(decoded: product.seller?.meta?.value?.postage)
                 ),
                 condition: product.condition ?? "UNKNOWN",
                 size: sizeName,
@@ -1293,7 +1297,8 @@ extension ProductService {
                 username: product.seller?.username ?? "",
                 displayName: product.seller?.displayName ?? "",
                 avatarURL: product.seller?.profilePictureUrl,
-                isVacationMode: product.seller?.isVacationMode ?? false
+                isVacationMode: product.seller?.isVacationMode ?? false,
+                postageOptions: SellerPostageOptions.from(decoded: product.seller?.meta?.value?.postage)
             ),
             condition: product.condition ?? "UNKNOWN",
             size: sizeName,

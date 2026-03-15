@@ -31,6 +31,8 @@ struct PaymentView: View {
     @EnvironmentObject var authService: AuthService
     @State private var currentUser: User?
     @State private var selectedDelivery: DeliveryType = .homeDelivery
+    /// When seller has postage options, we use this instead of selectedDelivery.
+    @State private var selectedSellerOption: SellerDeliveryOption?
     @State private var buyerProtectionEnabled: Bool = false
     @State private var paymentMethod: PaymentMethod?
     @State private var isLoadingPaymentMethod = true
@@ -60,8 +62,20 @@ struct PaymentView: View {
         if p <= 200 { return (6 * p) / 100 }
         return (5 * p) / 100
     }
+    /// Seller's delivery options when all products from same seller and seller has postage set.
+    private var sellerDeliveryOptions: [SellerDeliveryOption] {
+        guard let first = products.first, products.allSatisfy({ $0.seller.userId == first.seller.userId }) else { return [] }
+        return first.seller.postageOptions?.toDeliveryOptions() ?? []
+    }
+    private var useSellerPostage: Bool { !sellerDeliveryOptions.isEmpty }
+    private var effectiveShippingFee: Double {
+        if useSellerPostage, let opt = selectedSellerOption ?? sellerDeliveryOptions.first {
+            return opt.shippingFee
+        }
+        return selectedDelivery.shippingFee
+    }
     private var total: Double {
-        afterDiscount + selectedDelivery.shippingFee + (buyerProtectionEnabled ? buyerProtectionFee : 0)
+        afterDiscount + effectiveShippingFee + (buyerProtectionEnabled ? buyerProtectionFee : 0)
     }
 
     /// When all products share the same seller, returns that seller's userId for multibuy fetch.
@@ -91,9 +105,17 @@ struct PaymentView: View {
                     .buttonStyle(.plain)
 
                     sectionHeader("Delivery Option")
-                    HStack(spacing: Theme.Spacing.sm) {
-                        ForEach(DeliveryType.allCases, id: \.self) { option in
-                            deliveryOptionCard(option)
+                    if useSellerPostage {
+                        VStack(spacing: Theme.Spacing.sm) {
+                            ForEach(Array(sellerDeliveryOptions.enumerated()), id: \.offset) { _, option in
+                                sellerDeliveryOptionCard(option)
+                            }
+                        }
+                    } else {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            ForEach(DeliveryType.allCases, id: \.self) { option in
+                                deliveryOptionCard(option)
+                            }
                         }
                     }
 
@@ -136,7 +158,7 @@ struct PaymentView: View {
                         if products.count > 1 && multiBuyDiscountPercent > 0 {
                             infoRow(String(format: L10n.string("Multi-buy discount (%d%%)"), multiBuyDiscountPercent), String(format: "-£%.2f", multiBuyDiscountAmount), valueColor: Theme.primaryColor)
                         }
-                        infoRow("Postage", String(format: "£%.2f", selectedDelivery.shippingFee))
+                        infoRow("Postage", String(format: "£%.2f", effectiveShippingFee))
                         if buyerProtectionEnabled {
                             infoRow(L10n.string("Buyer protection fee"), String(format: "£%.2f", buyerProtectionFee))
                         }
@@ -208,6 +230,9 @@ struct PaymentView: View {
             }
         }
         .onAppear {
+            if !sellerDeliveryOptions.isEmpty, selectedSellerOption == nil {
+                selectedSellerOption = sellerDeliveryOptions.first
+            }
             Task {
                 await loadUser()
                 await loadPaymentMethod()
@@ -262,6 +287,37 @@ struct PaymentView: View {
                         .font(.system(size: 20))
                         .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.secondaryText)
                     Text(option.rawValue)
+                        .font(Theme.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.primaryText)
+                }
+                Text(String(format: "£%.2f", option.shippingFee))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.secondaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.Spacing.md)
+            .background(isSelected ? Theme.primaryColor.opacity(0.1) : Theme.Colors.secondaryBackground)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Theme.primaryColor : Theme.Colors.glassBorder, lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
+    }
+
+    private func sellerDeliveryOptionCard(_ option: SellerDeliveryOption) -> some View {
+        let isSelected = selectedSellerOption?.name == option.name && selectedSellerOption?.shippingFee == option.shippingFee
+        return Button {
+            selectedSellerOption = option
+        } label: {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Image(systemName: "shippingbox")
+                        .font(.system(size: 20))
+                        .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.secondaryText)
+                    Text(option.name)
                         .font(Theme.Typography.body)
                         .fontWeight(.semibold)
                         .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.primaryText)
@@ -340,7 +396,7 @@ struct PaymentView: View {
     private func payByCard() {
         errorMessage = nil
         if currentUser?.shippingAddress == nil {
-            errorMessage = "Please add a complete shipping address before payment. Go to Settings > Shipping Address."
+            errorMessage = "Please add a complete shipping address before payment. Go to Settings > Shipping."
             return
         }
         guard let method = paymentMethod else {
@@ -355,11 +411,20 @@ struct PaymentView: View {
             productService.updateAuthToken(authService.authToken)
             do {
                 let phone = currentUser?.phoneDisplay ?? "0000000000"
-                let deliveryDetails = CreateOrderDeliveryDetails.from(
-                    shippingAddress: addr,
+                let (provider, deliveryType, fee): (String, String, Float) = if useSellerPostage, let opt = selectedSellerOption ?? sellerDeliveryOptions.first {
+                    (opt.deliveryProvider, opt.deliveryType, Float(opt.shippingFee))
+                } else {
+                    ("EVRI", selectedDelivery == .collectionPoint ? "LOCAL_PICKUP" : "HOME_DELIVERY", Float(selectedDelivery.shippingFee))
+                }
+                let deliveryDetails = CreateOrderDeliveryDetails(
+                    address: addr.address,
+                    city: addr.city,
+                    state: addr.state ?? "",
+                    country: addr.country,
+                    postalCode: addr.postcode,
                     phoneNumber: phone,
-                    deliveryProvider: "EVRI",
-                    deliveryType: selectedDelivery == .collectionPoint ? "LOCAL_PICKUP" : "HOME_DELIVERY"
+                    deliveryProvider: provider,
+                    deliveryType: deliveryType
                 )
                 let productIds = products.compactMap { $0.productId }.compactMap { Int($0) }
                 guard !productIds.isEmpty else {
@@ -372,7 +437,7 @@ struct PaymentView: View {
                         productId: productIds[0],
                         productIds: nil,
                         buyerProtection: buyerProtectionEnabled,
-                        shippingFee: Float(selectedDelivery.shippingFee),
+                        shippingFee: fee,
                         deliveryDetails: deliveryDetails
                     )
                 } else {
@@ -380,7 +445,7 @@ struct PaymentView: View {
                         productId: nil,
                         productIds: productIds,
                         buyerProtection: buyerProtectionEnabled,
-                        shippingFee: Float(selectedDelivery.shippingFee),
+                        shippingFee: fee,
                         deliveryDetails: deliveryDetails
                     )
                 }

@@ -118,17 +118,17 @@ struct SettingsMenuView: View {
     var body: some View {
         List {
             Section {
+                NavigationLink(destination: ProfileSettingsView()) {
+                    settingsRow(L10n.string("Profile"), icon: "person.text.rectangle")
+                }
                 NavigationLink(destination: AccountSettingsView()) {
-                    settingsRow(L10n.string("Account Settings"), icon: "person.crop.circle")
+                    settingsRow(L10n.string("Account"), icon: "person.crop.circle")
                 }
                 NavigationLink(destination: CurrencySettingsView()) {
                     settingsRow(L10n.string("Currency"), icon: "dollarsign.circle")
                 }
-                NavigationLink(destination: PrivacySettingsView()) {
-                    settingsRow(L10n.string("Privacy"), icon: "hand.raised")
-                }
-                NavigationLink(destination: ShippingAddressView()) {
-                    settingsRow(L10n.string("Shipping Address"), icon: "location")
+                NavigationLink(destination: ShippingMenuView()) {
+                    settingsRow(L10n.string("Shipping"), icon: "shippingbox")
                 }
                 NavigationLink(destination: AppearanceMenuView()) {
                     settingsRow(L10n.string("Appearance"), icon: "paintbrush")
@@ -136,14 +136,8 @@ struct SettingsMenuView: View {
                 NavigationLink(destination: LanguageMenuView()) {
                     settingsRow(L10n.string("Language"), icon: "globe")
                 }
-                NavigationLink(destination: ProfileSettingsView()) {
-                    settingsRow(L10n.string("Profile details"), icon: "person.text.rectangle")
-                }
                 NavigationLink(destination: PaymentSettingsView()) {
                     settingsRow(L10n.string("Payments"), icon: "creditcard")
-                }
-                NavigationLink(destination: PostageSettingsView()) {
-                    settingsRow(L10n.string("Postage"), icon: "shippingbox")
                 }
                 NavigationLink(destination: SecurityMenuView()) {
                     settingsRow(L10n.string("Security & Privacy"), icon: "lock.shield")
@@ -187,6 +181,41 @@ struct SettingsMenuView: View {
             Text(title)
                 .foregroundColor(Theme.Colors.primaryText)
         }
+    }
+}
+
+// MARK: - Submenu: Shipping (Shipping Address + Postage)
+struct ShippingMenuView: View {
+    var body: some View {
+        List {
+            Section {
+                NavigationLink(destination: ShippingAddressView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "location")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .frame(width: 24, alignment: .leading)
+                        Text(L10n.string("Shipping Address"))
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                }
+                NavigationLink(destination: PostageSettingsView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "shippingbox")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .frame(width: 24, alignment: .leading)
+                        Text(L10n.string("Postage"))
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .background(Theme.Colors.background)
+        .navigationTitle(L10n.string("Shipping"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }
 
