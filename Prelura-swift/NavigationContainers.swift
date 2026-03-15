@@ -63,10 +63,11 @@ struct SellNavigation: View {
 
 struct InboxNavigation: View {
     @ObservedObject var tabCoordinator: TabCoordinator
+    @State private var path: [AppRoute] = []
 
     var body: some View {
-        NavigationStack {
-            ChatListView(tabCoordinator: tabCoordinator)
+        NavigationStack(path: $path) {
+            ChatListView(tabCoordinator: tabCoordinator, path: $path)
                 .navigationDestination(for: AppRoute.self) { route in
                     switch route {
                     case .conversation(let conversation):

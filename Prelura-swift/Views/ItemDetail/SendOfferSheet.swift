@@ -8,6 +8,7 @@ struct SendOfferSheetContent: View {
     var onDismiss: () -> Void
 
     @EnvironmentObject var authService: AuthService
+    @Environment(\.optionalTabCoordinator) private var tabCoordinator
     private let productService = ProductService()
 
     @State private var offerAmount: String = ""
@@ -103,6 +104,10 @@ struct SendOfferSheetContent: View {
                         .foregroundColor(Theme.primaryColor)
                     TextField("0", text: $offerAmount)
                         .keyboardType(.decimalPad)
+                        .onChange(of: offerAmount) { _, newValue in
+                            let sanitized = PriceFieldFilter.sanitizePriceInput(newValue)
+                            if sanitized != newValue { offerAmount = sanitized }
+                        }
                         .font(Theme.Typography.title2)
                         .foregroundColor(Theme.Colors.primaryText)
                         .focused($offerFieldFocused)
@@ -215,9 +220,13 @@ struct SendOfferSheetContent: View {
             defer { Task { @MainActor in isSubmitting = false } }
             productService.updateAuthToken(authService.authToken)
             do {
-                _ = try await productService.createOffer(offerPrice: value, productIds: [productId], message: nil)
+                let (_, conversation) = try await productService.createOffer(offerPrice: value, productIds: [productId], message: nil)
                 await MainActor.run {
                     onDismiss()
+                    if let conv = conversation, let tc = tabCoordinator {
+                        tc.selectTab(3)
+                        tc.pendingOpenConversation = conv
+                    }
                 }
             } catch {
                 await MainActor.run { errorMessage = error.localizedDescription }

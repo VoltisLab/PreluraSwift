@@ -657,14 +657,23 @@ class ProductService: ObservableObject {
     }
 
     /// Create an offer (buyer sends price + product ids). Matches Flutter createOffer(offerPrice, productIds, message).
-    /// Returns (success, conversationId) so caller can open chat. productIds must be [Int] (use item.productId as Int).
-    func createOffer(offerPrice: Double, productIds: [Int], message: String? = nil) async throws -> (success: Bool, conversationId: Int?) {
+    /// Returns (success, conversation) so caller can navigate to chat with offer card. productIds must be [Int].
+    func createOffer(offerPrice: Double, productIds: [Int], message: String? = nil) async throws -> (success: Bool, conversation: Conversation?) {
         let mutation = """
         mutation CreateOffer($offerPrice: Float!, $productIds: [Int]!, $message: String) {
           createOffer(offerPrice: $offerPrice, productIds: $productIds, message: $message) {
             success
             message
-            data { conversationId }
+            data {
+              conversationId
+              offer {
+                id
+                status
+                offerPrice
+                buyer { username profilePictureUrl }
+                products { id name seller { username profilePictureUrl } }
+              }
+            }
           }
         }
         """
@@ -677,7 +686,56 @@ class ProductService: ObservableObject {
             let data: CreateOfferData?
         }
         struct CreateOfferData: Decodable {
-            let conversationId: Int?
+            let conversationId: AnyCodable?
+            let offer: [OfferElement]?
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                conversationId = try c.decodeIfPresent(AnyCodable.self, forKey: .conversationId)
+                if let arr = try? c.decode([OfferElement].self, forKey: .offer) {
+                    offer = arr
+                } else if let single = try? c.decode(OfferElement.self, forKey: .offer) {
+                    offer = [single]
+                } else {
+                    offer = nil
+                }
+            }
+            private enum CodingKeys: String, CodingKey { case conversationId, offer }
+            struct OfferElement: Decodable {
+                let id: AnyCodable?
+                let status: String?
+                let offerPrice: CreateOfferDoubleOrDecimal?
+                let buyer: Buyer?
+                let products: [ProductEl]?
+                struct Buyer: Decodable {
+                    let username: String?
+                    let profilePictureUrl: String?
+                }
+                struct ProductEl: Decodable {
+                    let id: AnyCodable?
+                    let name: String?
+                    let seller: Buyer?
+                }
+            }
+        }
+        /// Accepts Double, Decimal, or String for offerPrice (backend may return any).
+        enum CreateOfferDoubleOrDecimal: Decodable {
+            case double(Double)
+            case decimal(Decimal)
+            case string(String)
+            init(from decoder: Decoder) throws {
+                let c = try decoder.singleValueContainer()
+                if let d = try? c.decode(Double.self) { self = .double(d); return }
+                if let dec = try? c.decode(Decimal.self) { self = .decimal(dec); return }
+                if let s = try? c.decode(String.self) { self = .string(s); return }
+                throw DecodingError.dataCorruptedError(in: c, debugDescription: "Expected Double, Decimal, or String for offerPrice")
+            }
+            var value: Double {
+                switch self {
+                case .double(let d): return d
+                case .decimal(let d): return NSDecimalNumber(decimal: d).doubleValue
+                case .string(let s): return Double(s.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespaces)) ?? 0
+                }
+            }
         }
         var variables: [String: Any] = ["offerPrice": offerPrice, "productIds": productIds]
         if let m = message, !m.isEmpty { variables["message"] = m }
@@ -686,7 +744,48 @@ class ProductService: ObservableObject {
         if offer.success != true {
             throw NSError(domain: "CreateOffer", code: -1, userInfo: [NSLocalizedDescriptionKey: offer.message ?? "Failed to create offer"])
         }
-        return (true, offer.data?.conversationId)
+        guard let data = offer.data else {
+            return (true, nil)
+        }
+        let convIdStr: String = {
+            guard let any = data.conversationId?.value else { return "" }
+            if let i = any as? Int { return String(i) }
+            if let s = any as? String { return s }
+            return String(describing: any)
+        }()
+        guard !convIdStr.isEmpty, data.offer?.first != nil else {
+            return (true, nil)
+        }
+        let conversation: Conversation? = data.offer?.first.map { el in
+            let idStr = (el.id?.value as? String) ?? (el.id?.value as? Int).map { String($0) } ?? ""
+            let price = el.offerPrice?.value ?? 0
+            let buyer = el.buyer.map { OfferInfo.OfferUser(username: $0.username, profilePictureUrl: $0.profilePictureUrl) }
+            let products = el.products?.map { p in
+                let pid = (p.id?.value as? Int).map { String($0) } ?? (p.id?.value as? String) ?? ""
+                return OfferInfo.OfferProduct(
+                    id: pid,
+                    name: p.name,
+                    seller: p.seller.map { OfferInfo.OfferUser(username: $0.username, profilePictureUrl: $0.profilePictureUrl) }
+                )
+            }
+            let offerInfo = OfferInfo(id: idStr, status: el.status, offerPrice: price, buyer: buyer, products: products)
+            let seller = el.products?.first?.seller
+            let recipient = User(
+                id: UUID(),
+                username: seller?.username ?? "",
+                displayName: seller?.username ?? "",
+                avatarURL: seller?.profilePictureUrl
+            )
+            return Conversation(
+                id: convIdStr,
+                recipient: recipient,
+                lastMessage: nil,
+                lastMessageTime: nil,
+                unreadCount: 0,
+                offer: offerInfo
+            )
+        }
+        return (true, conversation)
     }
 
     /// Create an order (buy now or from accepted offer). Matches Flutter createOrder. Pass either productId (single) or productIds (multi); deliveryDetails required.

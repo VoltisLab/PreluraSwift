@@ -734,10 +734,8 @@ struct ProfileView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.top, Theme.Spacing.sm)
                 HStack(spacing: Theme.Spacing.sm) {
-                    SettingsTextField(placeholder: L10n.string("Min. Price"), text: $filterMinPrice, bordered: true)
-                        .keyboardType(.decimalPad)
-                    SettingsTextField(placeholder: L10n.string("Max. Price"), text: $filterMaxPrice, bordered: true)
-                        .keyboardType(.decimalPad)
+                    SettingsTextField(placeholder: L10n.string("Min. Price"), text: PriceFieldFilter.binding(get: { filterMinPrice }, set: { filterMinPrice = $0 }), keyboardType: .decimalPad, bordered: true)
+                    SettingsTextField(placeholder: L10n.string("Max. Price"), text: PriceFieldFilter.binding(get: { filterMaxPrice }, set: { filterMaxPrice = $0 }), keyboardType: .decimalPad, bordered: true)
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)

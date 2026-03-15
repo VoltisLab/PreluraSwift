@@ -60,14 +60,6 @@ struct DebugMenuView: View {
                         Text("Order screen")
                     }
                 }
-                NavigationLink(destination: LookbooksUploadView()) {
-                    HStack(spacing: Theme.Spacing.md) {
-                        Image(systemName: "photo.stack")
-                            .font(.body)
-                            .foregroundStyle(Theme.Colors.secondaryText)
-                        Text("Lookbooks Upload")
-                    }
-                }
                 NavigationLink(destination: ShopToolsView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "wrench.and.screwdriver")

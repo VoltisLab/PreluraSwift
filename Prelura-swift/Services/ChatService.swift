@@ -17,7 +17,7 @@ class ChatService: ObservableObject {
         client.setAuthToken(token)
     }
     
-    /// Conversations list. Matches Flutter/backend: MessageType uses `text` (not `content`).
+    /// Conversations list. Includes offer when present (for offer card in chat).
     func getConversations() async throws -> [Conversation] {
         let query = """
         query Conversations {
@@ -33,11 +33,16 @@ class ChatService: ObservableObject {
               id
               text
               createdAt
-              sender {
-                username
-              }
+              sender { username }
             }
             unreadMessagesCount
+            offer {
+              id
+              status
+              offerPrice
+              buyer { username profilePictureUrl }
+              products { id name seller { username profilePictureUrl } }
+            }
           }
         }
         """
@@ -49,34 +54,16 @@ class ChatService: ObservableObject {
         )
         
         return response.conversations?.compactMap { conv in
-            // Convert id to string
-            let idString: String
-            if let anyCodable = conv.id {
-                if let intValue = anyCodable.value as? Int {
-                    idString = String(intValue)
-                } else if let stringValue = anyCodable.value as? String {
-                    idString = stringValue
-                } else {
-                    idString = String(describing: anyCodable.value)
-                }
-            } else {
-                return nil
-            }
-            
-            // Extract recipient id
+            guard let idString = Conversation.idString(from: conv.id) else { return nil }
             let recipientIdString: String
             if let recipientId = conv.recipient?.id {
-                if let intValue = recipientId.value as? Int {
-                    recipientIdString = String(intValue)
-                } else if let stringValue = recipientId.value as? String {
-                    recipientIdString = stringValue
-                } else {
-                    recipientIdString = String(describing: recipientId.value)
-                }
+                if let intValue = recipientId.value as? Int { recipientIdString = String(intValue) }
+                else if let stringValue = recipientId.value as? String { recipientIdString = stringValue }
+                else { recipientIdString = String(describing: recipientId.value) }
             } else {
                 recipientIdString = ""
             }
-            
+            let offer: OfferInfo? = conv.offer.flatMap { Conversation.offerInfo(from: $0) }
             return Conversation(
                 id: idString,
                 recipient: User(
@@ -87,7 +74,8 @@ class ChatService: ObservableObject {
                 ),
                 lastMessage: conv.lastMessage?.text,
                 lastMessageTime: parseDate(conv.lastMessage?.createdAt),
-                unreadCount: conv.unreadMessagesCount ?? 0
+                unreadCount: conv.unreadMessagesCount ?? 0,
+                offer: offer
             )
         } ?? []
     }
@@ -375,9 +363,40 @@ struct Conversation: Hashable {
     let lastMessage: String?
     let lastMessageTime: Date?
     let unreadCount: Int
+    let offer: OfferInfo?
+
+    init(id: String, recipient: User, lastMessage: String?, lastMessageTime: Date?, unreadCount: Int, offer: OfferInfo? = nil) {
+        self.id = id
+        self.recipient = recipient
+        self.lastMessage = lastMessage
+        self.lastMessageTime = lastMessageTime
+        self.unreadCount = unreadCount
+        self.offer = offer
+    }
+
+    static func idString(from anyCodable: AnyCodable?) -> String? {
+        guard let ac = anyCodable else { return nil }
+        if let i = ac.value as? Int { return String(i) }
+        if let s = ac.value as? String { return s }
+        return String(describing: ac.value)
+    }
 
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
     static func == (lhs: Conversation, rhs: Conversation) -> Bool { lhs.id == rhs.id }
+
+    static func offerInfo(from data: OfferData) -> OfferInfo? {
+        let idStr = idString(from: data.id) ?? ""
+        let price: Double = data.offerPrice?.value ?? 0
+        let buyer: OfferInfo.OfferUser? = data.buyer.map { OfferInfo.OfferUser(username: $0.username, profilePictureUrl: $0.profilePictureUrl) }
+        let products: [OfferInfo.OfferProduct]? = data.products?.map { p in
+            OfferInfo.OfferProduct(
+                id: idString(from: p.id),
+                name: p.name,
+                seller: p.seller.map { OfferInfo.OfferUser(username: $0.username, profilePictureUrl: $0.profilePictureUrl) }
+            )
+        }
+        return OfferInfo(id: idStr, status: data.status, offerPrice: price, buyer: buyer, products: products)
+    }
 }
 
 struct ConversationsResponse: Decodable {
@@ -389,6 +408,41 @@ struct ConversationData: Decodable {
     let recipient: UserData?
     let lastMessage: MessageData?
     let unreadMessagesCount: Int?
+    let offer: OfferData?
+}
+
+struct OfferData: Decodable {
+    let id: AnyCodable?
+    let status: String?
+    fileprivate let offerPrice: DoubleOrDecimal?
+    let buyer: OfferUserData?
+    let products: [OfferProductData]?
+    struct OfferUserData: Decodable {
+        let username: String?
+        let profilePictureUrl: String?
+    }
+    struct OfferProductData: Decodable {
+        let id: AnyCodable?
+        let name: String?
+        let seller: OfferUserData?
+    }
+}
+
+fileprivate enum DoubleOrDecimal: Decodable {
+    case double(Double)
+    case decimal(Decimal)
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let d = try? c.decode(Double.self) { self = .double(d); return }
+        if let dec = try? c.decode(Decimal.self) { self = .decimal(dec); return }
+        throw DecodingError.dataCorruptedError(in: c, debugDescription: "Expected Double or Decimal")
+    }
+    var value: Double {
+        switch self {
+        case .double(let d): return d
+        case .decimal(let d): return NSDecimalNumber(decimal: d).doubleValue
+        }
+    }
 }
 
 struct ConversationResponse: Decodable {

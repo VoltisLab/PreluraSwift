@@ -3,6 +3,7 @@ import SwiftUI
 struct ChatListView: View {
     @EnvironmentObject var authService: AuthService
     @ObservedObject var tabCoordinator: TabCoordinator
+    @Binding var path: [AppRoute]
     @StateObject private var chatService: ChatService
     @State private var conversations: [Conversation] = []
     @State private var searchText: String = ""
@@ -10,8 +11,9 @@ struct ChatListView: View {
     @State private var errorMessage: String?
     @State private var scrollPosition: String? = "inbox_top"
 
-    init(tabCoordinator: TabCoordinator) {
+    init(tabCoordinator: TabCoordinator, path: Binding<[AppRoute]>) {
         self.tabCoordinator = tabCoordinator
+        _path = path
         _chatService = StateObject(wrappedValue: ChatService())
     }
     
@@ -71,9 +73,10 @@ struct ChatListView: View {
 
                         List {
                             ForEach(Array(filteredConversations.enumerated()), id: \.element.id) { index, conversation in
-                                NavigationLink(value: AppRoute.conversation(conversation)) {
+                                Button(action: { path.append(AppRoute.conversation(conversation)) }) {
                                     ChatRowView(conversation: conversation)
                                 }
+                                .buttonStyle(.plain)
                                 .id(index == 0 ? "inbox_top" : conversation.id)
                                 .listRowBackground(Theme.Colors.background)
                                 .listRowInsets(EdgeInsets(top: 8, leading: Theme.Spacing.md, bottom: 8, trailing: Theme.Spacing.md))
@@ -144,10 +147,14 @@ struct ChatListView: View {
             if let token = authService.authToken {
                 chatService.updateAuthToken(token)
             }
-            // Only load when we have no data (first visit); otherwise persist like Home/Discover
             if conversations.isEmpty && !isLoading {
                 loadConversations()
             }
+        }
+        .onChange(of: tabCoordinator.pendingOpenConversation) { _, pending in
+            guard let conv = pending else { return }
+            tabCoordinator.pendingOpenConversation = nil
+            path = [.conversation(conv)]
         }
         .onChange(of: authService.authToken) { oldValue, newToken in
             chatService.updateAuthToken(newToken)
@@ -297,6 +304,7 @@ struct ChatRowView: View {
     /// Human-readable preview for list: parses order_issue/order/offer JSON or returns plain text.
     static func previewText(for raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.contains("offer_id") { return "Offer" }
         guard trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = json["type"] as? String else {
@@ -313,6 +321,6 @@ struct ChatRowView: View {
 }
 
 #Preview {
-    ChatListView(tabCoordinator: TabCoordinator())
+    ChatListView(tabCoordinator: TabCoordinator(), path: .constant([]))
         .preferredColorScheme(.dark)
 }

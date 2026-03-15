@@ -1,12 +1,25 @@
 import SwiftUI
 import Combine
 
+private struct OptionalTabCoordinatorKey: EnvironmentKey {
+    static let defaultValue: TabCoordinator? = nil
+}
+
+extension EnvironmentValues {
+    var optionalTabCoordinator: TabCoordinator? {
+        get { self[OptionalTabCoordinatorKey.self] }
+        set { self[OptionalTabCoordinatorKey.self] = newValue }
+    }
+}
+
 /// Coordinates tab bar taps with scroll-to-top and refresh. When user taps the same tab:
 /// - First tap: scroll to top (or no-op if already at top)
 /// - Second tap: refresh
 final class TabCoordinator: ObservableObject {
     @Published var selectedTab: Int = 0
     @Published var readyForRefresh: Set<Int> = []
+    /// When set, Inbox should navigate to this conversation (e.g. after sending an offer).
+    @Published var pendingOpenConversation: Conversation?
     /// Per-tab: true when scroll view is at top. Used to decide: at top → refresh on tap; not at top → scroll first, refresh on second tap.
     private var atTop: [Int: Bool] = [:]
 

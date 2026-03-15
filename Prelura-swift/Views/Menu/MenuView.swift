@@ -19,6 +19,24 @@ struct MenuView: View {
 
     var body: some View {
         List {
+            NavigationLink(destination: LookbookView()) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.body)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                    Text("Lookbook")
+                        .foregroundColor(Theme.Colors.primaryText)
+                    Spacer()
+                    Text("Beta")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.primaryColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Theme.primaryColor.opacity(0.2))
+                        .cornerRadius(4)
+                }
+            }
             NavigationLink(destination: DebugMenuView()) {
                 menuRow(L10n.string("Debug"), icon: "ladybug")
             }

@@ -95,6 +95,7 @@ enum L10n {
         "Email notifications": "Ειδοποιήσεις email",
         "Log out": "Αποσύνδεση",
         "Cancel": "Ακύρωση",
+        "Confirm": "Επιβεβαίωση",
         "Are you sure you want to logout?": "Είστε σίγουροι ότι θέλετε να αποσυνδεθείτε;",
 
         // Appearance

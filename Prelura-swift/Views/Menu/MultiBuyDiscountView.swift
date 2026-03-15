@@ -78,7 +78,7 @@ struct MultiBuyDiscountView: View {
             Text(label)
                 .foregroundColor(Theme.Colors.primaryText)
             Spacer()
-            TextField("0", text: value)
+            TextField("0", text: PriceFieldFilter.binding(get: { value.wrappedValue }, set: { value.wrappedValue = $0 }))
                 .keyboardType(.numberPad)
                 .multilineTextAlignment(.trailing)
                 .frame(width: 50)

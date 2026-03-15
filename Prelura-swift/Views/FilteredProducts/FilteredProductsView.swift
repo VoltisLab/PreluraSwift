@@ -715,16 +715,16 @@ struct FilteredProductsView: View {
                 HStack(spacing: Theme.Spacing.sm) {
                     SettingsTextField(
                         placeholder: L10n.string("Min. Price"),
-                        text: Binding(get: { viewModel.filterMinPrice }, set: { viewModel.filterMinPrice = $0 }),
+                        text: PriceFieldFilter.binding(get: { viewModel.filterMinPrice }, set: { viewModel.filterMinPrice = $0 }),
+                        keyboardType: .decimalPad,
                         bordered: true
                     )
-                    .keyboardType(.decimalPad)
                     SettingsTextField(
                         placeholder: L10n.string("Max. Price"),
-                        text: Binding(get: { viewModel.filterMaxPrice }, set: { viewModel.filterMaxPrice = $0 }),
+                        text: PriceFieldFilter.binding(get: { viewModel.filterMaxPrice }, set: { viewModel.filterMaxPrice = $0 }),
+                        keyboardType: .decimalPad,
                         bordered: true
                     )
-                    .keyboardType(.decimalPad)
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)

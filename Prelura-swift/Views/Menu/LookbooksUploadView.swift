@@ -8,6 +8,144 @@
 import SwiftUI
 import PhotosUI
 import CoreImage
+import UIKit
+
+// MARK: - Hashtag-aware caption field (hashtags shown in primary colour)
+
+/// Text field that displays #hashtag segments in primary colour. Used for lookbook caption and any hashtag field.
+struct HashtagCaptionField: View {
+    let label: String
+    let placeholder: String
+    @Binding var text: String
+    var minLines: Int = 1
+    var maxLines: Int? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(Theme.Typography.body)
+                .fontWeight(.medium)
+                .foregroundColor(Theme.Colors.secondaryText)
+
+            if minLines > 1 || (maxLines ?? 1) > 1 {
+                ZStack(alignment: .topLeading) {
+                    if text.isEmpty {
+                        Text(placeholder)
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.md)
+                    }
+                    HashtagTextEditorRepresentable(text: $text, primaryColor: UIColor(red: 171/255, green: 40/255, blue: 178/255, alpha: 1))
+                        .frame(minHeight: minLines > 1 ? CGFloat(minLines) * 24 : 44)
+                        .padding(Theme.Spacing.sm)
+                }
+                .background(Theme.Colors.secondaryBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 30))
+            } else {
+                HashtagTextFieldRepresentable(text: $text, placeholder: placeholder, primaryColor: UIColor(red: 171/255, green: 40/255, blue: 178/255, alpha: 1))
+                    .frame(height: 44)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 30))
+            }
+        }
+    }
+}
+
+/// Single-line text field with hashtags in primary colour.
+private struct HashtagTextFieldRepresentable: UIViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    let primaryColor: UIColor
+
+    func makeUIView(context: Context) -> UITextField {
+        let field = UITextField()
+        field.delegate = context.coordinator
+        field.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged), for: .editingChanged)
+        field.font = UIFont.preferredFont(forTextStyle: .body)
+        field.textColor = UIColor.label
+        field.attributedPlaceholder = NSAttributedString(string: placeholder, attributes: [.foregroundColor: UIColor.secondaryLabel])
+        field.backgroundColor = .clear
+        return field
+    }
+
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        if uiView.text != text {
+            uiView.attributedText = Self.attributedString(for: text, primaryColor: primaryColor)
+        }
+    }
+
+    static func attributedString(for string: String, primaryColor: UIColor) -> NSAttributedString {
+        let font = UIFont.preferredFont(forTextStyle: .body)
+        let normalAttrs: [NSAttributedString.Key: Any] = [.foregroundColor: UIColor.label, .font: font]
+        let hashtagAttrs: [NSAttributedString.Key: Any] = [.foregroundColor: primaryColor, .font: font]
+        let result = NSMutableAttributedString()
+        let normalColor = UIColor.label
+        let regex = try? NSRegularExpression(pattern: "#\\w+", options: [])
+        var lastEnd = string.startIndex
+        let nsRange = NSRange(string.startIndex..., in: string)
+        regex?.enumerateMatches(in: string, options: [], range: nsRange) { match, _, _ in
+            guard let range = match?.range, let swiftRange = Range(range, in: string) else { return }
+            if swiftRange.lowerBound > lastEnd {
+                result.append(NSAttributedString(string: String(string[lastEnd..<swiftRange.lowerBound]), attributes: normalAttrs))
+            }
+            result.append(NSAttributedString(string: String(string[swiftRange]), attributes: hashtagAttrs))
+            lastEnd = swiftRange.upperBound
+        }
+        if lastEnd < string.endIndex {
+            result.append(NSAttributedString(string: String(string[lastEnd...]), attributes: normalAttrs))
+        }
+        return result.length > 0 ? result : NSAttributedString(string: string, attributes: normalAttrs)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: HashtagTextFieldRepresentable
+        init(_ parent: HashtagTextFieldRepresentable) { self.parent = parent }
+
+        @objc func editingChanged(_ field: UITextField) {
+            parent.text = field.text ?? ""
+        }
+    }
+}
+
+/// Multi-line text editor with hashtags in primary colour.
+private struct HashtagTextEditorRepresentable: UIViewRepresentable {
+    @Binding var text: String
+    let primaryColor: UIColor
+
+    func makeUIView(context: Context) -> UITextView {
+        let tv = UITextView()
+        tv.delegate = context.coordinator
+        tv.font = UIFont.preferredFont(forTextStyle: .body)
+        tv.textColor = UIColor.label
+        tv.backgroundColor = .clear
+        tv.textContainerInset = .zero
+        tv.textContainer.lineFragmentPadding = 0
+        return tv
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        if uiView.text != text {
+            let sel = uiView.selectedTextRange
+            uiView.attributedText = HashtagTextFieldRepresentable.attributedString(for: text, primaryColor: primaryColor)
+            uiView.selectedTextRange = sel
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, UITextViewDelegate {
+        var parent: HashtagTextEditorRepresentable
+        init(_ parent: HashtagTextEditorRepresentable) { self.parent = parent }
+
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text ?? ""
+        }
+    }
+}
 
 // MARK: - Models
 
@@ -18,11 +156,22 @@ struct LookbookTagData: Codable, Identifiable, Equatable {
     let y: Double
 }
 
+/// Minimal product info for showing tagged thumbnails on lookbook feed (stored with upload).
+struct LookbookProductSnapshot: Codable, Equatable {
+    let productId: String
+    let title: String
+    let imageUrl: String?
+}
+
 struct LookbookUploadRecord: Codable {
     let id: String
     let imagePath: String
     var tags: [LookbookTagData]
     var caption: String?
+    /// Style tags (e.g. CASUAL, VINTAGE); max 3. Optional for backward compat.
+    var styles: [String]?
+    /// productId -> snapshot for thumbnails at pin positions (optional for backward compat).
+    var productSnapshots: [String: LookbookProductSnapshot]?
 }
 
 // MARK: - Store
@@ -59,14 +208,28 @@ private enum LookbookUploadStore {
 
 // MARK: - First page: Upload banner + two bottom buttons (active only when image selected)
 
+/// Style pill raw values for lookbook (subset of StyleSelectionView; same as LookbookView filter pills).
+private let lookbookUploadStylePills: [String] = [
+    "CASUAL", "VINTAGE", "STREETWEAR", "MINIMALIST", "BOHO", "CHIC", "FORMAL_WEAR",
+    "PARTY_DRESS", "LOUNGEWEAR", "ACTIVEWEAR", "Y2K", "DRESSES_GOWNS", "DENIM_JEANS",
+    "SUMMER_STYLES", "WINTER_ESSENTIALS", "ATHLEISURE", "DATE_NIGHT", "VACATION_RESORT_WEAR"
+]
+
 struct LookbooksUploadView: View {
     @EnvironmentObject var authService: AuthService
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImage: UIImage?
     @State private var caption: String = ""
+    @State private var selectedStylePills: Set<String> = []
     @State private var uploadState: UploadState = .idle
     @State private var showTagScreen = false
     @State private var uploadedRecord: LookbookUploadRecord?
+    @State private var tagSessionId: String = UUID().uuidString
+    @State private var taggedTags: [LookbookTagData] = []
+    @State private var taggedProductItems: [Item] = []
+    @State private var showSuccessBanner = false
+
+    private static let maxStylePills = 3
 
     enum UploadState {
         case idle
@@ -113,59 +276,127 @@ struct LookbooksUploadView: View {
             }
 
             if selectedImage != nil {
-                TextField("Caption", text: $caption, axis: .vertical)
-                    .lineLimit(3...6)
-                    .textFieldStyle(.plain)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .padding(Theme.Spacing.sm)
-                    .background(Theme.Colors.secondaryBackground)
-                    .cornerRadius(Theme.Spacing.xs)
+                // Tagged products (shown after returning from Tag screen)
+                if !taggedProductItems.isEmpty {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text("Tagged products")
+                            .font(Theme.Typography.body)
+                            .fontWeight(.medium)
+                            .foregroundColor(Theme.Colors.primaryText)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                ForEach(taggedProductItems, id: \.id) { item in
+                                    taggedProductChip(item)
+                                }
+                            }
+                            .padding(.vertical, Theme.Spacing.xs)
+                        }
+                    }
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.top, Theme.Spacing.md)
+                }
+
+                // Style pills: select up to 3
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text("Style tags")
+                        .font(Theme.Typography.body)
+                        .fontWeight(.medium)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            ForEach(lookbookUploadStylePills, id: \.self) { raw in
+                                let isSelected = selectedStylePills.contains(raw)
+                                let canSelect = selectedStylePills.count < Self.maxStylePills || isSelected
+                                Button(action: {
+                                    if isSelected {
+                                        selectedStylePills.remove(raw)
+                                    } else if canSelect {
+                                        selectedStylePills.insert(raw)
+                                    }
+                                }) {
+                                    Text(StyleSelectionView.displayName(for: raw))
+                                        .font(Theme.Typography.subheadline)
+                                        .foregroundColor(isSelected ? .white : Theme.Colors.primaryText)
+                                        .padding(.horizontal, Theme.Spacing.sm)
+                                        .padding(.vertical, Theme.Spacing.xs)
+                                        .background(isSelected ? Theme.primaryColor : Theme.Colors.secondaryBackground)
+                                        .cornerRadius(20)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canSelect && !isSelected)
+                            }
+                        }
+                        .padding(.vertical, Theme.Spacing.xs)
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.md)
+
+                HashtagCaptionField(
+                    label: "Caption",
+                    placeholder: "Add a caption (optional)",
+                    text: $caption,
+                    minLines: 3,
+                    maxLines: 6
+                )
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.md)
             }
 
             Spacer(minLength: 24)
 
-            // Two buttons at bottom – active only when image selected
-            VStack(spacing: Theme.Spacing.sm) {
-                if case .uploading = uploadState {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        ProgressView()
-                        Text("Uploading…")
-                            .font(.subheadline)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                    }
-                    .padding(.vertical, Theme.Spacing.sm)
-                }
-                if case .failed(let msg) = uploadState {
-                    Text(msg)
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
-                HStack(spacing: Theme.Spacing.md) {
-                    Button("Upload") {
-                        uploadImage()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .frame(maxWidth: .infinity)
-                    .disabled(selectedImage == nil || uploadState.uploading)
+            if case .failed(let msg) = uploadState {
+                Text(msg)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.horizontal, Theme.Spacing.md)
+            }
 
-                    Button("Tag") {
-                        showTagScreen = true
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .frame(maxWidth: .infinity)
-                    .disabled(selectedImage == nil)
+            PrimaryButtonBar {
+                VStack(spacing: Theme.Spacing.sm) {
+                    PrimaryGlassButton(
+                        "Upload",
+                        isEnabled: selectedImage != nil && !uploadState.uploading,
+                        isLoading: uploadState.uploading,
+                        action: uploadImage
+                    )
+                    BorderGlassButton("Tag", isEnabled: selectedImage != nil, action: { showTagScreen = true })
                 }
             }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.bottom, Theme.Spacing.xl)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
+        .overlay {
+            if uploadState.uploading {
+                Color.black.opacity(0.5)
+                    .ignoresSafeArea()
+                    .overlay {
+                        VStack(spacing: Theme.Spacing.lg) {
+                            ProgressView()
+                                .scaleEffect(1.4)
+                                .tint(Theme.Colors.primaryText)
+                        }
+                        .padding(Theme.Spacing.xl)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                                .fill(Theme.Colors.background)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                                .strokeBorder(Theme.Colors.glassBorder, lineWidth: 1)
+                        )
+                    }
+                    .transition(.opacity)
+                    .allowsHitTesting(true)
+            }
+        }
+        .overlay(alignment: .top) {
+            if showSuccessBanner {
+                successBanner
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: uploadState.uploading)
+        .animation(.easeInOut(duration: 0.3), value: showSuccessBanner)
         .navigationTitle("Lookbooks Upload")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
@@ -174,18 +405,73 @@ struct LookbooksUploadView: View {
                 LookbookTagProductsView(
                     image: image,
                     imageURL: uploadedRecord.flatMap { lookbookImageURL($0.imagePath) },
-                    imageId: uploadedRecord?.id ?? UUID().uuidString,
-                    initialTags: uploadedRecord?.tags ?? [],
-                    onDismiss: { showTagScreen = false }
+                    imageId: tagSessionId,
+                    initialTags: taggedTags,
+                    onDismiss: { showTagScreen = false },
+                    onConfirm: { newTags, resolved in
+                        taggedTags = newTags
+                        taggedProductItems = Array(resolved.values)
+                    }
                 )
                 .environmentObject(authService)
             }
         }
     }
 
+    private func taggedProductChip(_ item: Item) -> some View {
+        VStack(spacing: 4) {
+            Group {
+                if let urlString = item.imageURLs.first, let url = URL(string: urlString) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFill()
+                        default: Rectangle().fill(Theme.Colors.secondaryBackground).overlay(Image(systemName: "photo").foregroundStyle(Theme.Colors.secondaryText))
+                        }
+                    }
+                } else {
+                    Rectangle()
+                        .fill(Theme.Colors.secondaryBackground)
+                        .overlay(Image(systemName: "photo").foregroundStyle(Theme.Colors.secondaryText))
+                }
+            }
+            .frame(width: 56, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            Text(item.title)
+                .font(.caption2)
+                .foregroundColor(Theme.Colors.primaryText)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(width: 64)
+        }
+    }
+
     private func lookbookImageURL(_ path: String) -> URL? {
         guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
         return dir.appending(path: "lookbooks").appending(path: path)
+    }
+
+    private var successBanner: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(Theme.primaryColor)
+            Text("Uploaded successfully")
+                .font(Theme.Typography.headline)
+                .foregroundColor(Theme.Colors.primaryText)
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.vertical, Theme.Spacing.md)
+        .background(Theme.Colors.background)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                .strokeBorder(Theme.Colors.glassBorder, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.top, Theme.Spacing.sm)
+        .opacity(showSuccessBanner ? 1 : 0)
+        .offset(y: showSuccessBanner ? 0 : -30)
     }
 
     private func loadImage(from pickerItem: PhotosPickerItem?) async {
@@ -197,7 +483,21 @@ struct LookbooksUploadView: View {
               let image = UIImage(data: data) else { return }
         await MainActor.run {
             selectedImage = image
+            tagSessionId = UUID().uuidString
+            taggedTags = []
+            taggedProductItems = []
         }
+    }
+
+    private func buildProductSnapshots() -> [String: LookbookProductSnapshot] {
+        return Dictionary(uniqueKeysWithValues: taggedProductItems.compactMap { item -> (String, LookbookProductSnapshot)? in
+            guard let productId = item.productId, !productId.isEmpty else { return nil }
+            return (productId, LookbookProductSnapshot(
+                productId: productId,
+                title: item.title,
+                imageUrl: item.imageURLs.first
+            ))
+        })
     }
 
     private func uploadImage() {
@@ -214,13 +514,32 @@ struct LookbooksUploadView: View {
         Task {
             do {
                 let imageUrl = try await service.uploadLookbookImage(imageData)
-                _ = try await service.createLookbook(imageUrl: imageUrl, caption: caption.isEmpty ? nil : caption)
+                let post = try await service.createLookbook(imageUrl: imageUrl, caption: caption.isEmpty ? nil : caption)
+                let snapshots = buildProductSnapshots()
+                let record = LookbookUploadRecord(
+                    id: post.id,
+                    imagePath: post.imageUrl,
+                    tags: taggedTags,
+                    caption: caption.isEmpty ? nil : caption,
+                    styles: selectedStylePills.isEmpty ? nil : Array(selectedStylePills),
+                    productSnapshots: snapshots.isEmpty ? nil : snapshots
+                )
+                LookbookFeedStore.append(record)
                 await MainActor.run {
                     uploadState = .idle
                     selectedImage = nil
                     caption = ""
+                    selectedStylePills = []
                     selectedItems = []
                     uploadedRecord = nil
+                    taggedTags = []
+                    taggedProductItems = []
+                    HapticManager.success()
+                    showSuccessBanner = true
+                    Task {
+                        try? await Task.sleep(nanoseconds: 2_500_000_000)
+                        await MainActor.run { showSuccessBanner = false }
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -403,6 +722,8 @@ struct LookbookTagProductsView: View {
     let imageId: String
     let initialTags: [LookbookTagData]
     let onDismiss: () -> Void
+    /// Called when user taps Confirm; passes current tags and resolved items so the upload page can show them.
+    var onConfirm: (([LookbookTagData], [String: Item]) -> Void)?
 
     @EnvironmentObject var authService: AuthService
     @State private var tags: [LookbookTagData] = []
@@ -423,6 +744,8 @@ struct LookbookTagProductsView: View {
                     ZStack(alignment: .topLeading) {
                         imageContent(geo: geo)
                             .frame(width: geo.size.width, height: geo.size.height)
+                            .contentShape(Rectangle())
+                            .onTapGesture { showProductSearch = true }
                             .coordinateSpace(name: "lookbookContainer")
                             .onPreferenceChange(ImageFramePreferenceKey.self) { imageFrame = $0 }
 
@@ -453,14 +776,15 @@ struct LookbookTagProductsView: View {
                         .padding()
                     }
                     Spacer()
-                    Button("Tag product") {
-                        showProductSearch = true
+                    VStack(spacing: Theme.Spacing.sm) {
+                        PrimaryGlassButton(L10n.string("Confirm"), action: {
+                            onConfirm?(tags, resolvedItems)
+                            onDismiss()
+                        })
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.bottom, Theme.Spacing.xl)
+                    .frame(maxWidth: .infinity)
                     .background(Color.black.opacity(0.6))
                 }
             }
@@ -477,6 +801,7 @@ struct LookbookTagProductsView: View {
         .sheet(isPresented: $showProductSearch) {
             ProductSearchSheet(
                 productService: productService,
+                authService: authService,
                 onSelect: { item in
                     let tag = LookbookTagData(productId: item.productId ?? "", x: Double(dotPosition.x), y: Double(dotPosition.y))
                     tags.append(tag)
@@ -641,54 +966,78 @@ struct LookbookTagProductsView: View {
 
 struct ProductSearchSheet: View {
     let productService: ProductService
+    let authService: AuthService
     let onSelect: (Item) -> Void
     let onCancel: () -> Void
 
+    @StateObject private var userService = UserService()
     @State private var query: String = ""
-    @State private var results: [Item] = []
+    @State private var myProducts: [Item] = []
+    @State private var searchResults: [Item] = []
+    @State private var loadingMyProducts = true
     @State private var searching = false
+
+    private var isSearchMode: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var displayedItems: [Item] { isSearchMode ? searchResults : myProducts }
+    private var showEmptyState: Bool {
+        if isSearchMode { return !searching && searchResults.isEmpty }
+        return !loadingMyProducts && myProducts.isEmpty
+    }
 
     var body: some View {
         NavigationStack {
-            List {
-                TextField("Search products", text: $query)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { runSearch() }
+            VStack(spacing: 0) {
+                DiscoverSearchField(
+                    text: $query,
+                    placeholder: "Search products",
+                    showClearButton: true,
+                    outerPadding: true
+                )
+                .onSubmit { if isSearchMode { runSearch() } }
 
-                if searching {
-                    HStack {
-                        ProgressView()
-                        Text("Searching…")
-                    }
-                }
-
-                if !searching && results.isEmpty {
+                if showEmptyState {
                     emptyStatePlaceholder
-                }
-
-                ForEach(results) { item in
-                    Button(action: { onSelect(item) }) {
-                        HStack(spacing: Theme.Spacing.md) {
-                            if let urlString = item.imageURLs.first, let url = URL(string: urlString) {
-                                AsyncImage(url: url) { image in
-                                    image.resizable().aspectRatio(contentMode: .fill)
-                                } placeholder: {
-                                    Rectangle().fill(Theme.Colors.secondaryBackground)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        if loadingMyProducts && !isSearchMode {
+                            HStack {
+                                ProgressView()
+                                Text("Loading your products…")
+                            }
+                        }
+                        if searching {
+                            HStack {
+                                ProgressView()
+                                Text("Searching…")
+                            }
+                        }
+                        ForEach(displayedItems) { item in
+                            Button(action: { onSelect(item) }) {
+                                HStack(spacing: Theme.Spacing.md) {
+                                    if let urlString = item.imageURLs.first, let url = URL(string: urlString) {
+                                        AsyncImage(url: url) { image in
+                                            image.resizable().aspectRatio(contentMode: .fill)
+                                        } placeholder: {
+                                            Rectangle().fill(Theme.Colors.secondaryBackground)
+                                        }
+                                        .frame(width: 50, height: 50)
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    }
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.title)
+                                            .font(.subheadline)
+                                            .foregroundColor(Theme.Colors.primaryText)
+                                        Text(item.formattedPrice)
+                                            .font(.caption)
+                                            .foregroundColor(Theme.Colors.secondaryText)
+                                    }
+                                    Spacer()
                                 }
-                                .frame(width: 50, height: 50)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
                             }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.title)
-                                    .font(.subheadline)
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                Text(item.formattedPrice)
-                                    .font(.caption)
-                                    .foregroundColor(Theme.Colors.secondaryText)
-                            }
-                            Spacer()
                         }
                     }
+                    .listStyle(.plain)
                 }
             }
             .navigationTitle("Tag product")
@@ -698,48 +1047,75 @@ struct ProductSearchSheet: View {
                     Button("Cancel", action: onCancel)
                 }
             }
-            .onAppear { runSearch() }
-            .onChange(of: query) { _, _ in runSearch() }
+            .onAppear {
+                userService.updateAuthToken(authService.authToken)
+                loadMyProducts()
+            }
+            .onChange(of: query) { _, newQuery in
+                if newQuery.trimmingCharacters(in: .whitespaces).isEmpty {
+                    searchResults = []
+                } else {
+                    runSearch()
+                }
+            }
         }
     }
 
     private var emptyStatePlaceholder: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "tag")
-                .font(.system(size: 44))
-                .foregroundColor(Theme.Colors.secondaryText)
-            Text(query.trimmingCharacters(in: .whitespaces).isEmpty ? "Search for products to tag" : "No products found")
-                .font(.subheadline)
-                .foregroundColor(Theme.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-            if !query.trimmingCharacters(in: .whitespaces).isEmpty {
-                Text("Try a different search term")
-                    .font(.caption)
-                    .foregroundColor(Theme.Colors.secondaryText.opacity(0.8))
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            VStack(spacing: Theme.Spacing.md) {
+                Image(systemName: isSearchMode ? "magnifyingglass" : "tag")
+                    .font(.system(size: 44))
+                    .foregroundColor(Theme.Colors.secondaryText)
+                Text(isSearchMode ? "No products found" : "You have no products listed yet")
+                    .font(.subheadline)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                if isSearchMode {
+                    Text("Try a different search term or tag from your list above")
+                        .font(.caption)
+                        .foregroundColor(Theme.Colors.secondaryText.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func loadMyProducts() {
+        loadingMyProducts = true
+        Task {
+            do {
+                let username = authService.username
+                let items = try await userService.getUserProducts(username: username)
+                await MainActor.run {
+                    myProducts = items
+                    loadingMyProducts = false
+                }
+            } catch {
+                await MainActor.run {
+                    myProducts = []
+                    loadingMyProducts = false
+                }
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Spacing.xxl)
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
     }
 
     private func runSearch() {
-        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
-            results = []
-            return
-        }
+        guard isSearchMode else { return }
         searching = true
         Task {
             do {
-                let items = try await productService.searchProducts(query: query, pageCount: 20)
+                let items = try await productService.searchProducts(query: query.trimmingCharacters(in: .whitespaces), pageCount: 20)
                 await MainActor.run {
-                    results = items
+                    searchResults = items
                     searching = false
                 }
             } catch {
                 await MainActor.run {
-                    results = []
+                    searchResults = []
                     searching = false
                 }
             }

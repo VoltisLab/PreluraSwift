@@ -42,6 +42,10 @@ struct PostageSettingsView: View {
                                     .font(Theme.Typography.body)
                                     .foregroundColor(Theme.Colors.primaryText)
                                 TextField("0", text: $royalMailStandardPrice)
+                                    .onChange(of: royalMailStandardPrice) { _, newValue in
+                                        let s = PriceFieldFilter.sanitizePriceInput(newValue)
+                                        if s != newValue { royalMailStandardPrice = s }
+                                    }
                                     .font(Theme.Typography.body)
                                     .foregroundColor(Theme.Colors.primaryText)
                                     .keyboardType(.decimalPad)
@@ -61,6 +65,10 @@ struct PostageSettingsView: View {
                                     .font(Theme.Typography.body)
                                     .foregroundColor(Theme.Colors.primaryText)
                                 TextField("0", text: $royalMailFirstClassPrice)
+                                    .onChange(of: royalMailFirstClassPrice) { _, newValue in
+                                        let s = PriceFieldFilter.sanitizePriceInput(newValue)
+                                        if s != newValue { royalMailFirstClassPrice = s }
+                                    }
                                     .font(Theme.Typography.body)
                                     .foregroundColor(Theme.Colors.primaryText)
                                     .keyboardType(.decimalPad)
@@ -93,6 +101,10 @@ struct PostageSettingsView: View {
                                 .font(Theme.Typography.body)
                                 .foregroundColor(Theme.Colors.primaryText)
                             TextField("0", text: $dpdPrice)
+                                .onChange(of: dpdPrice) { _, newValue in
+                                    let s = PriceFieldFilter.sanitizePriceInput(newValue)
+                                    if s != newValue { dpdPrice = s }
+                                }
                                 .font(Theme.Typography.body)
                                 .foregroundColor(Theme.Colors.primaryText)
                                 .keyboardType(.decimalPad)

@@ -138,6 +138,10 @@ struct WithdrawalFlowView: View {
                         keyboardType: .decimalPad
                     )
                     .focused($focusedField, equals: .amount)
+                    .onChange(of: amountText) { _, newValue in
+                        let sanitized = PriceFieldFilter.sanitizePriceInput(newValue)
+                        if sanitized != newValue { amountText = sanitized }
+                    }
                 }
             }
 

@@ -67,16 +67,41 @@ struct ChatDetailView: View {
     @EnvironmentObject var authService: AuthService
     @Environment(\.dismiss) private var dismiss
     @StateObject private var chatService = ChatService()
+    @State private var displayedConversation: Conversation
     @State private var messages: [Message] = []
     @State private var newMessage: String = ""
     @FocusState private var isMessageFieldFocused: Bool
     @State private var isLoading: Bool = false
     @State private var webSocket: ChatWebSocketService?
-    /// UUID string for optimistic message so we can replace it when server echoes message_uuid.
     @State private var pendingMessageUUID: String?
+    @State private var showCounterOfferSheet = false
+    @State private var isRespondingToOffer = false
+    @State private var offerError: String?
+    @State private var showPayNowCover = false
+    @State private var payNowProducts: [Item] = []
+    @State private var payNowTotalPrice: Double = 0
+
+    private let productService = ProductService()
+
+    init(conversation: Conversation, item: Item? = nil) {
+        self.conversation = conversation
+        self.item = item
+        _displayedConversation = State(initialValue: conversation)
+    }
 
     private var recipientTitle: String {
-        conversation.recipient.displayName.isEmpty ? conversation.recipient.username : conversation.recipient.displayName
+        !displayedConversation.recipient.displayName.isEmpty ? displayedConversation.recipient.displayName : displayedConversation.recipient.username
+    }
+
+    /// Messages to show: in offer conversations hide raw offer payload bubbles (offer card represents the offer).
+    private var displayedMessages: [Message] {
+        guard displayedConversation.offer != nil else { return messages }
+        return messages.filter { !$0.isOfferContent }
+    }
+
+    private var isSeller: Bool {
+        guard let offer = displayedConversation.offer, let sellerUsername = offer.products?.first?.seller?.username else { return false }
+        return authService.username == sellerUsername
     }
 
     private var messageInputBar: some View {
@@ -105,13 +130,15 @@ struct ChatDetailView: View {
         .background(Theme.Colors.background)
     }
 
-    /// True when this message is from the other user and is the first in a run (show avatar). Also show avatar after a sold-confirmation banner so "Order issue" etc. have the avatar.
+    /// True when this message is from the other user and is the first in a run (show avatar). Also show avatar after a sold-confirmation banner.
     private func showAvatarForMessage(at index: Int) -> Bool {
-        let msg = messages[index]
+        let list = displayedMessages
+        guard index < list.count else { return false }
+        let msg = list[index]
         let isOther = msg.senderUsername != authService.username
         guard isOther else { return false }
         if index == 0 { return true }
-        let prev = messages[index - 1]
+        let prev = list[index - 1]
         if prev.isSoldConfirmation { return true }
         return prev.senderUsername == authService.username
     }
@@ -129,15 +156,34 @@ struct ChatDetailView: View {
                     .fill(Theme.Colors.glassBorder)
                     .frame(height: 0.5)
             }
+            if let offer = displayedConversation.offer {
+                OfferCardView(
+                    offer: offer,
+                    currentUsername: authService.username,
+                    isSeller: isSeller,
+                    isResponding: isRespondingToOffer,
+                    errorMessage: offerError,
+                    onAccept: { await handleRespondToOffer(action: "ACCEPT") },
+                    onDecline: { await handleRespondToOffer(action: "REJECT") },
+                    onSendNewOffer: { showCounterOfferSheet = true },
+                    onPayNow: { presentPayNow() }
+                )
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm)
+                .background(Theme.Colors.background)
+                Rectangle()
+                    .fill(Theme.Colors.glassBorder)
+                    .frame(height: 0.5)
+            }
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                        ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                        ForEach(Array(displayedMessages.enumerated()), id: \.element.id) { index, message in
                             if message.isSoldConfirmation {
                                 SoldConfirmationBannerView(
                                     message: message,
                                     isSeller: message.senderUsername != authService.username,
-                                    conversationId: conversation.id
+                                    conversationId: displayedConversation.id
                                 )
                                 .id(message.id)
                             } else {
@@ -147,8 +193,8 @@ struct ChatDetailView: View {
                                     message: message,
                                     isCurrentUser: isCurrentUser,
                                     showAvatar: showAvatar,
-                                    avatarURL: showAvatar ? conversation.recipient.avatarURL : nil,
-                                    recipientUsername: conversation.recipient.username
+                                    avatarURL: showAvatar ? displayedConversation.recipient.avatarURL : nil,
+                                    recipientUsername: displayedConversation.recipient.username
                                 )
                                 .id(message.id)
                                 .contextMenu {
@@ -165,8 +211,8 @@ struct ChatDetailView: View {
                     .padding(.vertical, Theme.Spacing.sm)
                 }
                 .scrollDismissesKeyboard(.interactively)
-                .onChange(of: messages.count) { _, _ in
-                    if let lastMessage = messages.last {
+                .onChange(of: displayedMessages.count) { _, _ in
+                    if let lastMessage = displayedMessages.last {
                         withAnimation(.easeOut(duration: 0.2)) {
                             proxy.scrollTo(lastMessage.id, anchor: .bottom)
                         }
@@ -183,9 +229,9 @@ struct ChatDetailView: View {
         .navigationBarHidden(false)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                NavigationLink(destination: UserProfileView(seller: conversation.recipient, authService: authService)) {
+                NavigationLink(destination: UserProfileView(seller: displayedConversation.recipient, authService: authService)) {
                     HStack(spacing: Theme.Spacing.sm) {
-                        chatTitleAvatar(url: conversation.recipient.avatarURL, username: conversation.recipient.username)
+                        chatTitleAvatar(url: displayedConversation.recipient.avatarURL, username: displayedConversation.recipient.username)
                         Text(recipientTitle)
                             .font(.headline)
                             .foregroundColor(Theme.Colors.primaryText)
@@ -196,7 +242,7 @@ struct ChatDetailView: View {
                 .buttonStyle(.plain)
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: conversation.id)) {
+                NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: displayedConversation.id)) {
                     Image(systemName: "questionmark.circle")
                         .foregroundColor(Theme.Colors.primaryText)
                         .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
@@ -207,6 +253,27 @@ struct ChatDetailView: View {
         }
         .toolbarBackground(Theme.Colors.background, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
+        .sheet(isPresented: $showCounterOfferSheet) {
+            CounterOfferSheet(
+                offer: displayedConversation.offer!,
+                onSubmit: { newPrice in
+                    showCounterOfferSheet = false
+                    Task { await handleRespondToOffer(action: "COUNTER", offerPrice: newPrice) }
+                },
+                onCancel: { showCounterOfferSheet = false }
+            )
+        }
+        .fullScreenCover(isPresented: $showPayNowCover) {
+            NavigationView {
+                PaymentView(products: payNowProducts, totalPrice: payNowTotalPrice, customOffer: true)
+                    .environmentObject(authService)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Close") { showPayNowCover = false }
+                        }
+                    }
+            }
+        }
         .onAppear {
             loadMessages()
             connectWebSocket()
@@ -214,6 +281,63 @@ struct ChatDetailView: View {
         .onDisappear {
             webSocket?.disconnect()
             webSocket = nil
+        }
+    }
+
+    private func handleRespondToOffer(action: String, offerPrice: Double? = nil) async {
+        guard let offer = displayedConversation.offer, let offerId = offer.offerIdInt else { return }
+        await MainActor.run {
+            isRespondingToOffer = true
+            offerError = nil
+        }
+        do {
+            try await productService.respondToOffer(action: action, offerId: offerId, offerPrice: offerPrice)
+            let convs = try await chatService.getConversations()
+            await MainActor.run {
+                if let updated = convs.first(where: { $0.id == displayedConversation.id }) {
+                    displayedConversation = updated
+                }
+                isRespondingToOffer = false
+                offerError = nil
+            }
+        } catch {
+            await MainActor.run {
+                isRespondingToOffer = false
+                offerError = error.localizedDescription
+            }
+        }
+    }
+
+    private func presentPayNow() {
+        guard let offer = displayedConversation.offer else { return }
+        let productIds = offer.products?.compactMap { p -> Int? in
+            guard let id = p.id else { return nil }
+            return Int(id)
+        } ?? []
+        guard !productIds.isEmpty else { return }
+        Task {
+            do {
+                var items: [Item] = []
+                for id in productIds {
+                    if let product = try await productService.getProduct(id: id) {
+                        items.append(product)
+                    }
+                }
+                guard !items.isEmpty else {
+                    await MainActor.run { offerError = "Could not load product" }
+                    return
+                }
+                let offerPrice = offer.offerPrice
+                await MainActor.run {
+                    // Present PaymentView via navigation: we need a way to push. Use fullScreenCover with a wrapper that holds PaymentView.
+                    // ChatDetailView is inside NavigationStack; we can use .fullScreenCover and present PaymentView there.
+                    showPayNowCover = true
+                    payNowProducts = items
+                    payNowTotalPrice = offerPrice
+                }
+            } catch {
+                await MainActor.run { offerError = error.localizedDescription }
+            }
         }
     }
 
@@ -251,9 +375,9 @@ struct ChatDetailView: View {
     }
 
     private func connectWebSocket() {
-        guard conversation.id != "0",
+        guard displayedConversation.id != "0",
               let token = authService.authToken, !token.isEmpty else { return }
-        let ws = ChatWebSocketService(conversationId: conversation.id, token: token)
+        let ws = ChatWebSocketService(conversationId: displayedConversation.id, token: token)
         ws.onNewMessage = { [self] msg, echoMessageUuid in
             if let pending = pendingMessageUUID, echoMessageUuid == pending,
                let idx = messages.firstIndex(where: { $0.id.uuidString == pending }) {
@@ -271,14 +395,14 @@ struct ChatDetailView: View {
     }
 
     private func loadMessages() {
-        guard conversation.id != "0" else {
+        guard displayedConversation.id != "0" else {
             messages = []
             return
         }
         isLoading = true
         Task {
             do {
-                let msgs = try await chatService.getMessages(conversationId: conversation.id)
+                let msgs = try await chatService.getMessages(conversationId: displayedConversation.id)
                 await MainActor.run {
                     self.messages = msgs
                     self.isLoading = false
@@ -331,7 +455,7 @@ struct ChatDetailView: View {
         } else {
             Task {
                 do {
-                    _ = try await chatService.sendMessage(conversationId: conversation.id, message: text, messageUuid: messageUUID)
+                    _ = try await chatService.sendMessage(conversationId: displayedConversation.id, message: text, messageUuid: messageUUID)
                     await MainActor.run {
                         if let idx = messages.firstIndex(where: { $0.id.uuidString == messageUUID }) {
                             pendingMessageUUID = nil
@@ -343,6 +467,191 @@ struct ChatDetailView: View {
                         messages.removeAll { $0.id.uuidString == messageUUID }
                         pendingMessageUUID = nil
                     }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Offer card (Flutter OfferFirstCard)
+
+/// Offer card at top of chat when conversation has an offer. Shows offer line, status, and actions: Accept/Decline/Send new offer (seller, pending), Pay now (buyer, accepted), Send new offer (rejected).
+struct OfferCardView: View {
+    let offer: OfferInfo
+    let currentUsername: String?
+    let isSeller: Bool
+    let isResponding: Bool
+    let errorMessage: String?
+    let onAccept: () async -> Void
+    let onDecline: () async -> Void
+    let onSendNewOffer: () -> Void
+    let onPayNow: () -> Void
+
+    private var offerLine: String {
+        let priceStr = String(format: "£%.2f", offer.offerPrice)
+        let isBuyer = offer.buyer?.username == currentUsername
+        if isBuyer {
+            return "You offered \(priceStr)"
+        }
+        return "\(offer.buyer?.username ?? "They") offered \(priceStr)"
+    }
+
+    private var statusText: String {
+        switch (offer.status ?? "").uppercased() {
+        case "PENDING": return "Pending"
+        case "ACCEPTED": return "Accepted"
+        case "REJECTED", "CANCELLED": return "Declined"
+        default: return offer.status ?? "Pending"
+        }
+    }
+
+    private var statusColor: Color {
+        switch (offer.status ?? "").uppercased() {
+        case "PENDING": return Theme.Colors.secondaryText
+        case "ACCEPTED": return .green
+        case "REJECTED", "CANCELLED": return .red
+        default: return Theme.Colors.secondaryText
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text(offerLine)
+                .font(Theme.Typography.body)
+                .fontWeight(.semibold)
+                .foregroundColor(Theme.Colors.primaryText)
+            Text(statusText)
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(statusColor)
+
+            if let err = errorMessage, !err.isEmpty {
+                Text(err)
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(.red)
+            }
+
+            if isSeller && offer.isPending {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Button(action: { Task { await onAccept() } }) {
+                        Text("Accept")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(Theme.primaryColor)
+                            .foregroundColor(.white)
+                            .cornerRadius(22)
+                    }
+                    .disabled(isResponding)
+                    Button(action: { Task { await onDecline() } }) {
+                        Text("Decline")
+                            .fontWeight(.medium)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .cornerRadius(22)
+                    }
+                    .disabled(isResponding)
+                    Button(action: onSendNewOffer) {
+                        Text("Send new offer")
+                            .fontWeight(.medium)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .cornerRadius(22)
+                    }
+                    .disabled(isResponding)
+                }
+            } else if !isSeller && offer.isAccepted {
+                Button(action: onPayNow) {
+                    Text("Pay now")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(Theme.primaryColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(22)
+                }
+            } else if offer.isRejected {
+                Button(action: onSendNewOffer) {
+                    Text("Send new offer")
+                        .fontWeight(.medium)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.primaryColor, lineWidth: 1))
+                        .foregroundColor(Theme.primaryColor)
+                        .cornerRadius(22)
+                }
+            }
+
+            if isResponding {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.secondaryBackground)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+        )
+    }
+}
+
+/// Sheet to enter counter-offer price and submit (respondToOffer COUNTER).
+struct CounterOfferSheet: View {
+    let offer: OfferInfo
+    let onSubmit: (Double) -> Void
+    let onCancel: () -> Void
+
+    @State private var priceText = ""
+    @State private var isSubmitting = false
+    @FocusState private var isFocused: Bool
+
+    private var priceValue: Double? {
+        let cleaned = priceText.replacingOccurrences(of: "£", with: "").trimmingCharacters(in: .whitespaces)
+        return Double(cleaned)
+    }
+
+    private var canSubmit: Bool {
+        guard let v = priceValue, v > 0 else { return false }
+        return true
+    }
+
+    var body: some View {
+        NavigationView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                Text("Send a new offer")
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.primaryText)
+                TextField("Offer amount (£)", text: $priceText)
+                    .keyboardType(.decimalPad)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($isFocused)
+                HStack(spacing: Theme.Spacing.sm) {
+                    Button("Cancel", action: onCancel)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    Spacer()
+                    Button("Send offer") {
+                        guard let v = priceValue, canSubmit else { return }
+                        isSubmitting = true
+                        onSubmit(v)
+                        isSubmitting = false
+                    }
+                    .disabled(!canSubmit || isSubmitting)
+                    .foregroundColor(Theme.primaryColor)
+                }
+                Spacer()
+            }
+            .padding(Theme.Spacing.md)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel", action: onCancel)
                 }
             }
         }

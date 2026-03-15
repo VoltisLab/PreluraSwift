@@ -157,10 +157,14 @@ struct MainTabView: View {
             set: { tabCoordinator.handleTabTap($0) }
         )) {
             HomeNavigation(tabCoordinator: tabCoordinator)
+                .environmentObject(tabCoordinator)
+                .environment(\.optionalTabCoordinator, tabCoordinator)
                 .tabItem { Label(L10n.string("Home"), systemImage: "house.fill") }
                 .tag(0)
 
             DiscoverNavigation(tabCoordinator: tabCoordinator, discoverViewModel: discoverViewModel)
+                .environmentObject(tabCoordinator)
+                .environment(\.optionalTabCoordinator, tabCoordinator)
                 .tabItem { Label(L10n.string("Discover"), systemImage: "magnifyingglass") }
                 .tag(1)
 
@@ -172,10 +176,14 @@ struct MainTabView: View {
             .tag(2)
 
             InboxNavigation(tabCoordinator: tabCoordinator)
+                .environmentObject(tabCoordinator)
+                .environment(\.optionalTabCoordinator, tabCoordinator)
                 .tabItem { Label(L10n.string("Inbox"), systemImage: "envelope") }
                 .tag(3)
 
             ProfileNavigation(tabCoordinator: tabCoordinator)
+                .environmentObject(tabCoordinator)
+                .environment(\.optionalTabCoordinator, tabCoordinator)
                 .tabItem { Label(L10n.string("Profile"), systemImage: "person.fill") }
                 .tag(4)
         }

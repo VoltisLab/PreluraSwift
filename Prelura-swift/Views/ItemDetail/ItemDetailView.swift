@@ -28,6 +28,7 @@ struct ItemDetailView: View {
     @State private var showGuestSignInPrompt: Bool = false
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authService: AuthService
+    @Environment(\.optionalTabCoordinator) private var tabCoordinator
     
     init(item: Item, authService: AuthService? = nil, offersAllowed: Bool = true, shopAllBag: ShopAllBagStore? = nil) {
         self.item = item

@@ -168,6 +168,8 @@ struct SellView: View {
                         }
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.primaryColor)
+                        .opacity(viewModel.isSubmitting ? 0.5 : 1)
+                        .disabled(viewModel.isSubmitting)
                     } else if draftCount > 0 {
                         Button(L10n.string("Drafts")) {
                             showDraftsSheet = true
@@ -1444,7 +1446,7 @@ struct MeasurementsView: View {
                 }
                 .frame(width: 100, alignment: .leading)
             }
-            TextField(L10n.string("Value"), text: binding.value)
+            TextField(L10n.string("Value"), text: PriceFieldFilter.binding(get: { binding.value.wrappedValue }, set: { binding.value.wrappedValue = $0 }))
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.primaryText)
                 .keyboardType(.decimalPad)
@@ -1740,6 +1742,10 @@ struct PriceInputView: View {
                         .foregroundColor(Theme.Colors.primaryText)
                         .keyboardType(.decimalPad)
                         .focused($isFocused)
+                        .onChange(of: priceText) { _, newValue in
+                            let sanitized = PriceFieldFilter.sanitizePriceInput(newValue)
+                            if sanitized != newValue { priceText = sanitized }
+                        }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)
@@ -2060,6 +2066,10 @@ struct DiscountPriceInputView: View {
                         .foregroundColor(Theme.Colors.primaryText)
                         .keyboardType(.decimalPad)
                         .focused($isFocused)
+                        .onChange(of: discountPriceText) { _, newValue in
+                            let sanitized = PriceFieldFilter.sanitizePriceInput(newValue)
+                            if sanitized != newValue { discountPriceText = sanitized }
+                        }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)
