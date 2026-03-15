@@ -1,22 +1,26 @@
 import SwiftUI
 
-/// Payment settings: fetch active payment method, show card or empty state, Add Card / Add Bank, Delete.
+/// Payment settings: fetch active payment method and payout bank account, show card/bank or empty state, Add Card / Add Bank, Delete.
 struct PaymentSettingsView: View {
     @State private var paymentMethod: PaymentMethod?
+    @State private var payoutBankAccount: PayoutBankAccountDisplay?
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var isDeleting = false
     @State private var showDeleteConfirm = false
 
+    @EnvironmentObject private var authService: AuthService
     private let userService = UserService()
 
     var body: some View {
-        Group {
+        List {
             if isLoading && paymentMethod == nil && errorMessage == nil {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Section {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
+                }
             } else {
-                List {
                     Section(header: Text(L10n.string("Active Payment method"))) {
                         if let method = paymentMethod {
                             HStack(spacing: Theme.Spacing.md) {
@@ -54,12 +58,42 @@ struct PaymentSettingsView: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                         }
                     }
+                    Section(header: Text(L10n.string("Active bank account"))) {
+                        if let bank = payoutBankAccount {
+                            HStack(spacing: Theme.Spacing.md) {
+                                Image(systemName: "building.columns.fill")
+                                    .font(.system(size: 22))
+                                    .foregroundColor(Theme.primaryColor)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(bank.maskedSortCode)  \(bank.maskedAccountNumber)")
+                                        .font(Theme.Typography.headline)
+                                        .foregroundColor(Theme.Colors.primaryText)
+                                    Text(bank.accountHolderName)
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(Theme.Colors.secondaryText)
+                                    if let label = bank.accountLabel, !label.isEmpty {
+                                        Text(label)
+                                            .font(Theme.Typography.caption)
+                                            .foregroundColor(Theme.Colors.secondaryText)
+                                    }
+                                }
+                                Spacer()
+                            }
+                            .padding(.vertical, Theme.Spacing.xs)
+                            Text(L10n.string("Payouts are sent here when delivery is complete."))
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        } else {
+                            Text(L10n.string("No bank account added"))
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        }
+                    }
                     Section {
                         NavigationLink(destination: AddPaymentCardView(onAdded: { Task { await load() } })) {
                             Label("Add Payment Card", systemImage: "creditcard")
                                 .foregroundColor(Theme.Colors.primaryText)
                         }
-                        NavigationLink(destination: AddBankAccountView()) {
+                        NavigationLink(destination: AddBankAccountView(onSaved: { Task { await load() } })) {
                             Label("Add Bank Account", systemImage: "building.columns")
                                 .foregroundColor(Theme.Colors.primaryText)
                         }
@@ -71,7 +105,6 @@ struct PaymentSettingsView: View {
                                 .foregroundColor(Theme.Colors.error)
                         }
                     }
-                }
             }
         }
         .listStyle(.insetGrouped)
@@ -97,10 +130,18 @@ struct PaymentSettingsView: View {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+        userService.updateAuthToken(authService.authToken)
         do {
-            paymentMethod = try await userService.getUserPaymentMethod()
+            let method = try await userService.getUserPaymentMethod()
+            let user = try await userService.getUser(username: nil)
+            await MainActor.run {
+                paymentMethod = method
+                payoutBankAccount = user.payoutBankAccount
+            }
         } catch {
-            errorMessage = error.localizedDescription
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 

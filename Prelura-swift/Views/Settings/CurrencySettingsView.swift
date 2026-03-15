@@ -8,9 +8,7 @@ struct CurrencySettingsView: View {
 
     private let currencies = [
         "British Pound (GBP)",
-        "US Dollar (USD)",
         "Euro (EUR)",
-        "Canadian Dollar (CAD)",
     ]
 
     var body: some View {

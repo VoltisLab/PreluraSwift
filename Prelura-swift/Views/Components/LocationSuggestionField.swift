@@ -23,6 +23,11 @@ struct LocationSuggestionField: View {
                 .textContentType(.addressCity)
                 .autocorrectionDisabled()
                 .onChange(of: text) { _, newValue in
+                    guard isFocused else {
+                        suggestions = []
+                        showSuggestions = false
+                        return
+                    }
                     debounceTask?.cancel()
                     debounceTask = Task { @MainActor in
                         try? await Task.sleep(nanoseconds: UInt64(debounceInterval * 1_000_000_000))
@@ -32,7 +37,9 @@ struct LocationSuggestionField: View {
                             suggestions = []
                             showSuggestions = false
                         } else {
-                            suggestions = service.suggestions(for: q)
+                            let result = await service.suggestionsAsync(for: q)
+                            guard !Task.isCancelled else { return }
+                            suggestions = result
                             showSuggestions = !suggestions.isEmpty
                         }
                     }
@@ -42,8 +49,10 @@ struct LocationSuggestionField: View {
                 }
                 .onTapGesture {
                     if !text.isEmpty {
-                        suggestions = service.suggestions(for: text)
-                        showSuggestions = !suggestions.isEmpty
+                        Task { @MainActor in
+                            suggestions = await service.suggestionsAsync(for: text)
+                            showSuggestions = !suggestions.isEmpty
+                        }
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)

@@ -9,16 +9,18 @@ iOS app for Prelura (SwiftUI). Connects to the shared Prelura backend API.
 - **Lenny (AI assistant) system prompt:** `docs/lenny-system-prompt.txt` in this repo is the canonical instruction set for Lenny. The Swift app uses it when calling OpenAI for reply text.
 - This client does not modify the backend; it only consumes the existing GraphQL API. See `.cursor/rules/backend-protection.mdc` and `Prelura-swift/Utilities/Constants.swift` for references.
 
-## Lenny & OpenAI
+## API keys (Secrets.plist)
 
-Lenny’s reply text can come from **OpenAI** (when configured) or from the built-in **rule-based** replies. To use OpenAI:
+The app reads API keys from **`Prelura-swift/Secrets.plist`**. You only need to **paste each key between the `<string>` and `</string>`** for the key you use.
 
-1. Get an API key from [OpenAI](https://platform.openai.com/api-keys).
-2. Open the file **`Prelura-swift/Secrets.plist`** in Xcode or TextEdit. (If it doesn’t exist, build the app once—it will be created from the example.)
-3. Paste your key (e.g. `sk-…`) as the value for **`OPENAI_API_KEY`**: put it between the `<string>` and `</string>` tags so it looks like `<string>sk-your-key-here</string>`.
-4. Save and run the app again.
+| Key in plist | Used for |
+|--------------|----------|
+| **OPENAI_API_KEY** | Lenny (AI chat). Get from [OpenAI](https://platform.openai.com/api-keys). |
+| **GOOGLE_PLACES_API_KEY** | Profile location suggestions. Get from [Google Cloud](https://console.cloud.google.com/) (enable Places API, create API key). |
 
-Do not commit `Secrets.plist` (it’s in `.gitignore`). If no key is set, Lenny uses only the rule-based replies.
+**Step-by-step:** See **[docs/secrets.md](docs/secrets.md)** for the exact plist layout and where to paste each key (and what to do if `GOOGLE_PLACES_API_KEY` is missing from your file).
+
+Do not commit `Secrets.plist` (it’s in `.gitignore`).
 
 ## Build & run
 

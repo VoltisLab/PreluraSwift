@@ -33,6 +33,8 @@ struct User: Identifiable, Hashable {
     let isFollowing: Bool?
     /// Seller postage options (from viewMe/seller meta). Used at checkout to show delivery options.
     let postageOptions: SellerPostageOptions?
+    /// Payout bank account (from viewMe meta.payoutBankAccount). Shown on Payments screen; masked for display.
+    let payoutBankAccount: PayoutBankAccountDisplay?
 
     init(
         id: UUID = UUID(),
@@ -59,7 +61,8 @@ struct User: Identifiable, Hashable {
         gender: String? = nil,
         shippingAddress: ShippingAddress? = nil,
         isFollowing: Bool? = nil,
-        postageOptions: SellerPostageOptions? = nil
+        postageOptions: SellerPostageOptions? = nil,
+        payoutBankAccount: PayoutBankAccountDisplay? = nil
     ) {
         self.id = id
         self.userId = backendUserId
@@ -86,6 +89,7 @@ struct User: Identifiable, Hashable {
         self.shippingAddress = shippingAddress
         self.isFollowing = isFollowing
         self.postageOptions = postageOptions
+        self.payoutBankAccount = payoutBankAccount
     }
     
     var formattedRating: String {

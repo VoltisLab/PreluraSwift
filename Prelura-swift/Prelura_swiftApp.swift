@@ -80,14 +80,7 @@ struct AppearanceRootView: View {
                 contentIdentity = "\(appLanguage)_\(effectiveScheme)"
             }
             .onChange(of: colorScheme) { _, _ in syncThemeScheme() }
-            .onChange(of: appLanguage) { _, newLang in
-                guard newLang == "en" || newLang == "el" else { return }
-                let scheme = effectiveScheme
-                // Defer identity update to next run loop so we don't tear down the whole tree in the same cycle as the language picker (avoids crash when switching to Greek).
-                DispatchQueue.main.async {
-                    contentIdentity = "\(newLang)_\(scheme)"
-                }
-            }
+            // Language is applied only on next app launch (see LanguageMenuView). We do not update contentIdentity here to avoid tearing down the entire view tree in-place, which can cause crashes when switching to Greek.
             .fullScreenCover(item: $appRouter.pendingItem) { item in
             DeepLinkOverlayView(item: item, onDismiss: { appRouter.clearPending() })
                 .environmentObject(authService)

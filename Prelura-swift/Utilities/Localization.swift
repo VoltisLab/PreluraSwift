@@ -105,6 +105,8 @@ enum L10n {
         "Light and Dark apply to all screens, components, and elements. System follows your device setting.": "Φωτεινή και σκούρα ισχύουν σε όλες τις οθόνες. Το σύστημα ακολουθεί τη ρύθμιση της συσκευής σας.",
         "Your app's language": "Γλώσσα εφαρμογής",
         "Language": "Γλώσσα",
+        "Language updated": "Η γλώσσα ενημερώθηκε",
+        "The app will use the selected language the next time you open it. Close and reopen the app to see the change.": "Η εφαρμογή θα χρησιμοποιήσει την επιλεγμένη γλώσσα την επόμενη φορά που θα την ανοίξετε. Κλείστε και ανοίξτε ξανά την εφαρμογή για να δείτε την αλλαγή.",
         "English": "Αγγλικά",
         "Greek": "Ελληνικά",
         "Greek displays the app in Greek.": "Η γλώσσα Ελληνικά εμφανίζει την εφαρμογή στα Ελληνικά.",
@@ -389,14 +391,14 @@ enum L10n {
         "Automatic reviews (0)": "Αυτόματες κριτικές (0)",
         "How reviews work": "Πώς λειτουργούν οι κριτικές",
 
-        // Followers / Following
+        // Followers / Following (Following key already in Profile section)
         "No followers yet": "Δεν υπάρχουν ακόμα οπαδοί",
         "Not following anyone yet": "Δεν ακολουθείτε ακόμα κανέναν",
-        "Following": "Ακόλουθοι",
 
         // Settings (extended)
         "Saved": "Αποθηκεύτηκε",
         "Your postage settings have been saved.": "Οι ρυθμίσεις αποστολής σας αποθηκεύτηκαν.",
+        "Your bank account has been saved. Payouts will be sent here when delivery is complete and the customer is happy.": "Ο τραπεζικός σας λογαριασμός αποθηκεύτηκε. Οι πληρωμές θα σταλούν εδώ όταν η παράδοση ολοκληρωθεί και ο πελάτης είναι ικανοποιημένος.",
         "Unlock your account": "Ξεκλειδώστε τον λογαριασμό σας",
         "Verify your identity to access all features and build trust with buyers.": "Επαληθεύστε την ταυτότητά σας για πρόσβαση σε όλες τις λειτουργίες και να δημιουργήσετε εμπιστοσύνη με αγοραστές.",
         "Current Password": "Τρέχων κωδικός",
@@ -418,6 +420,7 @@ enum L10n {
         "Address": "Διεύθυνση",
         "Address line 1": "Διεύθυνση γραμμή 1",
         "Address line 2": "Διεύθυνση γραμμή 2",
+        "Address line 2 (optional)": "Διεύθυνση γραμμή 2 (προαιρετικό)",
         "City": "Πόλη",
         "State / County": "Νομός / Κομητεία",
         "Country": "Χώρα",
@@ -444,6 +447,9 @@ enum L10n {
         "Do you want to unblock %@?": "Θέλετε να ξεμπλοκάρετε τον %@;",
         "Blocklist": "Λίστα αποκλεισμού",
         "Active Payment method": "Ενεργή μέθοδος πληρωμής",
+        "Active bank account": "Ενεργός τραπεζικός λογαριασμός",
+        "No bank account added": "Δεν προστέθηκε τραπεζικός λογαριασμός",
+        "Payouts are sent here when delivery is complete.": "Οι πληρωμές αποστέλλονται εδώ όταν η παράδοση ολοκληρωθεί.",
         "Delete": "Διαγραφή",
         "This card will be removed from your account.": "Αυτή η κάρτα θα αφαιρεθεί από τον λογαριασμό σας.",
         "General": "Γενικά",

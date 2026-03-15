@@ -35,6 +35,13 @@ struct LocationSuggestionService {
         return matched.prefix(maxSuggestions).map(\.display)
     }
 
+    /// Async: Google Places only (bundled list disabled for testing). Use this for the location field.
+    func suggestionsAsync(for query: String) async -> [String] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return [] }
+        return await GooglePlacesService.shared.suggestions(for: q)
+    }
+
     /// Fallback if JSON is missing: UK-only list (app users are UK-only).
     private static func fallbackEntries() -> [Entry] {
         var list: [Entry] = []

@@ -103,6 +103,7 @@ class UserService: ObservableObject {
         }()
 
         let postageOptions = SellerPostageOptions.from(decoded: userData.meta?.value?.postage)
+        let payoutBankAccount = PayoutBankAccountDisplay.from(decoded: userData.meta?.value?.payoutBankAccount)
         return User(
             id: UUID(uuidString: idString) ?? UUID(),
             username: userData.username ?? "",
@@ -125,7 +126,8 @@ class UserService: ObservableObject {
             dateOfBirth: dobDate,
             gender: userData.gender,
             shippingAddress: parseShippingAddress(userData.shippingAddress),
-            postageOptions: postageOptions
+            postageOptions: postageOptions,
+            payoutBankAccount: payoutBankAccount
         )
     }
     
@@ -1580,9 +1582,41 @@ struct LocationData: Decodable {
     let locationName: String?
 }
 
-/// Decoded meta.postage from viewMe/seller meta (GraphQL JSON).
+/// Decoded meta.postage and meta.payoutBankAccount from viewMe (GraphQL JSON).
 struct MetaDecode: Decodable {
     let postage: PostageMetaDecode?
+    let payoutBankAccount: PayoutBankAccountDecode?
+}
+
+/// Decoded meta.payoutBankAccount (for display on Payments screen).
+struct PayoutBankAccountDecode: Decodable {
+    let sortCode: String?
+    let accountNumber: String?
+    let accountHolderName: String?
+    let accountLabel: String?
+}
+
+/// Display model for active bank account (masked). Built from meta.payoutBankAccount.
+struct PayoutBankAccountDisplay: Hashable {
+    let maskedSortCode: String
+    let maskedAccountNumber: String
+    let accountHolderName: String
+    let accountLabel: String?
+
+    static func from(decoded d: PayoutBankAccountDecode?) -> PayoutBankAccountDisplay? {
+        guard let d = d else { return nil }
+        let sortDigits = (d.sortCode ?? "").filter { $0.isNumber }
+        let accountDigits = (d.accountNumber ?? "").filter { $0.isNumber }
+        guard sortDigits.count == 6, accountDigits.count == 8, !(d.accountHolderName ?? "").trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let last2 = String(sortDigits.suffix(2))
+        let last4 = String(accountDigits.suffix(4))
+        return PayoutBankAccountDisplay(
+            maskedSortCode: "**-**-\(last2)",
+            maskedAccountNumber: "****\(last4)",
+            accountHolderName: (d.accountHolderName ?? "").trimmingCharacters(in: .whitespaces),
+            accountLabel: (d.accountLabel ?? "").trimmingCharacters(in: .whitespaces).isEmpty ? nil : d.accountLabel?.trimmingCharacters(in: .whitespaces)
+        )
+    }
 }
 
 /// Decodes backend `meta` whether it comes as a JSON object or a JSON string (GraphQL JSONString can be either). Used by UserService and ProductService.

@@ -32,10 +32,10 @@ struct ShippingAddressView: View {
                         SettingsTextField(placeholder: "Street address", text: $addressLine1, textContentType: .streetAddressLine1)
                     }
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        Text(L10n.string("Address line 2"))
+                        Text(L10n.string("Address line 2 (optional)"))
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.Colors.secondaryText)
-                        SettingsTextField(placeholder: "Apartment, suite, etc. (optional)", text: $addressLine2, textContentType: .streetAddressLine2)
+                        SettingsTextField(placeholder: "Apartment, suite, etc.", text: $addressLine2, textContentType: .streetAddressLine2)
                     }
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                         Text(L10n.string("City"))
@@ -66,7 +66,10 @@ struct ShippingAddressView: View {
                         Text(L10n.string("Postcode"))
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.Colors.secondaryText)
-                        SettingsTextField(placeholder: "Postcode", text: $postcode, textContentType: .postalCode)
+                        SettingsTextField(placeholder: "XXX XXX", text: $postcode, textContentType: .postalCode)
+                            .onChange(of: postcode) { _, newValue in
+                                postcode = formatPostcode(newValue)
+                            }
                     }
 
                     if let err = errorMessage {
@@ -96,12 +99,32 @@ struct ShippingAddressView: View {
         }
     }
 
-    /// Required: address line 1, city, postcode. Optional: address line 2, state. Address does not save unless all required fields are non-empty.
+    /// Required: address line 1, city, postcode (format XXX XXX). Optional: address line 2, state.
     private var canSave: Bool {
         let a = addressLine1.trimmingCharacters(in: .whitespaces)
         let c = city.trimmingCharacters(in: .whitespaces)
-        let p = postcode.trimmingCharacters(in: .whitespaces)
-        return !a.isEmpty && !c.isEmpty && !p.isEmpty
+        return !a.isEmpty && !c.isEmpty && isPostcodeValid(postcode)
+    }
+
+    /// UK postcode format: exactly XXX XXX (3 alphanumeric, space, 3 alphanumeric).
+    private func isPostcodeValid(_ value: String) -> Bool {
+        let s = value.trimmingCharacters(in: .whitespaces)
+        guard s.count == 7 else { return false }
+        let parts = s.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2, parts[0].count == 3, parts[1].count == 3 else { return false }
+        let allowed = CharacterSet.alphanumerics
+        return parts[0].unicodeScalars.allSatisfy { allowed.contains($0) }
+            && parts[1].unicodeScalars.allSatisfy { allowed.contains($0) }
+    }
+
+    /// Format postcode as XXX XXX: only alphanumeric, auto-insert space after 3rd character, max 7 chars.
+    private func formatPostcode(_ raw: String) -> String {
+        let filtered = raw.uppercased().filter { $0.isLetter || $0.isNumber }
+        let withoutSpace = String(filtered.prefix(6))
+        if withoutSpace.count <= 3 {
+            return withoutSpace
+        }
+        return withoutSpace.prefix(3) + " " + withoutSpace.dropFirst(3)
     }
 
     private func loadUser() {
@@ -118,7 +141,7 @@ struct ShippingAddressView: View {
                         city = addr.city
                         state = addr.state ?? ""
                         country = addr.country == "GB" ? "United Kingdom" : addr.country
-                        postcode = addr.postcode
+                        postcode = formatPostcode(addr.postcode)
                     } else {
                         country = "United Kingdom"
                     }

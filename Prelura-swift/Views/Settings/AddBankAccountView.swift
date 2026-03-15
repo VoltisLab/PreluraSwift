@@ -7,8 +7,13 @@ struct AddBankAccountView: View {
     @State private var accountLabel: String = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var showSuccess = false
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var authService: AuthService
+    var onSaved: (() -> Void)?
     @FocusState private var focusedField: Field?
 
+    private let userService = UserService()
     private enum Field { case sortCode, accountNumber, accountHolderName, accountLabel }
 
     var body: some View {
@@ -93,6 +98,14 @@ struct AddBankAccountView: View {
         .navigationTitle(L10n.string("Add Bank Account"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .alert(L10n.string("Saved"), isPresented: $showSuccess) {
+            Button("OK", role: .cancel) {
+                onSaved?()
+                dismiss()
+            }
+        } message: {
+            Text(L10n.string("Your bank account has been saved. Payouts will be sent here when delivery is complete and the customer is happy."))
+        }
     }
 
     private var canSubmit: Bool {
@@ -113,10 +126,30 @@ struct AddBankAccountView: View {
     private func addBankAccount() {
         errorMessage = nil
         guard canSubmit else { return }
+        focusedField = nil
         isSaving = true
-        // Placeholder: wire to bank account API when available (backend unchanged)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            isSaving = false
+        let sortDigits = sortCode.filter { $0.isNumber }
+        let meta: [String: Any] = [
+            "payoutBankAccount": [
+                "sortCode": sortDigits,
+                "accountNumber": accountNumber,
+                "accountHolderName": accountHolderName.trimmingCharacters(in: .whitespaces),
+                "accountLabel": accountLabel.trimmingCharacters(in: .whitespaces)
+            ]
+        ]
+        Task {
+            defer { Task { @MainActor in isSaving = false } }
+            userService.updateAuthToken(authService.authToken)
+            do {
+                try await userService.updateProfile(meta: meta)
+                await MainActor.run {
+                    showSuccess = true
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                }
+            }
         }
     }
 }
