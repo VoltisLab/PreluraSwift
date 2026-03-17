@@ -47,6 +47,7 @@ class ChatService: ObservableObject {
               id
               status
               priceTotal
+              createdAt
               products { id name imagesUrl }
             }
           }
@@ -82,14 +83,18 @@ class ChatService: ObservableObject {
                 let orderIdStr = Conversation.idString(from: o.id) ?? ""
                 let total = o.priceTotalDouble
                 let first = o.products?.first
+                let firstProductIdStr = first.flatMap { Conversation.idString(from: $0.id) }
                 return ConversationOrder(
                     id: orderIdStr,
                     status: o.status ?? "PENDING",
                     total: total,
                     firstProductName: first?.name,
-                    firstProductImageUrl: first?.imagesUrl?.first
+                    firstProductImageUrl: first?.firstImageUrl,
+                    firstProductId: firstProductIdStr,
+                    createdAt: parseDate(o.createdAt)
                 )
             }
+            let lastTime = parseDate(conv.lastMessage?.createdAt) ?? order?.createdAt
             return Conversation(
                 id: idString,
                 recipient: User(
@@ -99,7 +104,7 @@ class ChatService: ObservableObject {
                     avatarURL: conv.recipient?.profilePictureUrl
                 ),
                 lastMessage: conv.lastMessage?.text,
-                lastMessageTime: parseDate(conv.lastMessage?.createdAt),
+                lastMessageTime: lastTime,
                 unreadCount: conv.unreadMessagesCount ?? 0,
                 offer: offer,
                 order: order
@@ -137,6 +142,7 @@ class ChatService: ObservableObject {
               id
               status
               priceTotal
+              createdAt
               products { id name imagesUrl }
             }
           }
@@ -168,14 +174,18 @@ class ChatService: ObservableObject {
             let orderIdStr = Conversation.idString(from: o.id) ?? ""
             let total = o.priceTotalDouble
             let first = o.products?.first
+            let firstProductIdStr = first.flatMap { Conversation.idString(from: $0.id) }
             return ConversationOrder(
                 id: orderIdStr,
                 status: o.status ?? "PENDING",
                 total: total,
                 firstProductName: first?.name,
-                firstProductImageUrl: first?.imagesUrl?.first
+                firstProductImageUrl: first?.firstImageUrl,
+                firstProductId: firstProductIdStr,
+                createdAt: parseDate(o.createdAt)
             )
         }
+        let lastTime = parseDate(conv.lastMessage?.createdAt) ?? order?.createdAt
         return Conversation(
             id: idString,
             recipient: User(
@@ -185,7 +195,7 @@ class ChatService: ObservableObject {
                 avatarURL: conv.recipient?.profilePictureUrl
             ),
             lastMessage: conv.lastMessage?.text,
-            lastMessageTime: parseDate(conv.lastMessage?.createdAt),
+            lastMessageTime: lastTime,
             unreadCount: conv.unreadMessagesCount ?? 0,
             offer: offer,
             order: order
@@ -477,6 +487,10 @@ struct ConversationOrder: Hashable {
     let total: Double
     let firstProductName: String?
     let firstProductImageUrl: String?
+    /// First product id for navigation to product detail.
+    let firstProductId: String?
+    /// Order creation time; used for list preview when there is no last message time.
+    let createdAt: Date?
 }
 
 struct Conversation: Hashable {
@@ -550,6 +564,7 @@ struct ConversationData: Decodable {
 struct ConversationOrderData: Decodable {
     let id: AnyCodable?
     let status: String?
+    let createdAt: String?
     let products: [ConversationOrderProductData]?
     /// Decoded leniently (Int/String/Double) so order is not dropped when backend type differs.
     private let priceTotalValue: Double?
@@ -557,6 +572,7 @@ struct ConversationOrderData: Decodable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = (try? c.decodeIfPresent(AnyCodable.self, forKey: .id)).flatMap { $0 }
         status = (try? c.decodeIfPresent(String.self, forKey: .status)).flatMap { $0 }
+        createdAt = try? c.decodeIfPresent(String.self, forKey: .createdAt)
         priceTotalValue = (try? c.decode(PriceTotalCodable.self, forKey: .priceTotal))?.value
             ?? (try? c.decode(AnyCodable.self, forKey: .priceTotal)).flatMap { ac in
                 let v = ac.value
@@ -567,19 +583,43 @@ struct ConversationOrderData: Decodable {
             }
         products = try? c.decode([ConversationOrderProductData].self, forKey: .products)
     }
-    private enum CodingKeys: String, CodingKey { case id, status, priceTotal, products }
+    private enum CodingKeys: String, CodingKey { case id, status, priceTotal, createdAt, products }
     struct ConversationOrderProductData: Decodable {
         let id: AnyCodable?
         let name: String?
-        /// Decode leniently so a mismatched shape (e.g. array of objects) does not fail the whole order.
-        let imagesUrl: [String]?
+        /// Backend may send [String] or [{"url": "..."}]; decode leniently and expose first URL.
+        private let imagesUrlElements: [OrderImageUrlElement]?
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             id = try c.decodeIfPresent(AnyCodable.self, forKey: .id)
             name = try c.decodeIfPresent(String.self, forKey: .name)
-            imagesUrl = try? c.decode([String].self, forKey: .imagesUrl)
+            imagesUrlElements = try? c.decode([OrderImageUrlElement].self, forKey: .imagesUrl)
         }
         private enum CodingKeys: String, CodingKey { case id, name, imagesUrl }
+        /// First image URL whether backend sent strings or objects with "url".
+        var firstImageUrl: String? { imagesUrlElements?.first?.urlString }
+    }
+    /// Decodes "url" string or object { "url": "..." } from product imagesUrl array.
+    /// Backend may send array of JSON strings like ["{\"url\":\"https://...\"}"], so parse that to extract url.
+    private struct OrderImageUrlElement: Decodable {
+        let urlString: String?
+        init(from decoder: Decoder) throws {
+            let c = try decoder.singleValueContainer()
+            if let s = try? c.decode(String.self) {
+                if s.hasPrefix("{"), let data = s.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let u = json["url"] as? String, !u.isEmpty {
+                    urlString = u
+                } else if !s.isEmpty && (s.hasPrefix("http://") || s.hasPrefix("https://")) {
+                    urlString = s
+                } else {
+                    urlString = s.isEmpty ? nil : s
+                }
+                return
+            }
+            if let dict = try? c.decode([String: String].self), let u = dict["url"] { urlString = u; return }
+            urlString = nil
+        }
     }
     var priceTotalDouble: Double { priceTotalValue ?? 0 }
 }

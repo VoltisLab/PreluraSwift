@@ -95,6 +95,8 @@ struct ChatDetailView: View {
     @State private var payNowTotalPrice: Double = 0
     /// Fetched product for offer-conversation header (thumbnail + price bar).
     @State private var offerProductItem: Item?
+    /// Fetched product for order-conversation header (sale confirmation bar); enables tap-to-open product.
+    @State private var orderProductItem: Item?
     /// Offer cards to show: [previous, …] + current. After sending a counter we append optimistically so previous card shows greyed button.
     @State private var offerHistory: [OfferInfo] = []
 
@@ -408,11 +410,15 @@ struct ChatDetailView: View {
         .onAppear {
             connectWebSocket()
             fetchOfferProductIfNeeded()
+            fetchOrderProductIfNeeded()
             syncOfferHistoryFromConversation()
             loadConversationAndMessagesFromBackend()
         }
         .onChange(of: displayedConversation.offer?.id) { _, _ in
             fetchOfferProductIfNeeded()
+        }
+        .onChange(of: displayedConversation.order?.id) { _, _ in
+            fetchOrderProductIfNeeded()
         }
         .onChange(of: displayedConversation.offer) { _, _ in
             syncLastOfferFromConversation()
@@ -722,13 +728,14 @@ struct ChatDetailView: View {
     }
 
     /// Second header: product thumbnail (default 1:1) + latest offer price; tappable -> product page.
-    /// Order header bar (sale confirmation) when conversation has an order.
+    /// Order header bar (sale confirmation) when conversation has an order; tappable -> product when fetched.
     private var orderHeaderBar: some View {
         guard let order = displayedConversation.order else { return AnyView(EmptyView()) }
         let priceStr = String(format: "£%.2f", order.total)
         let bar = HStack(spacing: Theme.Spacing.md) {
             Group {
-                if let urlString = order.firstProductImageUrl, let url = URL(string: urlString) {
+                if let urlString = orderProductItem?.imageURLs.first ?? order.firstProductImageUrl,
+                   let url = URL(string: urlString) {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let img): img.resizable().scaledToFill()
@@ -760,10 +767,20 @@ struct ChatDetailView: View {
                     .foregroundColor(Theme.Colors.secondaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14))
+                .foregroundColor(Theme.Colors.secondaryText)
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.sm)
         .background(Theme.Colors.background)
+        .contentShape(Rectangle())
+        if let item = orderProductItem {
+            return AnyView(
+                NavigationLink(destination: ItemDetailView(item: item, authService: authService)) { bar }
+                    .buttonStyle(.plain)
+            )
+        }
         return AnyView(bar)
     }
 
@@ -828,6 +845,19 @@ struct ChatDetailView: View {
         Task {
             if let product = try? await productService.getProduct(id: firstId) {
                 await MainActor.run { offerProductItem = product }
+            }
+        }
+    }
+
+    private func fetchOrderProductIfNeeded() {
+        guard let order = displayedConversation.order,
+              let firstId = order.firstProductId.flatMap({ Int($0) }) else {
+            orderProductItem = nil
+            return
+        }
+        Task {
+            if let product = try? await productService.getProduct(id: firstId) {
+                await MainActor.run { orderProductItem = product }
             }
         }
     }
