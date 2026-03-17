@@ -232,10 +232,10 @@ struct AnnChatView: View {
         if soldOrders.isEmpty && boughtOrders.isEmpty { return "The user has no orders yet." }
         var lines: [String] = ["The user's orders (the app may show them below). Do not invent order IDs or details."]
         if !boughtOrders.isEmpty {
-            lines.append("Orders they placed (as buyer): " + boughtOrders.prefix(15).map { " #\($0.id) \($0.status) £\($0.priceTotal)" }.joined(separator: "; "))
+            lines.append("Orders they placed (as buyer): " + boughtOrders.prefix(15).map { " \($0.displayOrderId) \($0.status) £\($0.priceTotal)" }.joined(separator: "; "))
         }
         if !soldOrders.isEmpty {
-            lines.append("Orders they sold (as seller): " + soldOrders.prefix(15).map { " #\($0.id) \($0.status) £\($0.priceTotal)" }.joined(separator: "; "))
+            lines.append("Orders they sold (as seller): " + soldOrders.prefix(15).map { " \($0.displayOrderId) \($0.status) £\($0.priceTotal)" }.joined(separator: "; "))
         }
         return lines.joined(separator: "\n")
     }
@@ -249,8 +249,8 @@ struct AnnChatView: View {
     private func submitOrderIssue(orderContext: OrderContext, issueText: String) {
         let trimmed = issueText.trimmingCharacters(in: .whitespacesAndNewlines)
         let userMessageText = trimmed.isEmpty
-            ? "I need help with order #\(orderContext.order.id)."
-            : "Order #\(orderContext.order.id): \(trimmed)"
+            ? "I need help with order \(orderContext.order.displayOrderId)."
+            : "\(orderContext.order.displayOrderId): \(trimmed)"
         let userMessage = ChatMessage(isFromUser: true, text: userMessageText)
         messages.append(userMessage)
         isBotThinking = true
@@ -319,7 +319,7 @@ private struct AnnOrderHelpSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                    Text("Order #\(order.id)")
+                    Text("Order \(order.displayOrderId)")
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
                     VStack(alignment: .leading, spacing: Theme.Spacing.xs) {

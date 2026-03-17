@@ -4,7 +4,7 @@ import SwiftUI
 struct OrderScreenDebugView: View {
     private static let cardCornerRadius: CGFloat = 16
 
-    private let orderId = "2123442"
+    private let orderId = "PR23DG2DF3"
     private let orderDate = "Nov 29, 2024"
     private let deliveryDate = "Nov 31, 2024"
     private let statusLabel = "Processing"

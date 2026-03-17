@@ -44,6 +44,10 @@ struct UserProfileView: View {
                         if let location = viewModel.user.location, !location.isEmpty {
                             profileLocationRow(location)
                         }
+                        // Email verified badge: visible to others only when verified (hidden when not)
+                        if viewModel.user.isVerified {
+                            profileVerificationRow()
+                        }
                         if viewModel.user.isVacationMode {
                             vacationModeSection(isLoggedInUser: false)
                         } else {
@@ -72,6 +76,8 @@ struct UserProfileView: View {
                 HStack(spacing: Theme.Spacing.sm) {
                     Button(action: {
                         HapticManager.selection()
+                        showSortSheet = false
+                        showFilterSheet = false
                         showShopSearchSheet = true
                     }) {
                         Image(systemName: "magnifyingglass")
@@ -229,30 +235,33 @@ struct UserProfileView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 let hasSaleItems = viewModel.items.contains { $0.discountPercentage != nil }
-                NavigationLink(value: AppRoute.reviews(username: viewModel.user.username, rating: viewModel.user.rating)) {
-                    HStack(alignment: .center, spacing: 4) {
-                        HStack(spacing: 2) {
-                            ForEach(0..<5, id: \.self) { _ in
-                                Image(systemName: "star.fill")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.yellow)
+                HStack(alignment: .center, spacing: 4) {
+                    NavigationLink(value: AppRoute.reviews(username: viewModel.user.username, rating: viewModel.user.rating)) {
+                        HStack(alignment: .center, spacing: 4) {
+                            HStack(spacing: 2) {
+                                ForEach(0..<5, id: \.self) { _ in
+                                    Image(systemName: "star.fill")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.yellow)
+                                }
                             }
-                        }
-                        Text("(\(viewModel.user.reviewCount))")
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: true)
-                        if hasSaleItems {
-                            Spacer(minLength: 4)
-                            Image("SaleIcon")
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(height: 16)
+                            Text("(\(viewModel.user.reviewCount))")
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: true)
                         }
                     }
+                    .buttonStyle(HapticTapButtonStyle())
+                    if hasSaleItems {
+                        Spacer(minLength: 4)
+                        Image("SaleIcon")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(height: 16)
+                            .allowsHitTesting(false)
+                    }
                 }
-                .buttonStyle(HapticTapButtonStyle())
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -279,6 +288,21 @@ struct UserProfileView: View {
                 .font(.system(size: 12))
                 .foregroundColor(Theme.Colors.secondaryText)
             Text(location)
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.secondaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.bottom, Theme.Spacing.sm)
+    }
+
+    /// Email verified badge (only shown for other users when verified).
+    private func profileVerificationRow() -> some View {
+        HStack(alignment: .center, spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundColor(Color.green)
+            Text("Email verified")
                 .font(Theme.Typography.subheadline)
                 .foregroundColor(Theme.Colors.secondaryText)
         }
@@ -491,7 +515,11 @@ struct UserProfileView: View {
 
             // Filter and Sort (grey pills, no shadow)
             HStack {
-                Button(action: { showFilterSheet = true }) {
+                Button(action: {
+                    showSortSheet = false
+                    showShopSearchSheet = false
+                    showFilterSheet = true
+                }) {
                     HStack(spacing: Theme.Spacing.xs) {
                         Image(systemName: "line.3.horizontal.decrease")
                             .font(.system(size: 14))
@@ -508,7 +536,11 @@ struct UserProfileView: View {
                 }
                 .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                 Spacer()
-                Button(action: { showSortSheet = true }) {
+                Button(action: {
+                    showFilterSheet = false
+                    showShopSearchSheet = false
+                    showSortSheet = true
+                }) {
                     HStack(spacing: Theme.Spacing.xs) {
                         Text(L10n.string(profileSort.rawValue))
                             .font(Theme.Typography.subheadline)
@@ -598,10 +630,8 @@ struct UserProfileView: View {
                 .padding(.top, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.md)
             }
-            .padding(.top, Theme.Spacing.xxl)
-            .padding(.bottom, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
                     .fill(Theme.Colors.background)

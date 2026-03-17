@@ -43,15 +43,29 @@ class ChatService: ObservableObject {
               buyer { username profilePictureUrl }
               products { id name seller { username profilePictureUrl } }
             }
+            order {
+              id
+              status
+              priceTotal
+              products { id name imagesUrl }
+            }
           }
         }
         """
         
-        let response: ConversationsResponse = try await client.execute(
-            query: query,
-            operationName: "Conversations",
-            responseType: ConversationsResponse.self
-        )
+        let response: ConversationsResponse
+        do {
+            response = try await client.execute(
+                query: query,
+                operationName: "Conversations",
+                responseType: ConversationsResponse.self
+            )
+        } catch let err as GraphQLError {
+            if case .decodingError = err { return [] }
+            throw err
+        } catch {
+            throw error
+        }
         
         return response.conversations?.compactMap { conv in
             guard let idString = Conversation.idString(from: conv.id) else { return nil }
@@ -64,6 +78,18 @@ class ChatService: ObservableObject {
                 recipientIdString = ""
             }
             let offer: OfferInfo? = conv.offer.flatMap { Conversation.offerInfo(from: $0) }
+            let order: ConversationOrder? = conv.order.flatMap { o in
+                let orderIdStr = Conversation.idString(from: o.id) ?? ""
+                let total = o.priceTotalDouble
+                let first = o.products?.first
+                return ConversationOrder(
+                    id: orderIdStr,
+                    status: o.status ?? "PENDING",
+                    total: total,
+                    firstProductName: first?.name,
+                    firstProductImageUrl: first?.imagesUrl?.first
+                )
+            }
             return Conversation(
                 id: idString,
                 recipient: User(
@@ -75,9 +101,95 @@ class ChatService: ObservableObject {
                 lastMessage: conv.lastMessage?.text,
                 lastMessageTime: parseDate(conv.lastMessage?.createdAt),
                 unreadCount: conv.unreadMessagesCount ?? 0,
-                offer: offer
+                offer: offer,
+                order: order
             )
         } ?? []
+    }
+    
+    /// Fetch a single conversation by id (with order). Sale banner is stored on the backend like offers: Conversation.order FK + Message (item_type=sold_confirmation) created in payment success handler.
+    func getConversationById(conversationId: String) async throws -> Conversation? {
+        let query = """
+        query ConversationById($id: ID!) {
+          conversationById(id: $id) {
+            id
+            recipient {
+              id
+              username
+              displayName
+              profilePictureUrl
+            }
+            lastMessage {
+              id
+              text
+              createdAt
+              sender { username }
+            }
+            unreadMessagesCount
+            offer {
+              id
+              status
+              offerPrice
+              buyer { username profilePictureUrl }
+              products { id name seller { username profilePictureUrl } }
+            }
+            order {
+              id
+              status
+              priceTotal
+              products { id name imagesUrl }
+            }
+          }
+        }
+        """
+        let variables: [String: Any] = ["id": conversationId]
+        struct ConversationByIdResponse: Decodable {
+            let conversationById: ConversationData?
+            enum CodingKeys: String, CodingKey { case conversationById = "conversationById" }
+        }
+        let response: ConversationByIdResponse = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "ConversationById",
+            responseType: ConversationByIdResponse.self
+        )
+        guard let conv = response.conversationById else { return nil }
+        guard let idString = Conversation.idString(from: conv.id) else { return nil }
+        let recipientIdString: String
+        if let recipientId = conv.recipient?.id {
+            if let intValue = recipientId.value as? Int { recipientIdString = String(intValue) }
+            else if let stringValue = recipientId.value as? String { recipientIdString = stringValue }
+            else { recipientIdString = String(describing: recipientId.value) }
+        } else {
+            recipientIdString = ""
+        }
+        let offer: OfferInfo? = conv.offer.flatMap { Conversation.offerInfo(from: $0) }
+        let order: ConversationOrder? = conv.order.flatMap { o in
+            let orderIdStr = Conversation.idString(from: o.id) ?? ""
+            let total = o.priceTotalDouble
+            let first = o.products?.first
+            return ConversationOrder(
+                id: orderIdStr,
+                status: o.status ?? "PENDING",
+                total: total,
+                firstProductName: first?.name,
+                firstProductImageUrl: first?.imagesUrl?.first
+            )
+        }
+        return Conversation(
+            id: idString,
+            recipient: User(
+                id: UUID(uuidString: recipientIdString) ?? UUID(),
+                username: conv.recipient?.username ?? "",
+                displayName: conv.recipient?.displayName ?? "",
+                avatarURL: conv.recipient?.profilePictureUrl
+            ),
+            lastMessage: conv.lastMessage?.text,
+            lastMessageTime: parseDate(conv.lastMessage?.createdAt),
+            unreadCount: conv.unreadMessagesCount ?? 0,
+            offer: offer,
+            order: order
+        )
     }
     
     func getMessages(conversationId: String, pageNumber: Int = 1, pageCount: Int = 50) async throws -> [Message] {
@@ -95,6 +207,7 @@ class ChatService: ObservableObject {
             }
             isItem
             itemId
+            itemType
           }
         }
         """
@@ -142,10 +255,10 @@ class ChatService: ObservableObject {
                 return nil
             }
             
-            guard let text = msg.text,
-                  let senderUsername = msg.sender?.username else {
-                return nil
-            }
+            // Don't drop messages: use fallbacks so Sold/order cards and item messages always show
+            let text = msg.text ?? ""
+            let senderUsername = msg.sender?.username ?? "Unknown"
+            let messageType: String = (msg.itemType?.isEmpty == false) ? msg.itemType! : (msg.isItem == true ? "item" : "text")
             
             return Message(
                 id: UUID(uuidString: idString) ?? UUID(),
@@ -153,7 +266,7 @@ class ChatService: ObservableObject {
                 senderUsername: senderUsername,
                 content: text,
                 timestamp: parseDate(msg.createdAt) ?? Date(),
-                type: msg.isItem == true ? "item" : "text",
+                type: messageType,
                 orderID: msg.itemId.map { String($0) },
                 thumbnailURL: nil
             )
@@ -357,6 +470,15 @@ class ChatService: ObservableObject {
     }
 }
 
+/// Minimal order info for a conversation (sale confirmation).
+struct ConversationOrder: Hashable {
+    let id: String
+    let status: String
+    let total: Double
+    let firstProductName: String?
+    let firstProductImageUrl: String?
+}
+
 struct Conversation: Hashable {
     let id: String
     let recipient: User
@@ -364,14 +486,16 @@ struct Conversation: Hashable {
     let lastMessageTime: Date?
     let unreadCount: Int
     let offer: OfferInfo?
+    let order: ConversationOrder?
 
-    init(id: String, recipient: User, lastMessage: String?, lastMessageTime: Date?, unreadCount: Int, offer: OfferInfo? = nil) {
+    init(id: String, recipient: User, lastMessage: String?, lastMessageTime: Date?, unreadCount: Int, offer: OfferInfo? = nil, order: ConversationOrder? = nil) {
         self.id = id
         self.recipient = recipient
         self.lastMessage = lastMessage
         self.lastMessageTime = lastMessageTime
         self.unreadCount = unreadCount
         self.offer = offer
+        self.order = order
     }
 
     static func idString(from anyCodable: AnyCodable?) -> String? {
@@ -409,12 +533,73 @@ struct ConversationData: Decodable {
     let lastMessage: MessageData?
     let unreadMessagesCount: Int?
     let offer: OfferData?
+    let order: ConversationOrderData?
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(AnyCodable.self, forKey: .id)
+        recipient = try c.decodeIfPresent(UserData.self, forKey: .recipient)
+        lastMessage = try? c.decode(MessageData.self, forKey: .lastMessage)
+        unreadMessagesCount = try c.decodeIfPresent(Int.self, forKey: .unreadMessagesCount)
+        offer = try? c.decode(OfferData.self, forKey: .offer)
+        order = try? c.decode(ConversationOrderData.self, forKey: .order)
+    }
+    private enum CodingKeys: String, CodingKey { case id, recipient, lastMessage, unreadMessagesCount, offer, order }
+}
+
+/// Order summary on a conversation (from conversations query).
+struct ConversationOrderData: Decodable {
+    let id: AnyCodable?
+    let status: String?
+    let products: [ConversationOrderProductData]?
+    /// Decoded leniently (Int/String/Double) so order is not dropped when backend type differs.
+    private let priceTotalValue: Double?
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decodeIfPresent(AnyCodable.self, forKey: .id)).flatMap { $0 }
+        status = (try? c.decodeIfPresent(String.self, forKey: .status)).flatMap { $0 }
+        priceTotalValue = (try? c.decode(PriceTotalCodable.self, forKey: .priceTotal))?.value
+            ?? (try? c.decode(AnyCodable.self, forKey: .priceTotal)).flatMap { ac in
+                let v = ac.value
+                if let d = v as? Double { return d }
+                if let i = v as? Int { return Double(i) }
+                if let s = v as? String { return Double(s.trimmingCharacters(in: .whitespaces)) }
+                return nil
+            }
+        products = try? c.decode([ConversationOrderProductData].self, forKey: .products)
+    }
+    private enum CodingKeys: String, CodingKey { case id, status, priceTotal, products }
+    struct ConversationOrderProductData: Decodable {
+        let id: AnyCodable?
+        let name: String?
+        /// Decode leniently so a mismatched shape (e.g. array of objects) does not fail the whole order.
+        let imagesUrl: [String]?
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decodeIfPresent(AnyCodable.self, forKey: .id)
+            name = try c.decodeIfPresent(String.self, forKey: .name)
+            imagesUrl = try? c.decode([String].self, forKey: .imagesUrl)
+        }
+        private enum CodingKeys: String, CodingKey { case id, name, imagesUrl }
+    }
+    var priceTotalDouble: Double { priceTotalValue ?? 0 }
+}
+
+/// Decodes priceTotal when backend sends Double (AnyCodable only supports Int/String).
+private struct PriceTotalCodable: Decodable {
+    let value: Double
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let d = try? c.decode(Double.self) { value = d; return }
+        if let i = try? c.decode(Int.self) { value = Double(i); return }
+        if let s = try? c.decode(String.self) { value = Double(s.trimmingCharacters(in: .whitespaces)) ?? 0; return }
+        throw DecodingError.dataCorruptedError(in: c, debugDescription: "Expected number or string for priceTotal")
+    }
 }
 
 struct OfferData: Decodable {
     let id: AnyCodable?
     let status: String?
-    fileprivate let offerPrice: DoubleOrDecimal?
+    fileprivate let offerPrice: OfferPriceValue?
     let buyer: OfferUserData?
     let products: [OfferProductData]?
     struct OfferUserData: Decodable {
@@ -425,6 +610,27 @@ struct OfferData: Decodable {
         let id: AnyCodable?
         let name: String?
         let seller: OfferUserData?
+    }
+}
+
+/// Accepts Double, Decimal, or String for offerPrice (backend may return any).
+fileprivate enum OfferPriceValue: Decodable {
+    case double(Double)
+    case decimal(Decimal)
+    case string(String)
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let d = try? c.decode(Double.self) { self = .double(d); return }
+        if let dec = try? c.decode(Decimal.self) { self = .decimal(dec); return }
+        if let s = try? c.decode(String.self) { self = .string(s); return }
+        throw DecodingError.dataCorruptedError(in: c, debugDescription: "Expected Double, Decimal, or String")
+    }
+    var value: Double {
+        switch self {
+        case .double(let d): return d
+        case .decimal(let d): return NSDecimalNumber(decimal: d).doubleValue
+        case .string(let s): return Double(s.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespaces)) ?? 0
+        }
     }
 }
 
@@ -466,6 +672,7 @@ struct MessageData: Decodable {
     let sender: UserData?
     let isItem: Bool?
     let itemId: Int?
+    let itemType: String?
 }
 
 struct UserData: Decodable {

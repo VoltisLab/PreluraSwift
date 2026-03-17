@@ -325,33 +325,36 @@ struct ProfileView: View {
                 Spacer(minLength: Theme.Spacing.xl)
             }
 
-            // Row 2: Stars (tappable → Reviews) only; sale icon only when user has items on discount and vacation mode is off
+            // Row 2: Stars (tappable → Reviews) only; sale icon decorative only (not tappable)
             VStack(alignment: .leading, spacing: 2) {
                 let hasSaleItems = viewModel.userItems.contains { $0.discountPercentage != nil }
                 let showSaleIcon = hasSaleItems && (viewModel.user?.isVacationMode != true)
                 if let u = viewModel.user {
-                    NavigationLink(value: AppRoute.reviews(username: u.username, rating: u.rating)) {
-                        HStack(alignment: .center, spacing: 4) {
-                            ForEach(0..<5, id: \.self) { _ in
-                                Image(systemName: "star.fill")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.yellow)
-                            }
-                            Text("(\(u.reviewCount))")
-                                .font(Theme.Typography.subheadline)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: true)
-                            if showSaleIcon {
-                                Spacer(minLength: 4)
-                                Image("SaleIcon")
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(height: 16)
+                    HStack(alignment: .center, spacing: 4) {
+                        NavigationLink(value: AppRoute.reviews(username: u.username, rating: u.rating)) {
+                            HStack(alignment: .center, spacing: 4) {
+                                ForEach(0..<5, id: \.self) { _ in
+                                    Image(systemName: "star.fill")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.yellow)
+                                }
+                                Text("(\(u.reviewCount))")
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: true)
                             }
                         }
+                        .buttonStyle(HapticTapButtonStyle())
+                        if showSaleIcon {
+                            Spacer(minLength: 4)
+                            Image("SaleIcon")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 16)
+                                .allowsHitTesting(false)
+                        }
                     }
-                    .buttonStyle(HapticTapButtonStyle())
                 } else {
                     HStack(alignment: .center, spacing: 4) {
                         ForEach(0..<5, id: \.self) { _ in
@@ -370,6 +373,7 @@ struct ProfileView: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .frame(height: 16)
+                                .allowsHitTesting(false)
                         }
                     }
                 }
@@ -568,6 +572,8 @@ struct ProfileView: View {
                 HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                     Button(action: {
                         HapticManager.selection()
+                        showSortSheet = false
+                        showFilterSheet = false
                         showShopSearchSheet = true
                     }) {
                         Image(systemName: "magnifyingglass")
@@ -577,6 +583,8 @@ struct ProfileView: View {
                     .buttonStyle(HapticTapButtonStyle())
                     Button(action: {
                         HapticManager.selection()
+                        showSortSheet = false
+                        showFilterSheet = false
                         showShopSearchSheet = true
                     }) {
                         Text(L10n.string("Top brands"))
@@ -639,7 +647,11 @@ struct ProfileView: View {
             
             // Filter and Sort (matches Flutter FilterAndSort: bottom sheets + Clear)
             HStack {
-                Button(action: { showFilterSheet = true }) {
+                Button(action: {
+                    showSortSheet = false
+                    showShopSearchSheet = false
+                    showFilterSheet = true
+                }) {
                     HStack(spacing: Theme.Spacing.xs) {
                         Image(systemName: "line.3.horizontal.decrease")
                             .font(.system(size: 14))
@@ -658,7 +670,11 @@ struct ProfileView: View {
                 
                 Spacer()
                 
-                Button(action: { showSortSheet = true }) {
+                Button(action: {
+                    showFilterSheet = false
+                    showShopSearchSheet = false
+                    showSortSheet = true
+                }) {
                     HStack(spacing: Theme.Spacing.xs) {
                         Text(L10n.string(profileSort.rawValue))
                             .font(Theme.Typography.subheadline)
@@ -754,10 +770,8 @@ struct ProfileView: View {
                 .padding(.top, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.md)
             }
-            .padding(.top, Theme.Spacing.xxl)
-            .padding(.bottom, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
                     .fill(Theme.Colors.background)

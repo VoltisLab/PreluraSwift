@@ -149,6 +149,7 @@ class UserService: ObservableObject {
             isFollowing
             isVacationMode
             isMultibuyEnabled
+            isVerified
             reviewStats { noOfReviews rating }
           }
         }
@@ -197,6 +198,7 @@ class UserService: ObservableObject {
             followingsCount: userData.noOfFollowing ?? 0,
             followersCount: userData.noOfFollowers ?? 0,
             isStaff: false,
+            isVerified: userData.isVerified ?? false,
             isVacationMode: userData.isVacationMode ?? false,
             isMultibuyEnabled: userData.isMultibuyEnabled ?? false,
             email: nil,
@@ -252,7 +254,8 @@ class UserService: ObservableObject {
         username: String? = nil,
         location: String? = nil,
         shippingAddress: ShippingAddress? = nil,
-        meta: [String: Any]? = nil
+        meta: [String: Any]? = nil,
+        fcmToken: String? = nil
     ) async throws {
         let mutation = """
         mutation UpdateProfile(
@@ -268,6 +271,7 @@ class UserService: ObservableObject {
           $location: LocationInputType
           $shippingAddress: ShippingAddressInputType
           $meta: JSONString
+          $fcmToken: String
         ) {
           updateProfile(
             isVacationMode: $isVacationMode
@@ -282,6 +286,7 @@ class UserService: ObservableObject {
             location: $location
             shippingAddress: $shippingAddress
             meta: $meta
+            fcmToken: $fcmToken
           ) {
             message
           }
@@ -329,6 +334,7 @@ class UserService: ObservableObject {
                 variables["meta"] = str
             }
         }
+        if let token = fcmToken, !token.isEmpty { variables["fcmToken"] = token }
         _ = try await client.execute(
             query: mutation,
             variables: variables.isEmpty ? nil : variables,
@@ -1768,6 +1774,13 @@ struct Order: Identifiable {
     let otherParty: User?
     let products: [OrderProductSummary]
     let shippingAddress: ShippingAddress?
+
+    /// Order ID for display: always starts with "PR" (e.g. PR23DG2DF3 or PR225 for legacy numeric).
+    var displayOrderId: String {
+        let raw = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.uppercased().hasPrefix("PR") { return raw }
+        return "PR" + raw
+    }
 }
 
 /// Product summary inside an order.

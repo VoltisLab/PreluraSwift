@@ -23,7 +23,6 @@ struct ChatWithSellerView: View {
                 ChatDetailView(conversation: Conversation(id: "0", recipient: seller, lastMessage: nil, lastMessageTime: nil, unreadCount: 0), item: item)
             }
         }
-        .navigationBarHidden(true)
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
             if let token = authService?.authToken {
@@ -60,11 +59,23 @@ struct ChatWithSellerView: View {
     }
 }
 
+/// One item in the chat timeline: either a message or an offer card. Order is preserved so nothing moves above/below.
+enum TimelineEntry: Hashable {
+    case message(UUID)
+    case offer(String)
+
+    var isOffer: Bool {
+        if case .offer = self { return true }
+        return false
+    }
+}
+
 struct ChatDetailView: View {
     let conversation: Conversation
     /// When non-nil, show this product at the top of the chat (Flutter: productId → ProductCard at top).
     var item: Item? = nil
     @EnvironmentObject var authService: AuthService
+    @Environment(\.optionalTabCoordinator) private var tabCoordinator
     @Environment(\.dismiss) private var dismiss
     @StateObject private var chatService = ChatService()
     @State private var displayedConversation: Conversation
@@ -77,11 +88,23 @@ struct ChatDetailView: View {
     @State private var showCounterOfferSheet = false
     @State private var isRespondingToOffer = false
     @State private var offerError: String?
+    @State private var offerModalSubmitting = false
     @State private var showPayNowCover = false
+    @State private var showReportUserSheet = false
     @State private var payNowProducts: [Item] = []
     @State private var payNowTotalPrice: Double = 0
+    /// Fetched product for offer-conversation header (thumbnail + price bar).
+    @State private var offerProductItem: Item?
+    /// Offer cards to show: [previous, …] + current. After sending a counter we append optimistically so previous card shows greyed button.
+    @State private var offerHistory: [OfferInfo] = []
 
     private let productService = ProductService()
+
+    /// In-memory cache of offer chain per conversation so reloading the chat restores previous offers (API only returns latest).
+    private static var offerHistoryCache: [String: [OfferInfo]] = [:]
+    /// Order of items in the chat (message vs offer card) so every element keeps their position (X, Y, X, Y, …).
+    @State private var timelineOrder: [TimelineEntry] = []
+    private static var timelineOrderCache: [String: [TimelineEntry]] = [:]
 
     init(conversation: Conversation, item: Item? = nil) {
         self.conversation = conversation
@@ -102,6 +125,14 @@ struct ChatDetailView: View {
     private var isSeller: Bool {
         guard let offer = displayedConversation.offer, let sellerUsername = offer.products?.first?.seller?.username else { return false }
         return authService.username == sellerUsername
+    }
+
+    /// Current offer cards to show (history + current). Synced from displayedConversation.offer when it changes.
+    private var offerCards: [OfferInfo] {
+        if offerHistory.isEmpty, let offer = displayedConversation.offer {
+            return [offer]
+        }
+        return offerHistory
     }
 
     private var messageInputBar: some View {
@@ -143,78 +174,147 @@ struct ChatDetailView: View {
         return prev.senderUsername == authService.username
     }
 
+    /// Show timestamp only on the last message of a group (same sender, within 60 seconds) to avoid "Just now" on every bubble.
+    private func showTimestampForMessage(at index: Int) -> Bool {
+        let list = displayedMessages
+        guard index < list.count else { return true }
+        if index == list.count - 1 { return true }
+        let msg = list[index]
+        let next = list[index + 1]
+        if next.senderUsername != msg.senderUsername { return true }
+        if next.timestamp.timeIntervalSince(msg.timestamp) > 60 { return true }
+        return false
+    }
+
+    /// True when the previous timeline entry is a message from the same sender within 60 seconds (same group) — use for tight spacing.
+    private func isSameGroupAsPrevious(timelineIndex: Int, message: Message) -> Bool {
+        guard timelineIndex > 0, timelineIndex - 1 < timelineOrder.count else { return false }
+        guard case .message(let prevId) = timelineOrder[timelineIndex - 1],
+              let prev = displayedMessages.first(where: { $0.id == prevId }) else { return false }
+        guard prev.senderUsername == message.senderUsername else { return false }
+        return message.timestamp.timeIntervalSince(prev.timestamp) <= 60
+    }
+
     private static let chatAvatarSize: CGFloat = 32
+
+    @ViewBuilder
+    private func timelineRow(timelineIndex: Int, entry: TimelineEntry) -> some View {
+        switch entry {
+        case .message(let messageId):
+            if let index = displayedMessages.firstIndex(where: { $0.id == messageId }),
+               index < displayedMessages.count {
+                let message = displayedMessages[index]
+                let topPadding: CGFloat = timelineIndex == 0 ? 0 : (isSameGroupAsPrevious(timelineIndex: timelineIndex, message: message) ? Theme.Spacing.xs : Theme.Spacing.md)
+                Group {
+                    if message.isSoldConfirmation {
+                        SoldConfirmationBannerView(
+                            message: message,
+                            isSeller: message.senderUsername != authService.username,
+                            conversationId: displayedConversation.id
+                        )
+                        .id(message.id)
+                    } else {
+                        let isCurrentUser = message.senderUsername == authService.username
+                        MessageBubbleView(
+                            message: message,
+                            isCurrentUser: isCurrentUser,
+                            showAvatar: showAvatarForMessage(at: index),
+                            showTimestamp: showTimestampForMessage(at: index),
+                            avatarURL: showAvatarForMessage(at: index) ? displayedConversation.recipient.avatarURL : nil,
+                            recipientUsername: displayedConversation.recipient.username
+                        )
+                        .id(message.id)
+                        .contextMenu {
+                            if message.senderUsername == authService.username, let backendId = message.backendId {
+                                Button(role: .destructive, action: { deleteMessage(message) }) {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.top, topPadding)
+            }
+        case .offer(let offerId):
+            if let offer = offerCards.first(where: { $0.id == offerId }) {
+                let isLatest = offer.id == offerCards.last?.id
+                let prevIsOffer = (timelineIndex > 0 && timelineIndex - 1 < timelineOrder.count) && (timelineOrder[timelineIndex - 1].isOffer)
+                let topPadding: CGFloat = timelineIndex == 0 ? 0 : (prevIsOffer ? 0 : Theme.Spacing.md)
+                Group {
+                    if timelineIndex > 0, timelineIndex - 1 < timelineOrder.count, timelineOrder[timelineIndex - 1].isOffer {
+                        Rectangle()
+                            .fill(Theme.Colors.glassBorder)
+                            .frame(height: 0.5)
+                    }
+                    OfferCardView(
+                        offer: offer,
+                        currentUsername: authService.username,
+                        isSeller: isSeller,
+                        isResponding: isLatest ? isRespondingToOffer : false,
+                        errorMessage: isLatest ? offerError : nil,
+                        onAccept: { await handleRespondToOffer(action: "ACCEPT") },
+                        onDecline: { await handleRespondToOffer(action: "REJECT") },
+                        onSendNewOffer: { showCounterOfferSheet = true },
+                        onPayNow: { presentPayNow() },
+                        forceGreyedOut: !isLatest
+                    )
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+                    .background(Theme.Colors.background)
+                    .id(isLatest ? "latest_offer_card" : offer.id)
+                }
+                .padding(.top, topPadding)
+            }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
+            if displayedConversation.offer != nil {
+                offerProductHeaderBar
+                Rectangle()
+                    .fill(Theme.Colors.glassBorder)
+                    .frame(height: 0.5)
+            }
+            if displayedConversation.order != nil {
+                orderHeaderBar
+                Rectangle()
+                    .fill(Theme.Colors.glassBorder)
+                    .frame(height: 0.5)
+            }
             if let item = item {
                 ChatProductCardView(item: item)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                     .background(Theme.Colors.background)
-                Rectangle()
-                    .fill(Theme.Colors.glassBorder)
-                    .frame(height: 0.5)
-            }
-            if let offer = displayedConversation.offer {
-                OfferCardView(
-                    offer: offer,
-                    currentUsername: authService.username,
-                    isSeller: isSeller,
-                    isResponding: isRespondingToOffer,
-                    errorMessage: offerError,
-                    onAccept: { await handleRespondToOffer(action: "ACCEPT") },
-                    onDecline: { await handleRespondToOffer(action: "REJECT") },
-                    onSendNewOffer: { showCounterOfferSheet = true },
-                    onPayNow: { presentPayNow() }
-                )
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.sm)
-                .background(Theme.Colors.background)
-                Rectangle()
-                    .fill(Theme.Colors.glassBorder)
-                    .frame(height: 0.5)
+                if !offerCards.isEmpty {
+                    Rectangle()
+                        .fill(Theme.Colors.glassBorder)
+                        .frame(height: 0.5)
+                }
             }
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                        ForEach(Array(displayedMessages.enumerated()), id: \.element.id) { index, message in
-                            if message.isSoldConfirmation {
-                                SoldConfirmationBannerView(
-                                    message: message,
-                                    isSeller: message.senderUsername != authService.username,
-                                    conversationId: displayedConversation.id
-                                )
-                                .id(message.id)
-                            } else {
-                                let isCurrentUser = message.senderUsername == authService.username
-                                let showAvatar = showAvatarForMessage(at: index)
-                                MessageBubbleView(
-                                    message: message,
-                                    isCurrentUser: isCurrentUser,
-                                    showAvatar: showAvatar,
-                                    avatarURL: showAvatar ? displayedConversation.recipient.avatarURL : nil,
-                                    recipientUsername: displayedConversation.recipient.username
-                                )
-                                .id(message.id)
-                                .contextMenu {
-                                    if message.senderUsername == authService.username, let backendId = message.backendId {
-                                        Button(role: .destructive, action: { deleteMessage(message) }) {
-                                            Label("Delete", systemImage: "trash")
-                                        }
-                                    }
-                                }
-                            }
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if let order = displayedConversation.order {
+                            OrderConfirmationCardView(order: order)
+                                .padding(.bottom, Theme.Spacing.sm)
+                        }
+                        ForEach(Array(timelineOrder.enumerated()), id: \.offset) { timelineIndex, entry in
+                            timelineRow(timelineIndex: timelineIndex, entry: entry)
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                 }
                 .scrollDismissesKeyboard(.interactively)
-                .onChange(of: displayedMessages.count) { _, _ in
-                    if let lastMessage = displayedMessages.last {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                .onChange(of: timelineOrder.count) { _, newCount in
+                    guard newCount > 0 else { return }
+                    let last = timelineOrder[newCount - 1]
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        switch last {
+                        case .message(let id): proxy.scrollTo(id, anchor: .bottom)
+                        case .offer(let id): proxy.scrollTo(id == offerCards.last?.id ? "latest_offer_card" : id, anchor: .bottom)
                         }
                     }
                 }
@@ -242,26 +342,46 @@ struct ChatDetailView: View {
                 .buttonStyle(.plain)
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: displayedConversation.id)) {
-                    Image(systemName: "questionmark.circle")
+                Menu {
+                    Button("Archive") { }
+                    Button("Report", role: .destructive) {
+                        showReportUserSheet = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                         .foregroundColor(Theme.Colors.primaryText)
                         .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
             }
         }
         .toolbarBackground(Theme.Colors.background, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .sheet(isPresented: $showCounterOfferSheet) {
-            CounterOfferSheet(
-                offer: displayedConversation.offer!,
-                onSubmit: { newPrice in
-                    showCounterOfferSheet = false
-                    Task { await handleRespondToOffer(action: "COUNTER", offerPrice: newPrice) }
-                },
-                onCancel: { showCounterOfferSheet = false }
-            )
+            OptionsSheet(
+                title: L10n.string("Send a new offer"),
+                onDismiss: { showCounterOfferSheet = false },
+                detents: item != nil ? [.height(480)] : [.height(340)],
+                useCustomCornerRadius: false
+            ) {
+                OfferModalContent(
+                    item: item,
+                    listingPrice: item == nil ? (displayedConversation.offer?.offerPrice ?? 0) * 2 : nil,
+                    onSubmit: { newPrice in
+                        showCounterOfferSheet = false
+                        Task {
+                            if displayedConversation.offer?.isRejected == true {
+                                await handleCreateNewOffer(offerPrice: newPrice)
+                            } else {
+                                await handleRespondToOffer(action: "COUNTER", offerPrice: newPrice)
+                            }
+                        }
+                    },
+                    onDismiss: { showCounterOfferSheet = false },
+                    isSubmitting: $offerModalSubmitting,
+                    errorMessage: $offerError
+                )
+            }
         }
         .fullScreenCover(isPresented: $showPayNowCover) {
             NavigationView {
@@ -274,18 +394,252 @@ struct ChatDetailView: View {
                     }
             }
         }
+        .sheet(isPresented: $showReportUserSheet) {
+            NavigationStack {
+                ReportUserView(username: displayedConversation.recipient.username)
+                    .environmentObject(authService)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showReportUserSheet = false }
+                        }
+                    }
+            }
+        }
         .onAppear {
-            loadMessages()
             connectWebSocket()
+            fetchOfferProductIfNeeded()
+            syncOfferHistoryFromConversation()
+            loadConversationAndMessagesFromBackend()
+        }
+        .onChange(of: displayedConversation.offer?.id) { _, _ in
+            fetchOfferProductIfNeeded()
+        }
+        .onChange(of: displayedConversation.offer) { _, _ in
+            syncLastOfferFromConversation()
+        }
+        .onChange(of: displayedConversation.id) { _, _ in
+            offerHistory = []
+            timelineOrder = []
+            syncOfferHistoryFromConversation()
         }
         .onDisappear {
+            if !offerHistory.isEmpty {
+                Self.offerHistoryCache[displayedConversation.id] = offerHistory
+            }
+            if !timelineOrder.isEmpty {
+                Self.timelineOrderCache[displayedConversation.id] = timelineOrder
+            }
+            if let last = messages.last, displayedConversation.id != "0", let tc = tabCoordinator {
+                let previewText = last.isSoldConfirmation ? "Order confirmed" : (last.content.count > 60 ? String(last.content.prefix(57)) + "..." : last.content)
+                tc.lastMessagePreviewForConversation = (displayedConversation.id, previewText, last.timestamp)
+            }
             webSocket?.disconnect()
             webSocket = nil
         }
     }
 
+    /// After receiving sold_confirmation via WebSocket, refetch conversation so we get order from backend when it has been linked.
+    private func refetchConversationForOrder() async {
+        let convId = displayedConversation.id
+        guard let conv = try? await chatService.getConversationById(conversationId: convId) else { return }
+        await MainActor.run {
+            guard displayedConversation.id == convId, conv.order != nil else { return }
+            displayedConversation = conv
+            rebuildTimelineOrder()
+        }
+    }
+
+    /// Load conversation (with order) and messages from backend. Order is only from API (single source of truth).
+    private func loadConversationAndMessagesFromBackend() {
+        guard displayedConversation.id != "0" else { return }
+        let convId = displayedConversation.id
+        isLoading = true
+        Task {
+            let updatedConv: Conversation? = try? await chatService.getConversationById(conversationId: convId)
+            let msgs: [Message] = (try? await chatService.getMessages(conversationId: convId)) ?? []
+            await MainActor.run {
+                guard displayedConversation.id == convId else { return }
+                if let conv = updatedConv {
+                    displayedConversation = conv
+                }
+                self.messages = msgs
+                self.isLoading = false
+                rebuildTimelineOrder()
+                if displayedConversation.order == nil, msgs.contains(where: { $0.isSoldConfirmation }) {
+                    Task {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        await refetchConversationForOrder()
+                    }
+                }
+            }
+            if !msgs.isEmpty {
+                let idsToMarkRead = msgs
+                    .filter { $0.senderUsername != authService.username }
+                    .compactMap(\.backendId)
+                if !idsToMarkRead.isEmpty {
+                    _ = try? await chatService.readMessages(messageIds: idsToMarkRead)
+                }
+            }
+        }
+    }
+
+    /// Restore offer chain from cache when reloading chat; merge with server's latest offer so we keep previous cards.
+    private func syncOfferHistoryFromConversation() {
+        let convId = displayedConversation.id
+        guard let serverOffer = displayedConversation.offer else {
+            offerHistory = Self.offerHistoryCache[convId] ?? []
+            rebuildTimelineOrder()
+            return
+        }
+        if let cached = Self.offerHistoryCache[convId], !cached.isEmpty {
+            if cached.last?.id == serverOffer.id {
+                offerHistory = cached.dropLast() + [serverOffer]
+            } else {
+                offerHistory = cached + [serverOffer]
+            }
+        } else if offerHistory.isEmpty {
+            offerHistory = [serverOffer]
+        }
+        rebuildTimelineOrder()
+    }
+
+    /// Build or restore timeline order so messages and offer cards keep their positions (X, Y, X, Y, …).
+    private func rebuildTimelineOrder() {
+        let convId = displayedConversation.id
+        let offers = offerCards
+        let msgs = displayedMessages
+        if let cached = Self.timelineOrderCache[convId], !cached.isEmpty {
+            let offerIds = Set(offers.map(\.id))
+            let messageIds = Set(msgs.map(\.id))
+            var filtered: [TimelineEntry] = cached.filter { entry in
+                switch entry {
+                case .message(let id): return messageIds.contains(id)
+                case .offer(let id): return offerIds.contains(id)
+                }
+            }
+            var existingIds = Set<String>()
+            for e in filtered {
+                switch e {
+                case .message(let id): existingIds.insert("m\(id.uuidString)")
+                case .offer(let id): existingIds.insert("o\(id)")
+                }
+            }
+            for o in offers where !existingIds.contains("o\(o.id)") {
+                filtered.append(.offer(o.id))
+                existingIds.insert("o\(o.id)")
+            }
+            for m in msgs where !existingIds.contains("m\(m.id.uuidString)") {
+                filtered.append(.message(m.id))
+            }
+            timelineOrder = filtered
+        } else if timelineOrder.isEmpty {
+            timelineOrder = offers.map { .offer($0.id) } + msgs.map { .message($0.id) }
+        } else {
+            var merged = timelineOrder
+            for o in offers where !merged.contains(where: { if case .offer(let id) = $0 { return id == o.id }; return false }) {
+                merged.append(.offer(o.id))
+            }
+            for m in msgs where !merged.contains(where: { if case .message(let id) = $0 { return id == m.id }; return false }) {
+                merged.append(.message(m.id))
+            }
+            timelineOrder = merged
+        }
+    }
+
+    /// Update only the last offer card when the server pushes an offer update (e.g. declined). Keeps previous cards as snapshots.
+    /// Never overwrite an optimistic (pending-*) card with the server's OLD offer — only when server has the new offer or status update for the same offer.
+    private func syncLastOfferFromConversation() {
+        guard let serverOffer = displayedConversation.offer else { return }
+        if offerHistory.isEmpty {
+            offerHistory = [serverOffer]
+            return
+        }
+        let lastIndex = offerHistory.count - 1
+        let last = offerHistory[lastIndex]
+        let lastIsOptimistic = last.id.hasPrefix("pending-")
+        // If the last card is our optimistic placeholder, do NOT replace it with the server's OLD offer (same id and same price as first card).
+        if lastIsOptimistic, offerHistory.count >= 2 {
+            let first = offerHistory[0]
+            if serverOffer.id == first.id && abs(serverOffer.offerPrice - first.offerPrice) < 0.01 {
+                // Server returned the previous offer again — don't overwrite our new optimistic card.
+                return
+            }
+        }
+        let isLastSameOffer = last.id == serverOffer.id || lastIsOptimistic
+        if isLastSameOffer {
+            var next = offerHistory
+            next[lastIndex] = serverOffer
+            offerHistory = next
+            Self.offerHistoryCache[displayedConversation.id] = offerHistory
+        }
+    }
+
+    /// Create a new offer (same products) when the current offer is declined — backend rejects COUNTER on cancelled offers.
+    private func handleCreateNewOffer(offerPrice: Double) async {
+        guard let offer = displayedConversation.offer,
+              let productIds = offer.products?.compactMap({ p in p.id.flatMap(Int.init) }),
+              !productIds.isEmpty else {
+            await MainActor.run { offerError = "Could not load product" }
+            return
+        }
+        await MainActor.run {
+            isRespondingToOffer = true
+            offerError = nil
+            let cards = offerCards
+            let optimistic = OfferInfo(id: "pending-\(UUID().uuidString)", status: "PENDING", offerPrice: offerPrice, buyer: offer.buyer, products: offer.products)
+            offerHistory = cards + [optimistic]
+            timelineOrder.append(.offer(optimistic.id))
+        }
+        do {
+            let (_, newConv) = try await productService.createOffer(offerPrice: offerPrice, productIds: productIds, message: nil)
+            let convs = try await chatService.getConversations()
+            await MainActor.run {
+                if let updated = convs.first(where: { $0.id == displayedConversation.id }) {
+                    displayedConversation = updated
+                    if let serverOffer = updated.offer, !offerHistory.isEmpty {
+                        var next = offerHistory
+                        next[next.count - 1] = serverOffer
+                        offerHistory = next
+                        Self.offerHistoryCache[displayedConversation.id] = offerHistory
+                        if let last = timelineOrder.last, case .offer(let pid) = last, pid.hasPrefix("pending-") {
+                            timelineOrder[timelineOrder.count - 1] = .offer(serverOffer.id)
+                        }
+                    }
+                } else if let newConv = newConv, newConv.id == displayedConversation.id, let serverOffer = newConv.offer, !offerHistory.isEmpty {
+                    displayedConversation = newConv
+                    var next = offerHistory
+                    next[next.count - 1] = serverOffer
+                    offerHistory = next
+                    Self.offerHistoryCache[displayedConversation.id] = offerHistory
+                    if let last = timelineOrder.last, case .offer(let pid) = last, pid.hasPrefix("pending-") {
+                        timelineOrder[timelineOrder.count - 1] = .offer(serverOffer.id)
+                    }
+                }
+                isRespondingToOffer = false
+                offerError = nil
+            }
+        } catch {
+            await MainActor.run {
+                if !offerHistory.isEmpty { offerHistory = Array(offerHistory.dropLast()) }
+                if let last = timelineOrder.last, case .offer(let pid) = last, pid.hasPrefix("pending-") { timelineOrder.removeLast() }
+                isRespondingToOffer = false
+                offerError = error.localizedDescription
+            }
+        }
+    }
+
     private func handleRespondToOffer(action: String, offerPrice: Double? = nil) async {
         guard let offer = displayedConversation.offer, let offerId = offer.offerIdInt else { return }
+        let isCounter = action == "COUNTER"
+        let newPrice = offerPrice ?? offer.offerPrice
+        if isCounter {
+            await MainActor.run {
+                let cards = offerCards
+                let optimistic = OfferInfo(id: "pending-\(UUID().uuidString)", status: "PENDING", offerPrice: newPrice, buyer: offer.buyer, products: offer.products)
+                offerHistory = cards + [optimistic]
+                timelineOrder.append(.offer(optimistic.id))
+            }
+        }
         await MainActor.run {
             isRespondingToOffer = true
             offerError = nil
@@ -296,12 +650,38 @@ struct ChatDetailView: View {
             await MainActor.run {
                 if let updated = convs.first(where: { $0.id == displayedConversation.id }) {
                     displayedConversation = updated
+                    if isCounter, let serverOffer = updated.offer {
+                        if !offerHistory.isEmpty {
+                            let previous = offerHistory.dropLast()
+                            let firstOffer = offerHistory.first
+                            let lastWasOptimistic = offerHistory.last?.id.hasPrefix("pending-") == true
+                            // Only replace optimistic with server data if server has the offer we just sent (same price) or a clearly new offer (different id).
+                            let serverMatchesSentPrice = abs(serverOffer.offerPrice - newPrice) < 0.01
+                            let serverIsNewOffer = firstOffer == nil || serverOffer.id != firstOffer!.id
+                            if lastWasOptimistic && (serverMatchesSentPrice || serverIsNewOffer) {
+                                offerHistory = Array(previous) + [serverOffer]
+                                Self.offerHistoryCache[displayedConversation.id] = offerHistory
+                                if let last = timelineOrder.last, case .offer(let pid) = last, pid.hasPrefix("pending-") {
+                                    timelineOrder[timelineOrder.count - 1] = .offer(serverOffer.id)
+                                }
+                            }
+                        } else {
+                            offerHistory = [serverOffer]
+                            Self.offerHistoryCache[displayedConversation.id] = offerHistory
+                        }
+                    }
                 }
                 isRespondingToOffer = false
                 offerError = nil
             }
         } catch {
             await MainActor.run {
+                if isCounter, !offerHistory.isEmpty {
+                    offerHistory = Array(offerHistory.dropLast())
+                }
+                if isCounter, let last = timelineOrder.last, case .offer(let pid) = last, pid.hasPrefix("pending-") {
+                    timelineOrder.removeLast()
+                }
                 isRespondingToOffer = false
                 offerError = error.localizedDescription
             }
@@ -337,6 +717,117 @@ struct ChatDetailView: View {
                 }
             } catch {
                 await MainActor.run { offerError = error.localizedDescription }
+            }
+        }
+    }
+
+    /// Second header: product thumbnail (default 1:1) + latest offer price; tappable -> product page.
+    /// Order header bar (sale confirmation) when conversation has an order.
+    private var orderHeaderBar: some View {
+        guard let order = displayedConversation.order else { return AnyView(EmptyView()) }
+        let priceStr = String(format: "£%.2f", order.total)
+        let bar = HStack(spacing: Theme.Spacing.md) {
+            Group {
+                if let urlString = order.firstProductImageUrl, let url = URL(string: urlString) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFill()
+                        default: Rectangle().fill(Theme.Colors.secondaryBackground).overlay(Image(systemName: "photo").foregroundColor(Theme.Colors.secondaryText))
+                        }
+                    }
+                } else {
+                    Rectangle()
+                        .fill(Theme.Colors.secondaryBackground)
+                        .overlay(Image(systemName: "bag.fill").font(.body).foregroundColor(Theme.Colors.secondaryText))
+                }
+            }
+            .aspectRatio(1, contentMode: .fill)
+            .frame(width: 56, height: 56)
+            .clipped()
+            .cornerRadius(8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(order.firstProductName ?? "Order")
+                    .font(Theme.Typography.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .lineLimit(1)
+                Text(priceStr)
+                    .font(Theme.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.primaryColor)
+                Text(order.status)
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
+        .background(Theme.Colors.background)
+        return AnyView(bar)
+    }
+
+    private var offerProductHeaderBar: some View {
+        let offer = displayedConversation.offer!
+        let priceStr = String(format: "£%.2f", offer.offerPrice)
+        let bar = HStack(spacing: Theme.Spacing.md) {
+            Group {
+                if let item = offerProductItem, let urlString = item.imageURLs.first, let url = URL(string: urlString) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFill()
+                        default: Rectangle().fill(Theme.Colors.secondaryBackground).overlay(Image(systemName: "photo").foregroundColor(Theme.Colors.secondaryText))
+                        }
+                    }
+                } else {
+                    Rectangle()
+                        .fill(Theme.Colors.secondaryBackground)
+                        .overlay(Image(systemName: "photo").font(.body).foregroundColor(Theme.Colors.secondaryText))
+                }
+            }
+            .aspectRatio(1, contentMode: .fill)
+            .frame(width: 56, height: 56)
+            .clipped()
+            .cornerRadius(8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(offerProductItem?.title ?? offer.products?.first?.name ?? "Product")
+                    .font(Theme.Typography.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .lineLimit(1)
+                Text(priceStr)
+                    .font(Theme.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.primaryColor)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14))
+                .foregroundColor(Theme.Colors.secondaryText)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
+        .background(Theme.Colors.background)
+        .contentShape(Rectangle())
+        return Group {
+            if let item = offerProductItem {
+                NavigationLink(destination: ItemDetailView(item: item, authService: authService)) { bar }
+                    .buttonStyle(.plain)
+            } else {
+                bar
+            }
+        }
+    }
+
+    private func fetchOfferProductIfNeeded() {
+        guard let offer = displayedConversation.offer,
+              let firstId = offer.products?.first?.id.flatMap({ Int($0) }) else {
+            offerProductItem = nil
+            return
+        }
+        Task {
+            if let product = try? await productService.getProduct(id: firstId) {
+                await MainActor.run { offerProductItem = product }
             }
         }
     }
@@ -389,6 +880,9 @@ struct ChatDetailView: View {
             if messages.contains(where: { $0.id == msg.id }) { return }
             messages.append(msg)
             messages.sort { $0.timestamp < $1.timestamp }
+            if msg.isSoldConfirmation, displayedConversation.order == nil {
+                Task { await refetchConversationForOrder() }
+            }
         }
         webSocket = ws
         ws.connect()
@@ -399,13 +893,16 @@ struct ChatDetailView: View {
             messages = []
             return
         }
+        let convId = displayedConversation.id
         isLoading = true
         Task {
             do {
-                let msgs = try await chatService.getMessages(conversationId: displayedConversation.id)
+                let msgs = try await chatService.getMessages(conversationId: convId)
                 await MainActor.run {
+                    guard displayedConversation.id == convId else { return }
                     self.messages = msgs
                     self.isLoading = false
+                    self.rebuildTimelineOrder()
                 }
                 // Mark as read: messages from the other party (IDs we have from backend)
                 let idsToMarkRead = msgs
@@ -416,8 +913,12 @@ struct ChatDetailView: View {
                 }
             } catch {
                 await MainActor.run {
-                    self.messages = []
                     self.isLoading = false
+                    // Don't wipe messages on error when we already have messages for this conversation (avoids empty chat on re-enter)
+                    if displayedConversation.id != convId || messages.isEmpty {
+                        self.messages = []
+                    }
+                    self.rebuildTimelineOrder()
                 }
             }
         }
@@ -439,7 +940,7 @@ struct ChatDetailView: View {
 
     private func sendMessage() {
         let text = newMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, displayedConversation.id != "0" else { return }
         newMessage = ""
         let messageUUID = UUID().uuidString
         let optimistic = Message(
@@ -449,24 +950,22 @@ struct ChatDetailView: View {
             type: "text"
         )
         messages.append(optimistic)
+        timelineOrder.append(.message(optimistic.id))
         pendingMessageUUID = messageUUID
         if let ws = webSocket {
             ws.send(message: text, messageUUID: messageUUID)
-        } else {
-            Task {
-                do {
-                    _ = try await chatService.sendMessage(conversationId: displayedConversation.id, message: text, messageUuid: messageUUID)
-                    await MainActor.run {
-                        if let idx = messages.firstIndex(where: { $0.id.uuidString == messageUUID }) {
-                            pendingMessageUUID = nil
-                        }
-                        loadMessages()
-                    }
-                } catch {
-                    await MainActor.run {
-                        messages.removeAll { $0.id.uuidString == messageUUID }
-                        pendingMessageUUID = nil
-                    }
+        }
+        Task {
+            do {
+                _ = try await chatService.sendMessage(conversationId: displayedConversation.id, message: text, messageUuid: messageUUID)
+                await MainActor.run {
+                    pendingMessageUUID = nil
+                    loadMessages()
+                }
+            } catch {
+                await MainActor.run {
+                    messages.removeAll { $0.id.uuidString == messageUUID }
+                    pendingMessageUUID = nil
                 }
             }
         }
@@ -486,6 +985,8 @@ struct OfferCardView: View {
     let onDecline: () async -> Void
     let onSendNewOffer: () -> Void
     let onPayNow: () -> Void
+    /// When true, show only offer line + status and a disabled/greyed "Send new offer" (for previous cards).
+    var forceGreyedOut: Bool = false
 
     private var offerLine: String {
         let priceStr = String(format: "£%.2f", offer.offerPrice)
@@ -514,15 +1015,26 @@ struct OfferCardView: View {
         }
     }
 
+    /// Hide status label when Pending or Countered (per design: don't show "COUNTERED" / "Pending" on cards).
+    private var shouldShowStatus: Bool {
+        let s = (offer.status ?? "").uppercased()
+        return s != "PENDING" && s != "COUNTERED"
+    }
+
+    /// True when this offer was sent by the current user (buyer).
+    private var isMyOffer: Bool { offer.buyer?.username == currentUsername }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text(offerLine)
                 .font(Theme.Typography.body)
                 .fontWeight(.semibold)
                 .foregroundColor(Theme.Colors.primaryText)
-            Text(statusText)
-                .font(Theme.Typography.subheadline)
-                .foregroundColor(statusColor)
+            if shouldShowStatus {
+                Text(statusText)
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(statusColor)
+            }
 
             if let err = errorMessage, !err.isEmpty {
                 Text(err)
@@ -530,7 +1042,32 @@ struct OfferCardView: View {
                     .foregroundColor(.red)
             }
 
-            if isSeller && offer.isPending {
+            if forceGreyedOut {
+                // Previous card: show active "Send new offer" for my offers, disabled for others.
+                if isMyOffer {
+                    Button(action: onSendNewOffer) {
+                        Text("Send new offer")
+                            .fontWeight(.medium)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .cornerRadius(22)
+                    }
+                    .disabled(isResponding)
+                } else {
+                    Button(action: {}) {
+                        Text("Send new offer")
+                            .fontWeight(.medium)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .cornerRadius(22)
+                    }
+                    .disabled(true)
+                }
+            } else if isSeller && offer.isPending {
                 HStack(spacing: Theme.Spacing.sm) {
                     Button(action: { Task { await onAccept() } }) {
                         Text("Accept")
@@ -563,6 +1100,17 @@ struct OfferCardView: View {
                     }
                     .disabled(isResponding)
                 }
+            } else if !isSeller && offer.isPending {
+                Button(action: onSendNewOffer) {
+                    Text("Send new offer")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(Theme.primaryColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(22)
+                }
+                .disabled(isResponding)
             } else if !isSeller && offer.isAccepted {
                 Button(action: onPayNow) {
                     Text("Pay now")
@@ -576,13 +1124,26 @@ struct OfferCardView: View {
             } else if offer.isRejected {
                 Button(action: onSendNewOffer) {
                     Text("Send new offer")
-                        .fontWeight(.medium)
+                        .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
                         .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.primaryColor, lineWidth: 1))
                         .foregroundColor(Theme.primaryColor)
                         .cornerRadius(22)
                 }
+                .disabled(isResponding)
+            } else if !isSeller && !offer.isAccepted {
+                // My offer in any other state (e.g. COUNTERED): always show Send new offer.
+                Button(action: onSendNewOffer) {
+                    Text("Send new offer")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(Theme.primaryColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(22)
+                }
+                .disabled(isResponding)
             }
 
             if isResponding {
@@ -599,62 +1160,6 @@ struct OfferCardView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Theme.Colors.glassBorder, lineWidth: 1)
         )
-    }
-}
-
-/// Sheet to enter counter-offer price and submit (respondToOffer COUNTER).
-struct CounterOfferSheet: View {
-    let offer: OfferInfo
-    let onSubmit: (Double) -> Void
-    let onCancel: () -> Void
-
-    @State private var priceText = ""
-    @State private var isSubmitting = false
-    @FocusState private var isFocused: Bool
-
-    private var priceValue: Double? {
-        let cleaned = priceText.replacingOccurrences(of: "£", with: "").trimmingCharacters(in: .whitespaces)
-        return Double(cleaned)
-    }
-
-    private var canSubmit: Bool {
-        guard let v = priceValue, v > 0 else { return false }
-        return true
-    }
-
-    var body: some View {
-        NavigationView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                Text("Send a new offer")
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                TextField("Offer amount (£)", text: $priceText)
-                    .keyboardType(.decimalPad)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($isFocused)
-                HStack(spacing: Theme.Spacing.sm) {
-                    Button("Cancel", action: onCancel)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    Spacer()
-                    Button("Send offer") {
-                        guard let v = priceValue, canSubmit else { return }
-                        isSubmitting = true
-                        onSubmit(v)
-                        isSubmitting = false
-                    }
-                    .disabled(!canSubmit || isSubmitting)
-                    .foregroundColor(Theme.primaryColor)
-                }
-                Spacer()
-            }
-            .padding(Theme.Spacing.md)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel", action: onCancel)
-                }
-            }
-        }
     }
 }
 
@@ -710,6 +1215,55 @@ struct ChatProductCardView: View {
             .padding(.vertical, Theme.Spacing.sm)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Order confirmation card shown at top of chat when conversation has an order (sale details).
+struct OrderConfirmationCardView: View {
+    let order: ConversationOrder
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(Theme.primaryColor)
+                Text("Order confirmed")
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.primaryText)
+            }
+            HStack {
+                Text(String(format: "£%.2f", order.total))
+                    .font(Theme.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.primaryColor)
+                Text("•")
+                    .foregroundColor(Theme.Colors.secondaryText)
+                Text(order.status)
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+            if let name = order.firstProductName, !name.isEmpty {
+                Text(name)
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .lineLimit(2)
+            }
+            NavigationLink(destination: OrderHelpView(orderId: order.id, conversationId: "")) {
+                Text("Report an issue")
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(Theme.primaryColor)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.secondaryBackground)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -779,6 +1333,8 @@ struct MessageBubbleView: View {
     let isCurrentUser: Bool
     /// When true and not current user, show avatar to the left of the bubble (first in group).
     var showAvatar: Bool = false
+    /// When true, show timestamp below the bubble (only on last message of a group to avoid repetition).
+    var showTimestamp: Bool = true
     var avatarURL: String? = nil
     var recipientUsername: String = ""
 
@@ -848,10 +1404,12 @@ struct MessageBubbleView: View {
                             )
                     )
                     .cornerRadius(18)
-                Text(message.formattedTimestamp)
-                    .font(Theme.Typography.caption)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                if showTimestamp {
+                    Text(message.formattedTimestamp)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
             .frame(maxWidth: bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
             if !isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }

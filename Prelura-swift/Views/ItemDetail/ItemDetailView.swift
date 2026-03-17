@@ -900,8 +900,6 @@ struct ProductOptionsSheet: View {
     var onMarkAsSold: () -> Void = {}
     var onCopyLink: () -> Void = {}
 
-    @Environment(\.colorScheme) private var colorScheme
-
     private var optionDivider: some View {
         Rectangle()
             .fill(Theme.Colors.glassBorder)
@@ -930,10 +928,9 @@ struct ProductOptionsSheet: View {
             }
             .padding(.vertical, Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                    .fill(colorScheme == .dark ? Color.black.opacity(0.3) : Color.white.opacity(0.1))
+                    .fill(Theme.Colors.background)
             )
         }
     }

@@ -29,6 +29,7 @@ struct PaymentView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authService: AuthService
+    @Environment(\.optionalTabCoordinator) private var tabCoordinator
     @State private var currentUser: User?
     @State private var selectedDelivery: DeliveryType = .homeDelivery
     /// When seller has postage options, we use this instead of selectedDelivery.
@@ -43,6 +44,7 @@ struct PaymentView: View {
 
     private let userService = UserService()
     private let productService = ProductService()
+    private let chatService = ChatService()
 
     /// Sum of all product prices (before multi-buy discount).
     private var orderSubtotal: Double { products.reduce(0) { $0 + $1.price } }
@@ -455,7 +457,31 @@ struct PaymentView: View {
                 }
                 let (_, paymentRef) = try await userService.createPaymentIntent(orderId: orderIdInt, paymentMethodId: method.paymentMethodId)
                 _ = try await userService.confirmPayment(paymentRef: paymentRef)
-                await MainActor.run { showPaymentSuccess = true }
+                // Refetch conversations; backend links order to conversation on payment success. Open only API conversation (single source of truth).
+                var conversationToOpen: Conversation?
+                if let seller = products.first?.seller, !seller.username.isEmpty {
+                    chatService.updateAuthToken(authService.authToken)
+                    do {
+                        let list = try await chatService.getConversations()
+                        let withSeller = list.filter { $0.recipient.username == seller.username }
+                        let withOrder = withSeller.first { $0.order?.id == orderResult.orderId }
+                        let withAnyOrder = withSeller.first { $0.order != nil }
+                        conversationToOpen = withOrder ?? withAnyOrder ?? withSeller.first
+                        if conversationToOpen == nil {
+                            let newConv = try await chatService.createChat(recipient: seller.username)
+                            conversationToOpen = newConv
+                        }
+                    } catch {
+                        // Non-fatal: still show success; user can open Messages manually
+                    }
+                }
+                await MainActor.run {
+                    if let conv = conversationToOpen {
+                        tabCoordinator?.selectTab(3)
+                        tabCoordinator?.pendingOpenConversation = conv
+                    }
+                    showPaymentSuccess = true
+                }
             } catch {
                 await MainActor.run { errorMessage = error.localizedDescription }
             }

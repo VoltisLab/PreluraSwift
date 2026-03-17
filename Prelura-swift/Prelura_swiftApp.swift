@@ -11,6 +11,16 @@ import UIKit
 /// Storage key for appearance: "system" | "light" | "dark"
 let kAppearanceMode = "appearance_mode"
 
+/// When the user is logged in and we have an APNs device token, send it via updateProfile(fcmToken:) so the backend can deliver push notifications (same as Flutter).
+private func registerPushTokenIfNeeded(authService: AuthService) {
+    guard authService.isAuthenticated, let token = UserDefaults.standard.string(forKey: kDeviceTokenKey), !token.isEmpty else { return }
+    Task { @MainActor in
+        let userService = UserService()
+        userService.updateAuthToken(authService.authToken)
+        _ = try? await userService.updateProfile(fcmToken: token)
+    }
+}
+
 @main
 struct Prelura_swiftApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -91,6 +101,11 @@ struct AppearanceRootView: View {
                 appRouter.handle(notificationPayload: payload)
             }
         }
+            .onAppear { registerPushTokenIfNeeded(authService: authService) }
+            .onChange(of: authService.isAuthenticated) { _, _ in registerPushTokenIfNeeded(authService: authService) }
+            .onReceive(NotificationCenter.default.publisher(for: .preluraDeviceTokenDidUpdate)) { _ in
+                registerPushTokenIfNeeded(authService: authService)
+            }
     }
 
     @ViewBuilder

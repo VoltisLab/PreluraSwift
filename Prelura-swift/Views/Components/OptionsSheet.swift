@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// Reusable modal sheet with title, close button, and consistent presentation. Use for product options, sort, filter, and similar modals.
+/// Matches Sort modal: one colour (Theme.Colors.background) for nav bar and content area so no grey/split.
 struct OptionsSheet<Content: View>: View {
     let title: String
     let onDismiss: () -> Void
@@ -9,11 +10,16 @@ struct OptionsSheet<Content: View>: View {
     var useCustomCornerRadius: Bool = true
     @ViewBuilder let content: () -> Content
 
+    private var sheetBackground: Color { Theme.Colors.background }
+
     var body: some View {
         NavigationStack {
             content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(sheetBackground)
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(sheetBackground, for: .navigationBar)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(action: onDismiss) {
@@ -26,7 +32,7 @@ struct OptionsSheet<Content: View>: View {
         }
         .presentationDetents(Set(detents))
         .presentationDragIndicator(.visible)
-        .presentationBackground(Theme.Colors.background)
+        .presentationBackground(sheetBackground)
         .modifier(SheetCornerRadiusModifier(apply: useCustomCornerRadius))
     }
 }

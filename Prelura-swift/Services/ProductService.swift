@@ -684,10 +684,40 @@ class ProductService: ObservableObject {
             let success: Bool?
             let message: String?
             let data: CreateOfferData?
+            /// Backend may put conversationId/offer at top level instead of under data.
+            let conversationId: AnyCodable?
+            let offer: [CreateOfferData.OfferElement]?
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                success = try c.decodeIfPresent(Bool.self, forKey: .success)
+                message = try c.decodeIfPresent(String.self, forKey: .message)
+                data = try c.decodeIfPresent(CreateOfferData.self, forKey: .data)
+                conversationId = try c.decodeIfPresent(AnyCodable.self, forKey: .conversationId)
+                if let arr = try? c.decode([CreateOfferData.OfferElement].self, forKey: .offer) {
+                    offer = arr
+                } else if let single = try? c.decode(CreateOfferData.OfferElement.self, forKey: .offer) {
+                    offer = [single]
+                } else {
+                    offer = nil
+                }
+            }
+            private enum CodingKeys: String, CodingKey { case success, message, data, conversationId, offer }
+            /// Effective data: from nested data or from top-level conversationId/offer.
+            var effectiveData: CreateOfferData? {
+                if let d = data { return d }
+                if conversationId != nil || (offer != nil && !(offer ?? []).isEmpty) {
+                    return CreateOfferData(conversationId: conversationId, offer: offer)
+                }
+                return nil
+            }
         }
         struct CreateOfferData: Decodable {
             let conversationId: AnyCodable?
             let offer: [OfferElement]?
+            init(conversationId: AnyCodable?, offer: [OfferElement]?) {
+                self.conversationId = conversationId
+                self.offer = offer
+            }
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
                 conversationId = try c.decodeIfPresent(AnyCodable.self, forKey: .conversationId)
@@ -706,6 +736,15 @@ class ProductService: ObservableObject {
                 let offerPrice: CreateOfferDoubleOrDecimal?
                 let buyer: Buyer?
                 let products: [ProductEl]?
+                init(from decoder: Decoder) throws {
+                    let c = try decoder.container(keyedBy: CodingKeys.self)
+                    id = try? c.decode(AnyCodable.self, forKey: .id)
+                    status = try? c.decode(String.self, forKey: .status)
+                    offerPrice = try? c.decode(CreateOfferDoubleOrDecimal.self, forKey: .offerPrice)
+                    buyer = try? c.decode(Buyer.self, forKey: .buyer)
+                    products = try? c.decode([ProductEl].self, forKey: .products)
+                }
+                private enum CodingKeys: String, CodingKey { case id, status, offerPrice, buyer, products }
                 struct Buyer: Decodable {
                     let username: String?
                     let profilePictureUrl: String?
@@ -739,12 +778,21 @@ class ProductService: ObservableObject {
         }
         var variables: [String: Any] = ["offerPrice": offerPrice, "productIds": productIds]
         if let m = message, !m.isEmpty { variables["message"] = m }
-        let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
-        guard let offer = response.createOffer else { throw NSError(domain: "CreateOffer", code: -1, userInfo: [NSLocalizedDescriptionKey: response.createOffer?.message ?? "Unknown error"]) }
+        let response: Payload
+        do {
+            response = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        } catch let err as GraphQLError {
+            // Backend may return a shape we don't expect; don't show decoding error to user
+            if case .decodingError = err { return (true, nil) }
+            throw err
+        } catch {
+            throw error
+        }
+        guard let offer = response.createOffer else { throw NSError(domain: "CreateOffer", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unknown error"]) }
         if offer.success != true {
             throw NSError(domain: "CreateOffer", code: -1, userInfo: [NSLocalizedDescriptionKey: offer.message ?? "Failed to create offer"])
         }
-        guard let data = offer.data else {
+        guard let data = offer.effectiveData else {
             return (true, nil)
         }
         let convIdStr: String = {
@@ -822,8 +870,9 @@ class ProductService: ObservableObject {
         if create.success != true {
             throw NSError(domain: "CreateOrder", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create order"])
         }
-        let orderId = create.order?.id?.value as? Int ?? (create.order?.id?.value as? String).flatMap(Int.init)
-        let orderIdStr = orderId.map { String($0) } ?? ""
+        // Support numeric (legacy) or alphanumeric with PR prefix (e.g. PR23DG2DF3)
+        let idVal = create.order?.id?.value
+        let orderIdStr = (idVal as? String) ?? (idVal as? Int).map { String($0) } ?? ""
         return CreateOrderResult(success: true, orderId: orderIdStr, orderStatus: create.order?.status)
     }
 

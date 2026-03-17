@@ -126,6 +126,7 @@ struct SearchMembersView: View {
                         }
                         Spacer(minLength: 0)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .listRowBackground(Theme.Colors.background)

@@ -20,6 +20,8 @@ final class TabCoordinator: ObservableObject {
     @Published var readyForRefresh: Set<Int> = []
     /// When set, Inbox should navigate to this conversation (e.g. after sending an offer).
     @Published var pendingOpenConversation: Conversation?
+    /// When user leaves a chat, store last message preview so the list can show it immediately without waiting for refetch.
+    @Published var lastMessagePreviewForConversation: (id: String, text: String, date: Date)?
     /// Per-tab: true when scroll view is at top. Used to decide: at top → refresh on tap; not at top → scroll first, refresh on second tap.
     private var atTop: [Int: Bool] = [:]
 

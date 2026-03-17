@@ -49,6 +49,8 @@ struct NotificationsListView: View {
                     ForEach(notifications) { notification in
                         NavigationLink(destination: NotificationDestinationView(notification: notification, onMarkRead: { markAsRead(notification) })) {
                             NotificationRowView(notification: notification)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .listRowBackground(Theme.Colors.background)

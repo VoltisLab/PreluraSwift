@@ -82,14 +82,15 @@ struct Message: Identifiable {
         displayContentForBubble(isFromCurrentUser: false)
     }
 
-    /// True when content is JSON with type "sold_confirmation" (show banner instead of bubble).
+    /// True when backend sent itemType "sold_confirmation" or content is JSON with type "sold_confirmation" (show banner instead of bubble).
     var isSoldConfirmation: Bool {
+        if type == "sold_confirmation" { return true }
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("{"),
               let data = trimmed.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = json["type"] as? String else { return false }
-        return type == "sold_confirmation"
+              let t = json["type"] as? String else { return false }
+        return t == "sold_confirmation"
     }
 
     /// Parsed sold_confirmation payload for banner (product_price, buyer_subtotal, etc.).

@@ -10,6 +10,8 @@ struct Constants {
     // GraphQL Endpoints (backend: https://github.com/VoltisLab/prelura-app)
     static let graphQLBaseURL = "https://prelura.voltislabs.uk/graphql/"
     static let graphQLUploadURL = "https://prelura.voltislabs.uk/graphql/uploads/"
+    /// WebSocket for chat (same host as GraphQL so messages send/save to the same backend).
+    static let chatWebSocketBaseURL = "wss://prelura.voltislabs.uk/ws/chat/"
     
     // Legal & info URLs (same domain as API)
     static let termsAndConditionsURL = "https://prelura.voltislabs.uk/terms/"

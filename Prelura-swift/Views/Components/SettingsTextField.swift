@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Single-line text field styled like DiscoverSearchField (rounded, secondary background).
 /// Use for Account Settings and other forms where search-field styling is desired.
+/// When bordered and focused, shows a primary-colour ring.
 struct SettingsTextField: View {
     let placeholder: String
     @Binding var text: String
@@ -10,14 +11,24 @@ struct SettingsTextField: View {
     var isSecure: Bool = false
     var isEnabled: Bool = true
     var onTap: (() -> Void)? = nil
-    /// When true, adds a grey border and no shadow (e.g. Filter modal price fields).
+    /// When true, adds a border (grey when unfocused, primary colour ring when focused).
     var bordered: Bool = false
     /// When true, uses smaller vertical padding for a shorter field (e.g. Postage price).
     var compact: Bool = false
 
+    @FocusState private var isFocused: Bool
     @State private var passwordVisible: Bool = false
     private let cornerRadius: CGFloat = 30
     private var verticalPadding: CGFloat { compact ? Theme.Spacing.sm : Theme.Spacing.md }
+
+    private var strokeColor: Color {
+        if isFocused, bordered { return Theme.primaryColor }
+        if bordered { return Theme.Colors.glassBorder }
+        return .clear
+    }
+    private var strokeWidth: CGFloat {
+        isFocused && bordered ? 2 : (bordered ? 1 : 0)
+    }
 
     var body: some View {
         Group {
@@ -41,11 +52,13 @@ struct SettingsTextField: View {
                                 .font(Theme.Typography.body)
                                 .foregroundColor(Theme.Colors.primaryText)
                                 .textContentType(textContentType ?? .password)
+                                .focused($isFocused)
                         } else {
                             SecureField(placeholder, text: $text)
                                 .font(Theme.Typography.body)
                                 .foregroundColor(Theme.Colors.primaryText)
                                 .textContentType(textContentType ?? .password)
+                                .focused($isFocused)
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.md)
@@ -63,6 +76,7 @@ struct SettingsTextField: View {
                     .foregroundColor(Theme.Colors.primaryText)
                     .keyboardType(keyboardType)
                     .textContentType(textContentType)
+                    .focused($isFocused)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, verticalPadding)
             }
@@ -72,7 +86,7 @@ struct SettingsTextField: View {
         .cornerRadius(cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius)
-                .strokeBorder(bordered ? Theme.Colors.glassBorder : .clear, lineWidth: bordered ? 1 : 0)
+                .strokeBorder(strokeColor, lineWidth: strokeWidth)
         )
     }
 }

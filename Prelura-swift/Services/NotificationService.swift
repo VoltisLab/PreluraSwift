@@ -246,4 +246,35 @@ final class NotificationService {
         let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
         return response.deleteNotification?.success ?? false
     }
+
+    // MARK: - Push notification device token (APNs)
+
+    /// Register the APNs device token with the backend so the server can send push notifications to this device.
+    /// Mutation name and arguments must match the backend schema (same as used by Flutter for FCM). If the backend uses a different mutation (e.g. savePushToken), update the mutation string below.
+    func registerDeviceToken(token: String) async throws {
+        guard !token.isEmpty else { return }
+        let mutation = """
+        mutation RegisterDeviceToken($token: String!, $platform: String!) {
+          registerDevice(token: $token, platform: $platform) {
+            success
+          }
+        }
+        """
+        let variables: [String: Any] = ["token": token, "platform": "ios"]
+        struct Payload: Decodable {
+            let registerDevice: Result?
+            struct Result: Decodable { let success: Bool? }
+        }
+        do {
+            let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+            if response.registerDevice?.success != true {
+                throw NSError(domain: "NotificationService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to register device token"])
+            }
+        } catch {
+            #if DEBUG
+            print("Prelura: registerDeviceToken failed (backend may use a different mutation name): \(error)")
+            #endif
+            throw error
+        }
+    }
 }

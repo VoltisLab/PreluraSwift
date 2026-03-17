@@ -63,6 +63,7 @@ enum L10n {
         "Dashboard": "Πίνακας Ελέγχου",
         "Shop Categories": "Κατηγορίες Καταστήματος",
         "Orders": "Παραγγελίες",
+        "Order details": "Λεπτομέρειες παραγγελίας",
         "Favourites": "Αγαπημένα",
         "Shop tools": "Εργαλεία Καταστήματος",
         "Background replacer": "Αντικατάσταση Φόντου",

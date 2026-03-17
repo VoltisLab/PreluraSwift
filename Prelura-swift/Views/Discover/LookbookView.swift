@@ -137,10 +137,9 @@ struct LookbookView: View {
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Lookbooks"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Theme.Colors.background, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.visible, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
-        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: Theme.Spacing.sm) {

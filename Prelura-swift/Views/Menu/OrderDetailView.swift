@@ -38,6 +38,11 @@ struct OrderDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                // Header: Order - PR23DG2DF3 (matches debug design)
+                Text("Order - \(order.displayOrderId)")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(Theme.Colors.primaryText)
+
                 // Status: label above, then single card with status text in purple
                 sectionLabel(L10n.string("Status"))
                 statusCard
@@ -92,7 +97,7 @@ struct OrderDetailView: View {
             .padding(.bottom, Theme.Spacing.xl)
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Order #\(order.id)")
+        .navigationTitle(L10n.string("Order details"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }

@@ -1,23 +1,27 @@
 import SwiftUI
 
-// MARK: - Sheet content (used inside OptionsSheet for same styling as Sort/Filter)
+// MARK: - Reusable offer modal content (marketplace + chat)
 
-/// Send-offer content for OptionsSheet. Matches Flutter: product info, -5/-10/-15% chips, price input, Clear + Send Offer. Styling matches SortSheetContent (dividers, glass buttons).
-struct SendOfferSheetContent: View {
-    let item: Item
+/// Shared offer form: optional product row + chips when item provided, £ input, Clear + Send offer. Use inside OptionsSheet for same look in marketplace and chat.
+struct OfferModalContent: View {
+    /// When non-nil, show product row and -5/-10/-15% chips. When nil, show compact form (title + input + buttons).
+    var item: Item?
+    /// For compact form (item == nil): used for 60% min validation. When nil, only value > 0 is required.
+    var listingPrice: Double? = nil
+    var onSubmit: (Double) -> Void
     var onDismiss: () -> Void
-
-    @EnvironmentObject var authService: AuthService
-    @Environment(\.optionalTabCoordinator) private var tabCoordinator
-    private let productService = ProductService()
+    @Binding var isSubmitting: Bool
+    /// Optional: caller can set to show API/validation errors (e.g. marketplace createOffer failure).
+    @Binding var errorMessage: String?
 
     @State private var offerAmount: String = ""
     @State private var selectedSuggestionPrice: Double? = nil
-    @State private var isSubmitting: Bool = false
-    @State private var errorMessage: String?
     @FocusState private var offerFieldFocused: Bool
 
-    private var maxPrice: Double { item.price }
+    private var maxPrice: Double {
+        if let item = item { return item.price }
+        return listingPrice ?? .infinity
+    }
     private var fivePercent: Double { maxPrice * 0.95 }
     private var tenPercent: Double { maxPrice * 0.90 }
     private var fifteenPercent: Double { maxPrice * 0.85 }
@@ -29,7 +33,7 @@ struct SendOfferSheetContent: View {
 
     private var canSubmit: Bool {
         guard let value = offerValue, value > 0 else { return false }
-        if value < maxPrice * 0.6 { return false }
+        if maxPrice != .infinity, value < maxPrice * 0.6 { return false }
         return true
     }
 
@@ -42,87 +46,93 @@ struct SendOfferSheetContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Product info row
-            HStack(alignment: .top, spacing: Theme.Spacing.md) {
-                if let url = item.imageURLs.first, let imageURL = URL(string: url) {
-                    AsyncImage(url: imageURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        default:
-                            Rectangle()
-                                .fill(Theme.Colors.secondaryBackground)
+            // Top: product (optional) + chips (optional) + price field — tightened spacing
+            if let item = item {
+                HStack(alignment: .top, spacing: Theme.Spacing.md) {
+                    if let url = item.imageURLs.first, let imageURL = URL(string: url) {
+                        AsyncImage(url: imageURL) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            default:
+                                Rectangle()
+                                    .fill(Theme.Colors.secondaryBackground)
+                            }
                         }
+                        .frame(width: 80, height: 100)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
-                    .frame(width: 80, height: 100)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(item.title)
+                            .font(Theme.Typography.headline)
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .lineLimit(2)
+                        if let brand = item.brand, !brand.isEmpty {
+                            Text(brand)
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        }
+                        if let size = item.size, !size.isEmpty {
+                            Text("Size \(size)")
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        }
+                        priceRow(item: item)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(item.title)
-                        .font(Theme.Typography.headline)
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .lineLimit(2)
-                    if let brand = item.brand, !brand.isEmpty {
-                        Text(brand)
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                    }
-                    if let size = item.size, !size.isEmpty {
-                        Text("Size \(size)")
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                    }
-                    Spacer(minLength: 4)
-                    priceRow
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm)
+                optionDivider
+
+                HStack(spacing: 8) {
+                    suggestionChip(price: fivePercent, discount: "-5%")
+                    suggestionChip(price: tenPercent, discount: "-10%")
+                    suggestionChip(price: fifteenPercent, discount: "-15%")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.xs)
+                optionDivider
             }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.md)
-            optionDivider
 
-            // Suggestion chips (-5%, -10%, -15%)
-            HStack(spacing: 8) {
-                suggestionChip(price: fivePercent, discount: "-5%")
-                suggestionChip(price: tenPercent, discount: "-10%")
-                suggestionChip(price: fifteenPercent, discount: "-15%")
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-            optionDivider
-
-            // Your offer input
+            // Your offer input — minimal top padding for slicker look
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(L10n.string("Your offer"))
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.secondaryText)
                 HStack(spacing: Theme.Spacing.sm) {
                     Text("£")
-                        .font(Theme.Typography.title2)
-                        .foregroundColor(Theme.primaryColor)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
                     TextField("0", text: $offerAmount)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
                         .keyboardType(.decimalPad)
+                        .focused($offerFieldFocused)
                         .onChange(of: offerAmount) { _, newValue in
                             let sanitized = PriceFieldFilter.sanitizePriceInput(newValue)
                             if sanitized != newValue { offerAmount = sanitized }
                         }
-                        .font(Theme.Typography.title2)
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .focused($offerFieldFocused)
                         .onChange(of: offerAmount) { _, _ in
                             errorMessage = nil
                             if let v = offerValue, v != selectedSuggestionPrice { selectedSuggestionPrice = nil }
                         }
                 }
-                .padding(Theme.Spacing.md)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
                 .background(Theme.Colors.secondaryBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .cornerRadius(30)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 30)
+                        .strokeBorder(Theme.Colors.glassBorder, lineWidth: 1)
+                )
             }
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-            if let err = errorMessage {
+            .padding(.top, item == nil ? Theme.Spacing.xs : Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.xs)
+            if let err = errorMessage, !err.isEmpty {
                 Text(err)
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.error)
@@ -131,7 +141,7 @@ struct SendOfferSheetContent: View {
             }
             optionDivider
 
-            // Clear + Send Offer (same pattern as Sort: BorderGlassButton + PrimaryGlassButton)
+            // Clear + Send Offer — tight spacing below the input divider
             VStack(spacing: Theme.Spacing.sm) {
                 BorderGlassButton(L10n.string("Clear")) {
                     offerAmount = ""
@@ -142,20 +152,33 @@ struct SendOfferSheetContent: View {
                     .disabled(!canSubmit)
             }
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.top, Theme.Spacing.md)
-            .padding(.bottom, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.sm)
         }
-        .padding(.vertical, Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(.vertical, Theme.Spacing.sm)
         .background(Theme.Colors.background)
         .onAppear {
-            let initial = item.price == floor(item.price) ? "\(Int(item.price))" : String(format: "%.2f", item.price)
-            offerAmount = initial
+            if let item = item {
+                offerAmount = item.price == floor(item.price) ? "\(Int(item.price))" : String(format: "%.2f", item.price)
+            } else if let p = listingPrice {
+                offerAmount = p == floor(p) ? "\(Int(p))" : String(format: "%.2f", p)
+            }
             offerFieldFocused = true
         }
     }
 
-    private var priceRow: some View {
+    private func submitOffer() {
+        guard let value = offerValue, value > 0 else { return }
+        if maxPrice != .infinity, value < maxPrice * 0.6 {
+            errorMessage = "Offer too low. Try again."
+            return
+        }
+        errorMessage = nil
+        onSubmit(value)
+    }
+
+    private func priceRow(item: Item) -> some View {
         HStack(spacing: 4) {
             if item.originalPrice != nil, item.originalPrice! > item.price {
                 Text(item.formattedOriginalPrice)
@@ -203,19 +226,36 @@ struct SendOfferSheetContent: View {
         }
         .buttonStyle(.plain)
     }
+}
 
-    private func submitOffer() {
-        guard let value = offerValue, value > 0 else { return }
-        if value < maxPrice * 0.6 {
-            errorMessage = "Offer too low. Try again."
-            return
-        }
-        guard let productIdStr = item.productId, let productId = Int(productIdStr) else {
-            errorMessage = "Product ID missing"
-            return
-        }
-        errorMessage = nil
+// MARK: - Marketplace wrapper (OptionsSheet content: createOffer + navigate to chat)
+
+/// Send-offer content for OptionsSheet on item detail. Uses OfferModalContent and wires createOffer + navigate to Inbox.
+struct SendOfferSheetContent: View {
+    let item: Item
+    var onDismiss: () -> Void
+
+    @EnvironmentObject var authService: AuthService
+    @Environment(\.optionalTabCoordinator) private var tabCoordinator
+    private let productService = ProductService()
+    @State private var isSubmitting = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        OfferModalContent(
+            item: item,
+            listingPrice: nil,
+            onSubmit: { value in submitOffer(value: value) },
+            onDismiss: onDismiss,
+            isSubmitting: $isSubmitting,
+            errorMessage: $errorMessage
+        )
+    }
+
+    private func submitOffer(value: Double) {
+        guard let productIdStr = item.productId, let productId = Int(productIdStr) else { return }
         isSubmitting = true
+        errorMessage = nil
         Task {
             defer { Task { @MainActor in isSubmitting = false } }
             productService.updateAuthToken(authService.authToken)
@@ -225,7 +265,9 @@ struct SendOfferSheetContent: View {
                     onDismiss()
                     if let conv = conversation, let tc = tabCoordinator {
                         tc.selectTab(3)
-                        tc.pendingOpenConversation = conv
+                        DispatchQueue.main.async {
+                            tc.pendingOpenConversation = conv
+                        }
                     }
                 }
             } catch {

@@ -19,12 +19,9 @@ struct FilteredProductsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authService: AuthService
     @StateObject private var viewModel: FilteredProductsViewModel
-    @StateObject private var searchHistoryService = SearchHistoryService()
     @State private var showSortSheet = false
     @State private var showFilterSheet = false
     @State private var showStylesSheet = false
-    @State private var userSearchHistory: [SearchHistoryItem] = []
-    @State private var recommendedSearchHistory: [SearchHistoryItem] = []
     @State private var tryCartSearchTask: Task<Void, Never>?
     @StateObject private var shopAllBag = ShopAllBagStore()
     @State private var showGuestSignInPrompt: Bool = false
@@ -46,10 +43,6 @@ struct FilteredProductsView: View {
         self.offersAllowed = offersAllowed
         self.showAddToBag = showAddToBag
         _viewModel = StateObject(wrappedValue: FilteredProductsViewModel(filterType: filterType, authService: authService))
-    }
-
-    private var showSearchHistory: Bool {
-        viewModel.searchText.isEmpty && authService.isAuthenticated && !authService.isGuestMode
     }
 
     private func likeAction(for item: Item) -> () -> Void {
@@ -133,11 +126,6 @@ struct FilteredProductsView: View {
                 topPadding: Theme.Spacing.xs
             )
             .padding(.trailing, Theme.Spacing.sm)
-
-            // Search history (recent + recommended) when search is empty and user is logged in
-            if showSearchHistory && (!userSearchHistory.isEmpty || !recommendedSearchHistory.isEmpty) {
-                searchHistorySection
-            }
 
             // Shop by style: pill tags under search bar for style filters
             if case .shopByStyle = filterType {
@@ -348,10 +336,6 @@ struct FilteredProductsView: View {
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
             }
-            if !authService.isGuestMode {
-                searchHistoryService.updateAuthToken(authService.authToken)
-                loadSearchHistory()
-            }
             viewModel.loadData()
         }
         .onChange(of: viewModel.searchText) { _, _ in
@@ -457,109 +441,6 @@ struct FilteredProductsView: View {
         .allowsHitTesting(true)
     }
 
-    private var searchHistorySection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            if !userSearchHistory.isEmpty {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text(L10n.string("Recent"))
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                        .padding(.horizontal, Theme.Spacing.md)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: Theme.Spacing.sm) {
-                            ForEach(userSearchHistory) { item in
-                                HStack(spacing: 4) {
-                                    Button(action: {
-                                        viewModel.searchText = item.query
-                                    }) {
-                                        Text(item.query)
-                                            .font(Theme.Typography.subheadline)
-                                            .foregroundColor(Theme.Colors.primaryText)
-                                            .lineLimit(1)
-                                            .padding(.horizontal, Theme.Spacing.sm)
-                                            .padding(.vertical, Theme.Spacing.xs)
-                                    }
-                                    .buttonStyle(HapticTapButtonStyle())
-                                    .background(Theme.Colors.secondaryBackground)
-                                    .cornerRadius(16)
-                                    Button(action: { deleteSearchHistoryItem(item) }) {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 16))
-                                            .foregroundColor(Theme.Colors.secondaryText)
-                                    }
-                                    .buttonStyle(HapticTapButtonStyle())
-                                }
-                            }
-                        }
-                        .padding(.horizontal, Theme.Spacing.md)
-                    }
-                }
-            }
-            if !recommendedSearchHistory.isEmpty {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text(L10n.string("Recommended"))
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                        .padding(.horizontal, Theme.Spacing.md)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: Theme.Spacing.sm) {
-                            ForEach(recommendedSearchHistory) { item in
-                                Button(action: {
-                                    viewModel.searchText = item.query
-                                }) {
-                                    Text(item.query)
-                                        .font(Theme.Typography.subheadline)
-                                        .foregroundColor(Theme.Colors.primaryText)
-                                        .lineLimit(1)
-                                        .padding(.horizontal, Theme.Spacing.sm)
-                                        .padding(.vertical, Theme.Spacing.xs)
-                                }
-                                .buttonStyle(HapticTapButtonStyle())
-                                .background(Theme.Colors.secondaryBackground)
-                                .cornerRadius(16)
-                            }
-                        }
-                        .padding(.horizontal, Theme.Spacing.md)
-                    }
-                }
-            }
-        }
-        .padding(.vertical, Theme.Spacing.sm)
-        .background(Theme.Colors.background)
-    }
-
-    private func loadSearchHistory() {
-        Task {
-            do {
-                let list = try await searchHistoryService.getUserSearchHistory(searchType: "PRODUCT")
-                await MainActor.run { userSearchHistory = list }
-            } catch {
-                // Best-effort
-            }
-        }
-        Task {
-            do {
-                let list = try await searchHistoryService.getRecommendedSearchHistory(searchType: "PRODUCT")
-                await MainActor.run { recommendedSearchHistory = list }
-            } catch {
-                // Best-effort
-            }
-        }
-    }
-
-    private func deleteSearchHistoryItem(_ item: SearchHistoryItem) {
-        Task {
-            do {
-                _ = try await searchHistoryService.deleteSearchHistory(searchId: item.id, clearAll: false)
-                await MainActor.run {
-                    userSearchHistory.removeAll { $0.id == item.id }
-                }
-            } catch {
-                // Best-effort
-            }
-        }
-    }
-
     private var optionDivider: some View {
         Rectangle()
             .fill(Theme.Colors.glassBorder)
@@ -603,7 +484,6 @@ struct FilteredProductsView: View {
             }
             .padding(.vertical, Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
                     .fill(Theme.Colors.background)
@@ -670,8 +550,7 @@ struct FilteredProductsView: View {
                 .padding(.vertical, Theme.Spacing.md)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(.top, Theme.Spacing.sm)
-            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
+            .padding(.vertical, Theme.Spacing.md)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
                     .fill(Theme.Colors.background)
@@ -743,10 +622,8 @@ struct FilteredProductsView: View {
                 .padding(.top, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.md)
             }
-            .padding(.top, Theme.Spacing.xxl)
-            .padding(.bottom, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
                     .fill(Theme.Colors.background)

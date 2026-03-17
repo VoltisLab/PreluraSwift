@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// Inbox filter from Messages 3-dot menu.
+private enum InboxFilter: String, CaseIterable {
+    case all = "All"
+    case unread = "Unread"
+    case read = "Read"
+    case archived = "Archive"
+}
+
 struct ChatListView: View {
     @EnvironmentObject var authService: AuthService
     @ObservedObject var tabCoordinator: TabCoordinator
@@ -10,6 +18,8 @@ struct ChatListView: View {
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
     @State private var scrollPosition: String? = "inbox_top"
+    /// Inbox filter from 3-dot menu: all, unread, read, archived.
+    @State private var inboxFilter: InboxFilter = .all
 
     init(tabCoordinator: TabCoordinator, path: Binding<[AppRoute]>) {
         self.tabCoordinator = tabCoordinator
@@ -74,7 +84,9 @@ struct ChatListView: View {
                         List {
                             ForEach(Array(filteredConversations.enumerated()), id: \.element.id) { index, conversation in
                                 Button(action: { path.append(AppRoute.conversation(conversation)) }) {
-                                    ChatRowView(conversation: conversation)
+                                    ChatRowView(conversation: conversation, currentUsername: authService.username)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                                 .id(index == 0 ? "inbox_top" : conversation.id)
@@ -109,19 +121,15 @@ struct ChatListView: View {
                     .toolbarBackground(Theme.Colors.background, for: .navigationBar)
                     .toolbar {
                         ToolbarItem(placement: .navigationBarTrailing) {
-                            HStack(spacing: 16) {
-                                Button(action: {}) {
-                                    Image(systemName: "line.3.horizontal.decrease")
-                                        .font(.system(size: 17, weight: .regular))
-                                        .foregroundColor(Theme.Colors.primaryText)
-                                }
-                                .buttonStyle(.plain)
-                                Button(action: {}) {
-                                    Image(systemName: "arrow.up.arrow.down")
-                                        .font(.system(size: 17, weight: .regular))
-                                        .foregroundColor(Theme.Colors.primaryText)
-                                }
-                                .buttonStyle(.plain)
+                            Menu {
+                                Button(L10n.string("All")) { inboxFilter = .all }
+                                Button(L10n.string("Archive")) { inboxFilter = .archived }
+                                Button(L10n.string("Unread")) { inboxFilter = .unread }
+                                Button(L10n.string("Read")) { inboxFilter = .read }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 17, weight: .regular))
+                                    .foregroundColor(Theme.Colors.primaryText)
                             }
                         }
                     }
@@ -143,12 +151,49 @@ struct ChatListView: View {
             tabCoordinator.registerRefresh(tab: 3) {
                 Task { await loadConversationsAsync() }
             }
+            if path.isEmpty, let preview = tabCoordinator.lastMessagePreviewForConversation,
+               let idx = conversations.firstIndex(where: { $0.id == preview.id }) {
+                let c = conversations[idx]
+                conversations[idx] = Conversation(
+                    id: c.id,
+                    recipient: c.recipient,
+                    lastMessage: preview.text,
+                    lastMessageTime: preview.date,
+                    unreadCount: c.unreadCount,
+                    offer: c.offer,
+                    order: c.order
+                )
+                tabCoordinator.lastMessagePreviewForConversation = nil
+            }
+            if let conv = tabCoordinator.pendingOpenConversation {
+                tabCoordinator.pendingOpenConversation = nil
+                DispatchQueue.main.async { path = [.conversation(conv)] }
+            }
             guard !authService.isGuestMode else { return }
             if let token = authService.authToken {
                 chatService.updateAuthToken(token)
             }
             if conversations.isEmpty && !isLoading {
                 loadConversations()
+            }
+        }
+        .onChange(of: path.count) { oldCount, newCount in
+            if oldCount > 0, newCount == 0, !authService.isGuestMode {
+                if let preview = tabCoordinator.lastMessagePreviewForConversation,
+                   let idx = conversations.firstIndex(where: { $0.id == preview.id }) {
+                    let c = conversations[idx]
+                    conversations[idx] = Conversation(
+                        id: c.id,
+                        recipient: c.recipient,
+                        lastMessage: preview.text,
+                        lastMessageTime: preview.date,
+                        unreadCount: c.unreadCount,
+                        offer: c.offer,
+                        order: c.order
+                    )
+                    tabCoordinator.lastMessagePreviewForConversation = nil
+                }
+                Task { await loadConversationsAsync() }
             }
         }
         .onChange(of: tabCoordinator.pendingOpenConversation) { _, pending in
@@ -178,9 +223,16 @@ struct ChatListView: View {
     }
     
     private var filteredConversations: [Conversation] {
+        var list = conversations
+        switch inboxFilter {
+        case .all: break
+        case .unread: list = list.filter { $0.unreadCount > 0 }
+        case .read: list = list.filter { $0.unreadCount == 0 }
+        case .archived: list = [] // No backend archive yet; show empty
+        }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return conversations }
-        return conversations.filter {
+        guard !query.isEmpty else { return list }
+        return list.filter {
             $0.recipient.username.lowercased().contains(query)
                 || ($0.recipient.displayName.isEmpty ? false : $0.recipient.displayName.lowercased().contains(query))
                 || ($0.lastMessage?.lowercased().contains(query) ?? false)
@@ -197,8 +249,9 @@ struct ChatListView: View {
     }
     
     private func loadConversationsAsync() async {
+        let hadConversations = !conversations.isEmpty
         isLoading = true
-        conversations = []
+        if !hadConversations { conversations = [] }
         do {
             // Ensure token is up to date
             if let token = authService.authToken {
@@ -213,11 +266,19 @@ struct ChatListView: View {
                 print("✅ Loaded \(convs.count) conversations")
             }
         } catch {
+            let isCancelled = (error as? URLError)?.code == .cancelled
+                || error.localizedDescription.lowercased().contains("cancelled")
             await MainActor.run {
                 self.isLoading = false
-                self.errorMessage = error.localizedDescription
-                self.conversations = []
-                print("❌ Error loading conversations: \(error.localizedDescription)")
+                if isCancelled {
+                    // Don't show error for pull-to-refresh or task cancellation; keep existing list
+                    if hadConversations { self.errorMessage = nil }
+                    else { self.errorMessage = nil; self.conversations = [] }
+                } else {
+                    self.errorMessage = error.localizedDescription
+                    self.conversations = hadConversations ? self.conversations : []
+                }
+                if !isCancelled { print("❌ Error loading conversations: \(error.localizedDescription)") }
             }
         }
     }
@@ -226,7 +287,8 @@ struct ChatListView: View {
 
 struct ChatRowView: View {
     let conversation: Conversation
-    
+    var currentUsername: String?
+
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
             // Avatar
@@ -273,8 +335,8 @@ struct ChatRowView: View {
                     }
                 }
                 
-                if let lastMessage = conversation.lastMessage {
-                    Text(ChatRowView.previewText(for: lastMessage))
+                if let preview = ChatRowView.previewText(for: conversation.lastMessage, conversation: conversation, currentUsername: currentUsername) {
+                    Text(preview)
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .lineLimit(1)
@@ -292,19 +354,35 @@ struct ChatRowView: View {
                     .clipShape(Capsule())
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, Theme.Spacing.xs)
     }
     
     private func formatTime(_ date: Date) -> String {
+        let now = Date()
+        if now.timeIntervalSince(date) < 60 {
+            return L10n.string("Just now")
+        }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
+        return formatter.localizedString(for: date, relativeTo: now)
     }
 
-    /// Human-readable preview for list: parses order_issue/order/offer JSON or returns plain text.
-    static func previewText(for raw: String) -> String {
+    /// Human-readable preview for list. When current user sent the offer, show "You sent an offer". When there's an order, show order summary.
+    static func previewText(for raw: String?, conversation: Conversation, currentUsername: String?) -> String? {
+        guard let raw = raw, !raw.isEmpty else {
+            if conversation.offer != nil, conversation.offer?.buyer?.username == currentUsername {
+                return "You sent an offer"
+            }
+            if let order = conversation.order {
+                return String(format: "Order • £%.2f", order.total)
+            }
+            return nil
+        }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.contains("offer_id") { return "Offer" }
+        if trimmed.contains("offer_id") || (trimmed.hasPrefix("{") && (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any])?["offer_id"] != nil) {
+            return conversation.offer?.buyer?.username == currentUsername ? "You sent an offer" : "Offer"
+        }
         guard trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = json["type"] as? String else {
@@ -313,7 +391,7 @@ struct ChatRowView: View {
         switch type {
         case "order_issue": return "Order issue"
         case "order": return "Order update"
-        case "offer": return "New offer"
+        case "offer": return conversation.offer?.buyer?.username == currentUsername ? "You sent an offer" : "New offer"
         case "sold_confirmation": return "Sold confirmation"
         default: return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
         }

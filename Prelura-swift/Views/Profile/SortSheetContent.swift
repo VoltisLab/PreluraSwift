@@ -45,7 +45,6 @@ struct SortSheetContent: View {
         }
         .padding(.vertical, Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(cornerRadius: Theme.Glass.cornerRadius)
         .background(
             RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
                 .fill(Theme.Colors.background)

@@ -1,13 +1,13 @@
 import Foundation
 
 /// WebSocket client for chat: connect to backend ws, send messages, receive new messages and events.
-/// Matches Flutter: wss://prelura.com/ws/chat/{conversationId}/ with Token auth; send {"message", "message_uuid"}; receive new_message events.
+/// Uses same host as GraphQL (Constants.chatWebSocketBaseURL) so messages send/save to the same backend.
 final class ChatWebSocketService: NSObject, @unchecked Sendable {
     private let conversationId: String
     private let token: String
     private var task: URLSessionWebSocketTask?
     private var receiveTask: Task<Void, Error>?
-    private let baseURL = "wss://prelura.com/ws/chat/"
+    private let baseURL = Constants.chatWebSocketBaseURL
 
     /// Called on main actor when a new chat message is received. If server echoes our send, messageUuid is the client UUID we sent.
     var onNewMessage: (@MainActor (Message, String?) -> Void)?
@@ -113,13 +113,15 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
             return formatter.date(from: s) ?? Date()
         }()
         let isItem = (json["isItem"] as? Bool) ?? (json["is_item"] as? Bool) ?? false
+        let itemType = (json["itemType"] as? String) ?? (json["item_type"] as? String)
         let itemId = (json["itemId"] as? Int).map { String($0) } ?? (json["item_id"] as? Int).map { String($0) }
+        let messageType: String = (itemType?.isEmpty == false) ? itemType! : (isItem ? "item" : "text")
         return Message(
             id: uuid,
             senderUsername: senderName,
             content: text,
             timestamp: createdAt,
-            type: isItem ? "item" : "text",
+            type: messageType,
             orderID: itemId,
             thumbnailURL: nil
         )

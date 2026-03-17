@@ -76,6 +76,8 @@ struct MyOrdersView: View {
                         ForEach(filteredOrders) { order in
                             NavigationLink(destination: OrderDetailView(order: order, isSeller: isSold)) {
                                 OrderRowView(order: order, isSold: isSold)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }

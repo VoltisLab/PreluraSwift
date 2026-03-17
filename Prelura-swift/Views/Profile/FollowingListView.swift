@@ -47,6 +47,7 @@ struct FollowingListView: View {
                                 .foregroundColor(Theme.Colors.primaryText)
                             Spacer(minLength: 0)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, Theme.Spacing.xs)
                         .contentShape(Rectangle())
                         .overlay(
