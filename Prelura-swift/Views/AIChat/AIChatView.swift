@@ -636,7 +636,6 @@ private struct OrderSliderCard: View {
 
     private func orderStatusDisplay(_ status: String) -> String {
         switch status {
-        case "PENDING": return "Pending"
         case "CONFIRMED": return "Confirmed"
         case "SHIPPED": return "Shipped"
         case "DELIVERED": return "Completed"

@@ -910,6 +910,7 @@ class UserService: ObservableObject {
 
     /// Create a Stripe payment intent for an order. Matches Flutter createPaymentIntent. Returns clientSecret (for Stripe SDK) and paymentRef (for confirmPayment).
     func createPaymentIntent(orderId: Int, paymentMethodId: String) async throws -> (clientSecret: String, paymentRef: String) {
+        NSLog("[PAY_DEBUG] createPaymentIntent orderId=%d", orderId)
         let mutation = """
         mutation CreatePaymentIntent($orderId: Int!, $paymentMethodId: String!) {
           createPaymentIntent(orderId: $orderId, paymentMethodId: $paymentMethodId) {
@@ -930,19 +931,23 @@ class UserService: ObservableObject {
         )
         guard let intent = response.createPaymentIntent,
               let ref = intent.paymentRef, !ref.isEmpty else {
+            NSLog("[PAY_DEBUG] createPaymentIntent failed: no ref")
             throw NSError(domain: "CreatePaymentIntent", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create payment intent"])
         }
         let secret = intent.clientSecret ?? ""
+        NSLog("[PAY_DEBUG] createPaymentIntent ok paymentRef=%@", ref)
         return (secret, ref)
     }
 
     /// Confirm payment after Stripe confirmation (or if backend allows). Matches Flutter confirmPayment.
-    func confirmPayment(paymentRef: String) async throws -> (paymentStatus: String?, orderConfirmed: Bool?) {
+    func confirmPayment(paymentRef: String) async throws -> (paymentStatus: String?, orderConfirmed: Bool?, message: String?) {
+        NSLog("[PAY_DEBUG] confirmPayment called paymentRef=%@", paymentRef)
         let mutation = """
         mutation ConfirmPayment($paymentRef: String!) {
           confirmPayment(paymentRef: $paymentRef) {
             paymentStatus
             orderConfirmed
+            message
           }
         }
         """
@@ -950,12 +955,15 @@ class UserService: ObservableObject {
         struct ConfirmPaymentPayload: Decodable {
             let paymentStatus: String?
             let orderConfirmed: Bool?
+            let message: String?
         }
         let response: Payload = try await client.execute(query: mutation, variables: ["paymentRef": paymentRef], responseType: Payload.self)
         guard let confirm = response.confirmPayment else {
+            NSLog("[PAY_DEBUG] confirmPayment invalid response")
             throw NSError(domain: "ConfirmPayment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
         }
-        return (confirm.paymentStatus, confirm.orderConfirmed)
+        NSLog("[PAY_DEBUG] confirmPayment result orderConfirmed=%@ paymentStatus=%@ message=%@", String(describing: confirm.orderConfirmed), confirm.paymentStatus ?? "nil", confirm.message ?? "nil")
+        return (confirm.paymentStatus, confirm.orderConfirmed, confirm.message)
     }
 
     /// Generate shipping label for an order (seller). Matches Flutter generateShippingLabel.

@@ -68,6 +68,7 @@ struct Message: Identifiable {
             case "order_issue": return "Order issue"
             case "order": return "Order update"
             case "offer": return isFromCurrentUser ? "Offer sent" : "New offer"
+            case "sold_confirmation": return "Order confirmed"
             default: break
             }
         }
@@ -82,7 +83,7 @@ struct Message: Identifiable {
         displayContentForBubble(isFromCurrentUser: false)
     }
 
-    /// True when backend sent itemType "sold_confirmation" or content is JSON with type "sold_confirmation" (show banner instead of bubble).
+    /// True when backend sent itemType "sold_confirmation" or content is JSON with type "sold_confirmation" (show as "Order confirmed" bubble; sale UI is OrderConfirmationCardView).
     var isSoldConfirmation: Bool {
         if type == "sold_confirmation" { return true }
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -91,32 +92,6 @@ struct Message: Identifiable {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let t = json["type"] as? String else { return false }
         return t == "sold_confirmation"
-    }
-
-    /// Parsed sold_confirmation payload for banner (product_price, buyer_subtotal, etc.).
-    struct SoldConfirmationData {
-        let orderId: Int?
-        let productName: String?
-        let productPrice: String?
-        let buyerSubtotal: String?
-        let shippingDeadline: String?
-        let shippingFee: String?
-    }
-
-    var soldConfirmationData: SoldConfirmationData? {
-        guard isSoldConfirmation else { return nil }
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let data = trimmed.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        let orderId = json["order_id"] as? Int ?? (json["order_id"] as? String).flatMap(Int.init)
-        return SoldConfirmationData(
-            orderId: orderId,
-            productName: json["product_name"] as? String,
-            productPrice: json["product_price"] as? String,
-            buyerSubtotal: json["buyer_subtotal"] as? String,
-            shippingDeadline: json["shipping_deadline"] as? String,
-            shippingFee: json["shipping_fee"] as? String
-        )
     }
 }
 

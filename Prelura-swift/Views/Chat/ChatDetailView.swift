@@ -207,31 +207,20 @@ struct ChatDetailView: View {
                index < displayedMessages.count {
                 let message = displayedMessages[index]
                 let topPadding: CGFloat = timelineIndex == 0 ? 0 : (isSameGroupAsPrevious(timelineIndex: timelineIndex, message: message) ? Theme.Spacing.xs : Theme.Spacing.md)
-                Group {
-                    if message.isSoldConfirmation {
-                        SoldConfirmationBannerView(
-                            message: message,
-                            isSeller: message.senderUsername != authService.username,
-                            conversationId: displayedConversation.id
-                        )
-                        .id(message.id)
-                    } else {
-                        let isCurrentUser = message.senderUsername == authService.username
-                        MessageBubbleView(
-                            message: message,
-                            isCurrentUser: isCurrentUser,
-                            showAvatar: showAvatarForMessage(at: index),
-                            showTimestamp: showTimestampForMessage(at: index),
-                            avatarURL: showAvatarForMessage(at: index) ? displayedConversation.recipient.avatarURL : nil,
-                            recipientUsername: displayedConversation.recipient.username
-                        )
-                        .id(message.id)
-                        .contextMenu {
-                            if message.senderUsername == authService.username, let backendId = message.backendId {
-                                Button(role: .destructive, action: { deleteMessage(message) }) {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
+                let isCurrentUser = message.senderUsername == authService.username
+                MessageBubbleView(
+                    message: message,
+                    isCurrentUser: isCurrentUser,
+                    showAvatar: showAvatarForMessage(at: index),
+                    showTimestamp: showTimestampForMessage(at: index),
+                    avatarURL: showAvatarForMessage(at: index) ? displayedConversation.recipient.avatarURL : nil,
+                    recipientUsername: displayedConversation.recipient.username
+                )
+                .id(message.id)
+                .contextMenu {
+                    if message.senderUsername == authService.username, let backendId = message.backendId {
+                        Button(role: .destructive, action: { deleteMessage(message) }) {
+                            Label("Delete", systemImage: "trash")
                         }
                     }
                 }
@@ -727,8 +716,8 @@ struct ChatDetailView: View {
         }
     }
 
-    /// Second header: product thumbnail (default 1:1) + latest offer price; tappable -> product page.
-    /// Order header bar (sale confirmation) when conversation has an order; tappable -> product when fetched.
+    /// Order header bar: shown in every chat that has an order. Loads the related product so the top bar
+    /// shows thumbnail, name, price, status and is tappable to product. Fetched in onAppear and when order changes.
     private var orderHeaderBar: some View {
         guard let order = displayedConversation.order else { return AnyView(EmptyView()) }
         let priceStr = String(format: "£%.2f", order.total)
@@ -762,7 +751,7 @@ struct ChatDetailView: View {
                     .font(Theme.Typography.body)
                     .fontWeight(.semibold)
                     .foregroundColor(Theme.primaryColor)
-                Text(order.status)
+                Text(orderStatusDisplay(order.status))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
@@ -782,6 +771,17 @@ struct ChatDetailView: View {
             )
         }
         return AnyView(bar)
+    }
+
+    private func orderStatusDisplay(_ status: String) -> String {
+        switch status {
+        case "CONFIRMED": return "Confirmed"
+        case "SHIPPED": return "Shipped"
+        case "DELIVERED": return "Completed"
+        case "CANCELLED": return "Cancelled"
+        case "REFUNDED": return "Refunded"
+        default: return status
+        }
     }
 
     private var offerProductHeaderBar: some View {
@@ -1073,32 +1073,19 @@ struct OfferCardView: View {
             }
 
             if forceGreyedOut {
-                // Previous card: show active "Send new offer" for my offers, disabled for others.
-                if isMyOffer {
-                    Button(action: onSendNewOffer) {
-                        Text("Send new offer")
-                            .fontWeight(.medium)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .cornerRadius(22)
-                    }
-                    .disabled(isResponding)
-                } else {
-                    Button(action: {}) {
-                        Text("Send new offer")
-                            .fontWeight(.medium)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
-                            .foregroundColor(Theme.Colors.secondaryText)
-                            .cornerRadius(22)
-                    }
-                    .disabled(true)
+                // Overwritten by a newer offer: greyed "Send new offer" button, not clickable.
+                Button(action: {}) {
+                    Text("Send new offer")
+                        .fontWeight(.medium)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .cornerRadius(22)
                 }
+                .disabled(true)
             } else if isSeller && offer.isPending {
-                HStack(spacing: Theme.Spacing.sm) {
+                VStack(spacing: Theme.Spacing.sm) {
                     Button(action: { Task { await onAccept() } }) {
                         Text("Accept")
                             .fontWeight(.semibold)
@@ -1109,35 +1096,37 @@ struct OfferCardView: View {
                             .cornerRadius(22)
                     }
                     .disabled(isResponding)
-                    Button(action: { Task { await onDecline() } }) {
-                        Text("Decline")
-                            .fontWeight(.medium)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .cornerRadius(22)
+                    HStack(spacing: Theme.Spacing.sm) {
+                        Button(action: { Task { await onDecline() } }) {
+                            Text("Decline")
+                                .fontWeight(.medium)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                                .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
+                                .foregroundColor(Theme.Colors.primaryText)
+                                .cornerRadius(22)
+                        }
+                        .disabled(isResponding)
+                        Button(action: onSendNewOffer) {
+                            Text("Send new offer")
+                                .fontWeight(.medium)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                                .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
+                                .foregroundColor(Theme.Colors.primaryText)
+                                .cornerRadius(22)
+                        }
+                        .disabled(isResponding)
                     }
-                    .disabled(isResponding)
-                    Button(action: onSendNewOffer) {
-                        Text("Send new offer")
-                            .fontWeight(.medium)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .cornerRadius(22)
-                    }
-                    .disabled(isResponding)
                 }
             } else if !isSeller && offer.isPending {
                 Button(action: onSendNewOffer) {
                     Text("Send new offer")
-                        .fontWeight(.semibold)
+                        .fontWeight(.medium)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
-                        .background(Theme.primaryColor)
-                        .foregroundColor(.white)
+                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
+                        .foregroundColor(Theme.Colors.primaryText)
                         .cornerRadius(22)
                 }
                 .disabled(isResponding)
@@ -1154,23 +1143,23 @@ struct OfferCardView: View {
             } else if offer.isRejected {
                 Button(action: onSendNewOffer) {
                     Text("Send new offer")
-                        .fontWeight(.semibold)
+                        .fontWeight(.medium)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
-                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.primaryColor, lineWidth: 1))
-                        .foregroundColor(Theme.primaryColor)
+                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
+                        .foregroundColor(Theme.Colors.primaryText)
                         .cornerRadius(22)
                 }
                 .disabled(isResponding)
             } else if !isSeller && !offer.isAccepted {
-                // My offer in any other state (e.g. COUNTERED): always show Send new offer.
+                // My offer in any other state (e.g. COUNTERED): outline Send new offer.
                 Button(action: onSendNewOffer) {
                     Text("Send new offer")
-                        .fontWeight(.semibold)
+                        .fontWeight(.medium)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
-                        .background(Theme.primaryColor)
-                        .foregroundColor(.white)
+                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
+                        .foregroundColor(Theme.Colors.primaryText)
                         .cornerRadius(22)
                 }
                 .disabled(isResponding)
@@ -1252,6 +1241,17 @@ struct ChatProductCardView: View {
 struct OrderConfirmationCardView: View {
     let order: ConversationOrder
 
+    private static func orderStatusDisplay(_ status: String) -> String {
+        switch status {
+        case "CONFIRMED": return "Confirmed"
+        case "SHIPPED": return "Shipped"
+        case "DELIVERED": return "Completed"
+        case "CANCELLED": return "Cancelled"
+        case "REFUNDED": return "Refunded"
+        default: return status
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             HStack {
@@ -1269,7 +1269,7 @@ struct OrderConfirmationCardView: View {
                     .foregroundColor(Theme.primaryColor)
                 Text("•")
                     .foregroundColor(Theme.Colors.secondaryText)
-                Text(order.status)
+                Text(Self.orderStatusDisplay(order.status))
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
@@ -1294,67 +1294,6 @@ struct OrderConfirmationCardView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Theme.Colors.glassBorder, lineWidth: 1)
         )
-    }
-}
-
-/// Banner for sold_confirmation messages (matches Flutter SoldConfirmationBanner).
-struct SoldConfirmationBannerView: View {
-    let message: Message
-    let isSeller: Bool
-    var conversationId: String = ""
-
-    private var displayText: String {
-        guard let data = message.soldConfirmationData else {
-            return message.displayContent
-        }
-        let price = data.productPrice ?? data.buyerSubtotal ?? "0"
-        return "SOLD! 💰\nYour item sold for £\(price)! 📦"
-    }
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                Text(displayText)
-                    .font(Theme.Typography.body)
-                    .fontWeight(.medium)
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                if isSeller {
-                    Button(action: { /* TODO: navigate to shipping confirmation */ }) {
-                        Text("I've shipped the item")
-                            .font(Theme.Typography.body)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
-                    }
-                    .background(Theme.primaryColor)
-                    .cornerRadius(24)
-                }
-                HStack {
-                    Spacer(minLength: 0)
-                    NavigationLink(destination: OrderHelpView(orderId: nil, conversationId: conversationId.isEmpty ? nil : conversationId)) {
-                        Text("Report an issue")
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.primaryColor)
-                    }
-                    .buttonStyle(.plain)
-                    Spacer(minLength: 0)
-                }
-            }
-            .padding(Theme.Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.Colors.secondaryBackground)
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
-            )
-            Text(message.formattedTimestamp)
-                .font(Theme.Typography.caption)
-                .foregroundColor(Theme.Colors.secondaryText)
-        }
-        .padding(.vertical, 2)
     }
 }
 

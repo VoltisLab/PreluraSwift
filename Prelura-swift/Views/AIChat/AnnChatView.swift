@@ -305,7 +305,6 @@ private struct AnnOrderHelpSheet: View {
 
     private var statusDisplay: String {
         switch order.status {
-        case "PENDING": return "Pending"
         case "CONFIRMED": return "Confirmed"
         case "SHIPPED": return "Shipped"
         case "DELIVERED": return "Completed"

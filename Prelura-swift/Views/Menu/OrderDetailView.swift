@@ -284,7 +284,7 @@ struct OrderDetailView: View {
     /// Show seller shipping actions when: seller view, order paid (CONFIRMED/PENDING/SHIPPED).
     private var canShowSellerShipping: Bool {
         guard isSeller == true else { return false }
-        return ["CONFIRMED", "PENDING", "SHIPPED"].contains(order.status)
+        return ["CONFIRMED", "SHIPPED"].contains(order.status)
     }
 
     /// Show "Rate seller" when: buyer view (isSeller == false), order delivered, we have orderId and seller userId, and not yet rated.

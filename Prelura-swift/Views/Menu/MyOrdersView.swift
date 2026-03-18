@@ -20,7 +20,7 @@ struct MyOrdersView: View {
         let list = currentOrders
         switch filters[selectedFilter] {
         case "All": return list
-        case "In Progress": return list.filter { ["CONFIRMED", "PENDING", "SHIPPED"].contains($0.status) }
+        case "In Progress": return list.filter { ["CONFIRMED", "SHIPPED"].contains($0.status) }
         case "Cancelled": return list.filter { ["CANCELLED", "REFUNDED"].contains($0.status) }
         case "Completed": return list.filter { $0.status == "DELIVERED" }
         default: return list
@@ -179,7 +179,6 @@ extension Order {
     var firstProductImageUrl: String? { products.first?.imageUrl }
     var statusDisplay: String {
         switch status {
-        case "PENDING": return "Pending"
         case "CONFIRMED": return "Confirmed"
         case "SHIPPED": return "Shipped"
         case "DELIVERED": return "Completed"

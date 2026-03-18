@@ -86,7 +86,7 @@ class ChatService: ObservableObject {
                 let firstProductIdStr = first.flatMap { Conversation.idString(from: $0.id) }
                 return ConversationOrder(
                     id: orderIdStr,
-                    status: o.status ?? "PENDING",
+                    status: o.status ?? "CONFIRMED",
                     total: total,
                     firstProductName: first?.name,
                     firstProductImageUrl: first?.firstImageUrl,
@@ -177,7 +177,7 @@ class ChatService: ObservableObject {
             let firstProductIdStr = first.flatMap { Conversation.idString(from: $0.id) }
             return ConversationOrder(
                 id: orderIdStr,
-                status: o.status ?? "PENDING",
+                status: o.status ?? "CONFIRMED",
                 total: total,
                 firstProductName: first?.name,
                 firstProductImageUrl: first?.firstImageUrl,

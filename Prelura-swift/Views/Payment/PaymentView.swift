@@ -433,8 +433,10 @@ struct PaymentView: View {
                     await MainActor.run { errorMessage = "Invalid product" }
                     return
                 }
+                NSLog("[PAY_DEBUG] payByCard start products=%d", productIds.count)
                 let orderResult: CreateOrderResult
                 if productIds.count == 1 {
+                    NSLog("[PAY_DEBUG] createOrder single product")
                     orderResult = try await productService.createOrder(
                         productId: productIds[0],
                         productIds: nil,
@@ -443,6 +445,7 @@ struct PaymentView: View {
                         deliveryDetails: deliveryDetails
                     )
                 } else {
+                    NSLog("[PAY_DEBUG] createOrder multi product")
                     orderResult = try await productService.createOrder(
                         productId: nil,
                         productIds: productIds,
@@ -455,34 +458,80 @@ struct PaymentView: View {
                     await MainActor.run { errorMessage = "Invalid order id" }
                     return
                 }
+                NSLog("[PAY_DEBUG] createPaymentIntent orderId=%d", orderIdInt)
                 let (_, paymentRef) = try await userService.createPaymentIntent(orderId: orderIdInt, paymentMethodId: method.paymentMethodId)
-                _ = try await userService.confirmPayment(paymentRef: paymentRef)
-                // Refetch conversations; backend links order to conversation on payment success. Open only API conversation (single source of truth).
+                NSLog("[PAY_DEBUG] createPaymentIntent done paymentRef=%@", paymentRef)
+                var (paymentStatus, orderConfirmed, backendMessage) = try await userService.confirmPayment(paymentRef: paymentRef)
+                NSLog("[PAY_DEBUG] confirmPayment done orderConfirmed=%@", String(describing: orderConfirmed))
+                // Retry confirmPayment when Stripe is still "processing" (often transitions to succeeded within a few seconds)
+                let maxRetries = 2
+                var attempt = 0
+                while orderConfirmed != true, attempt < maxRetries,
+                      let msg = backendMessage, msg.lowercased().contains("still processing") {
+                    attempt += 1
+                    NSLog("[PAY_DEBUG] confirmPayment retry %d after 3s (still processing)", attempt)
+                    try await Task.sleep(nanoseconds: 3_000_000_000)
+                    (paymentStatus, orderConfirmed, backendMessage) = try await userService.confirmPayment(paymentRef: paymentRef)
+                    NSLog("[PAY_DEBUG] confirmPayment retry %d orderConfirmed=%@", attempt, String(describing: orderConfirmed))
+                }
+                let confirmed = orderConfirmed == true
+                if !confirmed {
+                    await MainActor.run {
+                        errorMessage = backendMessage ?? "Payment not confirmed yet. Check Messages in a moment or try again."
+                        NSLog("[PAY_DEBUG] NOT confirmed: showing error (no success screen)")
+                    }
+                    return
+                }
+                // Match Flutter: ensure conversation and sold-confirmation message exist by calling the mutation (backend handle_payment_success may have already done it; mutation is idempotent).
+                chatService.updateAuthToken(authService.authToken)
+                do {
+                    let (success, _) = try await chatService.createSoldConfirmationMessage(orderId: orderIdInt)
+                    NSLog("[PAY_DEBUG] createSoldConfirmationMessage orderId=%d success=%@", orderIdInt, String(success))
+                } catch {
+                    NSLog("[PAY_DEBUG] createSoldConfirmationMessage failed: %@", error.localizedDescription)
+                    // Continue anyway: conversation might already exist from handle_payment_success
+                }
+                // Refetch so we open the conversation that has the order.
                 var conversationToOpen: Conversation?
                 if let seller = products.first?.seller, !seller.username.isEmpty {
                     chatService.updateAuthToken(authService.authToken)
-                    do {
+                    func fetchAndPick() async throws -> Conversation? {
                         let list = try await chatService.getConversations()
                         let withSeller = list.filter { $0.recipient.username == seller.username }
                         let withOrder = withSeller.first { $0.order?.id == orderResult.orderId }
                         let withAnyOrder = withSeller.first { $0.order != nil }
-                        conversationToOpen = withOrder ?? withAnyOrder ?? withSeller.first
+                        return withOrder ?? withAnyOrder ?? withSeller.first
+                    }
+                    do {
+                        NSLog("[PAY_DEBUG] waiting 1.5s then fetch conversations")
+                        try await Task.sleep(nanoseconds: 1_500_000_000)
+                        conversationToOpen = try await fetchAndPick()
+                        NSLog("[PAY_DEBUG] fetchAndPick first try: conv=%@", conversationToOpen?.id ?? "nil")
                         if conversationToOpen == nil {
+                            try await Task.sleep(nanoseconds: 1_500_000_000)
+                            conversationToOpen = try await fetchAndPick()
+                            NSLog("[PAY_DEBUG] fetchAndPick retry: conv=%@", conversationToOpen?.id ?? "nil")
+                        }
+                        if conversationToOpen == nil {
+                            NSLog("[PAY_DEBUG] creating new chat for seller=%@", seller.username)
                             let newConv = try await chatService.createChat(recipient: seller.username)
                             conversationToOpen = newConv
                         }
                     } catch {
-                        // Non-fatal: still show success; user can open Messages manually
+                        NSLog("[PAY_DEBUG] conversation fetch/create failed: %@", error.localizedDescription)
                     }
                 }
                 await MainActor.run {
                     if let conv = conversationToOpen {
                         tabCoordinator?.selectTab(3)
                         tabCoordinator?.pendingOpenConversation = conv
+                        NSLog("[PAY_DEBUG] opening conversation id=%@", conv.id)
                     }
                     showPaymentSuccess = true
+                    NSLog("[PAY_DEBUG] showPaymentSuccess=true")
                 }
             } catch {
+                NSLog("[PAY_DEBUG] payByCard error: %@", error.localizedDescription)
                 await MainActor.run { errorMessage = error.localizedDescription }
             }
         }

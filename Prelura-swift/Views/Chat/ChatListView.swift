@@ -199,7 +199,28 @@ struct ChatListView: View {
         .onChange(of: tabCoordinator.pendingOpenConversation) { _, pending in
             guard let conv = pending else { return }
             tabCoordinator.pendingOpenConversation = nil
-            path = [.conversation(conv)]
+            Task {
+                await loadConversationsAsync()
+                await MainActor.run {
+                    // If the conversation we're opening isn't in the refetched list (e.g. newly created by createChat, backend cache), add it so it appears when user backs out.
+                    if !conversations.contains(where: { $0.id == conv.id }) {
+                        var list = conversations
+                        let inserted = Conversation(
+                            id: conv.id,
+                            recipient: conv.recipient,
+                            lastMessage: conv.lastMessage,
+                            lastMessageTime: conv.lastMessageTime ?? Date(),
+                            unreadCount: conv.unreadCount,
+                            offer: conv.offer,
+                            order: conv.order
+                        )
+                        list.insert(inserted, at: 0)
+                        list.sort { ($0.lastMessageTime ?? .distantPast) > ($1.lastMessageTime ?? .distantPast) }
+                        conversations = list
+                    }
+                    path = [.conversation(conv)]
+                }
+            }
         }
         .onChange(of: authService.authToken) { oldValue, newToken in
             chatService.updateAuthToken(newToken)
@@ -260,10 +281,38 @@ struct ChatListView: View {
             
             let convs = try await chatService.getConversations()
             await MainActor.run {
-                self.conversations = convs
+                var list = convs
+                // Keep any conversation from current list that isn't in API response (e.g. newly created after order, not yet returned by backend/cache) so it stays visible when user backs out.
+                let apiIds = Set(list.map(\.id))
+                for existing in self.conversations where !apiIds.contains(existing.id) {
+                    list.append(existing)
+                }
+                // When we just left a chat with "Order confirmed", don't overwrite that row with stale API
+                // data (older lastMessageTime). Update the row's preview only; do NOT re-sort the list so
+                // the conversation that has the order (first by last_modified from API) stays at the top.
+                if let preview = self.tabCoordinator.lastMessagePreviewForConversation,
+                   let idx = list.firstIndex(where: { $0.id == preview.id }) {
+                    let c = list[idx]
+                    let apiTime = c.lastMessageTime ?? .distantPast
+                    if apiTime < preview.date {
+                        list[idx] = Conversation(
+                            id: c.id,
+                            recipient: c.recipient,
+                            lastMessage: preview.text,
+                            lastMessageTime: preview.date,
+                            unreadCount: c.unreadCount,
+                            offer: c.offer,
+                            order: c.order
+                        )
+                    }
+                    self.tabCoordinator.lastMessagePreviewForConversation = nil
+                }
+                // Always show latest first: sort by last message/order time (backend order_by is last_modified which can differ).
+                list.sort { ($0.lastMessageTime ?? .distantPast) > ($1.lastMessageTime ?? .distantPast) }
+                self.conversations = list
                 self.errorMessage = nil
                 self.isLoading = false
-                print("✅ Loaded \(convs.count) conversations")
+                print("✅ Loaded \(list.count) conversations")
             }
         } catch {
             let isCancelled = (error as? URLError)?.code == .cancelled
@@ -392,7 +441,7 @@ struct ChatRowView: View {
         case "order_issue": return "Order issue"
         case "order": return "Order update"
         case "offer": return conversation.offer?.buyer?.username == currentUsername ? "You sent an offer" : "New offer"
-        case "sold_confirmation": return "Sold confirmation"
+        case "sold_confirmation": return "Order confirmed"
         default: return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
         }
     }

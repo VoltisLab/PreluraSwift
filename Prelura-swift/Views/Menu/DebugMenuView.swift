@@ -12,6 +12,14 @@ struct DebugMenuView: View {
                 Text("Info")
             }
             Section {
+                NavigationLink(destination: OrderChatMockDebugView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Order")
+                    }
+                }
                 NavigationLink(destination: ProfileCardsComponentsView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "square.stack.3d.up")
