@@ -734,6 +734,95 @@ class UserService: ObservableObject {
         }
     }
 
+    /// Create a fresh order case and emit an order_issue chat event for buyer/seller conversation.
+    func raiseOrderIssue(
+        orderId: Int,
+        issueType: String,
+        description: String,
+        imagesUrl: [String] = [],
+        otherIssueDescription: String? = nil
+    ) async throws -> RaiseOrderIssueResult {
+        let mutation = """
+        mutation CreateOrderCase(
+          $orderId: Int!,
+          $issueType: String!,
+          $description: String!,
+          $imagesUrl: [String]!,
+          $otherIssueDescription: String
+        ) {
+          createOrderCase(
+            orderId: $orderId,
+            issueType: $issueType,
+            description: $description,
+            imagesUrl: $imagesUrl,
+            otherIssueDescription: $otherIssueDescription
+          ) {
+            success
+            message
+            issueId
+            publicId
+          }
+        }
+        """
+        struct Payload: Decodable { let createOrderCase: RaiseOrderIssueResult? }
+        let variables: [String: Any?] = [
+            "orderId": orderId,
+            "issueType": issueType,
+            "description": description,
+            "imagesUrl": imagesUrl,
+            "otherIssueDescription": otherIssueDescription
+        ]
+        let filtered = variables.reduce(into: [String: Any]()) { acc, kv in
+            if let v = kv.value { acc[kv.key] = v } else { acc[kv.key] = NSNull() }
+        }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: filtered,
+            responseType: Payload.self
+        )
+        guard let result = response.createOrderCase else {
+            throw NSError(domain: "RaiseOrderIssue", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid createOrderCase response"])
+        }
+        if result.success != true {
+            throw NSError(domain: "RaiseOrderIssue", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "Failed to raise issue"])
+        }
+        return result
+    }
+
+    /// Fetch a single order case by issueId or publicId.
+    func getOrderIssue(issueId: Int? = nil, publicId: String? = nil) async throws -> OrderIssueDetails? {
+        let query = """
+        query GetOrderCase($issueId: Int, $publicId: String) {
+          orderCase(issueId: $issueId, publicId: $publicId) {
+            id
+            publicId
+            issueType
+            description
+            imagesUrl
+            otherIssueDescription
+            status
+            createdAt
+            order { id }
+            raisedBy { username }
+          }
+        }
+        """
+        struct Payload: Decodable { let orderCase: OrderIssueDetails? }
+        let variables: [String: Any?] = [
+            "issueId": issueId,
+            "publicId": publicId
+        ]
+        let filtered = variables.reduce(into: [String: Any]()) { acc, kv in
+            if let v = kv.value { acc[kv.key] = v } else { acc[kv.key] = NSNull() }
+        }
+        let response: Payload = try await client.execute(
+            query: query,
+            variables: filtered,
+            responseType: Payload.self
+        )
+        return response.orderCase
+    }
+
     /// Follow a user. Matches Flutter followUser(followedId).
     func followUser(followedId: Int) async throws {
         let mutation = """
@@ -1771,6 +1860,33 @@ struct MultibuyDiscountInput {
     let minItems: Int
     let discountPercentage: String
     let isActive: Bool
+}
+
+struct RaiseOrderIssueResult: Decodable {
+    let success: Bool?
+    let message: String?
+    let issueId: Int?
+    let publicId: String?
+}
+
+struct OrderIssueDetails: Decodable, Identifiable {
+    struct OrderRef: Decodable { let id: String? }
+    struct RaisedByRef: Decodable { let username: String? }
+
+    let id: Int
+    let publicId: String?
+    let issueType: String
+    let description: String
+    let imagesUrl: [String]
+    let otherIssueDescription: String?
+    let status: String?
+    let createdAt: Date?
+    let order: OrderRef?
+    let raisedBy: RaisedByRef?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, publicId, issueType, description, imagesUrl, otherIssueDescription, status, createdAt, order, raisedBy
+    }
 }
 
 /// Order from userOrders query. Used in My Orders list and detail.

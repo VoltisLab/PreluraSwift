@@ -97,6 +97,15 @@ struct ChatDetailView: View {
     @FocusState private var isMessageFieldFocused: Bool
     @State private var isLoading: Bool = false
     @State private var webSocket: ChatWebSocketService?
+    /// Whether the remote participant is currently typing.
+    @State private var isOtherUserTyping = false
+    /// Last username reported by typing event.
+    @State private var typingUsername: String?
+    /// Keep typing indicator alive briefly after last event.
+    @State private var typingResetTask: Task<Void, Never>?
+    /// Debounce outgoing typing notifications.
+    @State private var typingSendTask: Task<Void, Never>?
+    @State private var didSendTypingStart = false
     @State private var pendingMessageUUID: String?
     @State private var showCounterOfferSheet = false
     /// The specific offer card the user tapped to open the counter sheet.
@@ -202,25 +211,37 @@ struct ChatDetailView: View {
     }
 
     private var messageInputBar: some View {
-        HStack(alignment: .center, spacing: Theme.Spacing.sm) {
-            TextField("Type a message...", text: $newMessage)
-                .textFieldStyle(.plain)
-                .focused($isMessageFieldFocused)
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            if isOtherUserTyping {
+                HStack(spacing: Theme.Spacing.xs) {
+                    TypingDotsView()
+                    Text("\((typingUsername?.isEmpty == false ? typingUsername! : displayedConversation.recipient.username)) is typing")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
                 .padding(.horizontal, Theme.Spacing.md)
-                .frame(minHeight: 44)
-                .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(22)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22)
-                        .stroke(isMessageFieldFocused ? Theme.primaryColor : Theme.Colors.glassBorder, lineWidth: isMessageFieldFocused ? 2 : 1)
-                )
-                .foregroundColor(Theme.Colors.primaryText)
-            Button(action: sendMessage) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundColor(newMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Theme.Colors.secondaryText : Theme.primaryColor)
+                .transition(.opacity)
             }
-            .disabled(newMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                TextField("Type a message...", text: $newMessage)
+                    .textFieldStyle(.plain)
+                    .focused($isMessageFieldFocused)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .frame(minHeight: 44)
+                    .background(Theme.Colors.secondaryBackground)
+                    .cornerRadius(22)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22)
+                            .stroke(isMessageFieldFocused ? Theme.primaryColor : Theme.Colors.glassBorder, lineWidth: isMessageFieldFocused ? 2 : 1)
+                    )
+                    .foregroundColor(Theme.Colors.primaryText)
+                Button(action: sendMessage) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(newMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Theme.Colors.secondaryText : Theme.primaryColor)
+                }
+                .disabled(newMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+            }
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.sm)
@@ -269,6 +290,23 @@ struct ChatDetailView: View {
         timelineOrder.contains { $0.isSold }
     }
 
+    private func scrollToLatest(with proxy: ScrollViewProxy, animated: Bool) {
+        guard !timelineOrder.isEmpty else { return }
+        let last = timelineOrder[timelineOrder.count - 1]
+        let action = {
+            switch last {
+            case .message(let id): proxy.scrollTo(id, anchor: .bottom)
+            case .offer(let id): proxy.scrollTo(id, anchor: .bottom)
+            case .sold(let order): proxy.scrollTo("sold_\(order.id)", anchor: .bottom)
+            }
+        }
+        if animated {
+            withAnimation(.easeOut(duration: 0.2)) { action() }
+        } else {
+            action()
+        }
+    }
+
     @ViewBuilder
     private func timelineRow(timelineIndex: Int, entry: ChatItem) -> some View {
         switch entry {
@@ -277,24 +315,45 @@ struct ChatDetailView: View {
                index < displayedMessages.count {
                 let message = displayedMessages[index]
                 let topPadding: CGFloat = timelineIndex == 0 ? 0 : (isSameGroupAsPrevious(timelineIndex: timelineIndex, message: message) ? Theme.Spacing.xs : Theme.Spacing.md)
-                let isCurrentUserMessage = isCurrentUser(username: message.senderUsername)
-                MessageBubbleView(
-                    message: message,
-                    isCurrentUser: isCurrentUserMessage,
-                    showAvatar: showAvatarForMessage(at: index),
-                    showTimestamp: showTimestampForMessage(at: index),
-                    avatarURL: showAvatarForMessage(at: index) ? displayedConversation.recipient.avatarURL : nil,
-                    recipientUsername: displayedConversation.recipient.username
-                )
-                .id(message.id)
-                .contextMenu {
-                    if isCurrentUser(username: message.senderUsername), let backendId = message.backendId {
-                        Button(role: .destructive, action: { deleteMessage(message) }) {
-                            Label("Delete", systemImage: "trash")
+                if message.isOrderIssue {
+                    let issueCard = OrderIssueChatCardView(
+                        message: message
+                    )
+                    .id(message.id)
+                    if isCurrentUser(username: message.senderUsername) {
+                        issueCard
+                            .padding(.leading, Theme.Spacing.xs)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, topPadding)
+                    } else {
+                        HStack(alignment: .top, spacing: 4) {
+                            chatTitleAvatar(url: displayedConversation.recipient.avatarURL, username: displayedConversation.recipient.username)
+                            issueCard
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, topPadding)
+                    }
+                } else {
+                    let isCurrentUserMessage = isCurrentUser(username: message.senderUsername)
+                    MessageBubbleView(
+                        message: message,
+                        isCurrentUser: isCurrentUserMessage,
+                        showAvatar: showAvatarForMessage(at: index),
+                        showTimestamp: showTimestampForMessage(at: index),
+                        avatarURL: showAvatarForMessage(at: index) ? displayedConversation.recipient.avatarURL : nil,
+                        recipientUsername: displayedConversation.recipient.username
+                    )
+                    .id(message.id)
+                    .contextMenu {
+                        if isCurrentUser(username: message.senderUsername), let _ = message.backendId {
+                            Button(role: .destructive, action: { deleteMessage(message) }) {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
                     }
+                    .padding(.top, topPadding)
                 }
-                .padding(.top, topPadding)
             }
         case .offer(let offerId):
             if let offer = offers.first(where: { $0.id == offerId }) {
@@ -342,7 +401,14 @@ struct ChatDetailView: View {
                     username: displayedConversation.recipient.username
                 )
                 .padding(.top, Theme.Spacing.md)
-                SoldConfirmationCardView(order: orderInfo, currentUsername: authService.username)
+                SoldConfirmationCardView(
+                    order: orderInfo,
+                    currentUsername: authService.username,
+                    conversationId: displayedConversation.id,
+                    onOrderChanged: {
+                        Task { await refetchConversationForOrder() }
+                    }
+                )
                     .id("sold_\(orderInfo.id)")
                     .padding(.vertical, Theme.Spacing.sm)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -399,16 +465,23 @@ struct ChatDetailView: View {
                     .padding(.vertical, Theme.Spacing.sm)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .onAppear {
+                    // Ensure chat opens at latest timeline entry, even when count-based onChange doesn't fire.
+                    guard !hasAutoScrolledToBottomForThisChat else { return }
+                    DispatchQueue.main.async {
+                        scrollToLatest(with: proxy, animated: false)
+                        hasAutoScrolledToBottomForThisChat = true
+                    }
+                }
                 .onChange(of: timelineOrder.count) { _, newCount in
                     guard newCount > 0 else { return }
-                    let last = timelineOrder[newCount - 1]
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        switch last {
-                        case .message(let id): proxy.scrollTo(id, anchor: .bottom)
-                        case .offer(let id):
-                            proxy.scrollTo(id, anchor: .bottom)
-                        case .sold(let o): proxy.scrollTo("sold_\(o.id)", anchor: .bottom)
-                        }
+                    scrollToLatest(with: proxy, animated: true)
+                }
+                .onChange(of: hasFinishedInitialConversationFetch) { _, done in
+                    guard done, !hasAutoScrolledToBottomForThisChat else { return }
+                    DispatchQueue.main.async {
+                        scrollToLatest(with: proxy, animated: false)
+                        hasAutoScrolledToBottomForThisChat = true
                     }
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -519,9 +592,14 @@ struct ChatDetailView: View {
             offers = []
             timelineOrder = []
             hasAutoScrolledToBottomForThisChat = false
+            isOtherUserTyping = false
+            typingUsername = nil
             refreshOfferHistoryLoadingFlagsForCurrentConversation()
             loadOffers()
             loadConversationAndMessagesFromBackend()
+        }
+        .onChange(of: newMessage) { _, newValue in
+            sendTypingForComposerChange(newValue)
         }
         .onDisappear {
             if !offers.isEmpty {
@@ -539,6 +617,11 @@ struct ChatDetailView: View {
             }
             webSocket?.disconnect()
             webSocket = nil
+            typingResetTask?.cancel()
+            typingSendTask?.cancel()
+            isOtherUserTyping = false
+            typingUsername = nil
+            didSendTypingStart = false
         }
     }
 
@@ -633,12 +716,6 @@ struct ChatDetailView: View {
                     self.loadOffers()
                 } else {
                     self.rebuildTimelineOrder()
-                }
-                if displayedConversation.order == nil, msgs.contains(where: { $0.isSoldConfirmation }) {
-                    Task {
-                        try? await Task.sleep(nanoseconds: 2_000_000_000)
-                        await refetchConversationForOrder()
-                    }
                 }
             }
             if !msgs.isEmpty {
@@ -1545,15 +1622,55 @@ struct ChatDetailView: View {
             if msg.isOfferContent {
                 mergeOffersFromMessages()
                 rebuildTimelineOrder()
-            } else if msg.isSoldConfirmation, displayedConversation.order == nil {
-                Task { await refetchConversationForOrder() }
             }
         }
         ws.onOfferEvent = { [self] event in
             handleOfferSocketEvent(event)
         }
+        ws.onOrderEvent = { [self] event in
+            _ = event
+        }
+        ws.onTypingEvent = { [self] event in
+            if let convId = event.conversationId, convId != displayedConversation.id { return }
+            // Ignore our own typing echoes.
+            if isCurrentUser(username: event.senderUsername) { return }
+            typingUsername = event.senderUsername
+            if event.isTyping {
+                isOtherUserTyping = true
+                typingResetTask?.cancel()
+                typingResetTask = Task {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    await MainActor.run { isOtherUserTyping = false }
+                }
+            } else {
+                isOtherUserTyping = false
+                typingResetTask?.cancel()
+            }
+        }
         webSocket = ws
         ws.connect()
+    }
+
+    private func sendTypingForComposerChange(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        typingSendTask?.cancel()
+        if trimmed.isEmpty {
+            if didSendTypingStart {
+                webSocket?.sendTyping(isTyping: false)
+                didSendTypingStart = false
+            }
+            return
+        }
+        // Debounced typing-start so we don't spam socket on every keypress.
+        typingSendTask = Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            await MainActor.run {
+                if !didSendTypingStart {
+                    webSocket?.sendTyping(isTyping: true)
+                    didSendTypingStart = true
+                }
+            }
+        }
     }
 
     private func loadMessages() {
@@ -1611,6 +1728,10 @@ struct ChatDetailView: View {
         let text = newMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, displayedConversation.id != "0" else { return }
         newMessage = ""
+        if didSendTypingStart {
+            webSocket?.sendTyping(isTyping: false)
+            didSendTypingStart = false
+        }
         let messageUUID = UUID().uuidString
         let optimistic = Message(
             id: UUID(uuidString: messageUUID) ?? UUID(),
@@ -1981,6 +2102,25 @@ struct OrderConfirmationCardView: View {
 struct SoldConfirmationCardView: View {
     let order: OrderInfo
     let currentUsername: String?
+    var conversationId: String? = nil
+    var onOrderChanged: (() -> Void)? = nil
+    @EnvironmentObject var authService: AuthService
+    @State private var showBuyerHelp = false
+    @State private var showSellerOptions = false
+
+    private var isBuyer: Bool {
+        currentUsername.map {
+            order.buyerUsername.trimmingCharacters(in: .whitespaces).lowercased() ==
+            $0.trimmingCharacters(in: .whitespaces).lowercased()
+        } ?? false
+    }
+
+    private var isSeller: Bool {
+        currentUsername.map {
+            order.sellerUsername.trimmingCharacters(in: .whitespaces).lowercased() ==
+            $0.trimmingCharacters(in: .whitespaces).lowercased()
+        } ?? false
+    }
 
     private static func relativeTimestamp(for date: Date) -> String {
         let now = Date()
@@ -1998,14 +2138,6 @@ struct SoldConfirmationCardView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 24))
                     .foregroundColor(Theme.primaryColor)
-                let isBuyer = currentUsername.map {
-                    order.buyerUsername.trimmingCharacters(in: .whitespaces).lowercased() ==
-                    $0.trimmingCharacters(in: .whitespaces).lowercased()
-                } ?? false
-                let isSeller = currentUsername.map {
-                    order.sellerUsername.trimmingCharacters(in: .whitespaces).lowercased() ==
-                    $0.trimmingCharacters(in: .whitespaces).lowercased()
-                } ?? false
                 Text(
                     isSeller
                         ? "This item has sold"
@@ -2015,7 +2147,19 @@ struct SoldConfirmationCardView: View {
                     .foregroundColor(Theme.Colors.primaryText)
             }
             HStack {
-                Spacer(minLength: 0)
+                Button(action: {
+                    if isSeller {
+                        showSellerOptions = true
+                    } else {
+                        showBuyerHelp = true
+                    }
+                }) {
+                    Text("I have a problem")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: Theme.Spacing.sm)
                 Text(Self.relativeTimestamp(for: order.createdAt))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
@@ -2029,6 +2173,189 @@ struct SoldConfirmationCardView: View {
             RoundedRectangle(cornerRadius: 24)
                 .stroke(Theme.Colors.glassBorder, lineWidth: 1)
         )
+        .background(
+            NavigationLink(
+                destination: OrderHelpView(orderId: order.orderId, conversationId: conversationId),
+                isActive: $showBuyerHelp
+            ) { EmptyView() }
+            .hidden()
+        )
+        .sheet(isPresented: $showSellerOptions) {
+            NavigationStack {
+                SellerOrderProblemOptionsView(orderId: order.orderId) {
+                    showSellerOptions = false
+                    onOrderChanged?()
+                }
+                .environmentObject(authService)
+            }
+        }
+    }
+}
+
+/// Seller-side problem actions from sold confirmation banner.
+private struct SellerOrderProblemOptionsView: View {
+    let orderId: String
+    var onOrderChanged: (() -> Void)? = nil
+    @EnvironmentObject var authService: AuthService
+    @Environment(\.dismiss) private var dismiss
+    @State private var showCancelConfirm = false
+    @State private var isCancelling = false
+    @State private var errorMessage: String?
+    private let userService = UserService()
+
+    var body: some View {
+        List {
+            Section("Need help with this sale?") {
+                NavigationLink("Order status issue") { HelpChatView() }
+                NavigationLink("Delivery / collection issue") { HelpChatView() }
+                NavigationLink("Payment issue") { HelpChatView() }
+            }
+            Section("Order actions") {
+                Button(role: .destructive) { showCancelConfirm = true } label: {
+                    if isCancelling {
+                        ProgressView()
+                    } else {
+                        Text("Cancel order")
+                    }
+                }
+                .disabled(isCancelling)
+            }
+            if let err = errorMessage, !err.isEmpty {
+                Section {
+                    Text(err)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.error)
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Order issue options")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Done") { dismiss() }
+            }
+        }
+        .alert("Cancel this order?", isPresented: $showCancelConfirm) {
+            Button("Keep order", role: .cancel) { }
+            Button("Cancel order", role: .destructive) {
+                Task { await cancelOrder() }
+            }
+        } message: {
+            Text("This will request cancellation for this order.")
+        }
+    }
+
+    private func cancelOrder() async {
+        guard let oid = Int(orderId) else {
+            await MainActor.run { errorMessage = "Invalid order id" }
+            return
+        }
+        await MainActor.run { isCancelling = true; errorMessage = nil }
+        userService.updateAuthToken(authService.authToken)
+        do {
+            try await userService.cancelOrder(
+                orderId: oid,
+                reason: "CHANGED_MY_MIND",
+                notes: "Seller requested cancellation from chat sold banner.",
+                imagesUrl: []
+            )
+            await MainActor.run {
+                isCancelling = false
+                onOrderChanged?()
+                dismiss()
+            }
+        } catch {
+            await MainActor.run {
+                isCancelling = false
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+private struct OrderIssueChatCardView: View {
+    let message: Message
+
+    private static func relativeTimestamp(for date: Date) -> String {
+        let now = Date()
+        if now.timeIntervalSince(date) < 60 { return "Just now" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        let str = formatter.localizedString(for: date, relativeTo: now)
+        if str.hasPrefix("in ") { return "Just now" }
+        return str
+    }
+
+    var body: some View {
+        let payload = message.parsedOrderIssueDetails
+        NavigationLink(destination: OrderIssueDetailView(issueId: payload?.issueId, publicId: payload?.publicId)) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                Text("Issue with order")
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.primaryText)
+                if let rawType = payload?.issueType, !rawType.isEmpty {
+                    Text(humanReadableIssueType(rawType))
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+                HStack {
+                    Spacer(minLength: 0)
+                    Text(Self.relativeTimestamp(for: message.timestamp))
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+            }
+            .padding(Theme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.Colors.secondaryBackground)
+            .cornerRadius(24)
+            .overlay(
+                RoundedRectangle(cornerRadius: 24)
+                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func humanReadableIssueType(_ raw: String) -> String {
+        switch raw {
+        case "NOT_AS_DESCRIBED": return "Item not as described"
+        case "TOO_SMALL": return "Item is too small"
+        case "COUNTERFEIT": return "Item is counterfeit"
+        case "DAMAGED": return "Item is damaged or broken"
+        case "WRONG_COLOR": return "Item is wrong colour"
+        case "WRONG_SIZE": return "Item is wrong size"
+        case "DEFECTIVE": return "Item doesn't work / defective"
+        case "OTHER": return "Other"
+        default: return raw.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+}
+
+private struct TypingDotsView: View {
+    @State private var animate = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .frame(width: 5, height: 5)
+                .scaleEffect(animate ? 1.0 : 0.6)
+                .opacity(animate ? 1.0 : 0.45)
+                .animation(.easeInOut(duration: 0.55).repeatForever().delay(0.0), value: animate)
+            Circle()
+                .frame(width: 5, height: 5)
+                .scaleEffect(animate ? 1.0 : 0.6)
+                .opacity(animate ? 1.0 : 0.45)
+                .animation(.easeInOut(duration: 0.55).repeatForever().delay(0.12), value: animate)
+            Circle()
+                .frame(width: 5, height: 5)
+                .scaleEffect(animate ? 1.0 : 0.6)
+                .opacity(animate ? 1.0 : 0.45)
+                .animation(.easeInOut(duration: 0.55).repeatForever().delay(0.24), value: animate)
+        }
+        .foregroundColor(Theme.Colors.secondaryText)
+        .onAppear { animate = true }
     }
 }
 

@@ -115,6 +115,52 @@ struct Message: Identifiable {
               let t = json["type"] as? String else { return false }
         return t == "sold_confirmation"
     }
+
+    var isOrderIssue: Bool {
+        if type == "order_issue" { return true }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let t = json["type"] as? String else { return false }
+        return t == "order_issue"
+    }
+
+    /// Parse order issue payload persisted in chat message text.
+    /// Backend payload keys observed: order_id, issue_id, public_id, issue_type.
+    var parsedOrderIssueDetails: (orderId: String?, issueId: Int?, publicId: String?, issueType: String?)? {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (json["type"] as? String) == "order_issue" || type == "order_issue" else { return nil }
+
+        let orderId: String? = {
+            if let n = json["order_id"] as? Int { return String(n) }
+            if let s = json["order_id"] as? String { return s }
+            if let n = json["orderId"] as? Int { return String(n) }
+            if let s = json["orderId"] as? String { return s }
+            return nil
+        }()
+        let issueId: Int? = {
+            if let n = json["issue_id"] as? Int { return n }
+            if let s = json["issue_id"] as? String { return Int(s) }
+            if let n = json["issueId"] as? Int { return n }
+            if let s = json["issueId"] as? String { return Int(s) }
+            return nil
+        }()
+        let publicId: String? = {
+            if let s = json["public_id"] as? String { return s }
+            if let s = json["publicId"] as? String { return s }
+            return nil
+        }()
+        let issueType: String? = {
+            if let s = json["issue_type"] as? String { return s }
+            if let s = json["issueType"] as? String { return s }
+            return nil
+        }()
+        return (orderId, issueId, publicId, issueType)
+    }
 }
 
 extension Message {

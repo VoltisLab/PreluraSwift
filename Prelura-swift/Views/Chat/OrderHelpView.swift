@@ -8,13 +8,8 @@ struct OrderHelpView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                Text("Need help with your order?")
-                    .font(Theme.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundColor(Theme.Colors.primaryText)
-
+        List {
+            Section("Need help with your order?") {
                 helpRow(
                     title: "Item Not as Described",
                     content: "If the item you received doesn't match the description, you can raise an issue within 3 days of delivery.",
@@ -23,26 +18,42 @@ struct OrderHelpView: View {
                 helpRow(
                     title: "Order Status",
                     content: "Track your order status and see where your item is in the delivery process.",
-                    destination: HelpChatView()
+                    destination: HelpChatView(
+                        orderId: orderId,
+                        conversationId: conversationId,
+                        issueDraft: SupportIssueDraft(selectedOptions: ["Order status"], description: "", imageDatas: [], issueTypeCode: nil, issueId: nil, issuePublicId: nil)
+                    )
                 )
                 helpRow(
                     title: "Tracking Information",
                     content: "If your item has been shipped, you can track it using the tracking number provided by the seller.",
-                    destination: HelpChatView()
+                    destination: HelpChatView(
+                        orderId: orderId,
+                        conversationId: conversationId,
+                        issueDraft: SupportIssueDraft(selectedOptions: ["Tracking information"], description: "", imageDatas: [], issueTypeCode: nil, issueId: nil, issuePublicId: nil)
+                    )
                 )
                 helpRow(
                     title: "Payment Issues",
                     content: "If you're experiencing payment issues, please contact our support team.",
-                    destination: HelpChatView()
+                    destination: HelpChatView(
+                        orderId: orderId,
+                        conversationId: conversationId,
+                        issueDraft: SupportIssueDraft(selectedOptions: ["Payment issues"], description: "", imageDatas: [], issueTypeCode: nil, issueId: nil, issuePublicId: nil)
+                    )
                 )
                 helpRow(
                     title: "Item Not Received",
                     content: "If you haven't received your item within the expected delivery window, we can help.",
-                    destination: HelpChatView()
+                    destination: HelpChatView(
+                        orderId: orderId,
+                        conversationId: conversationId,
+                        issueDraft: SupportIssueDraft(selectedOptions: ["Item not received"], description: "", imageDatas: [], issueTypeCode: nil, issueId: nil, issuePublicId: nil)
+                    )
                 )
             }
-            .padding(Theme.Spacing.md)
         }
+        .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
         .navigationTitle("Help with Order")
         .navigationBarTitleDisplayMode(.inline)
@@ -60,9 +71,7 @@ struct OrderHelpView: View {
                     .foregroundColor(Theme.Colors.secondaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Theme.Spacing.md)
-            .background(Theme.Colors.secondaryBackground)
-            .cornerRadius(Theme.Glass.menuContainerCornerRadius)
+            .padding(.vertical, Theme.Spacing.xs)
         }
         .buttonStyle(.plain)
     }

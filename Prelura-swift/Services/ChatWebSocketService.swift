@@ -11,6 +11,19 @@ struct OfferSocketEvent {
     let senderUsername: String?
 }
 
+/// Typing event pushed by backend while peer is composing a message.
+struct TypingSocketEvent {
+    let conversationId: String?
+    let isTyping: Bool
+    let senderUsername: String?
+}
+
+/// Order-related event pushed by backend (e.g. order_status_event, sold confirmation linkage).
+struct OrderSocketEvent {
+    let type: String
+    let conversationId: String?
+}
+
 /// WebSocket client for chat: connect to backend ws, send messages, receive new messages and events.
 /// Uses same host as GraphQL (Constants.chatWebSocketBaseURL) so messages send/save to the same backend.
 final class ChatWebSocketService: NSObject, @unchecked Sendable {
@@ -24,6 +37,10 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
     var onNewMessage: (@MainActor (Message, String?) -> Void)?
     /// Called when backend pushes NEW_OFFER or UPDATE_OFFER (enables instant offer updates without refetch).
     var onOfferEvent: (@MainActor (OfferSocketEvent) -> Void)?
+    /// Called when backend pushes typing events.
+    var onTypingEvent: (@MainActor (TypingSocketEvent) -> Void)?
+    /// Called when backend pushes order-related events.
+    var onOrderEvent: (@MainActor (OrderSocketEvent) -> Void)?
     /// Called when connection state changes (e.g. for UI indicator).
     var onConnectionStateChanged: (@MainActor (Bool) -> Void)?
 
@@ -69,6 +86,26 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         }
     }
 
+    /// Send typing state to backend, when supported by chat socket.
+    /// Payload follows existing backend convention: {"is_typing": true/false}
+    func sendTyping(isTyping: Bool) {
+        // Send multiple commonly-used keys so backend variants can understand typing updates.
+        let payload: [String: Any] = [
+            "type": "typing",
+            "is_typing": isTyping,
+            "isTyping": isTyping,
+            "conversation_id": conversationId,
+            "conversationId": conversationId
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let string = String(data: data, encoding: .utf8) else { return }
+        task?.send(.string(string)) { error in
+            if let e = error {
+                print("ChatWebSocket typing send error: \(e)")
+            }
+        }
+    }
+
     private func receiveLoop() async {
         guard let task = task else { return }
         while !Task.isCancelled {
@@ -97,9 +134,25 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         guard let json = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return }
         let type = json["type"] as? String
         if type == "order_issue_created" || type == "order_status_event" {
+            let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
+            await MainActor.run {
+                onOrderEvent?(OrderSocketEvent(type: type ?? "", conversationId: convId))
+            }
             return
         }
-        if json["is_typing"] != nil {
+        // Typing event variants: `is_typing`, `isTyping`, or `type == "typing"`.
+        if json["is_typing"] != nil || json["isTyping"] != nil || type == "typing" {
+            let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
+            let isTyping = (json["is_typing"] as? Bool) ?? (json["isTyping"] as? Bool) ?? true
+            let senderUsername = (json["senderUsername"] as? String)
+                ?? (json["sender_username"] as? String)
+                ?? (json["senderName"] as? String)
+                ?? (json["sender_name"] as? String)
+                ?? (json["sender"] as? String)
+                ?? (json["username"] as? String)
+            await MainActor.run {
+                onTypingEvent?(TypingSocketEvent(conversationId: convId, isTyping: isTyping, senderUsername: senderUsername))
+            }
             return
         }
         // Django backend sends offer_status_event with nested `offer` + sender_username (see prelura-app offer_utils).
