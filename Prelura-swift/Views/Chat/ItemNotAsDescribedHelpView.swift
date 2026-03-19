@@ -225,7 +225,7 @@ struct ItemNotAsDescribedHelpView: View {
                 uploadedUrls = uploads.map(\.url)
             }
             let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
-            let desc = trimmed.isEmpty ? (selectedIssueLabels.first ?? "Order issue") : trimmed
+            let desc = trimmed.isEmpty ? (selectedIssueLabels.first ?? "Item not as described") : trimmed
             let result = try await userService.raiseOrderIssue(
                 orderId: oid,
                 issueType: selectedIssueType,

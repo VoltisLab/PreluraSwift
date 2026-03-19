@@ -26,13 +26,31 @@ struct Message: Identifiable {
         self.backendId = backendId
         self.senderUsername = senderUsername
         self.content = content
-        self.preview = content.prefix(50) + "..."
+        self.preview = Self.makeListPreview(from: content)
         self.timestamp = timestamp
         self.type = type
         self.orderID = orderID
         self.thumbnailURL = thumbnailURL
     }
     
+    /// One-line preview for inbox/lists; never surface raw JSON for structured message types.
+    private static func makeListPreview(from content: String) -> String {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("{"),
+           let data = trimmed.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let type = json["type"] as? String {
+            switch type {
+            case "order_issue": return "You reported an issue"
+            case "order": return "Order update"
+            case "offer": return "Offer"
+            case "sold_confirmation": return "Order confirmed"
+            default: break
+            }
+        }
+        return String(content.prefix(50)) + "..."
+    }
+
     var formattedTimestamp: String {
         let now = Date()
         let interval = timestamp.timeIntervalSince(now)
@@ -81,13 +99,13 @@ struct Message: Identifiable {
         return (id, offerPrice)
     }
 
-    /// Human-readable text for bubbles: show "Order issue" / "Order update" / "Offer sent"|"New offer" for JSON or offer payload, else plain content.
+    /// Human-readable text for bubbles: show "You reported an issue" / "Order update" / "Offer sent"|"New offer" for JSON or offer payload, else plain content.
     /// Pass isFromCurrentUser so we show "Offer sent" for sender and "New offer" for recipient.
     func displayContentForBubble(isFromCurrentUser: Bool) -> String {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let type = json["type"] as? String {
             switch type {
-            case "order_issue": return "Order issue"
+            case "order_issue": return "You reported an issue"
             case "order": return "Order update"
             case "offer": return isFromCurrentUser ? "Offer sent" : "New offer"
             case "sold_confirmation": return "Order confirmed"

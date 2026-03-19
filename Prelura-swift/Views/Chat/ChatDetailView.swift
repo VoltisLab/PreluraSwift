@@ -610,9 +610,23 @@ struct ChatDetailView: View {
                 Self.timelineOrderCache[displayedConversation.id] = timelineOrder
             }
             if let last = messages.last, displayedConversation.id != "0", let tc = tabCoordinator {
-                let previewText = last.isSoldConfirmation
-                    ? (isCurrentUser(username: displayedConversation.offer?.products?.first?.seller?.username) ? "You made a sale 🎉" : "Order confirmed")
-                    : (last.content.count > 60 ? String(last.content.prefix(57)) + "..." : last.content)
+                // Use same rules as inbox row so we never flash raw JSON (e.g. order_issue) before refetch.
+                let previewConv = Conversation(
+                    id: displayedConversation.id,
+                    recipient: displayedConversation.recipient,
+                    lastMessage: last.content,
+                    lastMessageSenderUsername: last.senderUsername,
+                    lastMessageTime: last.timestamp,
+                    unreadCount: displayedConversation.unreadCount,
+                    offer: displayedConversation.offer,
+                    order: displayedConversation.order,
+                    offerHistory: displayedConversation.offerHistory
+                )
+                let previewText = ChatRowView.previewText(
+                    for: last.content,
+                    conversation: previewConv,
+                    currentUsername: authService.username
+                ) ?? (last.content.count > 60 ? String(last.content.prefix(57)) + "..." : last.content)
                 tc.lastMessagePreviewForConversation = (displayedConversation.id, previewText, last.timestamp)
             }
             webSocket?.disconnect()
@@ -2291,7 +2305,7 @@ private struct OrderIssueChatCardView: View {
         let payload = message.parsedOrderIssueDetails
         NavigationLink(destination: OrderIssueDetailView(issueId: payload?.issueId, publicId: payload?.publicId)) {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                Text("Issue with order")
+                Text("You reported an issue")
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
                 if let rawType = payload?.issueType, !rawType.isEmpty {
@@ -2299,7 +2313,10 @@ private struct OrderIssueChatCardView: View {
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
-                HStack {
+                HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                    Text("Order on hold")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
                     Spacer(minLength: 0)
                     Text(Self.relativeTimestamp(for: message.timestamp))
                         .font(Theme.Typography.caption)

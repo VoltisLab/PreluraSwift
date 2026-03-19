@@ -1870,7 +1870,24 @@ struct RaiseOrderIssueResult: Decodable {
 }
 
 struct OrderIssueDetails: Decodable, Identifiable {
-    struct OrderRef: Decodable { let id: String? }
+    /// GraphQL `OrderType.id` is an integer; keep as string for display consistency with the rest of the app.
+    struct OrderRef: Decodable {
+        let id: String?
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            if let s = try? c.decode(String.self, forKey: .id) {
+                id = s
+            } else if let i = try? c.decode(Int.self, forKey: .id) {
+                id = String(i)
+            } else {
+                id = nil
+            }
+        }
+
+        private enum CodingKeys: String, CodingKey { case id }
+    }
+
     struct RaisedByRef: Decodable { let username: String? }
 
     let id: Int
@@ -1880,12 +1897,37 @@ struct OrderIssueDetails: Decodable, Identifiable {
     let imagesUrl: [String]
     let otherIssueDescription: String?
     let status: String?
-    let createdAt: Date?
+    /// Backend sends ISO8601 strings; `GraphQLClient` does not set `dateDecodingStrategy`, so keep as `String`.
+    let createdAt: String?
     let order: OrderRef?
     let raisedBy: RaisedByRef?
 
     private enum CodingKeys: String, CodingKey {
         case id, publicId, issueType, description, imagesUrl, otherIssueDescription, status, createdAt, order, raisedBy
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let intId = try? c.decode(Int.self, forKey: .id) {
+            id = intId
+        } else if let strId = try? c.decode(String.self, forKey: .id), let intId = Int(strId) {
+            id = intId
+        } else {
+            throw DecodingError.dataCorruptedError(forKey: .id, in: c, debugDescription: "Expected numeric issue id")
+        }
+        publicId = try c.decodeIfPresent(String.self, forKey: .publicId)
+        issueType = try c.decodeIfPresent(String.self, forKey: .issueType) ?? ""
+        description = try c.decodeIfPresent(String.self, forKey: .description) ?? ""
+        if let urls = try? c.decode([String].self, forKey: .imagesUrl) {
+            imagesUrl = urls
+        } else {
+            imagesUrl = []
+        }
+        otherIssueDescription = try c.decodeIfPresent(String.self, forKey: .otherIssueDescription)
+        status = try c.decodeIfPresent(String.self, forKey: .status)
+        createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        order = try c.decodeIfPresent(OrderRef.self, forKey: .order)
+        raisedBy = try c.decodeIfPresent(RaisedByRef.self, forKey: .raisedBy)
     }
 }
 

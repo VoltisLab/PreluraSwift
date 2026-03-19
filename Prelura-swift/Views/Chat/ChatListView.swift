@@ -321,6 +321,12 @@ struct ChatRowView: View {
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
 
+                    if ChatRowView.isOrderIssueLastMessage(conversation.lastMessage) {
+                        Text("• Order on hold")
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                    }
+
                     if let time = conversation.lastMessageTime {
                         Text("• \(formatTime(time))")
                             .font(Theme.Typography.caption)
@@ -404,11 +410,22 @@ struct ChatRowView: View {
     }
 
     /// Case-insensitive username match so backend "Testuser" matches "testuser".
-    private static func usernamesMatch(_ a: String?, _ b: String?) -> Bool {
+    fileprivate static func usernamesMatch(_ a: String?, _ b: String?) -> Bool {
         guard let a = a?.trimmingCharacters(in: .whitespaces).lowercased(),
               let b = b?.trimmingCharacters(in: .whitespaces).lowercased(),
               !a.isEmpty, !b.isEmpty else { return false }
         return a == b
+    }
+
+    /// True when `lastMessage` text is an persisted order-issue card (`type: order_issue`).
+    static func isOrderIssueLastMessage(_ raw: String?) -> Bool {
+        guard let raw = raw, !raw.isEmpty else { return false }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = json["type"] as? String else { return false }
+        return type == "order_issue"
     }
 
     /// Human-readable preview for list. Use last message sender: if I sent the last message (offer), "You sent an offer"; else "Offer received". When there's an order, show order summary.
@@ -437,7 +454,7 @@ struct ChatRowView: View {
             return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
         }
         switch type {
-        case "order_issue": return "Order issue"
+        case "order_issue": return "You reported an issue"
         case "order": return "Order update"
         case "offer": return iSentLastOffer ? "You sent an offer" : "Offer received"
         case "sold_confirmation":
