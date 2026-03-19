@@ -226,7 +226,6 @@ struct ChatListView: View {
         guard !query.isEmpty else { return list }
         return list.filter {
             $0.recipient.username.lowercased().contains(query)
-                || ($0.recipient.displayName.isEmpty ? false : $0.recipient.displayName.lowercased().contains(query))
                 || ($0.lastMessage?.lowercased().contains(query) ?? false)
         }
     }
@@ -237,6 +236,53 @@ struct ChatListView: View {
 struct ChatRowView: View {
     let conversation: Conversation
     var currentUsername: String?
+
+    private static var offerProductImageCache: [Int: String] = [:]
+    private let productService = ProductService()
+
+    @State private var loadedOfferProductImageURL: String?
+    @State private var isLoadingOfferProductImage = false
+
+    /// Interpret `1:13` as `width:height = 1:1.3` (so the thumbnail isn't extremely thin).
+    private static let productThumbWidthToHeightRatio: CGFloat = 1.0 / 1.3
+    private static let productThumbHeight: CGFloat = 44
+
+    private var offerThumbProductId: Int? {
+        guard conversation.order == nil else { return nil } // order thumbnails come from `conversation.order`
+        return conversation.offer?.products?.first?.id.flatMap { Int($0) }
+    }
+
+    private var productImageURL: URL? {
+        if let s = conversation.order?.firstProductImageUrl, let url = URL(string: s), !s.isEmpty {
+            return url
+        }
+        if let id = offerThumbProductId {
+            if let s = Self.offerProductImageCache[id] ?? loadedOfferProductImageURL,
+               let url = URL(string: s),
+               !s.isEmpty {
+                return url
+            }
+        }
+        return nil
+    }
+
+    private func loadOfferProductThumbnailIfNeeded(for productId: Int) async {
+        if isLoadingOfferProductImage { return }
+        if let cached = Self.offerProductImageCache[productId] {
+            await MainActor.run { loadedOfferProductImageURL = cached }
+            return
+        }
+        isLoadingOfferProductImage = true
+        defer { isLoadingOfferProductImage = false }
+
+        guard let product = try? await productService.getProduct(id: productId) else { return }
+        let firstURL = product.imageURLs.first
+        await MainActor.run {
+            guard let firstURL, !firstURL.isEmpty else { return }
+            Self.offerProductImageCache[productId] = firstURL
+            loadedOfferProductImageURL = firstURL
+        }
+    }
 
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
@@ -270,15 +316,13 @@ struct ChatRowView: View {
             
             // Content
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                HStack {
-                    Text(conversation.recipient.displayName.isEmpty ? conversation.recipient.username : conversation.recipient.displayName)
+                HStack(spacing: Theme.Spacing.xs) {
+                    Text(conversation.recipient.username)
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
-                    
-                    Spacer()
-                    
+
                     if let time = conversation.lastMessageTime {
-                        Text(formatTime(time))
+                        Text("• \(formatTime(time))")
                             .font(Theme.Typography.caption)
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
@@ -291,20 +335,57 @@ struct ChatRowView: View {
                         .lineLimit(1)
                 }
             }
-            
-            // Unread badge
-            if conversation.unreadCount > 0 {
-                Text("\(conversation.unreadCount)")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Theme.primaryColor)
-                    .clipShape(Capsule())
+
+            Spacer(minLength: 0)
+
+            // Product thumbnail (right side).
+            ZStack(alignment: .topTrailing) {
+                Group {
+                    if let url = productImageURL {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        } placeholder: {
+                            ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                        }
+                    } else {
+                        ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                    }
+                }
+                .frame(
+                    width: productThumbWidth,
+                    height: Self.productThumbHeight
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                // Unread badge overlay.
+                if conversation.unreadCount > 0 {
+                    Text("\(conversation.unreadCount)")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Theme.primaryColor)
+                        .clipShape(Capsule())
+                        .offset(x: 4, y: -6)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, Theme.Spacing.xs)
+        .task(id: offerThumbProductId) {
+            // Only fetch thumbnail for offer conversations when we don't already have one.
+            guard let productId = offerThumbProductId else { return }
+            if conversation.order != nil { return }
+            if Self.offerProductImageCache[productId] != nil { return }
+            guard loadedOfferProductImageURL == nil, !isLoadingOfferProductImage else { return }
+            await loadOfferProductThumbnailIfNeeded(for: productId)
+        }
+    }
+
+    private var productThumbWidth: CGFloat {
+        Self.productThumbHeight * Self.productThumbWidthToHeightRatio
     }
     
     private func formatTime(_ date: Date) -> String {
@@ -314,14 +395,32 @@ struct ChatRowView: View {
         }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: now)
+        let str = formatter.localizedString(for: date, relativeTo: now)
+        // iOS formatter returns values like "6 min ago"; UI wants just "6 min".
+        if str.lowercased().hasSuffix(" ago") {
+            return String(str.dropLast(4))
+        }
+        return str
     }
 
-    /// Human-readable preview for list. When current user sent the offer, show "You sent an offer". When there's an order, show order summary.
+    /// Case-insensitive username match so backend "Testuser" matches "testuser".
+    private static func usernamesMatch(_ a: String?, _ b: String?) -> Bool {
+        guard let a = a?.trimmingCharacters(in: .whitespaces).lowercased(),
+              let b = b?.trimmingCharacters(in: .whitespaces).lowercased(),
+              !a.isEmpty, !b.isEmpty else { return false }
+        return a == b
+    }
+
+    /// Human-readable preview for list. Use last message sender: if I sent the last message (offer), "You sent an offer"; else "Offer received". When there's an order, show order summary.
     static func previewText(for raw: String?, conversation: Conversation, currentUsername: String?) -> String? {
+        /// True when the current user sent the latest offer (last message sender matches).
+        let iSentLastOffer = usernamesMatch(conversation.lastMessageSenderUsername, currentUsername)
         guard let raw = raw, !raw.isEmpty else {
-            if conversation.offer != nil, conversation.offer?.buyer?.username == currentUsername {
+            if conversation.offer != nil, iSentLastOffer {
                 return "You sent an offer"
+            }
+            if conversation.offer != nil {
+                return "Offer received"
             }
             if let order = conversation.order {
                 return String(format: "Order • £%.2f", order.total)
@@ -330,7 +429,7 @@ struct ChatRowView: View {
         }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.contains("offer_id") || (trimmed.hasPrefix("{") && (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any])?["offer_id"] != nil) {
-            return conversation.offer?.buyer?.username == currentUsername ? "You sent an offer" : "Offer"
+            return iSentLastOffer ? "You sent an offer" : "Offer received"
         }
         guard trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -340,8 +439,13 @@ struct ChatRowView: View {
         switch type {
         case "order_issue": return "Order issue"
         case "order": return "Order update"
-        case "offer": return conversation.offer?.buyer?.username == currentUsername ? "You sent an offer" : "New offer"
-        case "sold_confirmation": return "Order confirmed"
+        case "offer": return iSentLastOffer ? "You sent an offer" : "Offer received"
+        case "sold_confirmation":
+            // Seller = person who listed the product (offer’s product seller). Buyer sees "Order confirmed".
+            if usernamesMatch(conversation.offer?.products?.first?.seller?.username, currentUsername) {
+                return "You made a sale 🎉"
+            }
+            return "Order confirmed"
         default: return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
         }
     }

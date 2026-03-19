@@ -128,7 +128,7 @@ private struct OrderRowView: View {
                     .foregroundColor(Theme.Colors.primaryText)
                     .lineLimit(1)
                 if let other = order.otherParty {
-                    Text(isSold ? "Buyer: \(other.displayName)" : "Seller: \(other.displayName)")
+                    Text(isSold ? "Buyer: \(other.username)" : "Seller: \(other.username)")
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }

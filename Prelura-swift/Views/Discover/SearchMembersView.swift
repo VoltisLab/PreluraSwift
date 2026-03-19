@@ -115,14 +115,9 @@ struct SearchMembersView: View {
                     HStack(spacing: Theme.Spacing.md) {
                         avatarView(for: user)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(user.displayName.isEmpty ? user.username : user.displayName)
+                            Text(user.username)
                                 .font(Theme.Typography.body)
                                 .foregroundColor(Theme.Colors.primaryText)
-                            if !user.displayName.isEmpty && user.displayName != user.username {
-                                Text(user.username)
-                                    .font(Theme.Typography.caption)
-                                    .foregroundColor(Theme.Colors.secondaryText)
-                            }
                         }
                         Spacer(minLength: 0)
                     }

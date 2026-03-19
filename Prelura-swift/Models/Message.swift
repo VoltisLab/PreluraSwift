@@ -59,6 +59,28 @@ struct Message: Identifiable {
         return false
     }
 
+    /// Parsed offer id and price from message content (for building offer history from messages). Returns nil if not offer content or unparseable.
+    /// Supports offer_id / offerId and offerPrice / offer_price so all offer messages show in history.
+    var parsedOfferDetails: (offerId: String, offerPrice: Double)? {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let hasOffer = json["type"] as? String == "offer" || json["offer_id"] != nil || json["offerId"] != nil
+        guard hasOffer else { return nil }
+        let offerId: String?
+        if let id = json["offer_id"] as? Int { offerId = String(id) }
+        else if let id = json["offer_id"] as? String { offerId = id }
+        else if let id = json["offerId"] as? Int { offerId = String(id) }
+        else if let id = json["offerId"] as? String { offerId = id }
+        else { offerId = nil }
+        guard let id = offerId else { return nil }
+        var offerPrice: Double = 0
+        if let p = json["offerPrice"] as? Double { offerPrice = p }
+        else if let p = json["offer_price"] as? Double { offerPrice = p }
+        else if let n = json["offerPrice"] as? NSNumber { offerPrice = n.doubleValue }
+        else if let n = json["offer_price"] as? NSNumber { offerPrice = n.doubleValue }
+        return (id, offerPrice)
+    }
+
     /// Human-readable text for bubbles: show "Order issue" / "Order update" / "Offer sent"|"New offer" for JSON or offer payload, else plain content.
     /// Pass isFromCurrentUser so we show "Offer sent" for sender and "New offer" for recipient.
     func displayContentForBubble(isFromCurrentUser: Bool) -> String {

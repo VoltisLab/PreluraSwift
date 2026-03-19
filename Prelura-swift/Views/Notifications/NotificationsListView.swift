@@ -366,10 +366,12 @@ private struct NotificationRowView: View {
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.primaryText)
                     .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 if let date = notification.createdAt {
                     Text(formatDate(date))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

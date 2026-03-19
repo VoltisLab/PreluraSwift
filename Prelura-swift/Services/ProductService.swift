@@ -816,7 +816,7 @@ class ProductService: ObservableObject {
                     seller: p.seller.map { OfferInfo.OfferUser(username: $0.username, profilePictureUrl: $0.profilePictureUrl) }
                 )
             }
-            let offerInfo = OfferInfo(id: idStr, status: el.status, offerPrice: price, buyer: buyer, products: products)
+            let offerInfo = OfferInfo(id: idStr, status: el.status, offerPrice: price, buyer: buyer, products: products, sentByCurrentUser: true)
             let seller = el.products?.first?.seller
             let recipient = User(
                 id: UUID(),

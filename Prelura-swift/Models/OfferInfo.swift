@@ -1,14 +1,20 @@
 import Foundation
 
 /// Offer data from createOffer response or conversations query. Used for offer card in chat.
+/// `id` is a stable UI identity (never mutated). `backendId` is the server offer id when known.
 struct OfferInfo: Codable, Hashable {
+    /// Stable UI ID (never change after creation).
     let id: String
+    /// Backend offer id when known; used for API calls and dedup.
+    let backendId: String?
     let status: String?
     let offerPrice: Double
     let buyer: OfferUser?
     let products: [OfferProduct]?
     /// When the offer was sent; used for card timestamp. Set locally when not from server.
     let createdAt: Date?
+    /// When true, this offer was sent by the current user. Always set — never guess from buyer.
+    let sentByCurrentUser: Bool
 
     struct OfferUser: Codable, Hashable {
         let username: String?
@@ -22,7 +28,7 @@ struct OfferInfo: Codable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, status, offerPrice, buyer, products, createdAt
+        case id, backendId, status, offerPrice, buyer, products, createdAt, sentByCurrentUser
     }
 
     init(from decoder: Decoder) throws {
@@ -33,6 +39,7 @@ struct OfferInfo: Codable, Hashable {
             let idAny = try c.decode(AnyCodable.self, forKey: .id)
             id = idAny.value as? String ?? String(describing: idAny.value)
         }
+        backendId = try c.decodeIfPresent(String.self, forKey: .backendId)
         status = try c.decodeIfPresent(String.self, forKey: .status)
         if let decimal = try? c.decodeIfPresent(Decimal.self, forKey: .offerPrice) {
             offerPrice = NSDecimalNumber(decimal: decimal).doubleValue
@@ -45,33 +52,39 @@ struct OfferInfo: Codable, Hashable {
         products = try c.decodeIfPresent([OfferProduct].self, forKey: .products)
         if let interval = try? c.decodeIfPresent(Double.self, forKey: .createdAt) {
             createdAt = Date(timeIntervalSince1970: interval)
-        } else if let interval = try? c.decodeIfPresent(TimeInterval.self, forKey: .createdAt) {
+        } else         if let interval = try? c.decodeIfPresent(TimeInterval.self, forKey: .createdAt) {
             createdAt = Date(timeIntervalSince1970: interval)
         } else {
             createdAt = nil
         }
+        sentByCurrentUser = try c.decodeIfPresent(Bool.self, forKey: .sentByCurrentUser) ?? false
     }
 
-    init(id: String, status: String?, offerPrice: Double, buyer: OfferUser?, products: [OfferProduct]?, createdAt: Date? = nil) {
+    init(id: String, backendId: String? = nil, status: String?, offerPrice: Double, buyer: OfferUser?, products: [OfferProduct]?, createdAt: Date? = nil, sentByCurrentUser: Bool) {
         self.id = id
+        self.backendId = backendId
         self.status = status
         self.offerPrice = offerPrice
         self.buyer = buyer
         self.products = products
         self.createdAt = createdAt
+        self.sentByCurrentUser = sentByCurrentUser
     }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)
+        try c.encodeIfPresent(backendId, forKey: .backendId)
         try c.encodeIfPresent(status, forKey: .status)
         try c.encode(offerPrice, forKey: .offerPrice)
         try c.encodeIfPresent(buyer, forKey: .buyer)
         try c.encodeIfPresent(products, forKey: .products)
         try c.encodeIfPresent(createdAt?.timeIntervalSince1970, forKey: .createdAt)
+        try c.encode(sentByCurrentUser, forKey: .sentByCurrentUser)
     }
 
-    var offerIdInt: Int? { Int(id) }
+    /// Backend id for API calls (e.g. respondToOffer).
+    var offerIdInt: Int? { Int(backendId ?? id) }
     var isPending: Bool { (status ?? "").uppercased() == "PENDING" }
     var isAccepted: Bool { (status ?? "").uppercased() == "ACCEPTED" }
     var isRejected: Bool { (status ?? "").uppercased() == "REJECTED" || (status ?? "").uppercased() == "CANCELLED" }

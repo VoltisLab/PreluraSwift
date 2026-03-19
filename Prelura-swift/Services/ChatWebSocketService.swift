@@ -105,11 +105,14 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         // Django backend sends offer_status_event with nested `offer` + sender_username (see prelura-app offer_utils).
         if type == "offer_status_event" {
             let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
+            let offerJson = json["offer"] as? [String: Any]
+            // Prefer top-level; fall back to nested offer (backend now sends senderUsername in both).
             let senderUsername = (json["senderUsername"] as? String)
                 ?? (json["sender_username"] as? String)
                 ?? (json["senderName"] as? String)
                 ?? (json["sender_name"] as? String)
-            let offerJson = json["offer"] as? [String: Any]
+                ?? (offerJson?["senderUsername"] as? String)
+                ?? (offerJson?["sender_username"] as? String)
             let offerId = (json["offerId"] as? String) ?? (json["offer_id"] as? String) ?? (json["offer_id"] as? Int).map { String($0) }
             let status = json["status"] as? String
             if offerJson != nil {
@@ -196,9 +199,16 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
             if let n = o["createdAt"] as? NSNumber { return Date(timeIntervalSince1970: n.doubleValue) }
             return nil
         }()
-        let buyer = parseOfferUser(o["buyer"] as? [String: Any])
+        // Backend sends senderUsername/sender_username in nested offer for counter attribution; prefer over buyer (buyer stays original purchaser).
+        let senderFromOffer = (o["senderUsername"] as? String) ?? (o["sender_username"] as? String)
+        let buyer: OfferInfo.OfferUser? = {
+            if let s = senderFromOffer, !s.trimmingCharacters(in: .whitespaces).isEmpty {
+                return OfferInfo.OfferUser(username: s, profilePictureUrl: parseOfferUser(o["buyer"] as? [String: Any])?.profilePictureUrl)
+            }
+            return parseOfferUser(o["buyer"] as? [String: Any])
+        }()
         let products = (o["products"] as? [[String: Any]])?.compactMap { parseOfferProduct($0) }
-        return OfferInfo(id: id, backendId: id, status: status, offerPrice: price, buyer: buyer, products: products, createdAt: createdAt ?? Date(), sentByCurrentUser: false) // temporary placeholder (DO NOT TRUST THIS)
+        return OfferInfo(id: id, backendId: id, status: status, offerPrice: price, buyer: buyer, products: products, createdAt: createdAt ?? Date(), sentByCurrentUser: false)
     }
 
     private func parseOfferUser(_ j: [String: Any]?) -> OfferInfo.OfferUser? {

@@ -13,7 +13,9 @@ struct OfferModalContent: View {
     @Binding var isSubmitting: Bool
     /// Optional: caller can set to show API/validation errors (e.g. marketplace createOffer failure).
     @Binding var errorMessage: String?
-
+    /// When showing the compact "item send offer" variant, controls whether the offer text field is
+    /// prefilled with the item's listing price.
+    var prefillOfferAmountFromItem: Bool = true
     @State private var offerAmount: String = ""
     @State private var selectedSuggestionPrice: Double? = nil
     @FocusState private var offerFieldFocused: Bool
@@ -38,10 +40,8 @@ struct OfferModalContent: View {
     }
 
     private var optionDivider: some View {
-        Rectangle()
-            .fill(Theme.Colors.glassBorder)
-            .frame(height: 0.5)
-            .padding(.horizontal, Theme.Spacing.md)
+        // Intentionally no separator/divider: design wants a clean modal.
+        EmptyView()
     }
 
     var body: some View {
@@ -163,7 +163,11 @@ struct OfferModalContent: View {
         .background(Theme.Colors.background)
         .onAppear {
             if let item = item {
-                offerAmount = item.price == floor(item.price) ? "\(Int(item.price))" : String(format: "%.2f", item.price)
+                if prefillOfferAmountFromItem {
+                    offerAmount = item.price == floor(item.price) ? "\(Int(item.price))" : String(format: "%.2f", item.price)
+                } else {
+                    offerAmount = ""
+                }
             } else if let p = listingPrice {
                 offerAmount = p == floor(p) ? "\(Int(p))" : String(format: "%.2f", p)
             }
@@ -241,6 +245,7 @@ struct SendOfferSheetContent: View {
     @EnvironmentObject var authService: AuthService
     @Environment(\.optionalTabCoordinator) private var tabCoordinator
     private let productService = ProductService()
+    private let chatService = ChatService()
     @State private var isSubmitting = false
     @State private var errorMessage: String?
 
@@ -251,7 +256,8 @@ struct SendOfferSheetContent: View {
             onSubmit: { value in submitOffer(value: value) },
             onDismiss: onDismiss,
             isSubmitting: $isSubmitting,
-            errorMessage: $errorMessage
+            errorMessage: $errorMessage,
+            prefillOfferAmountFromItem: false
         )
     }
 
@@ -262,12 +268,29 @@ struct SendOfferSheetContent: View {
         Task {
             defer { Task { @MainActor in isSubmitting = false } }
             productService.updateAuthToken(authService.authToken)
+            chatService.updateAuthToken(authService.authToken)
             do {
+                // Reuse existing conversation for the same product so we don't create duplicate chats.
+                let convs = try await chatService.getConversations()
+                let existing = convs.first { conv in
+                    conv.offer?.products?.contains(where: { $0.id == productIdStr }) == true
+                }
+                if let conv = existing, let tc = tabCoordinator {
+                    await MainActor.run {
+                        onDismiss()
+                        tc.selectTab(3)
+                        tc.pendingOpenConversation = conv
+                    }
+                    return
+                }
                 let (_, conversation) = try await productService.createOffer(offerPrice: value, productIds: [productId], message: nil)
                 await MainActor.run {
                     onDismiss()
                     if let conv = conversation, let tc = tabCoordinator {
                         tc.selectTab(3)
+                        tc.pendingOfferJustSent = true
+                        tc.pendingOfferConversationId = conv.id
+                        tc.pendingOfferPrice = value
                         DispatchQueue.main.async {
                             tc.pendingOpenConversation = conv
                         }

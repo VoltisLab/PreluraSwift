@@ -7,7 +7,7 @@ iOS app for Prelura (SwiftUI). Connects to the shared Prelura backend API.
 - **Repository:** https://github.com/VoltisLab/prelura-app  
 - **API (this app uses):** `https://prelura.voltislabs.uk/graphql/`  
 - **Lenny (AI assistant) system prompt:** `docs/lenny-system-prompt.txt` in this repo is the canonical instruction set for Lenny. The Swift app uses it when calling OpenAI for reply text.
-- This client does not modify the backend; it only consumes the existing GraphQL API. See `.cursor/rules/backend-protection.mdc` and `Prelura-swift/Utilities/Constants.swift` for references.
+- This client consumes the existing GraphQL API. See `Prelura-swift/Utilities/Constants.swift` for endpoint references.
 
 ## API keys (Secrets.plist)
 

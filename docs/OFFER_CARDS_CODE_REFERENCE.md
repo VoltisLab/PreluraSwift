@@ -172,7 +172,7 @@ enum TimelineEntry: Hashable {
                         onAccept: { await handleRespondToOffer(action: "ACCEPT") },
                         onDecline: { await handleRespondToOffer(action: "REJECT") },
                         onSendNewOffer: { showCounterOfferSheet = true },
-                        onPayNow: { presentPayNow() },
+                        onPayNow: { presentPayNow(for: offer) },
                         forceGreyedOut: !isLatest,
                         onRefresh: isLatest ? { loadConversationAndMessagesFromBackend() } : nil
                     )

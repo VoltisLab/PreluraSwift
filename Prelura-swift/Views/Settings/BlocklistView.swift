@@ -54,20 +54,18 @@ struct BlocklistView: View {
                                     .fill(Theme.Colors.secondaryBackground)
                                     .frame(width: 44, height: 44)
                                     .overlay(
-                                        Text(String((user.displayName.isEmpty ? user.username : user.displayName).prefix(1)).uppercased())
+                                        Text(String((user.username.prefix(1))).uppercased())
                                             .font(Theme.Typography.body)
                                             .foregroundColor(Theme.Colors.secondaryText)
                                     )
                             }
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(user.displayName.isEmpty ? user.username : user.displayName)
+                                Text(user.username)
                                     .font(Theme.Typography.body)
                                     .foregroundColor(Theme.Colors.primaryText)
-                                if !user.displayName.isEmpty && user.displayName != user.username {
-                                    Text("@\(user.username)")
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText)
-                                }
+                                Text("@\(user.username)")
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.Colors.secondaryText)
                             }
                             Spacer()
                             Button("Unblock") {

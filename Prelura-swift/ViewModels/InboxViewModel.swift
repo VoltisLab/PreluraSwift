@@ -40,6 +40,8 @@ class InboxViewModel: ObservableObject {
             for existing in existingToMerge where !apiIds.contains(existing.id) {
                 list.append(existing)
             }
+            // Counter-offers must not create duplicate chats: backend may return two conversations for same recipient+product; keep one per (recipient, product set) with latest activity.
+            list = Self.deduplicateConversations(list)
             if let preview = preview, let idx = list.firstIndex(where: { $0.id == preview.id }) {
                 let c = list[idx]
                 let apiTime = c.lastMessageTime ?? .distantPast
@@ -110,5 +112,26 @@ class InboxViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Deduplicate so counter-offers don't show as a second chat. For offer conversations: same recipient + same offer product set = one conversation (keep latest by lastMessageTime). Non-offer conversations are left as-is.
+    private static func deduplicateConversations(_ list: [Conversation]) -> [Conversation] {
+        func key(_ c: Conversation) -> String {
+            if let productIds = c.offer?.products?.compactMap(\.id), !productIds.isEmpty {
+                return "offer|\(c.recipient.username)|\(productIds.sorted().joined(separator: ","))"
+            }
+            return "conv|\(c.id)"
+        }
+        var byKey: [String: Conversation] = [:]
+        for c in list {
+            let k = key(c)
+            let existing = byKey[k]
+            let cTime = c.lastMessageTime ?? .distantPast
+            let existingTime = existing?.lastMessageTime ?? .distantPast
+            if existing == nil || cTime > existingTime {
+                byKey[k] = c
+            }
+        }
+        return Array(byKey.values)
     }
 }

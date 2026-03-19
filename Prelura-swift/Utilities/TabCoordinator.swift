@@ -20,6 +20,12 @@ final class TabCoordinator: ObservableObject {
     @Published var readyForRefresh: Set<Int> = []
     /// When set, Inbox should navigate to this conversation (e.g. after sending an offer).
     @Published var pendingOpenConversation: Conversation?
+    /// When true, the next chat load should treat a single REJECTED/CANCELLED offer as PENDING (we just sent from product page).
+    @Published var pendingOfferJustSent: Bool = false
+    /// Conversation id that `pendingOfferJustSent` applies to (avoids wrong "You offered" on other chats).
+    @Published var pendingOfferConversationId: String?
+    /// When set with pendingOfferJustSent, use this as the offer price when building the first offer (API may return wrong value).
+    @Published var pendingOfferPrice: Double?
     /// When user leaves a chat, store last message preview so the list can show it immediately without waiting for refetch.
     @Published var lastMessagePreviewForConversation: (id: String, text: String, date: Date)?
     /// Per-tab: true when scroll view is at top. Used to decide: at top → refresh on tap; not at top → scroll first, refresh on second tap.

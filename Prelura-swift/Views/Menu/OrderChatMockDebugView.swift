@@ -24,7 +24,8 @@ struct OrderChatMockDebugView: View {
         offerPrice: 38.00,
         buyer: OfferInfo.OfferUser(username: "buyer1", profilePictureUrl: nil),
         products: [OfferInfo.OfferProduct(id: "1", name: "Vintage Jacket", seller: nil)],
-        createdAt: Date()
+        createdAt: Date(),
+        sentByCurrentUser: false
     )
     private static let mockOfferAccepted = OfferInfo(
         id: "mock-offer-accepted",
@@ -32,7 +33,8 @@ struct OrderChatMockDebugView: View {
         offerPrice: 38.00,
         buyer: OfferInfo.OfferUser(username: "buyer1", profilePictureUrl: nil),
         products: [OfferInfo.OfferProduct(id: "1", name: "Vintage Jacket", seller: nil)],
-        createdAt: Date()
+        createdAt: Date(),
+        sentByCurrentUser: false
     )
     private static let mockOfferDeclined = OfferInfo(
         id: "mock-offer-declined",
@@ -40,7 +42,8 @@ struct OrderChatMockDebugView: View {
         offerPrice: 38.00,
         buyer: OfferInfo.OfferUser(username: "buyer1", profilePictureUrl: nil),
         products: [OfferInfo.OfferProduct(id: "1", name: "Vintage Jacket", seller: nil)],
-        createdAt: Date()
+        createdAt: Date(),
+        sentByCurrentUser: false
     )
 
     private static let mockMessages: [Message] = [
@@ -67,7 +70,7 @@ struct OrderChatMockDebugView: View {
     ]
 
     /// Timeline: message ids and offer in chat order (order confirmation at top, then this list).
-    private static var timelineOrder: [TimelineEntry] {
+    private static var timelineOrder: [ChatItem] {
         [
             .message(mockMessages[0].id),
             .message(mockMessages[1].id),
@@ -108,7 +111,7 @@ struct OrderChatMockDebugView: View {
                 .frame(height: 0.5)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    OrderConfirmationCardView(order: Self.mockOrder)
+                    OrderConfirmationCardView(order: Self.mockOrder, isSeller: true)
                         .overlay(alignment: .topLeading) { debugLabel("OrderConfirmationCardView") }
                         .padding(.bottom, Theme.Spacing.sm)
                     ForEach(Array(Self.timelineOrder.enumerated()), id: \.offset) { timelineIndex, entry in
@@ -183,7 +186,7 @@ struct OrderChatMockDebugView: View {
     }
 
     @ViewBuilder
-    private func timelineRow(timelineIndex: Int, entry: TimelineEntry) -> some View {
+    private func timelineRow(timelineIndex: Int, entry: ChatItem) -> some View {
         switch entry {
         case .message(let messageId):
             if let message = Self.mockMessages.first(where: { $0.id == messageId }) {
@@ -219,7 +222,7 @@ struct OrderChatMockDebugView: View {
             .padding(.vertical, Theme.Spacing.sm)
             .background(Theme.Colors.background)
             .padding(.top, topPadding)
-        case .order:
+        case .sold:
             EmptyView()
         }
     }

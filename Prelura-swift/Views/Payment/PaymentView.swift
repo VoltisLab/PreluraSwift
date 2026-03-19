@@ -46,15 +46,23 @@ struct PaymentView: View {
     private let productService = ProductService()
     private let chatService = ChatService()
 
-    /// Sum of all product prices (before multi-buy discount).
-    private var orderSubtotal: Double { products.reduce(0) { $0 + $1.price } }
+    /// Sum used as the base "Price" for totals.
+    /// When opened from an accepted offer, `totalPrice` is the accepted offer amount, and we must use it
+    /// instead of the products' listing price so the checkout matches the agreed offer.
+    private var orderSubtotal: Double {
+        customOffer ? totalPrice : products.reduce(0) { $0 + $1.price }
+    }
     /// Multi-buy discount % from seller's tiers (when all items from same seller and count qualifies).
     private func discountPercent(for count: Int) -> Int {
         let sorted = discountTiers.filter { $0.isActive && $0.minItems <= count }.sorted { $0.minItems > $1.minItems }
         guard let tier = sorted.first else { return 0 }
         return Int(Double(tier.discountValue) ?? 0)
     }
-    private var multiBuyDiscountPercent: Int { discountPercent(for: products.count) }
+    private var multiBuyDiscountPercent: Int {
+        // When paying from a custom offer, the offer amount should be treated as the negotiated subtotal.
+        // Applying multibuy discounts again would double-adjust the price.
+        customOffer ? 0 : discountPercent(for: products.count)
+    }
     private var multiBuyDiscountAmount: Double { orderSubtotal * Double(multiBuyDiscountPercent) / 100 }
     private var afterDiscount: Double { orderSubtotal - multiBuyDiscountAmount }
     private var buyerProtectionFee: Double {
@@ -142,15 +150,25 @@ struct PaymentView: View {
                     sectionHeader("\(products.count) \(products.count == 1 ? "Item" : "Items")")
                     VStack(spacing: 0) {
                         ForEach(products) { item in
+                            let perItemOfferPrice: Double? = {
+                                guard customOffer, products.count > 0 else { return nil }
+                                return totalPrice / Double(products.count)
+                            }()
                             HStack(alignment: .top) {
                                 Text(item.title)
                                     .font(Theme.Typography.body)
                                     .foregroundColor(Theme.Colors.primaryText)
                                     .lineLimit(2)
                                 Spacer()
-                                Text(item.formattedPrice)
-                                    .font(Theme.Typography.body)
-                                    .foregroundColor(Theme.Colors.secondaryText)
+                                if let offerPrice = perItemOfferPrice {
+                                    Text(String(format: "£%.2f", offerPrice))
+                                        .font(Theme.Typography.body)
+                                        .foregroundColor(Theme.Colors.secondaryText)
+                                } else {
+                                    Text(item.formattedPrice)
+                                        .font(Theme.Typography.body)
+                                        .foregroundColor(Theme.Colors.secondaryText)
+                                }
                             }
                             .padding(.horizontal, Theme.Spacing.md)
                             .padding(.vertical, Theme.Spacing.sm)

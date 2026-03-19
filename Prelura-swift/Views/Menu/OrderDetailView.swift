@@ -125,7 +125,7 @@ struct OrderDetailView: View {
                 HStack(spacing: Theme.Spacing.md) {
                     avatarView(url: other.avatarURL, username: other.username)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(other.displayName.isEmpty ? other.username : other.displayName)
+                        Text(other.username)
                             .font(Theme.Typography.body)
                             .foregroundColor(Theme.Colors.primaryText)
                         Text("@\(other.username)")

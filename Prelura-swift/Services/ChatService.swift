@@ -1,6 +1,16 @@
 import Foundation
 import Combine
 
+/// Shared ISO8601 parsing for conversation/offer timestamps (used by `ChatService` and `Conversation.offerInfo`).
+fileprivate func parseGraphQLDateString(_ dateString: String?) -> Date? {
+    guard let dateString = dateString else { return nil }
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = formatter.date(from: dateString) { return date }
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter.date(from: dateString)
+}
+
 @MainActor
 class ChatService: ObservableObject {
     private var client: GraphQLClient
@@ -40,8 +50,10 @@ class ChatService: ObservableObject {
               id
               status
               offerPrice
+              createdBy
               buyer { username profilePictureUrl }
               products { id name seller { username profilePictureUrl } }
+              createdAt
             }
             order {
               id
@@ -91,10 +103,10 @@ class ChatService: ObservableObject {
                     firstProductName: first?.name,
                     firstProductImageUrl: first?.firstImageUrl,
                     firstProductId: firstProductIdStr,
-                    createdAt: parseDate(o.createdAt)
+                    createdAt: parseGraphQLDateString(o.createdAt)
                 )
             }
-            let lastTime = parseDate(conv.lastMessage?.createdAt) ?? order?.createdAt
+            let lastTime = parseGraphQLDateString(conv.lastMessage?.createdAt) ?? order?.createdAt
             return Conversation(
                 id: idString,
                 recipient: User(
@@ -104,16 +116,20 @@ class ChatService: ObservableObject {
                     avatarURL: conv.recipient?.profilePictureUrl
                 ),
                 lastMessage: conv.lastMessage?.text,
+                lastMessageSenderUsername: conv.lastMessage?.sender?.username,
                 lastMessageTime: lastTime,
                 unreadCount: conv.unreadMessagesCount ?? 0,
                 offer: offer,
-                order: order
+                order: order,
+                offerHistory: nil
             )
         } ?? []
     }
     
     /// Fetch a single conversation by id (with order). Sale banner is stored on the backend like offers: Conversation.order FK + Message (item_type=sold_confirmation) created in payment success handler.
-    func getConversationById(conversationId: String) async throws -> Conversation? {
+    /// - Parameter currentUsername: Used to set `sentByCurrentUser` on each row in `offerHistory`.
+    /// - Note: The query requests `offerHistory` on `conversationById`. Deploy the backend GraphQL change before shipping this client build, or the request will fail until the field exists.
+    func getConversationById(conversationId: String, currentUsername: String? = nil) async throws -> Conversation? {
         let query = """
         query ConversationById($id: ID!) {
           conversationById(id: $id) {
@@ -135,8 +151,19 @@ class ChatService: ObservableObject {
               id
               status
               offerPrice
+              createdBy
               buyer { username profilePictureUrl }
               products { id name seller { username profilePictureUrl } }
+              createdAt
+            }
+            offerHistory {
+              id
+              status
+              offerPrice
+              createdBy
+              buyer { username profilePictureUrl }
+              products { id name seller { username profilePictureUrl } }
+              createdAt
             }
             order {
               id
@@ -182,10 +209,14 @@ class ChatService: ObservableObject {
                 firstProductName: first?.name,
                 firstProductImageUrl: first?.firstImageUrl,
                 firstProductId: firstProductIdStr,
-                createdAt: parseDate(o.createdAt)
+                createdAt: parseGraphQLDateString(o.createdAt)
             )
         }
-        let lastTime = parseDate(conv.lastMessage?.createdAt) ?? order?.createdAt
+        let lastTime = parseGraphQLDateString(conv.lastMessage?.createdAt) ?? order?.createdAt
+        let offerHistory: [OfferInfo]? = {
+            guard let rows = conv.offerHistory, !rows.isEmpty else { return nil }
+            return Self.mapOfferHistory(rows, currentUsername: currentUsername)
+        }()
         return Conversation(
             id: idString,
             recipient: User(
@@ -195,11 +226,38 @@ class ChatService: ObservableObject {
                 avatarURL: conv.recipient?.profilePictureUrl
             ),
             lastMessage: conv.lastMessage?.text,
+            lastMessageSenderUsername: conv.lastMessage?.sender?.username,
             lastMessageTime: lastTime,
             unreadCount: conv.unreadMessagesCount ?? 0,
             offer: offer,
-            order: order
+            order: order,
+            offerHistory: offerHistory
         )
+    }
+
+    /// Maps server `offerHistory` to UI rows with correct `sentByCurrentUser` from `createdBy` vs current user.
+    private static func mapOfferHistory(_ rows: [OfferData], currentUsername: String?) -> [OfferInfo] {
+        rows.compactMap { data -> OfferInfo? in
+            guard let base = Conversation.offerInfo(from: data) else { return nil }
+            let sender = data.createdBy ?? data.buyer?.username
+            let fromMe = usernamesMatch(sender, currentUsername)
+            return OfferInfo(
+                id: base.id,
+                backendId: base.backendId,
+                status: base.status,
+                offerPrice: base.offerPrice,
+                buyer: base.buyer,
+                products: base.products,
+                createdAt: base.createdAt ?? parseGraphQLDateString(data.createdAt),
+                sentByCurrentUser: fromMe
+            )
+        }
+    }
+
+    private static func usernamesMatch(_ a: String?, _ b: String?) -> Bool {
+        let x = (a ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let y = (b ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return !x.isEmpty && !y.isEmpty && x == y
     }
     
     func getMessages(conversationId: String, pageNumber: Int = 1, pageCount: Int = 50) async throws -> [Message] {
@@ -470,14 +528,7 @@ class ChatService: ObservableObject {
         return (result?.success ?? false, result?.message, result?.deletedConversationsCount, result?.deletedOrdersCount)
     }
     
-    private func parseDate(_ dateString: String?) -> Date? {
-        guard let dateString = dateString else { return nil }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: dateString) { return date }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: dateString)
-    }
+    private func parseDate(_ dateString: String?) -> Date? { parseGraphQLDateString(dateString) }
 }
 
 /// Minimal order info for a conversation (sale confirmation).
@@ -497,19 +548,35 @@ struct Conversation: Hashable {
     let id: String
     let recipient: User
     let lastMessage: String?
+    /// Username of the message sender for `lastMessage` (useful for role-specific UI like seller sale text).
+    let lastMessageSenderUsername: String?
     let lastMessageTime: Date?
     let unreadCount: Int
     let offer: OfferInfo?
     let order: ConversationOrder?
+    /// Full offer negotiation thread from `conversationById.offerHistory` (server source of truth). Nil when not loaded (e.g. inbox list).
+    let offerHistory: [OfferInfo]?
 
-    init(id: String, recipient: User, lastMessage: String?, lastMessageTime: Date?, unreadCount: Int, offer: OfferInfo? = nil, order: ConversationOrder? = nil) {
+    init(
+        id: String,
+        recipient: User,
+        lastMessage: String?,
+        lastMessageSenderUsername: String? = nil,
+        lastMessageTime: Date?,
+        unreadCount: Int,
+        offer: OfferInfo? = nil,
+        order: ConversationOrder? = nil,
+        offerHistory: [OfferInfo]? = nil
+    ) {
         self.id = id
         self.recipient = recipient
         self.lastMessage = lastMessage
+        self.lastMessageSenderUsername = lastMessageSenderUsername
         self.lastMessageTime = lastMessageTime
         self.unreadCount = unreadCount
         self.offer = offer
         self.order = order
+        self.offerHistory = offerHistory
     }
 
     static func idString(from anyCodable: AnyCodable?) -> String? {
@@ -524,8 +591,11 @@ struct Conversation: Hashable {
 
     static func offerInfo(from data: OfferData) -> OfferInfo? {
         let idStr = idString(from: data.id) ?? ""
+        guard !idStr.isEmpty else { return nil }
         let price: Double = data.offerPrice?.value ?? 0
-        let buyer: OfferInfo.OfferUser? = data.buyer.map { OfferInfo.OfferUser(username: $0.username, profilePictureUrl: $0.profilePictureUrl) }
+        // Prefer createdBy (sender of this offer/counter) for display so "X offered" is correct.
+        let displayUsername = data.createdBy ?? data.buyer?.username
+        let buyer: OfferInfo.OfferUser? = displayUsername.map { OfferInfo.OfferUser(username: $0, profilePictureUrl: data.buyer?.profilePictureUrl) }
         let products: [OfferInfo.OfferProduct]? = data.products?.map { p in
             OfferInfo.OfferProduct(
                 id: idString(from: p.id),
@@ -533,7 +603,16 @@ struct Conversation: Hashable {
                 seller: p.seller.map { OfferInfo.OfferUser(username: $0.username, profilePictureUrl: $0.profilePictureUrl) }
             )
         }
-        return OfferInfo(id: idStr, status: data.status, offerPrice: price, buyer: buyer, products: products)
+        return OfferInfo(
+            id: idStr,
+            backendId: idStr,
+            status: data.status,
+            offerPrice: price,
+            buyer: buyer,
+            products: products,
+            createdAt: parseGraphQLDateString(data.createdAt),
+            sentByCurrentUser: false
+        )
     }
 }
 
@@ -548,6 +627,7 @@ struct ConversationData: Decodable {
     let unreadMessagesCount: Int?
     let offer: OfferData?
     let order: ConversationOrderData?
+    let offerHistory: [OfferData]?
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(AnyCodable.self, forKey: .id)
@@ -556,8 +636,9 @@ struct ConversationData: Decodable {
         unreadMessagesCount = try c.decodeIfPresent(Int.self, forKey: .unreadMessagesCount)
         offer = try? c.decode(OfferData.self, forKey: .offer)
         order = try? c.decode(ConversationOrderData.self, forKey: .order)
+        offerHistory = try? c.decode([OfferData].self, forKey: .offerHistory)
     }
-    private enum CodingKeys: String, CodingKey { case id, recipient, lastMessage, unreadMessagesCount, offer, order }
+    private enum CodingKeys: String, CodingKey { case id, recipient, lastMessage, unreadMessagesCount, offer, order, offerHistory }
 }
 
 /// Order summary on a conversation (from conversations query).
@@ -640,8 +721,11 @@ struct OfferData: Decodable {
     let id: AnyCodable?
     let status: String?
     fileprivate let offerPrice: OfferPriceValue?
+    /// Username of who sent this offer (created_by); use for "X offered" when present so counters show correct sender.
+    let createdBy: String?
     let buyer: OfferUserData?
     let products: [OfferProductData]?
+    let createdAt: String?
     struct OfferUserData: Decodable {
         let username: String?
         let profilePictureUrl: String?

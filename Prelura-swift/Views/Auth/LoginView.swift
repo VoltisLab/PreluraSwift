@@ -2,8 +2,9 @@ import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject var authService: AuthService
-    @State private var username: String = ""
-    @State private var password: String = ""
+    /// Demo credentials for testing; pre-filled so you don't have to type each time.
+    @State private var username: String = "Testuser"
+    @State private var password: String = "Password123!!!"
     @State private var showPassword: Bool = false
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?

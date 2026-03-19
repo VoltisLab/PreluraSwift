@@ -836,7 +836,9 @@ struct CategorySelectionView: View {
     @ViewBuilder
     private var searchResultsContent: some View {
         let results = filteredSearchResults
-        if isLoadingSearch && allCategories.isEmpty {
+        let hasQuery = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // Show loading when user has typed and we don't have data yet (avoids "No categories found" before load completes).
+        if hasQuery && allCategories.isEmpty {
             ProgressView()
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, Theme.Spacing.xl)
@@ -948,24 +950,25 @@ struct CategorySelectionView: View {
     }
 
     private func loadCategories(parentId: Int?) async {
-        isLoading = true
-        loadError = nil
+        await MainActor.run { isLoading = true; loadError = nil }
         do {
-            categories = try await service.fetchCategories(parentId: parentId)
+            let list = try await service.fetchCategories(parentId: parentId)
+            await MainActor.run { categories = list }
         } catch {
-            loadError = L10n.userFacingError(error)
+            await MainActor.run { loadError = L10n.userFacingError(error) }
         }
-        isLoading = false
+        await MainActor.run { isLoading = false }
     }
 
     private func loadAllCategories() async {
-        isLoadingSearch = true
+        await MainActor.run { isLoadingSearch = true }
         do {
-            allCategories = try await service.fetchAllCategoriesFlattened()
+            let list = try await service.fetchAllCategoriesFlattened()
+            await MainActor.run { allCategories = list }
         } catch {
-            allCategories = []
+            await MainActor.run { allCategories = [] }
         }
-        isLoadingSearch = false
+        await MainActor.run { isLoadingSearch = false }
     }
 }
 
@@ -1042,6 +1045,17 @@ struct SubCategoryView: View {
         }
     }
 
+    private func loadCategories(parentId: Int?) async {
+        await MainActor.run { isLoading = true; loadError = nil }
+        do {
+            let list = try await service.fetchCategories(parentId: parentId)
+            await MainActor.run { categories = list }
+        } catch {
+            await MainActor.run { loadError = L10n.userFacingError(error) }
+        }
+        await MainActor.run { isLoading = false }
+    }
+
     private func subCategoryRow(_ cat: APICategory) -> some View {
         let isInSelectedPath = selectedCategory.map { $0.pathIds.contains(cat.id) || $0.id == cat.id } ?? false
         return HStack {
@@ -1054,17 +1068,6 @@ struct SubCategoryView: View {
                     .foregroundColor(Theme.primaryColor)
             }
         }
-    }
-
-    private func loadCategories(parentId: Int?) async {
-        isLoading = true
-        loadError = nil
-        do {
-            categories = try await service.fetchCategories(parentId: parentId)
-        } catch {
-            loadError = L10n.userFacingError(error)
-        }
-        isLoading = false
     }
 }
 
