@@ -11,20 +11,21 @@ private enum InboxFilter: String, CaseIterable {
 struct ChatListView: View {
     @EnvironmentObject var authService: AuthService
     @ObservedObject var tabCoordinator: TabCoordinator
+    @ObservedObject var inboxViewModel: InboxViewModel
     @Binding var path: [AppRoute]
-    @StateObject private var chatService: ChatService
-    @State private var conversations: [Conversation] = []
     @State private var searchText: String = ""
-    @State private var isLoading: Bool = false
-    @State private var errorMessage: String?
     @State private var scrollPosition: String? = "inbox_top"
     /// Inbox filter from 3-dot menu: all, unread, read, archived.
     @State private var inboxFilter: InboxFilter = .all
 
-    init(tabCoordinator: TabCoordinator, path: Binding<[AppRoute]>) {
+    private var conversations: [Conversation] { inboxViewModel.conversations }
+    private var isLoading: Bool { inboxViewModel.isLoading }
+    private var errorMessage: String? { inboxViewModel.errorMessage }
+
+    init(tabCoordinator: TabCoordinator, path: Binding<[AppRoute]>, inboxViewModel: InboxViewModel) {
         self.tabCoordinator = tabCoordinator
         _path = path
-        _chatService = StateObject(wrappedValue: ChatService())
+        self.inboxViewModel = inboxViewModel
     }
     
     var body: some View {
@@ -63,8 +64,8 @@ struct ChatListView: View {
                     if errorMessage != nil {
                         PrimaryButtonBar {
                             PrimaryGlassButton("Retry", action: {
-                                errorMessage = nil
-                                loadConversations()
+                                inboxViewModel.errorMessage = nil
+                                inboxViewModel.refresh()
                             })
                         }
                     }
@@ -111,7 +112,7 @@ struct ChatListView: View {
                                 }
                             }
                             tabCoordinator.registerRefresh(tab: 3) {
-                                Task { await loadConversationsAsync() }
+                                Task { await loadInboxConversations() }
                             }
                         }
                     }
@@ -134,7 +135,7 @@ struct ChatListView: View {
                         }
                     }
                     .refreshable {
-                        await loadConversationsAsync()
+                        await loadInboxConversations()
                     }
                 }
                 .onChange(of: scrollPosition) { _, new in
@@ -149,20 +150,10 @@ struct ChatListView: View {
             tabCoordinator.reportAtTop(tab: 3, isAtTop: true)
             tabCoordinator.registerScrollToTop(tab: 3) { }
             tabCoordinator.registerRefresh(tab: 3) {
-                Task { await loadConversationsAsync() }
+                Task { await loadInboxConversations() }
             }
-            if path.isEmpty, let preview = tabCoordinator.lastMessagePreviewForConversation,
-               let idx = conversations.firstIndex(where: { $0.id == preview.id }) {
-                let c = conversations[idx]
-                conversations[idx] = Conversation(
-                    id: c.id,
-                    recipient: c.recipient,
-                    lastMessage: preview.text,
-                    lastMessageTime: preview.date,
-                    unreadCount: c.unreadCount,
-                    offer: c.offer,
-                    order: c.order
-                )
+            if path.isEmpty, let preview = tabCoordinator.lastMessagePreviewForConversation {
+                inboxViewModel.updatePreview(conversationId: preview.id, text: preview.text, date: preview.date)
                 tabCoordinator.lastMessagePreviewForConversation = nil
             }
             if let conv = tabCoordinator.pendingOpenConversation {
@@ -170,42 +161,28 @@ struct ChatListView: View {
                 DispatchQueue.main.async { path = [.conversation(conv)] }
             }
             guard !authService.isGuestMode else { return }
-            if let token = authService.authToken {
-                chatService.updateAuthToken(token)
-            }
+            inboxViewModel.updateAuthToken(authService.authToken)
             if conversations.isEmpty && !isLoading {
-                loadConversations()
+                inboxViewModel.refresh()
             }
         }
         .onChange(of: path.count) { oldCount, newCount in
             if oldCount > 0, newCount == 0, !authService.isGuestMode {
-                if let preview = tabCoordinator.lastMessagePreviewForConversation,
-                   let idx = conversations.firstIndex(where: { $0.id == preview.id }) {
-                    let c = conversations[idx]
-                    conversations[idx] = Conversation(
-                        id: c.id,
-                        recipient: c.recipient,
-                        lastMessage: preview.text,
-                        lastMessageTime: preview.date,
-                        unreadCount: c.unreadCount,
-                        offer: c.offer,
-                        order: c.order
-                    )
+                if let preview = tabCoordinator.lastMessagePreviewForConversation {
+                    inboxViewModel.updatePreview(conversationId: preview.id, text: preview.text, date: preview.date)
                     tabCoordinator.lastMessagePreviewForConversation = nil
                 }
-                Task { await loadConversationsAsync() }
+                Task { await loadInboxConversations() }
             }
         }
         .onChange(of: tabCoordinator.pendingOpenConversation) { _, pending in
             guard let conv = pending else { return }
             tabCoordinator.pendingOpenConversation = nil
             Task {
-                await loadConversationsAsync()
+                await loadInboxConversations()
                 await MainActor.run {
-                    // If the conversation we're opening isn't in the refetched list (e.g. newly created by createChat, backend cache), add it so it appears when user backs out.
                     if !conversations.contains(where: { $0.id == conv.id }) {
-                        var list = conversations
-                        let inserted = Conversation(
+                        inboxViewModel.prependConversation(Conversation(
                             id: conv.id,
                             recipient: conv.recipient,
                             lastMessage: conv.lastMessage,
@@ -213,34 +190,28 @@ struct ChatListView: View {
                             unreadCount: conv.unreadCount,
                             offer: conv.offer,
                             order: conv.order
-                        )
-                        list.insert(inserted, at: 0)
-                        list.sort { ($0.lastMessageTime ?? .distantPast) > ($1.lastMessageTime ?? .distantPast) }
-                        conversations = list
+                        ))
                     }
                     path = [.conversation(conv)]
                 }
             }
         }
-        .onChange(of: authService.authToken) { oldValue, newToken in
-            chatService.updateAuthToken(newToken)
+        .onChange(of: authService.authToken) { _, newToken in
+            inboxViewModel.updateAuthToken(newToken)
         }
     }
 
     private func deleteConversation(_ conversation: Conversation) {
         guard let convId = Int(conversation.id) else { return }
-        Task {
-            do {
-                try await chatService.deleteConversation(conversationId: convId)
-                await MainActor.run {
-                    conversations.removeAll { $0.id == conversation.id }
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                }
-            }
-        }
+        Task { await inboxViewModel.deleteConversation(conversationId: convId) }
+    }
+
+    /// Load conversations (with optional preview from tabCoordinator) and clear preview after.
+    private func loadInboxConversations() async {
+        let preview = tabCoordinator.lastMessagePreviewForConversation
+        let previewTuple: (id: String, text: String, date: Date)? = preview.map { ($0.id, $0.text, $0.date) }
+        await inboxViewModel.loadConversationsAsync(preview: previewTuple)
+        if preview != nil { tabCoordinator.lastMessagePreviewForConversation = nil }
     }
     
     private var filteredConversations: [Conversation] {
@@ -260,77 +231,6 @@ struct ChatListView: View {
         }
     }
 
-    private func loadConversations() {
-        isLoading = true
-        errorMessage = nil
-        
-        Task {
-            await loadConversationsAsync()
-        }
-    }
-    
-    private func loadConversationsAsync() async {
-        let hadConversations = !conversations.isEmpty
-        isLoading = true
-        if !hadConversations { conversations = [] }
-        do {
-            // Ensure token is up to date
-            if let token = authService.authToken {
-                chatService.updateAuthToken(token)
-            }
-            
-            let convs = try await chatService.getConversations()
-            await MainActor.run {
-                var list = convs
-                // Keep any conversation from current list that isn't in API response (e.g. newly created after order, not yet returned by backend/cache) so it stays visible when user backs out.
-                let apiIds = Set(list.map(\.id))
-                for existing in self.conversations where !apiIds.contains(existing.id) {
-                    list.append(existing)
-                }
-                // When we just left a chat with "Order confirmed", don't overwrite that row with stale API
-                // data (older lastMessageTime). Update the row's preview only; do NOT re-sort the list so
-                // the conversation that has the order (first by last_modified from API) stays at the top.
-                if let preview = self.tabCoordinator.lastMessagePreviewForConversation,
-                   let idx = list.firstIndex(where: { $0.id == preview.id }) {
-                    let c = list[idx]
-                    let apiTime = c.lastMessageTime ?? .distantPast
-                    if apiTime < preview.date {
-                        list[idx] = Conversation(
-                            id: c.id,
-                            recipient: c.recipient,
-                            lastMessage: preview.text,
-                            lastMessageTime: preview.date,
-                            unreadCount: c.unreadCount,
-                            offer: c.offer,
-                            order: c.order
-                        )
-                    }
-                    self.tabCoordinator.lastMessagePreviewForConversation = nil
-                }
-                // Always show latest first: sort by last message/order time (backend order_by is last_modified which can differ).
-                list.sort { ($0.lastMessageTime ?? .distantPast) > ($1.lastMessageTime ?? .distantPast) }
-                self.conversations = list
-                self.errorMessage = nil
-                self.isLoading = false
-                print("✅ Loaded \(list.count) conversations")
-            }
-        } catch {
-            let isCancelled = (error as? URLError)?.code == .cancelled
-                || error.localizedDescription.lowercased().contains("cancelled")
-            await MainActor.run {
-                self.isLoading = false
-                if isCancelled {
-                    // Don't show error for pull-to-refresh or task cancellation; keep existing list
-                    if hadConversations { self.errorMessage = nil }
-                    else { self.errorMessage = nil; self.conversations = [] }
-                } else {
-                    self.errorMessage = error.localizedDescription
-                    self.conversations = hadConversations ? self.conversations : []
-                }
-                if !isCancelled { print("❌ Error loading conversations: \(error.localizedDescription)") }
-            }
-        }
-    }
 }
 
 
@@ -448,6 +348,6 @@ struct ChatRowView: View {
 }
 
 #Preview {
-    ChatListView(tabCoordinator: TabCoordinator(), path: .constant([]))
+    ChatListView(tabCoordinator: TabCoordinator(), path: .constant([]), inboxViewModel: InboxViewModel())
         .preferredColorScheme(.dark)
 }

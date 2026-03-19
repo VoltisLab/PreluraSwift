@@ -59,13 +59,18 @@ struct ChatWithSellerView: View {
     }
 }
 
-/// One item in the chat timeline: either a message or an offer card. Order is preserved so nothing moves above/below.
+/// One item in the chat timeline: message, offer card, or order card. Sorted by time.
 enum TimelineEntry: Hashable {
     case message(UUID)
     case offer(String)
+    case order(String)
 
     var isOffer: Bool {
         if case .offer = self { return true }
+        return false
+    }
+    var isOrder: Bool {
+        if case .order = self { return true }
         return false
     }
 }
@@ -97,16 +102,28 @@ struct ChatDetailView: View {
     @State private var offerProductItem: Item?
     /// Fetched product for order-conversation header (sale confirmation bar); enables tap-to-open product.
     @State private var orderProductItem: Item?
-    /// Offer cards to show: [previous, …] + current. After sending a counter we append optimistically so previous card shows greyed button.
-    @State private var offerHistory: [OfferInfo] = []
+    /// Single source of truth for offer cards. UI = source of truth; server used only to seed on load or confirm after send.
+    @State private var offers: [OfferInfo] = []
 
     private let productService = ProductService()
 
-    /// In-memory cache of offer chain per conversation so reloading the chat restores previous offers (API only returns latest).
+    /// Cache for re-open: restore offers when returning to chat (API only returns latest).
     private static var offerHistoryCache: [String: [OfferInfo]] = [:]
-    /// Order of items in the chat (message vs offer card) so every element keeps their position (X, Y, X, Y, …).
+    private static let offerHistoryUserDefaultsPrefix = "offerHistory_"
+    /// Order of items in the chat (message vs offer card), sorted by date.
     @State private var timelineOrder: [TimelineEntry] = []
     private static var timelineOrderCache: [String: [TimelineEntry]] = [:]
+
+    private static func persistOfferHistory(convId: String, offers: [OfferInfo]) {
+        guard let data = try? JSONEncoder().encode(offers) else { return }
+        UserDefaults.standard.set(data, forKey: offerHistoryUserDefaultsPrefix + convId)
+    }
+
+    private static func loadOfferHistory(convId: String) -> [OfferInfo]? {
+        guard let data = UserDefaults.standard.data(forKey: offerHistoryUserDefaultsPrefix + convId),
+              let offers = try? JSONDecoder().decode([OfferInfo].self, from: data) else { return nil }
+        return offers
+    }
 
     init(conversation: Conversation, item: Item? = nil) {
         self.conversation = conversation
@@ -119,22 +136,18 @@ struct ChatDetailView: View {
     }
 
     /// Messages to show: in offer conversations hide raw offer payload bubbles (offer card represents the offer).
+    /// Hide sold_confirmation message bubbles (order is shown by OrderConfirmationCardView banner only).
     private var displayedMessages: [Message] {
-        guard displayedConversation.offer != nil else { return messages }
-        return messages.filter { !$0.isOfferContent }
+        var list = messages.filter { !$0.isSoldConfirmation }
+        if displayedConversation.offer != nil {
+            list = list.filter { !$0.isOfferContent }
+        }
+        return list
     }
 
     private var isSeller: Bool {
         guard let offer = displayedConversation.offer, let sellerUsername = offer.products?.first?.seller?.username else { return false }
         return authService.username == sellerUsername
-    }
-
-    /// Current offer cards to show (history + current). Synced from displayedConversation.offer when it changes.
-    private var offerCards: [OfferInfo] {
-        if offerHistory.isEmpty, let offer = displayedConversation.offer {
-            return [offer]
-        }
-        return offerHistory
     }
 
     private var messageInputBar: some View {
@@ -227,8 +240,8 @@ struct ChatDetailView: View {
                 .padding(.top, topPadding)
             }
         case .offer(let offerId):
-            if let offer = offerCards.first(where: { $0.id == offerId }) {
-                let isLatest = offer.id == offerCards.last?.id
+            if let offer = offers.first(where: { $0.id == offerId }) {
+                let isLatest = offer.id == offers.last?.id
                 let prevIsOffer = (timelineIndex > 0 && timelineIndex - 1 < timelineOrder.count) && (timelineOrder[timelineIndex - 1].isOffer)
                 let topPadding: CGFloat = timelineIndex == 0 ? 0 : (prevIsOffer ? 0 : Theme.Spacing.md)
                 Group {
@@ -247,7 +260,7 @@ struct ChatDetailView: View {
                         onDecline: { await handleRespondToOffer(action: "REJECT") },
                         onSendNewOffer: { showCounterOfferSheet = true },
                         onPayNow: { presentPayNow() },
-                        forceGreyedOut: !isLatest
+                        forceGreyedOut: !isLatest || displayedConversation.order != nil
                     )
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
@@ -256,19 +269,35 @@ struct ChatDetailView: View {
                 }
                 .padding(.top, topPadding)
             }
+        case .order(let orderId):
+            if let order = displayedConversation.order, order.id == orderId {
+                let prevIsOfferOrOrder = (timelineIndex > 0 && timelineIndex - 1 < timelineOrder.count) && (timelineOrder[timelineIndex - 1].isOffer || timelineOrder[timelineIndex - 1].isOrder)
+                let topPadding: CGFloat = timelineIndex == 0 ? 0 : (prevIsOfferOrOrder ? 0 : Theme.Spacing.md)
+                Group {
+                    if timelineIndex > 0, timelineIndex - 1 < timelineOrder.count, timelineOrder[timelineIndex - 1].isOffer || timelineOrder[timelineIndex - 1].isOrder {
+                        Rectangle()
+                            .fill(Theme.Colors.glassBorder)
+                            .frame(height: 0.5)
+                    }
+                    OrderConfirmationCardView(order: order)
+                        .id("order_\(order.id)")
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.sm)
+                }
+                .padding(.top, topPadding)
+            }
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            if displayedConversation.offer != nil {
-                offerProductHeaderBar
+            if displayedConversation.order != nil {
+                orderHeaderBar
                 Rectangle()
                     .fill(Theme.Colors.glassBorder)
                     .frame(height: 0.5)
-            }
-            if displayedConversation.order != nil {
-                orderHeaderBar
+            } else if displayedConversation.offer != nil {
+                offerProductHeaderBar
                 Rectangle()
                     .fill(Theme.Colors.glassBorder)
                     .frame(height: 0.5)
@@ -278,7 +307,7 @@ struct ChatDetailView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                     .background(Theme.Colors.background)
-                if !offerCards.isEmpty {
+                if !offers.isEmpty {
                     Rectangle()
                         .fill(Theme.Colors.glassBorder)
                         .frame(height: 0.5)
@@ -287,11 +316,7 @@ struct ChatDetailView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        if let order = displayedConversation.order {
-                            OrderConfirmationCardView(order: order)
-                                .padding(.bottom, Theme.Spacing.sm)
-                        }
-                        ForEach(Array(timelineOrder.enumerated()), id: \.offset) { timelineIndex, entry in
+                        ForEach(Array(timelineOrder.enumerated()), id: \.1) { timelineIndex, entry in
                             timelineRow(timelineIndex: timelineIndex, entry: entry)
                         }
                     }
@@ -305,7 +330,8 @@ struct ChatDetailView: View {
                     withAnimation(.easeOut(duration: 0.2)) {
                         switch last {
                         case .message(let id): proxy.scrollTo(id, anchor: .bottom)
-                        case .offer(let id): proxy.scrollTo(id == offerCards.last?.id ? "latest_offer_card" : id, anchor: .bottom)
+                        case .offer(let id): proxy.scrollTo(id == offers.last?.id ? "latest_offer_card" : id, anchor: .bottom)
+                        case .order(let orderId): proxy.scrollTo("order_\(orderId)", anchor: .bottom)
                         }
                     }
                 }
@@ -357,7 +383,7 @@ struct ChatDetailView: View {
             ) {
                 OfferModalContent(
                     item: item,
-                    listingPrice: item == nil ? (displayedConversation.offer?.offerPrice ?? 0) * 2 : nil,
+                    listingPrice: nil,
                     onSubmit: { newPrice in
                         showCounterOfferSheet = false
                         Task {
@@ -400,7 +426,7 @@ struct ChatDetailView: View {
             connectWebSocket()
             fetchOfferProductIfNeeded()
             fetchOrderProductIfNeeded()
-            syncOfferHistoryFromConversation()
+            loadOffers()
             loadConversationAndMessagesFromBackend()
         }
         .onChange(of: displayedConversation.offer?.id) { _, _ in
@@ -409,17 +435,15 @@ struct ChatDetailView: View {
         .onChange(of: displayedConversation.order?.id) { _, _ in
             fetchOrderProductIfNeeded()
         }
-        .onChange(of: displayedConversation.offer) { _, _ in
-            syncLastOfferFromConversation()
-        }
         .onChange(of: displayedConversation.id) { _, _ in
-            offerHistory = []
+            offers = []
             timelineOrder = []
-            syncOfferHistoryFromConversation()
+            loadOffers()
         }
         .onDisappear {
-            if !offerHistory.isEmpty {
-                Self.offerHistoryCache[displayedConversation.id] = offerHistory
+            if !offers.isEmpty {
+                Self.offerHistoryCache[displayedConversation.id] = offers
+                Self.persistOfferHistory(convId: displayedConversation.id, offers: offers)
             }
             if !timelineOrder.isEmpty {
                 Self.timelineOrderCache[displayedConversation.id] = timelineOrder
@@ -458,6 +482,7 @@ struct ChatDetailView: View {
                     displayedConversation = conv
                 }
                 self.messages = msgs
+                // Do not call loadOffers() here: it can race with the send-success block and overwrite the just-sent offer with stale server data. Offers are loaded on appear and when conversation id changes; loadOffers() also guards against overwriting a recently added offer.
                 self.isLoading = false
                 rebuildTimelineOrder()
                 if displayedConversation.order == nil, msgs.contains(where: { $0.isSoldConfirmation }) {
@@ -478,95 +503,59 @@ struct ChatDetailView: View {
         }
     }
 
-    /// Restore offer chain from cache when reloading chat; merge with server's latest offer so we keep previous cards.
-    private func syncOfferHistoryFromConversation() {
+    /// Single source of truth load: restore offers from cache when re-opening chat, or seed from server when empty. No merge, no sync override.
+    /// When we have a "just added" offer (last offer created in the last 60s), do not overwrite with server/cache so the sent price stays visible.
+    private func loadOffers() {
         let convId = displayedConversation.id
-        guard let serverOffer = displayedConversation.offer else {
-            offerHistory = Self.offerHistoryCache[convId] ?? []
+        let now = Date()
+        let lastOfferIsFresh = offers.last.flatMap { last in
+            (last.createdAt ?? .distantPast).distance(to: now) <= 60
+        } ?? false
+        if lastOfferIsFresh {
             rebuildTimelineOrder()
             return
         }
-        if let cached = Self.offerHistoryCache[convId], !cached.isEmpty {
-            if cached.last?.id == serverOffer.id {
-                offerHistory = cached.dropLast() + [serverOffer]
-            } else {
-                offerHistory = cached + [serverOffer]
+        if Self.offerHistoryCache[convId] == nil, let persisted = Self.loadOfferHistory(convId: convId), !persisted.isEmpty {
+            Self.offerHistoryCache[convId] = persisted.map { o in
+                OfferInfo(id: o.id, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date())
             }
-        } else if offerHistory.isEmpty {
-            offerHistory = [serverOffer]
+        }
+        if let cached = Self.offerHistoryCache[convId], !cached.isEmpty {
+            offers = cached.map { o in OfferInfo(id: o.id, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date()) }
+        } else if let serverOffer = displayedConversation.offer {
+            offers = [
+                OfferInfo(
+                    id: serverOffer.id,
+                    status: serverOffer.status,
+                    offerPrice: serverOffer.offerPrice,
+                    buyer: serverOffer.buyer,
+                    products: serverOffer.products,
+                    createdAt: serverOffer.createdAt ?? Date()
+                )
+            ]
+        } else {
+            offers = []
         }
         rebuildTimelineOrder()
     }
 
-    /// Build or restore timeline order so messages and offer cards keep their positions (X, Y, X, Y, …).
+    /// Build timeline order by merging offers, messages, and order card; sort by date.
     private func rebuildTimelineOrder() {
-        let convId = displayedConversation.id
-        let offers = offerCards
+        let offerList = offers
         let msgs = displayedMessages
-        if let cached = Self.timelineOrderCache[convId], !cached.isEmpty {
-            let offerIds = Set(offers.map(\.id))
-            let messageIds = Set(msgs.map(\.id))
-            var filtered: [TimelineEntry] = cached.filter { entry in
-                switch entry {
-                case .message(let id): return messageIds.contains(id)
-                case .offer(let id): return offerIds.contains(id)
-                }
-            }
-            var existingIds = Set<String>()
-            for e in filtered {
-                switch e {
-                case .message(let id): existingIds.insert("m\(id.uuidString)")
-                case .offer(let id): existingIds.insert("o\(id)")
-                }
-            }
-            for o in offers where !existingIds.contains("o\(o.id)") {
-                filtered.append(.offer(o.id))
-                existingIds.insert("o\(o.id)")
-            }
-            for m in msgs where !existingIds.contains("m\(m.id.uuidString)") {
-                filtered.append(.message(m.id))
-            }
-            timelineOrder = filtered
-        } else if timelineOrder.isEmpty {
-            timelineOrder = offers.map { .offer($0.id) } + msgs.map { .message($0.id) }
-        } else {
-            var merged = timelineOrder
-            for o in offers where !merged.contains(where: { if case .offer(let id) = $0 { return id == o.id }; return false }) {
-                merged.append(.offer(o.id))
-            }
-            for m in msgs where !merged.contains(where: { if case .message(let id) = $0 { return id == m.id }; return false }) {
-                merged.append(.message(m.id))
-            }
-            timelineOrder = merged
+        var entries: [(Date, TimelineEntry)] = []
+        for o in offerList {
+            entries.append((o.createdAt ?? .distantPast, .offer(o.id)))
         }
-    }
-
-    /// Update only the last offer card when the server pushes an offer update (e.g. declined). Keeps previous cards as snapshots.
-    /// Never overwrite an optimistic (pending-*) card with the server's OLD offer — only when server has the new offer or status update for the same offer.
-    private func syncLastOfferFromConversation() {
-        guard let serverOffer = displayedConversation.offer else { return }
-        if offerHistory.isEmpty {
-            offerHistory = [serverOffer]
-            return
+        for m in msgs {
+            entries.append((m.timestamp, .message(m.id)))
         }
-        let lastIndex = offerHistory.count - 1
-        let last = offerHistory[lastIndex]
-        let lastIsOptimistic = last.id.hasPrefix("pending-")
-        // If the last card is our optimistic placeholder, do NOT replace it with the server's OLD offer (same id and same price as first card).
-        if lastIsOptimistic, offerHistory.count >= 2 {
-            let first = offerHistory[0]
-            if serverOffer.id == first.id && abs(serverOffer.offerPrice - first.offerPrice) < 0.01 {
-                // Server returned the previous offer again — don't overwrite our new optimistic card.
-                return
-            }
+        if let order = displayedConversation.order {
+            let orderDate = order.createdAt ?? .distantPast
+            entries.append((orderDate, .order(order.id)))
         }
-        let isLastSameOffer = last.id == serverOffer.id || lastIsOptimistic
-        if isLastSameOffer {
-            var next = offerHistory
-            next[lastIndex] = serverOffer
-            offerHistory = next
-            Self.offerHistoryCache[displayedConversation.id] = offerHistory
-        }
+        entries.sort { $0.0 < $1.0 }
+        timelineOrder = entries.map(\.1)
     }
 
     /// Create a new offer (same products) when the current offer is declined — backend rejects COUNTER on cancelled offers.
@@ -580,10 +569,9 @@ struct ChatDetailView: View {
         await MainActor.run {
             isRespondingToOffer = true
             offerError = nil
-            let cards = offerCards
-            let optimistic = OfferInfo(id: "pending-\(UUID().uuidString)", status: "PENDING", offerPrice: offerPrice, buyer: offer.buyer, products: offer.products)
-            offerHistory = cards + [optimistic]
-            timelineOrder.append(.offer(optimistic.id))
+            let optimistic = OfferInfo(id: UUID().uuidString, status: "PENDING", offerPrice: offerPrice, buyer: offer.buyer, products: offer.products, createdAt: Date())
+            offers = offers + [optimistic]
+            timelineOrder = timelineOrder + [.offer(optimistic.id)]
         }
         do {
             let (_, newConv) = try await productService.createOffer(offerPrice: offerPrice, productIds: productIds, message: nil)
@@ -591,32 +579,46 @@ struct ChatDetailView: View {
             await MainActor.run {
                 if let updated = convs.first(where: { $0.id == displayedConversation.id }) {
                     displayedConversation = updated
-                    if let serverOffer = updated.offer, !offerHistory.isEmpty {
-                        var next = offerHistory
-                        next[next.count - 1] = serverOffer
-                        offerHistory = next
-                        Self.offerHistoryCache[displayedConversation.id] = offerHistory
-                        if let last = timelineOrder.last, case .offer(let pid) = last, pid.hasPrefix("pending-") {
-                            timelineOrder[timelineOrder.count - 1] = .offer(serverOffer.id)
-                        }
-                    }
-                } else if let newConv = newConv, newConv.id == displayedConversation.id, let serverOffer = newConv.offer, !offerHistory.isEmpty {
-                    displayedConversation = newConv
-                    var next = offerHistory
-                    next[next.count - 1] = serverOffer
-                    offerHistory = next
-                    Self.offerHistoryCache[displayedConversation.id] = offerHistory
-                    if let last = timelineOrder.last, case .offer(let pid) = last, pid.hasPrefix("pending-") {
-                        timelineOrder[timelineOrder.count - 1] = .offer(serverOffer.id)
-                    }
                 }
+                // Always replace last (optimistic) with a confirmed card using LOCAL sent price; server may be stale.
+                guard let lastIndex = offers.indices.last else {
+                    isRespondingToOffer = false
+                    offerError = nil
+                    return
+                }
+                let serverOffer = (newConv?.id == displayedConversation.id ? newConv?.offer : nil) ?? displayedConversation.offer
+                // Use a unique id when server returned the previous offer (same id already in list); otherwise first(where:) would show wrong card.
+                let confirmedId: String
+                if let sid = serverOffer?.id, offers.contains(where: { $0.id == sid }) {
+                    confirmedId = "\(sid)-\(UUID().uuidString)"
+                } else {
+                    confirmedId = serverOffer?.id ?? offers[lastIndex].id
+                }
+                let confirmed = OfferInfo(
+                    id: confirmedId,
+                    status: serverOffer?.status ?? "PENDING",
+                    offerPrice: offerPrice,
+                    buyer: serverOffer?.buyer ?? offer.buyer,
+                    products: serverOffer?.products ?? offer.products,
+                    createdAt: Date()
+                )
+                var nextOffers = offers
+                nextOffers[lastIndex] = confirmed
+                offers = nextOffers
+                if let idx = timelineOrder.lastIndex(where: { if case .offer = $0 { return true }; return false }) {
+                    var nextOrder = timelineOrder
+                    nextOrder[idx] = .offer(confirmed.id)
+                    timelineOrder = nextOrder
+                }
+                Self.offerHistoryCache[displayedConversation.id] = offers
+                Self.persistOfferHistory(convId: displayedConversation.id, offers: offers)
                 isRespondingToOffer = false
                 offerError = nil
             }
         } catch {
             await MainActor.run {
-                if !offerHistory.isEmpty { offerHistory = Array(offerHistory.dropLast()) }
-                if let last = timelineOrder.last, case .offer(let pid) = last, pid.hasPrefix("pending-") { timelineOrder.removeLast() }
+                if !offers.isEmpty { offers = Array(offers.dropLast()) }
+                if let last = timelineOrder.last, case .offer = last { timelineOrder = Array(timelineOrder.dropLast()) }
                 isRespondingToOffer = false
                 offerError = error.localizedDescription
             }
@@ -629,10 +631,9 @@ struct ChatDetailView: View {
         let newPrice = offerPrice ?? offer.offerPrice
         if isCounter {
             await MainActor.run {
-                let cards = offerCards
-                let optimistic = OfferInfo(id: "pending-\(UUID().uuidString)", status: "PENDING", offerPrice: newPrice, buyer: offer.buyer, products: offer.products)
-                offerHistory = cards + [optimistic]
-                timelineOrder.append(.offer(optimistic.id))
+                let optimistic = OfferInfo(id: UUID().uuidString, status: "PENDING", offerPrice: newPrice, buyer: offer.buyer, products: offer.products, createdAt: Date())
+                offers = offers + [optimistic]
+                timelineOrder = timelineOrder + [.offer(optimistic.id)]
             }
         }
         await MainActor.run {
@@ -643,40 +644,54 @@ struct ChatDetailView: View {
             try await productService.respondToOffer(action: action, offerId: offerId, offerPrice: offerPrice)
             let convs = try await chatService.getConversations()
             await MainActor.run {
-                if let updated = convs.first(where: { $0.id == displayedConversation.id }) {
-                    displayedConversation = updated
-                    if isCounter, let serverOffer = updated.offer {
-                        if !offerHistory.isEmpty {
-                            let previous = offerHistory.dropLast()
-                            let firstOffer = offerHistory.first
-                            let lastWasOptimistic = offerHistory.last?.id.hasPrefix("pending-") == true
-                            // Only replace optimistic with server data if server has the offer we just sent (same price) or a clearly new offer (different id).
-                            let serverMatchesSentPrice = abs(serverOffer.offerPrice - newPrice) < 0.01
-                            let serverIsNewOffer = firstOffer == nil || serverOffer.id != firstOffer!.id
-                            if lastWasOptimistic && (serverMatchesSentPrice || serverIsNewOffer) {
-                                offerHistory = Array(previous) + [serverOffer]
-                                Self.offerHistoryCache[displayedConversation.id] = offerHistory
-                                if let last = timelineOrder.last, case .offer(let pid) = last, pid.hasPrefix("pending-") {
-                                    timelineOrder[timelineOrder.count - 1] = .offer(serverOffer.id)
-                                }
-                            }
-                        } else {
-                            offerHistory = [serverOffer]
-                            Self.offerHistoryCache[displayedConversation.id] = offerHistory
-                        }
+                guard let updated = convs.first(where: { $0.id == displayedConversation.id }) else {
+                    isRespondingToOffer = false
+                    offerError = nil
+                    return
+                }
+                displayedConversation = updated
+                if isCounter, let lastIndex = offers.indices.last {
+                    let serverOffer = updated.offer
+                    let confirmedId: String
+                    if let sid = serverOffer?.id, offers.contains(where: { $0.id == sid }) {
+                        confirmedId = "\(sid)-\(UUID().uuidString)"
+                    } else {
+                        confirmedId = serverOffer?.id ?? offers[lastIndex].id
                     }
+                    let confirmed = OfferInfo(
+                        id: confirmedId,
+                        status: serverOffer?.status ?? "PENDING",
+                        offerPrice: newPrice,
+                        buyer: serverOffer?.buyer ?? offer.buyer,
+                        products: serverOffer?.products ?? offer.products,
+                        createdAt: Date()
+                    )
+                    var nextOffers = offers
+                    nextOffers[lastIndex] = confirmed
+                    offers = nextOffers
+                    if let idx = timelineOrder.lastIndex(where: { if case .offer = $0 { return true }; return false }) {
+                        var nextOrder = timelineOrder
+                        nextOrder[idx] = .offer(confirmed.id)
+                        timelineOrder = nextOrder
+                    }
+                    Self.offerHistoryCache[displayedConversation.id] = offers
+                    Self.persistOfferHistory(convId: displayedConversation.id, offers: offers)
+                } else if action == "ACCEPT" || action == "REJECT", let serverOffer = updated.offer, let lastIndex = offers.indices.last {
+                    let last = offers[lastIndex]
+                    let updatedOffer = OfferInfo(id: last.id, status: serverOffer.status, offerPrice: last.offerPrice, buyer: last.buyer, products: last.products, createdAt: last.createdAt ?? Date())
+                    var nextOffers = offers
+                    nextOffers[lastIndex] = updatedOffer
+                    offers = nextOffers
+                    Self.offerHistoryCache[displayedConversation.id] = offers
+                    Self.persistOfferHistory(convId: displayedConversation.id, offers: offers)
                 }
                 isRespondingToOffer = false
                 offerError = nil
             }
         } catch {
             await MainActor.run {
-                if isCounter, !offerHistory.isEmpty {
-                    offerHistory = Array(offerHistory.dropLast())
-                }
-                if isCounter, let last = timelineOrder.last, case .offer(let pid) = last, pid.hasPrefix("pending-") {
-                    timelineOrder.removeLast()
-                }
+                if isCounter, !offers.isEmpty { offers = Array(offers.dropLast()) }
+                if isCounter, let last = timelineOrder.last, case .offer = last { timelineOrder = Array(timelineOrder.dropLast()) }
                 isRespondingToOffer = false
                 offerError = error.localizedDescription
             }
@@ -895,6 +910,47 @@ struct ChatDetailView: View {
             )
     }
 
+    /// Handle NEW_OFFER / UPDATE_OFFER from WebSocket. When backend pushes these, update offers without refetch.
+    private func handleOfferSocketEvent(_ event: OfferSocketEvent) {
+        if let convId = event.conversationId, convId != displayedConversation.id { return }
+        switch event.type {
+        case "NEW_OFFER":
+            guard let offer = event.offer else { break }
+            let lastIsOptimistic = offers.indices.last.map { Int(offers[$0].id) == nil } ?? false
+            if lastIsOptimistic, let lastIndex = offers.indices.last {
+                let last = offers[lastIndex]
+                // Keep the price (and time) the user just sent; server/WebSocket may be stale.
+                let resolvedId = offers.contains(where: { $0.id == offer.id }) ? "\(offer.id)-\(UUID().uuidString)" : offer.id
+                var nextOffers = offers
+                nextOffers[lastIndex] = OfferInfo(id: resolvedId, status: offer.status, offerPrice: last.offerPrice, buyer: offer.buyer, products: offer.products, createdAt: last.createdAt ?? Date())
+                offers = nextOffers
+                if let idx = timelineOrder.lastIndex(where: { if case .offer = $0 { return true }; return false }) {
+                    var nextOrder = timelineOrder
+                    nextOrder[idx] = .offer(resolvedId)
+                    timelineOrder = nextOrder
+                }
+            } else if !offers.contains(where: { $0.id == offer.id }) {
+                offers = offers + [OfferInfo(id: offer.id, status: offer.status, offerPrice: offer.offerPrice, buyer: offer.buyer, products: offer.products, createdAt: offer.createdAt ?? Date())]
+                timelineOrder = timelineOrder + [.offer(offer.id)]
+            }
+            Self.offerHistoryCache[displayedConversation.id] = offers
+            Self.persistOfferHistory(convId: displayedConversation.id, offers: offers)
+            rebuildTimelineOrder()
+        case "UPDATE_OFFER":
+            guard let offerId = event.offerId ?? event.offer?.id, let status = event.status,
+                  let idx = offers.firstIndex(where: { $0.id == offerId || $0.id.hasPrefix(offerId + "-") }) else { break }
+            let o = offers[idx]
+            var nextOffers = offers
+            nextOffers[idx] = OfferInfo(id: o.id, status: status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date())
+            offers = nextOffers
+            Self.offerHistoryCache[displayedConversation.id] = offers
+            Self.persistOfferHistory(convId: displayedConversation.id, offers: offers)
+            rebuildTimelineOrder()
+        default:
+            break
+        }
+    }
+
     private func connectWebSocket() {
         guard displayedConversation.id != "0",
               let token = authService.authToken, !token.isEmpty else { return }
@@ -913,6 +969,9 @@ struct ChatDetailView: View {
             if msg.isSoldConfirmation, displayedConversation.order == nil {
                 Task { await refetchConversationForOrder() }
             }
+        }
+        ws.onOfferEvent = { [self] event in
+            handleOfferSocketEvent(event)
         }
         webSocket = ws
         ws.connect()
@@ -1015,7 +1074,7 @@ struct OfferCardView: View {
     let onDecline: () async -> Void
     let onSendNewOffer: () -> Void
     let onPayNow: () -> Void
-    /// When true, show only offer line + status and a disabled/greyed "Send new offer" (for previous cards).
+    /// When true, this card was superseded by a newer offer; show only offer line + status (no "Send new offer" button).
     var forceGreyedOut: Bool = false
 
     private var offerLine: String {
@@ -1054,6 +1113,19 @@ struct OfferCardView: View {
     /// True when this offer was sent by the current user (buyer).
     private var isMyOffer: Bool { offer.buyer?.username == currentUsername }
 
+    /// Same relative format as message bubbles (e.g. "Just now", "9 mins ago").
+    private static func relativeTimestamp(for date: Date) -> String {
+        let now = Date()
+        if now.timeIntervalSince(date) < 60 {
+            return "Just now"
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        let str = formatter.localizedString(for: date, relativeTo: now)
+        if str.hasPrefix("in ") { return "Just now" }
+        return str
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text(offerLine)
@@ -1065,7 +1137,6 @@ struct OfferCardView: View {
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(statusColor)
             }
-
             if let err = errorMessage, !err.isEmpty {
                 Text(err)
                     .font(Theme.Typography.caption)
@@ -1073,17 +1144,7 @@ struct OfferCardView: View {
             }
 
             if forceGreyedOut {
-                // Overwritten by a newer offer: greyed "Send new offer" button, not clickable.
-                Button(action: {}) {
-                    Text("Send new offer")
-                        .fontWeight(.medium)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                        .cornerRadius(22)
-                }
-                .disabled(true)
+                // Overwritten by a newer offer: hide "Send new offer" so only the latest card shows it.
             } else if isSeller && offer.isPending {
                 VStack(spacing: Theme.Spacing.sm) {
                     Button(action: { Task { await onAccept() } }) {
@@ -1109,11 +1170,11 @@ struct OfferCardView: View {
                         .disabled(isResponding)
                         Button(action: onSendNewOffer) {
                             Text("Send new offer")
-                                .fontWeight(.medium)
+                                .fontWeight(.semibold)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 44)
-                                .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
-                                .foregroundColor(Theme.Colors.primaryText)
+                                .background(Theme.primaryColor)
+                                .foregroundColor(.white)
                                 .cornerRadius(22)
                         }
                         .disabled(isResponding)
@@ -1122,11 +1183,11 @@ struct OfferCardView: View {
             } else if !isSeller && offer.isPending {
                 Button(action: onSendNewOffer) {
                     Text("Send new offer")
-                        .fontWeight(.medium)
+                        .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
-                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
-                        .foregroundColor(Theme.Colors.primaryText)
+                        .background(Theme.primaryColor)
+                        .foregroundColor(.white)
                         .cornerRadius(22)
                 }
                 .disabled(isResponding)
@@ -1143,23 +1204,23 @@ struct OfferCardView: View {
             } else if offer.isRejected {
                 Button(action: onSendNewOffer) {
                     Text("Send new offer")
-                        .fontWeight(.medium)
+                        .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
-                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
-                        .foregroundColor(Theme.Colors.primaryText)
+                        .background(Theme.primaryColor)
+                        .foregroundColor(.white)
                         .cornerRadius(22)
                 }
                 .disabled(isResponding)
             } else if !isSeller && !offer.isAccepted {
-                // My offer in any other state (e.g. COUNTERED): outline Send new offer.
+                // My offer in any other state (e.g. COUNTERED): primary Send new offer.
                 Button(action: onSendNewOffer) {
                     Text("Send new offer")
-                        .fontWeight(.medium)
+                        .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
-                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.Colors.glassBorder, lineWidth: 1))
-                        .foregroundColor(Theme.Colors.primaryText)
+                        .background(Theme.primaryColor)
+                        .foregroundColor(.white)
                         .cornerRadius(22)
                 }
                 .disabled(isResponding)
@@ -1169,6 +1230,13 @@ struct OfferCardView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
+            }
+            // Timestamp row (relative).
+            HStack {
+                Spacer(minLength: 0)
+                Text(offer.createdAt.map { Self.relativeTimestamp(for: $0) } ?? "—")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
             }
         }
         .padding(Theme.Spacing.md)
@@ -1237,7 +1305,7 @@ struct ChatProductCardView: View {
     }
 }
 
-/// Order confirmation card shown at top of chat when conversation has an order (sale details).
+/// Order confirmation card shown in timeline when conversation has an order (sale details). Includes timestamp for chronological ordering.
 struct OrderConfirmationCardView: View {
     let order: ConversationOrder
 
@@ -1250,6 +1318,16 @@ struct OrderConfirmationCardView: View {
         case "REFUNDED": return "Refunded"
         default: return status
         }
+    }
+
+    private static func relativeTimestamp(for date: Date) -> String {
+        let now = Date()
+        if now.timeIntervalSince(date) < 60 { return "Just now" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        let str = formatter.localizedString(for: date, relativeTo: now)
+        if str.hasPrefix("in ") { return "Just now" }
+        return str
     }
 
     var body: some View {
@@ -1285,6 +1363,12 @@ struct OrderConfirmationCardView: View {
                     .foregroundColor(Theme.primaryColor)
             }
             .buttonStyle(.plain)
+            HStack {
+                Spacer(minLength: 0)
+                Text(order.createdAt.map { Self.relativeTimestamp(for: $0) } ?? "—")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
         }
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -2,10 +2,11 @@ import SwiftUI
 
 struct InboxView: View {
     @ObservedObject var tabCoordinator: TabCoordinator
+    @StateObject private var inboxViewModel = InboxViewModel()
     @State private var path: [AppRoute] = []
 
     var body: some View {
-        ChatListView(tabCoordinator: tabCoordinator, path: $path)
+        ChatListView(tabCoordinator: tabCoordinator, path: $path, inboxViewModel: inboxViewModel)
     }
 }
 

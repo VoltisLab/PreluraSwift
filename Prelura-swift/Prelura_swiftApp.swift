@@ -155,6 +155,7 @@ struct MainTabView: View {
     @EnvironmentObject private var authService: AuthService
     @StateObject private var tabCoordinator = TabCoordinator()
     @StateObject private var discoverViewModel = DiscoverViewModel(authService: nil)
+    @StateObject private var inboxViewModel = InboxViewModel()
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(kAppearanceMode) private var appearanceMode: String = "system"
 
@@ -190,7 +191,7 @@ struct MainTabView: View {
             .tabItem { Label(L10n.string("Sell"), systemImage: "plus") }
             .tag(2)
 
-            InboxNavigation(tabCoordinator: tabCoordinator)
+            InboxNavigation(tabCoordinator: tabCoordinator, inboxViewModel: inboxViewModel)
                 .environmentObject(tabCoordinator)
                 .environment(\.optionalTabCoordinator, tabCoordinator)
                 .tabItem { Label(L10n.string("Inbox"), systemImage: "envelope") }
@@ -206,16 +207,20 @@ struct MainTabView: View {
         .onAppear {
             applyTabBarAppearance()
             discoverViewModel.updateAuthToken(authService.authToken)
-            if authService.isAuthenticated && discoverViewModel.discoverItems.isEmpty {
-                discoverViewModel.refresh()
+            inboxViewModel.updateAuthToken(authService.authToken)
+            if authService.isAuthenticated {
+                if discoverViewModel.discoverItems.isEmpty { discoverViewModel.refresh() }
+                inboxViewModel.prefetch()
             }
         }
         .onChange(of: appearanceMode) { _, _ in applyTabBarAppearance() }
         .onChange(of: colorScheme) { _, _ in applyTabBarAppearance() }
         .onChange(of: authService.authToken) { _, token in
             discoverViewModel.updateAuthToken(token)
-            if authService.isAuthenticated && discoverViewModel.discoverItems.isEmpty {
-                discoverViewModel.refresh()
+            inboxViewModel.updateAuthToken(token)
+            if authService.isAuthenticated {
+                if discoverViewModel.discoverItems.isEmpty { discoverViewModel.refresh() }
+                inboxViewModel.prefetch()
             }
         }
     }

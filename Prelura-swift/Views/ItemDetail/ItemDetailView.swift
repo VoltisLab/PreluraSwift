@@ -387,6 +387,15 @@ struct ItemDetailView: View {
         ))
     }
     
+    /// Removes a leading "Size " so we never show "Size One Size" (backend or our label can already add it).
+    private func sizeDisplayValue(_ size: String) -> String {
+        let t = size.trimmingCharacters(in: .whitespaces)
+        if t.count > 5, t[...t.index(t.startIndex, offsetBy: 4)].lowercased() == "size " {
+            return String(t[t.index(t.startIndex, offsetBy: 5)...]).trimmingCharacters(in: .whitespaces)
+        }
+        return t
+    }
+
     // MARK: - Product Top Details
     private var productTopDetails: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -408,8 +417,9 @@ struct ItemDetailView: View {
                 }
                 Spacer()
                 if let size = effectiveItem.size {
-                    NavigationLink(destination: FilteredProductsView(title: "Size \(size)", filterType: .bySize(sizeName: size), authService: authService)) {
-                        Text("Size \(size)")
+                    let displaySize = sizeDisplayValue(size)
+                    NavigationLink(destination: FilteredProductsView(title: displaySize, filterType: .bySize(sizeName: size), authService: authService)) {
+                        Text(displaySize)
                             .font(Theme.Typography.body)
                             .foregroundColor(Theme.primaryColor)
                     }
@@ -593,8 +603,9 @@ struct ItemDetailView: View {
                 .buttonStyle(.plain)
             }
             if let size = effectiveItem.size {
-                NavigationLink(destination: FilteredProductsView(title: "Size \(size)", filterType: .bySize(sizeName: size), authService: authService)) {
-                    attributeRow(label: "Size", value: size, valueColor: Theme.primaryColor)
+                let displaySize = sizeDisplayValue(size)
+                NavigationLink(destination: FilteredProductsView(title: displaySize, filterType: .bySize(sizeName: size), authService: authService)) {
+                    attributeRow(label: "Size", value: displaySize, valueColor: Theme.primaryColor)
                 }
                 .buttonStyle(.plain)
             }

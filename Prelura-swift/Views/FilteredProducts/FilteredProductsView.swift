@@ -598,12 +598,20 @@ struct FilteredProductsView: View {
                         keyboardType: .decimalPad,
                         bordered: true
                     )
+                    .onChange(of: viewModel.filterMinPrice) { _, newValue in
+                        let sanitized = PriceFieldFilter.sanitizePriceInput(newValue)
+                        if sanitized != newValue { viewModel.filterMinPrice = sanitized }
+                    }
                     SettingsTextField(
                         placeholder: L10n.string("Max. Price"),
                         text: PriceFieldFilter.binding(get: { viewModel.filterMaxPrice }, set: { viewModel.filterMaxPrice = $0 }),
                         keyboardType: .decimalPad,
                         bordered: true
                     )
+                    .onChange(of: viewModel.filterMaxPrice) { _, newValue in
+                        let sanitized = PriceFieldFilter.sanitizePriceInput(newValue)
+                        if sanitized != newValue { viewModel.filterMaxPrice = sanitized }
+                    }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)

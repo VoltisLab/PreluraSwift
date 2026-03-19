@@ -1,5 +1,14 @@
 import Foundation
 
+/// Event pushed when backend creates/updates an offer (Django Channels). When backend sends NEW_OFFER / UPDATE_OFFER, use this to update UI without refetch.
+struct OfferSocketEvent {
+    let type: String  // "NEW_OFFER" | "UPDATE_OFFER"
+    let conversationId: String?
+    let offer: OfferInfo?
+    let offerId: String?
+    let status: String?
+}
+
 /// WebSocket client for chat: connect to backend ws, send messages, receive new messages and events.
 /// Uses same host as GraphQL (Constants.chatWebSocketBaseURL) so messages send/save to the same backend.
 final class ChatWebSocketService: NSObject, @unchecked Sendable {
@@ -11,6 +20,8 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
 
     /// Called on main actor when a new chat message is received. If server echoes our send, messageUuid is the client UUID we sent.
     var onNewMessage: (@MainActor (Message, String?) -> Void)?
+    /// Called when backend pushes NEW_OFFER or UPDATE_OFFER (enables instant offer updates without refetch).
+    var onOfferEvent: (@MainActor (OfferSocketEvent) -> Void)?
     /// Called when connection state changes (e.g. for UI indicator).
     var onConnectionStateChanged: (@MainActor (Bool) -> Void)?
 
@@ -89,6 +100,17 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         if json["is_typing"] != nil {
             return
         }
+        // Offer events: backend pushes NEW_OFFER / UPDATE_OFFER so UI updates without refetch.
+        if type == "NEW_OFFER" || type == "UPDATE_OFFER" {
+            let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
+            let offer = parseOfferFromSocket(json["offer"] as? [String: Any])
+            let offerId = (json["offerId"] as? String) ?? (json["offer_id"] as? String) ?? (json["offerId"] as? Int).map { String($0) }
+            let status = json["status"] as? String
+            await MainActor.run {
+                onOfferEvent?(OfferSocketEvent(type: type ?? "", conversationId: convId, offer: offer, offerId: offerId, status: status))
+            }
+            return
+        }
         // New message: parse and notify on main actor (messageUuid when server confirms our send).
         guard let msg = parseWebSocketMessage(json) else { return }
         let echoUuid = (json["message_uuid"] as? String) ?? (json["messageUuid"] as? String)
@@ -124,6 +146,45 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
             type: messageType,
             orderID: itemId,
             thumbnailURL: nil
+        )
+    }
+
+    /// Parse offer payload from NEW_OFFER socket event. Backend may send id, offerPrice, status, createdAt (timestamp).
+    private func parseOfferFromSocket(_ offerJson: [String: Any]?) -> OfferInfo? {
+        guard let o = offerJson else { return nil }
+        let id = (o["id"] as? Int).map { String($0) } ?? (o["id"] as? String) ?? UUID().uuidString
+        let status = o["status"] as? String ?? "PENDING"
+        let price: Double = {
+            if let d = o["offerPrice"] as? Double { return d }
+            if let n = o["offerPrice"] as? NSNumber { return n.doubleValue }
+            if let d = o["offer_price"] as? Double { return d }
+            return 0
+        }()
+        let createdAt: Date? = {
+            if let ts = o["createdAt"] as? TimeInterval { return Date(timeIntervalSince1970: ts) }
+            if let ts = o["created_at"] as? Double { return Date(timeIntervalSince1970: ts) }
+            if let n = o["createdAt"] as? NSNumber { return Date(timeIntervalSince1970: n.doubleValue) }
+            return nil
+        }()
+        let buyer = parseOfferUser(o["buyer"] as? [String: Any])
+        let products = (o["products"] as? [[String: Any]])?.compactMap { parseOfferProduct($0) }
+        return OfferInfo(id: id, status: status, offerPrice: price, buyer: buyer, products: products, createdAt: createdAt ?? Date())
+    }
+
+    private func parseOfferUser(_ j: [String: Any]?) -> OfferInfo.OfferUser? {
+        guard let j = j else { return nil }
+        return OfferInfo.OfferUser(
+            username: j["username"] as? String,
+            profilePictureUrl: j["profilePictureUrl"] as? String ?? j["profile_picture_url"] as? String
+        )
+    }
+
+    private func parseOfferProduct(_ j: [String: Any]) -> OfferInfo.OfferProduct? {
+        let id = (j["id"] as? Int).map { String($0) } ?? j["id"] as? String
+        return OfferInfo.OfferProduct(
+            id: id,
+            name: j["name"] as? String,
+            seller: parseOfferUser(j["seller"] as? [String: Any])
         )
     }
 }

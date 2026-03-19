@@ -75,7 +75,10 @@ struct OfferModalContent: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                         }
                         if let size = item.size, !size.isEmpty {
-                            Text("Size \(size)")
+                            let displaySize = size.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("size ")
+                                ? String(size.trimmingCharacters(in: .whitespaces).dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                                : size
+                            Text(displaySize)
                                 .font(Theme.Typography.subheadline)
                                 .foregroundColor(Theme.Colors.secondaryText)
                         }

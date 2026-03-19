@@ -611,7 +611,15 @@ struct UserProfileView: View {
                     .padding(.top, Theme.Spacing.sm)
                 HStack(spacing: Theme.Spacing.sm) {
                     SettingsTextField(placeholder: L10n.string("Min. Price"), text: PriceFieldFilter.binding(get: { filterMinPrice }, set: { filterMinPrice = $0 }), keyboardType: .decimalPad, bordered: true)
+                        .onChange(of: filterMinPrice) { _, newValue in
+                            let s = PriceFieldFilter.sanitizePriceInput(newValue)
+                            if s != newValue { filterMinPrice = s }
+                        }
                     SettingsTextField(placeholder: L10n.string("Max. Price"), text: PriceFieldFilter.binding(get: { filterMaxPrice }, set: { filterMaxPrice = $0 }), keyboardType: .decimalPad, bordered: true)
+                        .onChange(of: filterMaxPrice) { _, newValue in
+                            let s = PriceFieldFilter.sanitizePriceInput(newValue)
+                            if s != newValue { filterMaxPrice = s }
+                        }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)

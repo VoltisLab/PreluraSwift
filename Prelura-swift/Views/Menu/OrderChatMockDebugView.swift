@@ -23,21 +23,24 @@ struct OrderChatMockDebugView: View {
         status: "PENDING",
         offerPrice: 38.00,
         buyer: OfferInfo.OfferUser(username: "buyer1", profilePictureUrl: nil),
-        products: [OfferInfo.OfferProduct(id: "1", name: "Vintage Jacket", seller: nil)]
+        products: [OfferInfo.OfferProduct(id: "1", name: "Vintage Jacket", seller: nil)],
+        createdAt: Date()
     )
     private static let mockOfferAccepted = OfferInfo(
         id: "mock-offer-accepted",
         status: "ACCEPTED",
         offerPrice: 38.00,
         buyer: OfferInfo.OfferUser(username: "buyer1", profilePictureUrl: nil),
-        products: [OfferInfo.OfferProduct(id: "1", name: "Vintage Jacket", seller: nil)]
+        products: [OfferInfo.OfferProduct(id: "1", name: "Vintage Jacket", seller: nil)],
+        createdAt: Date()
     )
     private static let mockOfferDeclined = OfferInfo(
         id: "mock-offer-declined",
         status: "REJECTED",
         offerPrice: 38.00,
         buyer: OfferInfo.OfferUser(username: "buyer1", profilePictureUrl: nil),
-        products: [OfferInfo.OfferProduct(id: "1", name: "Vintage Jacket", seller: nil)]
+        products: [OfferInfo.OfferProduct(id: "1", name: "Vintage Jacket", seller: nil)],
+        createdAt: Date()
     )
 
     private static let mockMessages: [Message] = [
@@ -216,6 +219,8 @@ struct OrderChatMockDebugView: View {
             .padding(.vertical, Theme.Spacing.sm)
             .background(Theme.Colors.background)
             .padding(.top, topPadding)
+        case .order:
+            EmptyView()
         }
     }
 
