@@ -7,6 +7,8 @@ struct OfferSocketEvent {
     let offer: OfferInfo?
     let offerId: String?
     let status: String?
+    /// Explicit sender for offer events when backend provides it.
+    let senderUsername: String?
 }
 
 /// WebSocket client for chat: connect to backend ws, send messages, receive new messages and events.
@@ -94,20 +96,48 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
     private func handleReceivedString(_ text: String) async {
         guard let json = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return }
         let type = json["type"] as? String
-        if type == "offer_status_event" || type == "order_issue_created" || type == "order_status_event" {
+        if type == "order_issue_created" || type == "order_status_event" {
             return
         }
         if json["is_typing"] != nil {
             return
         }
-        // Offer events: backend pushes NEW_OFFER / UPDATE_OFFER so UI updates without refetch.
+        // Django backend sends offer_status_event with nested `offer` + sender_username (see prelura-app offer_utils).
+        if type == "offer_status_event" {
+            let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
+            let senderUsername = (json["senderUsername"] as? String)
+                ?? (json["sender_username"] as? String)
+                ?? (json["senderName"] as? String)
+                ?? (json["sender_name"] as? String)
+            let offerJson = json["offer"] as? [String: Any]
+            let offerId = (json["offerId"] as? String) ?? (json["offer_id"] as? String) ?? (json["offer_id"] as? Int).map { String($0) }
+            let status = json["status"] as? String
+            if offerJson != nil {
+                let offer = parseOfferFromSocket(offerJson)
+                await MainActor.run {
+                    onOfferEvent?(OfferSocketEvent(type: "NEW_OFFER", conversationId: convId, offer: offer, offerId: offerId, status: status, senderUsername: senderUsername))
+                }
+            } else {
+                await MainActor.run {
+                    onOfferEvent?(OfferSocketEvent(type: "UPDATE_OFFER", conversationId: convId, offer: nil, offerId: offerId, status: status, senderUsername: senderUsername))
+                }
+            }
+            return
+        }
+        // Offer events: optional explicit NEW_OFFER / UPDATE_OFFER (same payload shape).
         if type == "NEW_OFFER" || type == "UPDATE_OFFER" {
             let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
-            let offer = parseOfferFromSocket(json["offer"] as? [String: Any])
+            let offerJson = json["offer"] as? [String: Any]
+            let offer = parseOfferFromSocket(offerJson)
             let offerId = (json["offerId"] as? String) ?? (json["offer_id"] as? String) ?? (json["offerId"] as? Int).map { String($0) }
             let status = json["status"] as? String
+            // Only explicit top-level sender fields — never infer from offer.buyer (buyer is stable; counters would mis-attribute).
+            let senderUsername = (json["senderUsername"] as? String)
+                ?? (json["sender_username"] as? String)
+                ?? (json["senderName"] as? String)
+                ?? (json["sender_name"] as? String)
             await MainActor.run {
-                onOfferEvent?(OfferSocketEvent(type: type ?? "", conversationId: convId, offer: offer, offerId: offerId, status: status))
+                onOfferEvent?(OfferSocketEvent(type: type ?? "", conversationId: convId, offer: offer, offerId: offerId, status: status, senderUsername: senderUsername))
             }
             return
         }
@@ -168,7 +198,7 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         }()
         let buyer = parseOfferUser(o["buyer"] as? [String: Any])
         let products = (o["products"] as? [[String: Any]])?.compactMap { parseOfferProduct($0) }
-        return OfferInfo(id: id, status: status, offerPrice: price, buyer: buyer, products: products, createdAt: createdAt ?? Date())
+        return OfferInfo(id: id, backendId: id, status: status, offerPrice: price, buyer: buyer, products: products, createdAt: createdAt ?? Date(), sentByCurrentUser: false) // temporary placeholder (DO NOT TRUST THIS)
     }
 
     private func parseOfferUser(_ j: [String: Any]?) -> OfferInfo.OfferUser? {
