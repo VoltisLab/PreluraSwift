@@ -982,7 +982,8 @@ struct ChatDetailView: View {
 
     /// Build timeline order by merging offers, messages, and sold event; sort by date.
     private func rebuildTimelineOrder() {
-        let offerList = offers
+        // Once order is sold, hide historical offer cards to avoid duplicate/stacked sale banners.
+        let offerList = displayedConversation.order != nil ? [] : offers
         let msgs = displayedMessages
         var entries: [(Date, ChatItem)] = []
         for o in offerList {

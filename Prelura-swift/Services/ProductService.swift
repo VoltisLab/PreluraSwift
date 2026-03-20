@@ -526,19 +526,34 @@ class ProductService: ObservableObject {
     }
 
     /// Report a product. Matches Flutter reportProduct(reason, productId, content?).
-    func reportProduct(productId: String, reason: String, content: String? = nil) async throws {
+    func reportProduct(productId: String, reason: String, content: String? = nil, imagesUrl: [String] = []) async throws -> SubmittedReportRef? {
         let mutation = """
-        mutation ReportProduct($reason: String!, $productId: String!, $content: String) {
-          reportProduct(reason: $reason, productId: $productId, content: $content) {
+        mutation ReportProduct($reason: String!, $productId: ID!, $content: String, $imagesUrl: [String]) {
+          reportProduct(reason: $reason, productId: $productId, content: $content, imagesUrl: $imagesUrl) {
+            success
             message
+            reportId
+            publicId
           }
         }
         """
-        var variables: [String: Any] = ["reason": reason, "productId": productId]
+        var variables: [String: Any] = ["reason": reason, "productId": productId, "imagesUrl": imagesUrl]
         if let c = content, !c.isEmpty { variables["content"] = c }
         struct Payload: Decodable { let reportProduct: ReportProductResult? }
-        struct ReportProductResult: Decodable { let message: String? }
-        _ = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        struct ReportProductResult: Decodable {
+            let success: Bool?
+            let message: String?
+            let reportId: Int?
+            let publicId: String?
+        }
+        let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        return response.reportProduct.map {
+            SubmittedReportRef(
+                reportId: $0.reportId,
+                publicId: $0.publicId,
+                supportConversationId: nil
+            )
+        }
     }
 
     /// Mark product as sold. Matches Flutter/backend updateProduct status if available.
@@ -993,6 +1008,8 @@ struct CreateOrderDeliveryDetails {
     let deliveryProvider: String
     /// DeliveryTypeEnum: HOME_DELIVERY, LOCAL_PICKUP
     let deliveryType: String
+    /// Human-readable shipping option selected at checkout (e.g. "Royal Mail First Class (Next day)")
+    let shippingOptionName: String?
 
     func toGraphQLVariables() -> [String: Any] {
         [
@@ -1005,12 +1022,13 @@ struct CreateOrderDeliveryDetails {
                 "phoneNumber": phoneNumber
             ],
             "deliveryProvider": deliveryProvider,
-            "deliveryType": deliveryType
+            "deliveryType": deliveryType,
+            "shippingOptionName": shippingOptionName ?? ""
         ]
     }
 
     /// Build from User.ShippingAddress (and phone) for checkout.
-    static func from(shippingAddress: ShippingAddress, phoneNumber: String, deliveryProvider: String = "EVRI", deliveryType: String = "HOME_DELIVERY") -> CreateOrderDeliveryDetails {
+    static func from(shippingAddress: ShippingAddress, phoneNumber: String, deliveryProvider: String = "EVRI", deliveryType: String = "HOME_DELIVERY", shippingOptionName: String? = nil) -> CreateOrderDeliveryDetails {
         CreateOrderDeliveryDetails(
             address: shippingAddress.address,
             city: shippingAddress.city,
@@ -1019,7 +1037,8 @@ struct CreateOrderDeliveryDetails {
             postalCode: shippingAddress.postcode,
             phoneNumber: phoneNumber,
             deliveryProvider: deliveryProvider,
-            deliveryType: deliveryType
+            deliveryType: deliveryType,
+            shippingOptionName: shippingOptionName
         )
     }
 }

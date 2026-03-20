@@ -46,6 +46,11 @@ struct AdminDashboardView: View {
                 } label: {
                     adminRow("Order issues", icon: "exclamationmark.bubble", isDestructive: false)
                 }
+                NavigationLink {
+                    AdminReportsView()
+                } label: {
+                    adminRow("Reports", icon: "flag", isDestructive: false)
+                }
             }
             Section {
                 Button(role: .destructive, action: { showDeleteUserSheet = true }) {

@@ -1,7 +1,10 @@
 import SwiftUI
+import UIKit
 
 /// Order details: status, seller/buyer, items, summary. Matches reference design with section labels and rounded cards.
 struct OrderDetailView: View {
+    private static var orderSnapshotCache: [String: Order] = [:]
+
     let order: Order
     /// When viewing from My Orders: true = sold (so other party is Buyer), false = bought (so other party is Seller). When nil (e.g. from chat), section shows "Other party".
     var isSeller: Bool? = nil
@@ -20,6 +23,7 @@ struct OrderDetailView: View {
     @State private var showConfirmShippingSheet = false
     @State private var confirmShippingCarrier = ""
     @State private var confirmShippingTracking = ""
+    @State private var confirmShippingTrackingURL = ""
     @State private var confirmShippingSubmitting = false
     @State private var confirmShippingError: String?
     @State private var productDetailItem: Item?
@@ -29,6 +33,17 @@ struct OrderDetailView: View {
     @State private var showTrackingWeb = false
     @State private var trackingWebURL: URL?
     @State private var isTrackingWebLoading = false
+    @State private var isInitialPageLoading = true
+    @State private var hasLoadedOnce = false
+    @State private var showTrackingCopiedToast = false
+
+    init(order: Order, isSeller: Bool? = nil) {
+        self.order = order
+        self.isSeller = isSeller
+        let cached = Self.orderSnapshotCache[order.id]
+        _hydratedOrder = State(initialValue: cached)
+        _isInitialPageLoading = State(initialValue: cached == nil)
+    }
 
     private var dateFormatter: DateFormatter {
         let f = DateFormatter()
@@ -58,43 +73,56 @@ struct OrderDetailView: View {
     private var effectiveOrder: Order { hydratedOrder ?? order }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                headerSection
-                processingCard
-                productCard
-                if effectiveOrder.otherParty != nil {
-                    sectionLabel(otherPartySectionTitle)
-                    outlinedPartyCard
-                }
-                sectionLabel(L10n.string("Shipping Address"))
-                shippingAddressAndDeliverySection
-                sectionLabel("Tracking details")
-                shippingSelectedCard
-
-                if canShowRateSeller {
-                    sectionLabel(L10n.string("Rate seller"))
-                    rateSellerCard
-                }
-
-                if canShowCancelOrder {
-                    NavigationLink(destination: CancelOrderView(order: effectiveOrder)) {
-                        HStack {
-                            Image(systemName: "xmark.circle")
-                            Text(L10n.string("Cancel order"))
-                        }
+        Group {
+            if isInitialPageLoading {
+                VStack(spacing: Theme.Spacing.md) {
+                    ProgressView()
+                    Text("Loading order details...")
                         .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.error)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(Theme.Spacing.md)
-                        .background(Theme.Colors.secondaryBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .background(Theme.Colors.background)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                        headerSection
+                        processingCard
+                        productCard
+                        if effectiveOrder.otherParty != nil {
+                            sectionLabel(otherPartySectionTitle)
+                            outlinedPartyCard
+                        }
+                        sectionLabel(L10n.string("Shipping Address"))
+                        shippingAddressAndDeliverySection
+                        sectionLabel("Tracking details")
+                        shippingSelectedCard
+
+                        if canShowRateSeller {
+                            sectionLabel(L10n.string("Rate seller"))
+                            rateSellerCard
+                        }
+
+                        if canShowCancelOrder {
+                            NavigationLink(destination: CancelOrderView(order: effectiveOrder)) {
+                                HStack {
+                                    Image(systemName: "xmark.circle")
+                                    Text(L10n.string("Cancel order"))
+                                }
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.error)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(Theme.Spacing.md)
+                                .background(Theme.Colors.secondaryBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
+                    .padding(Theme.Spacing.md)
+                    .padding(.bottom, canShowSellerShipping ? Theme.Spacing.md : Theme.Spacing.xl)
                 }
             }
-            .padding(Theme.Spacing.md)
-            .padding(.bottom, canShowSellerShipping ? Theme.Spacing.md : Theme.Spacing.xl)
         }
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Order details"))
@@ -106,9 +134,20 @@ struct OrderDetailView: View {
             }
         }
         .task {
+            guard !hasLoadedOnce else { return }
+            hasLoadedOnce = true
             userService.updateAuthToken(authService.authToken)
+
             currentUser = try? await userService.getUser(username: nil)
-            await hydrateOrderIfNeeded()
+
+            // Keep page content stable once loaded: only fetch full hydration the first time.
+            if hydratedOrder == nil {
+                await hydrateOrderIfNeeded()
+                isInitialPageLoading = false
+            }
+
+            // Tracking details is the only section that should re-check on each open.
+            await refreshTrackingDetailsIfNeeded()
         }
         .sheet(isPresented: $showTrackingWeb) {
             if let trackingWebURL {
@@ -131,7 +170,7 @@ struct OrderDetailView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("Order - \(order.displayOrderId)")
+            Text("Order - \(effectiveOrder.displayOrderId)")
                 .font(.system(size: 28, weight: .bold))
                 .foregroundColor(Theme.Colors.primaryText)
             HStack(spacing: Theme.Spacing.sm) {
@@ -324,6 +363,24 @@ struct OrderDetailView: View {
                         .foregroundColor(Theme.primaryColor)
                 }
                 .buttonStyle(.plain)
+            } else if let trackingNumber = effectiveOrder.trackingNumber?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !trackingNumber.isEmpty {
+                Button {
+                    if let tracking = effectiveOrder.trackingUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !tracking.isEmpty,
+                       let url = URL(string: tracking) {
+                        trackingWebURL = url
+                        showTrackingWeb = true
+                    } else {
+                        UIPasteboard.general.string = trackingNumber
+                        showTrackingCopiedToast = true
+                    }
+                } label: {
+                    Text("Tracking: \(trackingNumber)")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.primaryColor)
+                }
+                .buttonStyle(.plain)
             } else {
                 Text("No tracking information available")
                     .font(Theme.Typography.caption)
@@ -336,6 +393,22 @@ struct OrderDetailView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Theme.Colors.glassBorder, lineWidth: 1)
         )
+        .overlay(alignment: .bottomLeading) {
+            if showTrackingCopiedToast {
+                Text("Tracking copied")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(Capsule())
+                    .padding(.top, 4)
+                    .task {
+                        try? await Task.sleep(nanoseconds: 1_100_000_000)
+                        showTrackingCopiedToast = false
+                    }
+            }
+        }
     }
 
     private func outlinedShippingAddressCard(_ addr: ShippingAddress) -> some View {
@@ -569,14 +642,23 @@ struct OrderDetailView: View {
     /// Show "Cancel order" when: buyer view, order not yet delivered/cancelled/refunded.
     private var canShowCancelOrder: Bool {
         guard isSeller == false else { return false }
-        let terminal = ["DELIVERED", "CANCELLED", "REFUNDED"]
-        return !terminal.contains(order.status)
+        let tracking = effectiveOrder.trackingNumber?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !tracking.isEmpty { return false }
+        let terminal = ["SHIPPED", "IN_TRANSIT", "READY_FOR_PICKUP", "DELIVERED", "CANCELLED", "REFUNDED"]
+        return !terminal.contains(effectiveOrder.status)
     }
 
     /// Show seller shipping actions when: seller view, order paid (CONFIRMED/PENDING/SHIPPED).
     private var canShowSellerShipping: Bool {
         guard isSeller == true else { return false }
         return ["CONFIRMED", "SHIPPED"].contains(effectiveOrder.status)
+    }
+
+    /// Once shipped/tracking exists, lock shipping actions to prevent tracking edits.
+    private var sellerShippingActionsLocked: Bool {
+        if effectiveOrder.status == "SHIPPED" { return true }
+        let tracking = effectiveOrder.trackingNumber?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return !tracking.isEmpty
     }
 
     /// Show "Rate seller" when: buyer view (isSeller == false), order delivered, we have orderId and seller userId, and not yet rated.
@@ -663,6 +745,8 @@ struct OrderDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
+                .disabled(sellerShippingActionsLocked)
+                .opacity(sellerShippingActionsLocked ? 0.45 : 1)
 
                 PrimaryGlassButton(
                     L10n.string("View shipping label"),
@@ -671,7 +755,8 @@ struct OrderDetailView: View {
                 ) {
                     Task { await generateLabel() }
                 }
-                .disabled(shippingLabelLoading)
+                .disabled(shippingLabelLoading || sellerShippingActionsLocked)
+                .opacity(sellerShippingActionsLocked ? 0.45 : 1)
             }
 
             if let err = shippingLabelError {
@@ -712,10 +797,23 @@ struct OrderDetailView: View {
     private var confirmShippingSheet: some View {
         NavigationStack {
             Form {
-                TextField(L10n.string("Carrier name"), text: $confirmShippingCarrier)
-                    .textContentType(.none)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.string("Carrier name"))
+                        .font(.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    Text(confirmShippingCarrier)
+                        .font(.body)
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                }
                 TextField(L10n.string("Tracking number"), text: $confirmShippingTracking)
                     .textContentType(.none)
+                TextField(L10n.string("Tracking URL (optional)"), text: $confirmShippingTrackingURL)
+                    .textContentType(.URL)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
                 if let err = confirmShippingError {
                     Text(err)
                         .font(Theme.Typography.caption)
@@ -763,17 +861,24 @@ struct OrderDetailView: View {
         guard let orderId = Int(effectiveOrder.id) else { return }
         let carrier = confirmShippingCarrier.trimmingCharacters(in: .whitespaces)
         let tracking = confirmShippingTracking.trimmingCharacters(in: .whitespaces)
+        let trackingURL = confirmShippingTrackingURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !carrier.isEmpty, !tracking.isEmpty else { return }
         confirmShippingError = nil
         confirmShippingSubmitting = true
         defer { confirmShippingSubmitting = false }
         userService.updateAuthToken(authService.authToken)
         do {
-            try await userService.confirmShipping(orderId: orderId, carrierName: carrier, trackingNumber: tracking, trackingUrl: nil)
+            try await userService.confirmShipping(
+                orderId: orderId,
+                carrierName: carrier,
+                trackingNumber: tracking,
+                trackingUrl: trackingURL.isEmpty ? nil : trackingURL
+            )
             await MainActor.run {
                 showConfirmShippingSheet = false
                 confirmShippingCarrier = ""
                 confirmShippingTracking = ""
+                confirmShippingTrackingURL = ""
             }
             await hydrateOrderIfNeeded(force: true)
         } catch {
@@ -782,15 +887,43 @@ struct OrderDetailView: View {
     }
 
     private func hydrateOrderIfNeeded(force: Bool = false) async {
-        guard force || hydratedOrder == nil, (order.shippingAddress == nil || order.shipmentService == nil || order.trackingUrl == nil) else { return }
+        guard force || hydratedOrder == nil else { return }
         let sold = (try? await userService.getUserOrders(isSeller: true, pageNumber: 1, pageCount: 100).orders) ?? []
         if let found = sold.first(where: { $0.id == order.id }) {
-            await MainActor.run { hydratedOrder = found }
+            await MainActor.run {
+                hydratedOrder = found
+                Self.orderSnapshotCache[order.id] = found
+            }
             return
         }
         let bought = (try? await userService.getUserOrders(isSeller: false, pageNumber: 1, pageCount: 100).orders) ?? []
         if let found = bought.first(where: { $0.id == order.id }) {
-            await MainActor.run { hydratedOrder = found }
+            await MainActor.run {
+                hydratedOrder = found
+                Self.orderSnapshotCache[order.id] = found
+            }
+        }
+    }
+
+    /// Re-check tracking on each page open until tracking exists, then persist and stop future checks.
+    private func refreshTrackingDetailsIfNeeded() async {
+        let currentTracking = effectiveOrder.trackingUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !currentTracking.isEmpty { return }
+
+        let sold = (try? await userService.getUserOrders(isSeller: true, pageNumber: 1, pageCount: 100).orders) ?? []
+        if let found = sold.first(where: { $0.id == order.id }) {
+            await MainActor.run {
+                hydratedOrder = found
+                Self.orderSnapshotCache[order.id] = found
+            }
+            return
+        }
+        let bought = (try? await userService.getUserOrders(isSeller: false, pageNumber: 1, pageCount: 100).orders) ?? []
+        if let found = bought.first(where: { $0.id == order.id }) {
+            await MainActor.run {
+                hydratedOrder = found
+                Self.orderSnapshotCache[order.id] = found
+            }
         }
     }
 }

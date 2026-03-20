@@ -441,6 +441,11 @@ struct PaymentView: View {
                 } else {
                     ("EVRI", selectedDelivery == .collectionPoint ? "LOCAL_PICKUP" : "HOME_DELIVERY", Float(selectedDelivery.shippingFee))
                 }
+                let selectedShippingName: String? = if useSellerPostage {
+                    (selectedSellerOption ?? sellerDeliveryOptions.first)?.name
+                } else {
+                    selectedDelivery.rawValue
+                }
                 let deliveryDetails = CreateOrderDeliveryDetails(
                     address: addr.address,
                     city: addr.city,
@@ -449,7 +454,8 @@ struct PaymentView: View {
                     postalCode: addr.postcode,
                     phoneNumber: phone,
                     deliveryProvider: provider,
-                    deliveryType: deliveryType
+                    deliveryType: deliveryType,
+                    shippingOptionName: selectedShippingName
                 )
                 let productIds = products.compactMap { $0.productId }.compactMap { Int($0) }
                 guard !productIds.isEmpty else {

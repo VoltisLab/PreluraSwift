@@ -116,6 +116,32 @@ class AdminService: ObservableObject {
         let r = response.adminResolveOrderIssue
         return (r?.success ?? false, r?.message)
     }
+
+    func fetchAllReports() async throws -> [AdminReportRow] {
+        let query = """
+        query AllReports {
+          allReports {
+            id
+            publicId
+            reportType
+            reason
+            context
+            imagesUrl
+            status
+            dateCreated
+            updatedAt
+            reportedByUsername
+            accountReportedUsername
+            productId
+            productName
+            supportConversationId
+          }
+        }
+        """
+        struct Payload: Decodable { let allReports: [AdminReportRow]? }
+        let response: Payload = try await client.execute(query: query, variables: nil, responseType: Payload.self)
+        return response.allReports ?? []
+    }
 }
 
 private enum AdminGraphQLQueries {
@@ -554,5 +580,31 @@ struct AdminUserEntry: Decodable {
         if let intVal = id.value as? Int { return String(intVal) }
         if let strVal = id.value as? String { return strVal }
         return String(describing: id.value)
+    }
+}
+
+struct AdminReportRow: Decodable, Identifiable, Hashable {
+    let rawId: Int
+    let publicId: String?
+    let reportType: String?
+    let reason: String?
+    let context: String?
+    let imagesUrl: [String]?
+    let status: String?
+    let dateCreated: String?
+    let updatedAt: String?
+    let reportedByUsername: String?
+    let accountReportedUsername: String?
+    let productId: Int?
+    let productName: String?
+    let supportConversationId: Int?
+
+    var id: String { "\(reportType ?? "REPORT")-\(rawId)" }
+
+    enum CodingKeys: String, CodingKey {
+        case rawId = "id"
+        case publicId, reportType, reason, context, imagesUrl, status
+        case dateCreated, updatedAt, reportedByUsername, accountReportedUsername
+        case productId, productName, supportConversationId
     }
 }

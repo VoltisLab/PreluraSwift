@@ -603,6 +603,31 @@ class UserService: ObservableObject {
         return (reviews, total)
     }
 
+    func getMyReports() async throws -> [MyReportRow] {
+        let query = """
+        query MyReports {
+          myReports {
+            id
+            publicId
+            reportType
+            reason
+            context
+            imagesUrl
+            status
+            dateCreated
+            updatedAt
+            accountReportedUsername
+            productId
+            productName
+            supportConversationId
+          }
+        }
+        """
+        struct Payload: Decodable { let myReports: [MyReportRow]? }
+        let response: Payload = try await client.execute(query: query, variables: nil, responseType: Payload.self)
+        return response.myReports ?? []
+    }
+
     /// Fetch list of followers for a user. Uses existing backend query if available.
     func getFollowers(username: String, pageNumber: Int = 1, pageCount: Int = 50) async throws -> [User] {
         let query = """
@@ -704,19 +729,36 @@ class UserService: ObservableObject {
     }
 
     /// Report a user/account. Matches Flutter reportAccount(reason, username, content?).
-    func reportAccount(username: String, reason: String, content: String? = nil) async throws {
+    func reportAccount(username: String, reason: String, content: String? = nil, imagesUrl: [String] = []) async throws -> SubmittedReportRef? {
         let mutation = """
-        mutation ReportAccount($reason: String!, $username: String!, $content: String) {
-          reportAccount(reason: $reason, username: $username, content: $content) {
+        mutation ReportAccount($reason: String!, $username: String!, $content: String, $imagesUrl: [String]) {
+          reportAccount(reason: $reason, username: $username, content: $content, imagesUrl: $imagesUrl) {
+            success
             message
+            reportId
+            publicId
+            supportConversationId
           }
         }
         """
-        var variables: [String: Any] = ["reason": reason, "username": username]
+        var variables: [String: Any] = ["reason": reason, "username": username, "imagesUrl": imagesUrl]
         if let c = content, !c.isEmpty { variables["content"] = c }
         struct Payload: Decodable { let reportAccount: ReportResult? }
-        struct ReportResult: Decodable { let message: String? }
-        _ = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        struct ReportResult: Decodable {
+            let success: Bool?
+            let message: String?
+            let reportId: Int?
+            let publicId: String?
+            let supportConversationId: Int?
+        }
+        let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+        return response.reportAccount.map {
+            SubmittedReportRef(
+                reportId: $0.reportId,
+                publicId: $0.publicId,
+                supportConversationId: $0.supportConversationId
+            )
+        }
     }
 
     /// Rate a user after an order (e.g. rate seller as buyer). Matches Flutter rateUser(comment, orderId, rating, userId).
@@ -2022,6 +2064,22 @@ struct UserProductsResponse: Decodable {
     let userProducts: [ProductData]?
 }
 
+struct MyReportRow: Decodable, Identifiable {
+    let id: Int
+    let publicId: String?
+    let reportType: String?
+    let reason: String?
+    let context: String?
+    let imagesUrl: [String]?
+    let status: String?
+    let dateCreated: String?
+    let updatedAt: String?
+    let accountReportedUsername: String?
+    let productId: Int?
+    let productName: String?
+    let supportConversationId: Int?
+}
+
 struct UserEarnings {
     let networth: Double
     let pendingPayments: QuantityValue
@@ -2099,6 +2157,12 @@ struct RaiseOrderIssueResult: Decodable {
     let issueId: Int?
     let publicId: String?
     /// Buyer ↔ support system thread (persisted); use with Help Chat / admin replies.
+    let supportConversationId: Int?
+}
+
+struct SubmittedReportRef {
+    let reportId: Int?
+    let publicId: String?
     let supportConversationId: Int?
 }
 
@@ -2182,10 +2246,11 @@ struct Order: Identifiable {
 
     /// Order ID for display: always starts with "PR" (e.g. PR23DG2DF3 or PR225 for legacy numeric).
     var displayOrderId: String {
-        if let publicId, !publicId.isEmpty { return publicId }
-        let raw = id.trimmingCharacters(in: .whitespacesAndNewlines)
-        if raw.uppercased().hasPrefix("PO") { return raw }
-        return "PO" + raw
+        guard let publicId, !publicId.isEmpty else {
+            assertionFailure("Order \(id) is missing publicId. Backend data integrity issue.")
+            return ""
+        }
+        return publicId
     }
 }
 

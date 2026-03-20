@@ -4,6 +4,9 @@ import SwiftUI
 struct SecurityMenuView: View {
     var body: some View {
         List {
+            NavigationLink(destination: MyReportsView()) {
+                securityRow("My reports", icon: "flag")
+            }
             NavigationLink(destination: BlocklistView()) {
                 securityRow("Blocklist", icon: "person.slash")
             }

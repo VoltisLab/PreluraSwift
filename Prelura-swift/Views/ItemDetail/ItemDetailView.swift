@@ -144,7 +144,7 @@ struct ItemDetailView: View {
                 ReportUserView(
                     username: effectiveItem.seller.username,
                     isProduct: true,
-                    productId: Int(item.productId ?? "") ?? 0
+                    productId: Int(effectiveItem.productId ?? "")
                 )
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
