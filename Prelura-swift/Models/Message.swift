@@ -145,8 +145,8 @@ struct Message: Identifiable {
     }
 
     /// Parse order issue payload persisted in chat message text.
-    /// Backend payload keys observed: order_id, issue_id, public_id, issue_type.
-    var parsedOrderIssueDetails: (orderId: String?, issueId: Int?, publicId: String?, issueType: String?)? {
+    /// Backend payload keys observed: order_id, issue_id, public_id, issue_type, description, images_url/imagesUrl.
+    var parsedOrderIssueDetails: (orderId: String?, issueId: Int?, publicId: String?, issueType: String?, description: String?, imageUrls: [String])? {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("{"),
               let data = trimmed.data(using: .utf8),
@@ -177,7 +177,30 @@ struct Message: Identifiable {
             if let s = json["issueType"] as? String { return s }
             return nil
         }()
-        return (orderId, issueId, publicId, issueType)
+        let description: String? = {
+            if let s = json["description"] as? String { return s }
+            if let s = json["details"] as? String { return s }
+            if let s = json["message"] as? String { return s }
+            return nil
+        }()
+        let imageUrls: [String] = {
+            let raw = (json["images_url"] as? [String])
+                ?? (json["imagesUrl"] as? [String])
+                ?? (json["images"] as? [String])
+                ?? []
+            return raw.compactMap { value in
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                if trimmed.hasPrefix("{"),
+                   let data = trimmed.data(using: .utf8),
+                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let url = obj["url"] as? String {
+                    return url
+                }
+                return trimmed
+            }
+        }()
+        return (orderId, issueId, publicId, issueType, description, imageUrls)
     }
 }
 

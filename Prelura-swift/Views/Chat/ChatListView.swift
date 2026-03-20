@@ -225,7 +225,9 @@ struct ChatListView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return list }
         return list.filter {
-            $0.recipient.username.lowercased().contains(query)
+            let title = PreluraSupportBranding.displayTitle(forRecipientUsername: $0.recipient.username).lowercased()
+            return $0.recipient.username.lowercased().contains(query)
+                || title.contains(query)
                 || ($0.lastMessage?.lowercased().contains(query) ?? false)
         }
     }
@@ -286,8 +288,10 @@ struct ChatRowView: View {
 
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
-            // Avatar
-            if let avatarURL = conversation.recipient.avatarURL, let url = URL(string: avatarURL) {
+            // Avatar (branded for system Prelura Support account)
+            if PreluraSupportBranding.isSupportRecipient(username: conversation.recipient.username) {
+                PreluraSupportBranding.supportAvatar(size: 50)
+            } else if let avatarURL = conversation.recipient.avatarURL, let url = URL(string: avatarURL) {
                 AsyncImage(url: url) { image in
                     image
                         .resizable()
@@ -317,7 +321,7 @@ struct ChatRowView: View {
             // Content
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 HStack(spacing: Theme.Spacing.xs) {
-                    Text(conversation.recipient.username)
+                    Text(PreluraSupportBranding.displayTitle(forRecipientUsername: conversation.recipient.username))
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
 

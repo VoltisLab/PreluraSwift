@@ -4,16 +4,118 @@ struct SupportIssueDraft {
     let selectedOptions: [String]
     let description: String
     let imageDatas: [Data]
+    let imageUrls: [String]
     let issueTypeCode: String?
     let issueId: Int?
     let issuePublicId: String?
+
+    init(
+        selectedOptions: [String],
+        description: String,
+        imageDatas: [Data],
+        imageUrls: [String] = [],
+        issueTypeCode: String?,
+        issueId: Int?,
+        issuePublicId: String?
+    ) {
+        self.selectedOptions = selectedOptions
+        self.description = description
+        self.imageDatas = imageDatas
+        self.imageUrls = imageUrls
+        self.issueTypeCode = issueTypeCode
+        self.issueId = issueId
+        self.issuePublicId = issuePublicId
+    }
 }
 
 private struct SupportChatMessage: Identifiable {
-    let id = UUID()
+    let id: String
     let text: String
     let isFromUser: Bool
     let createdAt: Date
+}
+
+private struct PersistedIssueSummary {
+    let issueTypeText: String?
+    let description: String?
+    let imageUrls: [String]
+}
+
+private enum SupportIssueImageSource {
+    case local(UIImage)
+    case remote(String)
+}
+
+private struct SupportIssueImageFullscreenView: View {
+    let images: [SupportIssueImageSource]
+    let initialIndex: Int
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedIndex: Int = 0
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            TabView(selection: $selectedIndex) {
+                ForEach(Array(images.enumerated()), id: \.offset) { index, source in
+                    Group {
+                        switch source {
+                        case .local(let image):
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(Color.black)
+                        case .remote(let urlString):
+                            if let url = URL(string: urlString) {
+                                AsyncImage(url: url) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                            .background(Color.black)
+                                    case .empty:
+                                        ProgressView()
+                                            .tint(.white)
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    case .failure:
+                                        Image(systemName: "photo")
+                                            .foregroundColor(.white.opacity(0.7))
+                                            .font(.system(size: 42))
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    @unknown default:
+                                        EmptyView()
+                                    }
+                                }
+                            } else {
+                                Image(systemName: "photo")
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .font(.system(size: 42))
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
+                        }
+                    }
+                    .tag(index)
+                    .padding(.horizontal, Theme.Spacing.sm)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .automatic))
+
+            Button("Done") { dismiss() }
+                .font(Theme.Typography.body.weight(.semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm)
+                .background(Color.black.opacity(0.45))
+                .clipShape(Capsule())
+                .padding(.top, Theme.Spacing.lg)
+                .padding(.trailing, Theme.Spacing.md)
+        }
+        .onAppear {
+            selectedIndex = min(max(initialIndex, 0), max(images.count - 1, 0))
+        }
+    }
 }
 
 private struct SupportOrderProductHeader: View {
@@ -79,18 +181,35 @@ private struct SupportOrderProductHeader: View {
 /// Help Chat View (from Flutter help_chat_view). Chat-like support conversation with order issue context.
 struct HelpChatView: View {
     var orderId: String? = nil
+    /// When set, messages load from GraphQL/WebSocket-backed conversation (buyer ↔ support / staff).
     var conversationId: String? = nil
     var issueDraft: SupportIssueDraft? = nil
+    /// Admin opened thread from Order issues list.
+    var isAdminSupportThread: Bool = false
+    var customerUsername: String? = nil
 
     @EnvironmentObject var authService: AuthService
+    @StateObject private var chatService = ChatService()
     @State private var newMessage = ""
     @State private var chatMessages: [SupportChatMessage] = []
     @State private var relatedItem: Item?
     @State private var relatedProductId: Int?
     @State private var isLoadingHeaderProduct = false
     @State private var productHeaderError: String?
+    @State private var isLoadingMessages = false
+    @State private var loadMessagesError: String?
+    @State private var persistedIssueImageUrls: [String] = []
+    @State private var persistedIssueTypeText: String?
+    @State private var persistedIssueDescription: String?
+    @State private var showIssueImageViewer = false
+    @State private var selectedIssueImageIndex = 0
     private let userService = UserService()
     private let productService = ProductService()
+
+    private var usePersistedThread: Bool {
+        guard let cid = conversationId, !cid.isEmpty, Int(cid) != nil else { return false }
+        return true
+    }
 
     var body: some View {
         VStack(spacing: Theme.Spacing.sm) {
@@ -119,6 +238,17 @@ struct HelpChatView: View {
                 ScrollView {
                     VStack(spacing: Theme.Spacing.sm) {
                         issueSummaryCard
+
+                        if isLoadingMessages {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, Theme.Spacing.sm)
+                        } else if let err = loadMessagesError, !err.isEmpty {
+                            Text(err)
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.error)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
 
                         ForEach(chatMessages) { message in
                             HStack {
@@ -151,18 +281,37 @@ struct HelpChatView: View {
             messageComposer
         }
         .background(Theme.Colors.background)
-        .navigationTitle("Help Chat")
+        .navigationTitle(navigationTitleText)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .fullScreenCover(isPresented: $showIssueImageViewer) {
+            SupportIssueImageFullscreenView(
+                images: issueGallerySources,
+                initialIndex: selectedIssueImageIndex
+            )
+        }
         .task {
-            await bootstrapSupportChat()
+            chatService.updateAuthToken(authService.authToken)
+            if usePersistedThread {
+                await loadPersistedMessages()
+            } else {
+                await bootstrapSupportChat()
+            }
             await loadRelatedOrderProduct()
         }
     }
 
+    private var navigationTitleText: String {
+        if isAdminSupportThread {
+            if let u = customerUsername, !u.isEmpty { return "Support · \(u)" }
+            return "Support chat"
+        }
+        return "Help Chat"
+    }
+
     @ViewBuilder
     private var issueSummaryCard: some View {
-        if issueDraft != nil {
+        if issueDraft != nil || !persistedIssueImageUrls.isEmpty {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 Text("Issue details shared with support")
                     .font(Theme.Typography.caption)
@@ -172,24 +321,59 @@ struct HelpChatView: View {
                     Text(issueDraft.selectedOptions.joined(separator: ", "))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.primaryText)
+                } else if let typeText = persistedIssueTypeText, !typeText.isEmpty {
+                    Text(typeText)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
                 }
 
                 if let issueDraft, !issueDraft.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(issueDraft.description)
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.primaryText)
+                } else if let description = persistedIssueDescription, !description.isEmpty {
+                    Text(description)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.primaryText)
                 }
 
-                if let issueDraft, !issueDraft.imageDatas.isEmpty {
+                if !issueGallerySources.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: Theme.Spacing.xs) {
-                            ForEach(Array(issueDraft.imageDatas.enumerated()), id: \.offset) { _, data in
-                                if let uiImage = UIImage(data: data) {
-                                    Image(uiImage: uiImage)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 120, height: 120)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                            ForEach(Array(issueGallerySources.enumerated()), id: \.offset) { index, source in
+                                Button {
+                                    selectedIssueImageIndex = index
+                                    showIssueImageViewer = true
+                                } label: {
+                                    Group {
+                                        switch source {
+                                        case .local(let uiImage):
+                                            Image(uiImage: uiImage)
+                                                .resizable()
+                                                .scaledToFill()
+                                        case .remote(let urlString):
+                                            if let url = URL(string: urlString) {
+                                                AsyncImage(url: url) { phase in
+                                                    switch phase {
+                                                    case .success(let image):
+                                                        image.resizable().scaledToFill()
+                                                    case .failure, .empty:
+                                                        Rectangle()
+                                                            .fill(Theme.Colors.secondaryBackground)
+                                                            .overlay(Image(systemName: "photo").foregroundColor(Theme.Colors.secondaryText))
+                                                    @unknown default:
+                                                        EmptyView()
+                                                    }
+                                                }
+                                            } else {
+                                                Rectangle()
+                                                    .fill(Theme.Colors.secondaryBackground)
+                                                    .overlay(Image(systemName: "photo").foregroundColor(Theme.Colors.secondaryText))
+                                            }
+                                        }
+                                    }
+                                    .frame(width: 120, height: 120)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
                                 }
                             }
                         }
@@ -201,6 +385,24 @@ struct HelpChatView: View {
             .background(Theme.Colors.secondaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
         }
+    }
+
+    private var issueGallerySources: [SupportIssueImageSource] {
+        var list: [SupportIssueImageSource] = []
+        if let issueDraft {
+            for data in issueDraft.imageDatas {
+                if let image = UIImage(data: data) {
+                    list.append(.local(image))
+                }
+            }
+            for url in issueDraft.imageUrls where !url.isEmpty {
+                list.append(.remote(url))
+            }
+        }
+        for url in persistedIssueImageUrls where !url.isEmpty {
+            list.append(.remote(url))
+        }
+        return list
     }
 
     private var messageComposer: some View {
@@ -232,6 +434,7 @@ struct HelpChatView: View {
             await MainActor.run {
                 chatMessages = [
                     SupportChatMessage(
+                        id: UUID().uuidString,
                         text: "Support: Thanks for reaching out. We received your \(starter.lowercased()) details. We'll respond within 24-72 hrs.",
                         isFromUser: false,
                         createdAt: Date()
@@ -241,10 +444,142 @@ struct HelpChatView: View {
         }
     }
 
+    private func loadPersistedMessages() async {
+        guard let cid = conversationId, let _ = Int(cid) else { return }
+        await MainActor.run {
+            isLoadingMessages = true
+            loadMessagesError = nil
+        }
+        chatService.updateAuthToken(authService.authToken)
+        do {
+            let msgs = try await chatService.getMessages(conversationId: cid, pageNumber: 1, pageCount: 100)
+            let me = (authService.username ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            // Structured order-issue payload is rendered in the summary card; hide raw JSON bubbles.
+            let rendered = msgs.filter { !$0.isOrderIssue }
+            let mapped: [SupportChatMessage] = rendered.map { m in
+                let sender = m.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let fromUser = !me.isEmpty && sender == me
+                let mid = m.backendId.map { "b-\($0)" } ?? m.id.uuidString
+                return SupportChatMessage(id: mid, text: m.content, isFromUser: fromUser, createdAt: m.timestamp)
+            }
+            await MainActor.run {
+                chatMessages = mapped
+                let persisted = extractPersistedIssueSummary(from: msgs)
+                persistedIssueImageUrls = persisted.imageUrls
+                persistedIssueTypeText = persisted.issueTypeText
+                persistedIssueDescription = persisted.description
+                isLoadingMessages = false
+            }
+        } catch {
+            await MainActor.run {
+                isLoadingMessages = false
+                loadMessagesError = error.localizedDescription
+            }
+        }
+    }
+
+    private func extractPersistedIssueSummary(from messages: [Message]) -> PersistedIssueSummary {
+        var orderedUrls: [String] = []
+        var seen = Set<String>()
+        var issueTypeText: String?
+        var description: String?
+        for message in messages where message.isOrderIssue {
+            let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.hasPrefix("{"),
+                  let data = trimmed.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+
+            if issueTypeText == nil {
+                issueTypeText = (json["issue_type"] as? String)
+                    ?? (json["issueType"] as? String)
+                    ?? (json["title"] as? String)
+                    ?? (json["subject"] as? String)
+            }
+            if description == nil {
+                let rawDescription = (json["description"] as? String)
+                    ?? (json["details"] as? String)
+                    ?? (json["notes"] as? String)
+                if let rawDescription {
+                    let normalized = rawDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !normalized.isEmpty { description = normalized }
+                }
+            }
+
+            let candidates: [String] = [
+                "imagesUrl", "images_url", "issueImages", "issue_images", "images"
+            ]
+            for key in candidates {
+                guard let raw = json[key] else { continue }
+                let urls = decodeImageUrlList(raw)
+                for url in urls where !url.isEmpty && !seen.contains(url) {
+                    seen.insert(url)
+                    orderedUrls.append(url)
+                }
+            }
+        }
+        return PersistedIssueSummary(
+            issueTypeText: issueTypeText,
+            description: description,
+            imageUrls: orderedUrls
+        )
+    }
+
+    private func decodeImageUrlList(_ raw: Any) -> [String] {
+        if let urls = raw as? [String] {
+            return urls.compactMap { normalizePossibleImageUrl($0) }
+        }
+        if let objects = raw as? [[String: Any]] {
+            return objects.compactMap { dict in
+                (dict["url"] as? String).flatMap { normalizePossibleImageUrl($0) }
+            }
+        }
+        if let single = raw as? String {
+            if let normalized = normalizePossibleImageUrl(single) { return [normalized] }
+            return []
+        }
+        return []
+    }
+
+    private func normalizePossibleImageUrl(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.hasPrefix("{"),
+           let data = trimmed.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let url = json["url"] as? String {
+            return url.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return trimmed
+    }
+
     private func sendMessage() {
         let text = newMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        chatMessages.append(SupportChatMessage(text: text, isFromUser: true, createdAt: Date()))
+        if usePersistedThread, let cid = conversationId, Int(cid) != nil {
+            let optimistic = SupportChatMessage(id: UUID().uuidString, text: text, isFromUser: true, createdAt: Date())
+            newMessage = ""
+            chatMessages.append(optimistic)
+            Task {
+                chatService.updateAuthToken(authService.authToken)
+                let uuid = UUID().uuidString
+                do {
+                    let ok = try await chatService.sendMessage(conversationId: cid, message: text, messageUuid: uuid)
+                    if !ok {
+                        await MainActor.run {
+                            chatMessages.removeAll { $0.id == optimistic.id }
+                            loadMessagesError = "Message failed to send"
+                        }
+                    }
+                } catch {
+                    await MainActor.run {
+                        chatMessages.removeAll { $0.id == optimistic.id }
+                        loadMessagesError = error.localizedDescription
+                    }
+                }
+            }
+            return
+        }
+        chatMessages.append(SupportChatMessage(id: UUID().uuidString, text: text, isFromUser: true, createdAt: Date()))
         newMessage = ""
     }
 

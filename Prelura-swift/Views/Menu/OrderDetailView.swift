@@ -8,6 +8,7 @@ struct OrderDetailView: View {
 
     @EnvironmentObject var authService: AuthService
     private let userService = UserService()
+    private let productService = ProductService()
 
     @State private var rateStars: Int = 0
     @State private var rateComment: String = ""
@@ -21,11 +22,30 @@ struct OrderDetailView: View {
     @State private var confirmShippingTracking = ""
     @State private var confirmShippingSubmitting = false
     @State private var confirmShippingError: String?
+    @State private var productDetailItem: Item?
+    @State private var loadingProductDetail = false
+    @State private var currentUser: User?
+    @State private var hydratedOrder: Order?
+    @State private var showTrackingWeb = false
+    @State private var trackingWebURL: URL?
+    @State private var isTrackingWebLoading = false
 
     private var dateFormatter: DateFormatter {
         let f = DateFormatter()
         f.dateStyle = .medium
         f.timeStyle = .short
+        return f
+    }
+
+    private var orderDateFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "d MMM yyyy 'at' HH:mm"
+        return f
+    }
+
+    private var deliveryDateFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE, MMM d, yyyy"
         return f
     }
 
@@ -35,33 +55,22 @@ struct OrderDetailView: View {
         return isSeller ? L10n.string("Buyer") : L10n.string("Seller")
     }
 
+    private var effectiveOrder: Order { hydratedOrder ?? order }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                // Header: Order - PR23DG2DF3 (matches debug design)
-                Text("Order - \(order.displayOrderId)")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(Theme.Colors.primaryText)
-
-                // Status: label above, then single card with status text in purple
-                sectionLabel(L10n.string("Status"))
-                statusCard
-
-                if order.otherParty != nil {
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                headerSection
+                processingCard
+                productCard
+                if effectiveOrder.otherParty != nil {
                     sectionLabel(otherPartySectionTitle)
-                    otherPartyCard
+                    outlinedPartyCard
                 }
-
-                sectionLabel(L10n.string("Items"))
-                itemsSection
-
-                sectionLabel(L10n.string("Summary"))
-                summaryCard
-
-                if let addr = order.shippingAddress, !formatShippingAddress(addr).isEmpty {
-                    sectionLabel(L10n.string("Shipping Address"))
-                    shippingAddressCard(addr)
-                }
+                sectionLabel(L10n.string("Shipping Address"))
+                shippingAddressAndDeliverySection
+                sectionLabel("Tracking details")
+                shippingSelectedCard
 
                 if canShowRateSeller {
                     sectionLabel(L10n.string("Rate seller"))
@@ -69,7 +78,7 @@ struct OrderDetailView: View {
                 }
 
                 if canShowCancelOrder {
-                    NavigationLink(destination: CancelOrderView(order: order)) {
+                    NavigationLink(destination: CancelOrderView(order: effectiveOrder)) {
                         HStack {
                             Image(systemName: "xmark.circle")
                             Text(L10n.string("Cancel order"))
@@ -83,29 +92,267 @@ struct OrderDetailView: View {
                     }
                     .buttonStyle(.plain)
                 }
-
-                if canShowSellerShipping {
-                    sectionLabel(L10n.string("Shipping"))
-                    sellerShippingCard
-                }
-
-                Text("Ordered \(dateFormatter.string(from: order.createdAt))")
-                    .font(Theme.Typography.caption)
-                    .foregroundColor(Theme.Colors.secondaryText)
             }
             .padding(Theme.Spacing.md)
-            .padding(.bottom, Theme.Spacing.xl)
+            .padding(.bottom, canShowSellerShipping ? Theme.Spacing.md : Theme.Spacing.xl)
         }
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Order details"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .safeAreaInset(edge: .bottom) {
+            if canShowSellerShipping {
+                shippingActionSheet
+            }
+        }
+        .task {
+            userService.updateAuthToken(authService.authToken)
+            currentUser = try? await userService.getUser(username: nil)
+            await hydrateOrderIfNeeded()
+        }
+        .sheet(isPresented: $showTrackingWeb) {
+            if let trackingWebURL {
+                NavigationStack {
+                    WebView(url: trackingWebURL, isLoading: $isTrackingWebLoading)
+                        .navigationTitle("Tracking")
+                        .navigationBarTitleDisplayMode(.inline)
+                }
+            }
+        }
     }
 
     private func sectionLabel(_ title: String) -> some View {
         Text(title)
-            .font(Theme.Typography.caption)
+            .font(.system(size: 14, weight: .regular))
             .foregroundColor(Theme.Colors.secondaryText)
+            .padding(.top, 1)
+            .padding(.bottom, 1)
+    }
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("Order - \(order.displayOrderId)")
+                .font(.system(size: 28, weight: .bold))
+                .foregroundColor(Theme.Colors.primaryText)
+            HStack(spacing: Theme.Spacing.sm) {
+                Text("Order date: \(orderDateFormatter.string(from: effectiveOrder.createdAt))")
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                if let delivery = resolvedDeliveryDate {
+                    Text("|")
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    Label("Delivery: \(deliveryDateFormatter.string(from: delivery))", systemImage: "truck.box")
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(.green)
+                }
+            }
+        }
+    }
+
+    private var processingCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack {
+                Image("ParcelIcon")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 24, height: 24)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                Text(effectiveOrder.statusDisplay)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                Spacer()
+                Text("\(progressPercent)%")
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+            }
+            ProgressView(value: Double(progressPercent), total: 100)
+                .tint(.green)
+        }
+        .padding(Theme.Spacing.md)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+        )
+    }
+
+    private var progressPercent: Int {
+        switch effectiveOrder.status {
+        case "CONFIRMED": return 20
+        case "SHIPPED": return 65
+        case "DELIVERED": return 100
+        case "CANCELLED", "REFUNDED": return 0
+        default: return 25
+        }
+    }
+
+    private var productCard: some View {
+        let p = effectiveOrder.products.first
+        return NavigationLink {
+            productDestinationView
+        } label: {
+            HStack(alignment: .top, spacing: Theme.Spacing.md) {
+                productThumb(url: p?.imageUrl)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(p?.name ?? "Product")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .lineLimit(2)
+                    if let details = metadataLine(for: p), !details.isEmpty {
+                        Text(details)
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .lineLimit(2)
+                    }
+                    Spacer(minLength: 6)
+                    Text("£\(p?.price ?? effectiveOrder.priceTotal)")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(Theme.Colors.primaryText)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .padding(.top, 6)
+            }
+            .padding(Theme.Spacing.md)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var outlinedPartyCard: some View {
+        Group {
+            if let other = effectiveOrder.otherParty {
+                HStack(spacing: Theme.Spacing.md) {
+                    avatarView(url: other.avatarURL, username: other.username)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(other.username)
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.primaryText)
+                        if isSeller == true, let count = effectiveOrder.buyerOrderCountWithSeller {
+                            Label("\(count) \(count == 1 ? "order" : "orders")", systemImage: "bag")
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        } else {
+                            Text("@\(other.username)")
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(Theme.Spacing.md)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var productDestinationView: some View {
+        if let item = productDetailItem {
+            ItemDetailView(item: item, authService: authService)
+                .environmentObject(authService)
+        } else if loadingProductDetail {
+            ProgressView("Loading product...")
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .onAppear(perform: loadProductForDetail)
+        } else {
+            ProgressView("Loading product...")
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .onAppear(perform: loadProductForDetail)
+        }
+    }
+
+    private var shippingAddressAndDeliverySection: some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.md) {
+            Group {
+                if let addr = effectiveOrder.shippingAddress, !formatShippingAddress(addr).isEmpty {
+                    outlinedShippingAddressCard(addr)
+                } else {
+                    Text("No address available")
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .padding(Theme.Spacing.md)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+                        )
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("Delivery")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                Text(resolvedDeliveryDate.map { deliveryDateFormatter.string(from: $0) } ?? "TBD")
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(Theme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+            )
+        }
+    }
+
+    private var shippingSelectedCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Text(effectiveOrder.shipmentService?.isEmpty == false ? effectiveOrder.shipmentService! : "Not selected")
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.primaryText)
+            if let tracking = effectiveOrder.trackingUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !tracking.isEmpty,
+               let url = URL(string: tracking) {
+                Button {
+                    trackingWebURL = url
+                    showTrackingWeb = true
+                } label: {
+                    Text("Check tracking")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.primaryColor)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text("No tracking information available")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Spacing.md)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+        )
+    }
+
+    private func outlinedShippingAddressCard(_ addr: ShippingAddress) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            if !addr.address.isEmpty { Text(addr.address) }
+            if !addr.city.isEmpty { Text(addr.city) }
+            if !addr.postcode.isEmpty { Text(addr.postcode) }
+            if !addr.country.isEmpty { Text(addr.country) }
+        }
+        .font(Theme.Typography.body)
+        .foregroundColor(Theme.Colors.primaryText)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Spacing.md)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+        )
     }
 
     private var statusCard: some View {
@@ -254,6 +501,51 @@ struct OrderDetailView: View {
         return parts.joined(separator: ", ")
     }
 
+    private func metadataLine(for product: OrderProductSummary?) -> String? {
+        guard let product else { return nil }
+        var parts: [String] = []
+        if let size = product.size, !size.isEmpty { parts.append("Size: \(size)") }
+        if !product.colors.isEmpty { parts.append("Colour: \(product.colors.joined(separator: ", "))") }
+        if let style = product.style, !style.isEmpty { parts.append("Style: \(style)") }
+        if let brand = product.brand, !brand.isEmpty { parts.append("Brand: \(brand)") }
+        if !product.materials.isEmpty { parts.append("Material: \(product.materials.joined(separator: ", "))") }
+        if let condition = product.condition, !condition.isEmpty { parts.append(condition.replacingOccurrences(of: "_", with: " ")) }
+        return parts.isEmpty ? nil : parts.joined(separator: " | ")
+    }
+
+    private func loadProductForDetail() {
+        guard !loadingProductDetail, productDetailItem == nil,
+              let first = order.products.first, let productId = Int(first.id) else { return }
+        loadingProductDetail = true
+        Task {
+            defer { loadingProductDetail = false }
+            if let item = try? await productService.getProduct(id: productId) {
+                await MainActor.run {
+                    productDetailItem = item
+                }
+            }
+        }
+    }
+
+    private var resolvedDeliveryDate: Date? {
+        if let d = order.deliveryDate { return d }
+        guard let service = effectiveOrder.shipmentService?.uppercased(),
+              let opts = currentUser?.postageOptions else { return nil }
+        let days: Int?
+        switch service {
+        case "ROYAL_MAIL":
+            days = opts.royalMailStandardDays ?? opts.royalMailFirstClassDays
+        case "EVRI":
+            days = opts.evriDays
+        case "DPD":
+            days = opts.dpdDays
+        default:
+            days = nil
+        }
+        guard let d = days, d > 0 else { return nil }
+        return Calendar.current.date(byAdding: .day, value: d, to: effectiveOrder.createdAt)
+    }
+
     private func productThumb(url: String?) -> some View {
         Group {
             if let u = url, !u.isEmpty, let parsed = URL(string: u) {
@@ -269,9 +561,9 @@ struct OrderDetailView: View {
                     .overlay(Image(systemName: "photo").foregroundColor(Theme.Colors.secondaryText))
             }
         }
-        .frame(width: 56, height: 56)
+        .frame(width: 120, height: 140)
         .clipped()
-        .cornerRadius(8)
+        .cornerRadius(12)
     }
 
     /// Show "Cancel order" when: buyer view, order not yet delivered/cancelled/refunded.
@@ -284,16 +576,16 @@ struct OrderDetailView: View {
     /// Show seller shipping actions when: seller view, order paid (CONFIRMED/PENDING/SHIPPED).
     private var canShowSellerShipping: Bool {
         guard isSeller == true else { return false }
-        return ["CONFIRMED", "SHIPPED"].contains(order.status)
+        return ["CONFIRMED", "SHIPPED"].contains(effectiveOrder.status)
     }
 
     /// Show "Rate seller" when: buyer view (isSeller == false), order delivered, we have orderId and seller userId, and not yet rated.
     private var canShowRateSeller: Bool {
         guard isSeller == false,
-              order.status == "DELIVERED",
+              effectiveOrder.status == "DELIVERED",
               !hasRated,
-              Int(order.id) != nil,
-              let other = order.otherParty, other.userId != nil else { return false }
+              Int(effectiveOrder.id) != nil,
+              let other = effectiveOrder.otherParty, other.userId != nil else { return false }
         return true
     }
 
@@ -339,7 +631,7 @@ struct OrderDetailView: View {
     }
 
     private func submitRating() async {
-        guard let orderId = Int(order.id), let userId = order.otherParty?.userId else { return }
+        guard let orderId = Int(effectiveOrder.id), let userId = effectiveOrder.otherParty?.userId else { return }
         ratingError = nil
         isSubmittingRating = true
         defer { isSubmittingRating = false }
@@ -354,27 +646,33 @@ struct OrderDetailView: View {
 
     private var sellerShippingCard: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Button {
-                Task { await generateLabel() }
-            } label: {
-                if shippingLabelLoading {
-                    ProgressView()
-                        .tint(Theme.Colors.primaryText)
-                } else {
-                    Label(L10n.string("View shipping label"), systemImage: "shippingbox")
+            VStack(spacing: Theme.Spacing.sm) {
+                Button {
+                    showConfirmShippingSheet = true
+                } label: {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        Image(systemName: "location.circle")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(L10n.string("Confirm shipping (manual)"))
+                            .font(Theme.Typography.headline)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, Theme.Spacing.lg)
+                    .padding(.vertical, Theme.Spacing.md)
                 }
-            }
-            .disabled(shippingLabelLoading)
-            .buttonStyle(.borderedProminent)
-            .tint(Theme.primaryColor)
+                .buttonStyle(.plain)
+                .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
 
-            Button {
-                showConfirmShippingSheet = true
-            } label: {
-                Label(L10n.string("Confirm shipping (manual)"), systemImage: "location.circle")
+                PrimaryGlassButton(
+                    L10n.string("View shipping label"),
+                    icon: "shippingbox",
+                    isLoading: shippingLabelLoading
+                ) {
+                    Task { await generateLabel() }
+                }
+                .disabled(shippingLabelLoading)
             }
-            .buttonStyle(.bordered)
-            .tint(Theme.primaryColor)
 
             if let err = shippingLabelError {
                 Text(err)
@@ -382,11 +680,32 @@ struct OrderDetailView: View {
                     .foregroundColor(Theme.Colors.error)
             }
         }
-        .padding(Theme.Spacing.md)
-        .background(Theme.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
         .sheet(isPresented: $showConfirmShippingSheet) {
             confirmShippingSheet
+                .onAppear {
+                    // Default carrier from selected shipping service shown on this screen.
+                    if confirmShippingCarrier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       let service = effectiveOrder.shipmentService,
+                       !service.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        confirmShippingCarrier = service
+                    }
+                }
+        }
+    }
+
+    private var shippingActionSheet: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            sellerShippingCard
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.top, 6)
+        .padding(.bottom, Theme.Spacing.sm)
+        .background(Theme.Colors.background)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Theme.Colors.glassBorder)
+                .frame(height: 1)
+                .opacity(0.4)
         }
     }
 
@@ -423,7 +742,7 @@ struct OrderDetailView: View {
     }
 
     private func generateLabel() async {
-        guard let orderId = Int(order.id) else { return }
+        guard let orderId = Int(effectiveOrder.id) else { return }
         shippingLabelError = nil
         shippingLabelLoading = true
         defer { shippingLabelLoading = false }
@@ -441,7 +760,7 @@ struct OrderDetailView: View {
     }
 
     private func submitConfirmShipping() async {
-        guard let orderId = Int(order.id) else { return }
+        guard let orderId = Int(effectiveOrder.id) else { return }
         let carrier = confirmShippingCarrier.trimmingCharacters(in: .whitespaces)
         let tracking = confirmShippingTracking.trimmingCharacters(in: .whitespaces)
         guard !carrier.isEmpty, !tracking.isEmpty else { return }
@@ -456,8 +775,22 @@ struct OrderDetailView: View {
                 confirmShippingCarrier = ""
                 confirmShippingTracking = ""
             }
+            await hydrateOrderIfNeeded(force: true)
         } catch {
             confirmShippingError = error.localizedDescription
+        }
+    }
+
+    private func hydrateOrderIfNeeded(force: Bool = false) async {
+        guard force || hydratedOrder == nil, (order.shippingAddress == nil || order.shipmentService == nil || order.trackingUrl == nil) else { return }
+        let sold = (try? await userService.getUserOrders(isSeller: true, pageNumber: 1, pageCount: 100).orders) ?? []
+        if let found = sold.first(where: { $0.id == order.id }) {
+            await MainActor.run { hydratedOrder = found }
+            return
+        }
+        let bought = (try? await userService.getUserOrders(isSeller: false, pageNumber: 1, pageCount: 100).orders) ?? []
+        if let found = bought.first(where: { $0.id == order.id }) {
+            await MainActor.run { hydratedOrder = found }
         }
     }
 }

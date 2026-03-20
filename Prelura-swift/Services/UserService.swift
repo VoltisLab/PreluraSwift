@@ -250,6 +250,7 @@ class UserService: ObservableObject {
         gender: String? = nil,
         dob: Date? = nil,
         phoneNumber: (countryCode: String, number: String)? = nil,
+        otp: String? = nil,
         bio: String? = nil,
         username: String? = nil,
         location: String? = nil,
@@ -266,6 +267,7 @@ class UserService: ObservableObject {
           $gender: String
           $dob: String
           $phoneNumber: PhoneInputType
+          $otp: String
           $bio: String
           $username: String
           $location: LocationInputType
@@ -281,6 +283,7 @@ class UserService: ObservableObject {
             gender: $gender
             dob: $dob
             phoneNumber: $phoneNumber
+            otp: $otp
             bio: $bio
             username: $username
             location: $location
@@ -310,6 +313,7 @@ class UserService: ObservableObject {
                 "completed": "\(p.countryCode)\(p.number)"
             ]
         }
+        if let otp, !otp.isEmpty { variables["otp"] = otp }
         if let v = bio { variables["bio"] = v }
         if let v = username, !v.isEmpty { variables["username"] = v }
         if let v = location?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
@@ -340,6 +344,30 @@ class UserService: ObservableObject {
             variables: variables.isEmpty ? nil : variables,
             responseType: UpdateProfileResponse.self
         )
+    }
+
+    /// Send a one-time OTP to a phone number for phone verification.
+    func sendPhoneOtp(phoneNumber: String, channel: String = "SMS", action: String = "VERIFY") async throws {
+        let mutation = """
+        mutation SendSmsOtp($channel: SmsChannelChoicesEnum, $phoneNumber: String, $action: SmsActionChoicesEnum) {
+          sendSmsOtp(channel: $channel, phoneNumber: $phoneNumber, action: $action) {
+            success
+            message
+          }
+        }
+        """
+        let response: SendSmsOtpResponse = try await client.execute(
+            query: mutation,
+            variables: [
+                "channel": channel,
+                "phoneNumber": phoneNumber,
+                "action": action
+            ],
+            responseType: SendSmsOtpResponse.self
+        )
+        if response.sendSmsOtp?.success != true {
+            throw UserError.backendMessage(response.sendSmsOtp?.message ?? "Could not send OTP.")
+        }
     }
 
     /// Update only profile picture (and thumbnail). Matches Flutter updateProfile(profilePicture: Input$ProfilePictureInputType(...)).
@@ -761,6 +789,7 @@ class UserService: ObservableObject {
             message
             issueId
             publicId
+            supportConversationId
           }
         }
         """
@@ -787,6 +816,37 @@ class UserService: ObservableObject {
             throw NSError(domain: "RaiseOrderIssue", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "Failed to raise issue"])
         }
         return result
+    }
+
+    /// Seller: open or reuse persisted Prelura support thread for this order issue (mirrors buyer `createOrderCase` support chat).
+    func ensureSellerOrderIssueSupportThread(issueId: Int) async throws -> Int {
+        let mutation = """
+        mutation EnsureSellerOrderIssueSupportThread($issueId: Int!) {
+          ensureSellerOrderIssueSupportThread(issueId: $issueId) {
+            success
+            message
+            supportConversationId
+          }
+        }
+        """
+        struct Row: Decodable {
+            let success: Bool?
+            let message: String?
+            let supportConversationId: Int?
+        }
+        struct Payload: Decodable { let ensureSellerOrderIssueSupportThread: Row? }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["issueId": issueId],
+            responseType: Payload.self
+        )
+        guard let row = response.ensureSellerOrderIssueSupportThread else {
+            throw NSError(domain: "EnsureSellerOrderIssueSupportThread", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+        if row.success == true, let cid = row.supportConversationId {
+            return cid
+        }
+        throw NSError(domain: "EnsureSellerOrderIssueSupportThread", code: -1, userInfo: [NSLocalizedDescriptionKey: row.message ?? "Could not open support chat"])
     }
 
     /// Fetch a single order case by issueId or publicId.
@@ -1177,14 +1237,31 @@ class UserService: ObservableObject {
         query UserOrders($filters: OrderFiltersInput, $pageCount: Int, $pageNumber: Int) {
           userOrders(filters: $filters, pageCount: $pageCount, pageNumber: $pageNumber) {
             id
+            publicId
             priceTotal
             discountPrice
             status
             createdAt
             updatedAt
             shippingAddress
+            shipmentService
+            shipmentEstimatedDelivery
+            trackingNumber
+            trackingUrl
+            buyerOrderCountWithSeller
             user { id username displayName profilePictureUrl }
-            products { id name imagesUrl price }
+            products {
+              id
+              name
+              imagesUrl
+              price
+              condition
+              color
+              style
+              size { name }
+              brand { name }
+              materials { name }
+            }
           }
           userOrdersTotalNumber
         }
@@ -1201,12 +1278,18 @@ class UserService: ObservableObject {
         }
         struct OrderRow: Decodable {
             let id: AnyCodable?
+            let publicId: String?
             let priceTotal: DecimalStringOrNumber?
             let discountPrice: DecimalStringOrNumber?
             let status: String?
             let createdAt: DateStringOrTimestamp?
             let updatedAt: DateStringOrTimestamp?
             let shippingAddress: String?
+            let shipmentService: String?
+            let shipmentEstimatedDelivery: DateStringOrTimestamp?
+            let trackingNumber: String?
+            let trackingUrl: String?
+            let buyerOrderCountWithSeller: Int?
             let user: OrderUserRow?
             let products: [OrderProductRow]?
         }
@@ -1221,6 +1304,21 @@ class UserService: ObservableObject {
             let name: String?
             let imagesUrl: [OrderImageUrlElement]?
             let price: DecimalStringOrNumber?
+            let condition: String?
+            let color: [String]?
+            let style: String?
+            let size: OrderProductSizeRow?
+            let brand: OrderProductBrandRow?
+            let materials: [OrderProductMaterialRow]?
+        }
+        struct OrderProductSizeRow: Decodable {
+            let name: String?
+        }
+        struct OrderProductBrandRow: Decodable {
+            let name: String?
+        }
+        struct OrderProductMaterialRow: Decodable {
+            let name: String?
         }
         /// Accepts ISO8601 string or Unix timestamp (Double/Int).
         struct DateStringOrTimestamp: Decodable {
@@ -1297,18 +1395,35 @@ class UserService: ObservableObject {
                     return s
                 }()
                 let priceStr = p.price?.stringValue ?? ""
-                return OrderProductSummary(id: String(describing: pid), name: p.name ?? "", imageUrl: imgUrl, price: priceStr)
+                return OrderProductSummary(
+                    id: String(describing: pid),
+                    name: p.name ?? "",
+                    imageUrl: imgUrl,
+                    price: priceStr,
+                    condition: p.condition,
+                    colors: p.color ?? [],
+                    style: p.style,
+                    size: p.size?.name,
+                    brand: p.brand?.name,
+                    materials: (p.materials ?? []).compactMap { $0.name }
+                )
             }
             let createdAt = row.createdAt?.date ?? Self.parseCreatedAt(nil) ?? Date()
             let priceStr = row.priceTotal?.stringValue ?? "0"
             return Order(
                 id: idStr,
+                publicId: row.publicId,
                 priceTotal: priceStr,
                 status: row.status ?? "",
                 createdAt: createdAt,
                 otherParty: otherParty,
                 products: products,
-                shippingAddress: parseShippingAddress(row.shippingAddress)
+                shippingAddress: parseShippingAddress(row.shippingAddress),
+                shipmentService: row.shipmentService,
+                deliveryDate: row.shipmentEstimatedDelivery?.date,
+                trackingNumber: row.trackingNumber,
+                trackingUrl: row.trackingUrl,
+                buyerOrderCountWithSeller: row.buyerOrderCountWithSeller
             )
         }
         let total = response.userOrdersTotalNumber?.intValue ?? 0
@@ -1605,23 +1720,51 @@ struct ShippingAddress: Hashable {
 struct SellerPostageOptions: Hashable {
     var royalMailEnabled: Bool
     var royalMailStandardPrice: Double?
+    var royalMailStandardDays: Int?
     var royalMailFirstClassPrice: Double?
+    var royalMailFirstClassDays: Int?
     var dpdEnabled: Bool
     var dpdPrice: Double?
+    var dpdDays: Int?
+    var evriEnabled: Bool
+    var evriPrice: Double?
+    var evriDays: Int?
+    var customOptions: [CustomDeliveryOption]
 
-    static let empty = SellerPostageOptions(royalMailEnabled: false, royalMailStandardPrice: nil, royalMailFirstClassPrice: nil, dpdEnabled: false, dpdPrice: nil)
+    static let empty = SellerPostageOptions(
+        royalMailEnabled: false,
+        royalMailStandardPrice: nil,
+        royalMailStandardDays: nil,
+        royalMailFirstClassPrice: nil,
+        royalMailFirstClassDays: nil,
+        dpdEnabled: false,
+        dpdPrice: nil,
+        dpdDays: nil,
+        evriEnabled: false,
+        evriPrice: nil,
+        evriDays: nil,
+        customOptions: []
+    )
 
     /// Build list of delivery options for checkout (name, provider, type, fee). Order: Royal Mail Standard, First Class, DPD.
     func toDeliveryOptions() -> [SellerDeliveryOption] {
         var list: [SellerDeliveryOption] = []
         if royalMailEnabled, let p = royalMailStandardPrice, p >= 0 {
-            list.append(SellerDeliveryOption(name: "Royal Mail Standard", deliveryProvider: "ROYAL_MAIL", deliveryType: "HOME_DELIVERY", shippingFee: p))
+            list.append(SellerDeliveryOption(name: "Royal Mail Standard", deliveryProvider: "ROYAL_MAIL", deliveryType: "HOME_DELIVERY", shippingFee: p, estimatedDays: royalMailStandardDays))
         }
         if royalMailEnabled, let p = royalMailFirstClassPrice, p >= 0 {
-            list.append(SellerDeliveryOption(name: "Royal Mail First Class (Next day)", deliveryProvider: "ROYAL_MAIL", deliveryType: "HOME_DELIVERY", shippingFee: p))
+            list.append(SellerDeliveryOption(name: "Royal Mail First Class (Next day)", deliveryProvider: "ROYAL_MAIL", deliveryType: "HOME_DELIVERY", shippingFee: p, estimatedDays: royalMailFirstClassDays))
         }
         if dpdEnabled, let p = dpdPrice, p >= 0 {
-            list.append(SellerDeliveryOption(name: "DPD Standard", deliveryProvider: "DPD", deliveryType: "HOME_DELIVERY", shippingFee: p))
+            list.append(SellerDeliveryOption(name: "DPD Standard", deliveryProvider: "DPD", deliveryType: "HOME_DELIVERY", shippingFee: p, estimatedDays: dpdDays))
+        }
+        if evriEnabled, let p = evriPrice, p >= 0 {
+            list.append(SellerDeliveryOption(name: "Evri Standard", deliveryProvider: "EVRI", deliveryType: "HOME_DELIVERY", shippingFee: p, estimatedDays: evriDays))
+        }
+        for option in customOptions where option.enabled {
+            guard let fee = option.price, fee >= 0 else { continue }
+            // Backend supports limited provider enum; map custom carriers to DPD for order creation while preserving display name.
+            list.append(SellerDeliveryOption(name: option.name, deliveryProvider: "DPD", deliveryType: "HOME_DELIVERY", shippingFee: fee, estimatedDays: option.deliveryDays))
         }
         return list
     }
@@ -1631,20 +1774,46 @@ struct SellerPostageOptions: Hashable {
         guard let p = metaPostage else { return nil }
         let royalMail = p["royalMail"] as? [String: Any]
         let dpd = p["dpd"] as? [String: Any]
+        let evri = p["evri"] as? [String: Any]
+        let custom = p["customOptions"] as? [[String: Any]] ?? []
         func num(_ v: Any?) -> Double? {
             if let n = v as? Double { return n }
             if let n = v as? Int { return Double(n) }
             if let s = v as? String { return Double(s) }
             return nil
         }
+        func intNum(_ v: Any?) -> Int? {
+            if let n = v as? Int { return n }
+            if let n = v as? Double { return Int(n) }
+            if let s = v as? String { return Int(s) }
+            return nil
+        }
         let rmEnabled = (royalMail?["enabled"] as? Bool) ?? false
         let dpdEnabled = (dpd?["enabled"] as? Bool) ?? false
+        let evriEnabled = (evri?["enabled"] as? Bool) ?? false
+        let customOptions: [CustomDeliveryOption] = custom.compactMap { row in
+            guard let name = row["name"] as? String, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return CustomDeliveryOption(
+                id: (row["id"] as? String) ?? UUID().uuidString,
+                name: name,
+                enabled: (row["enabled"] as? Bool) ?? true,
+                price: num(row["price"]),
+                deliveryDays: intNum(row["deliveryDays"])
+            )
+        }
         return SellerPostageOptions(
             royalMailEnabled: rmEnabled,
             royalMailStandardPrice: num(royalMail?["standardPrice"]),
+            royalMailStandardDays: intNum(royalMail?["standardDays"]),
             royalMailFirstClassPrice: num(royalMail?["firstClassPrice"]),
+            royalMailFirstClassDays: intNum(royalMail?["firstClassDays"]),
             dpdEnabled: dpdEnabled,
-            dpdPrice: num(dpd?["standardPrice"])
+            dpdPrice: num(dpd?["standardPrice"]),
+            dpdDays: intNum(dpd?["standardDays"]),
+            evriEnabled: evriEnabled,
+            evriPrice: num(evri?["standardPrice"]),
+            evriDays: intNum(evri?["standardDays"]),
+            customOptions: customOptions
         )
     }
 
@@ -1653,12 +1822,28 @@ struct SellerPostageOptions: Hashable {
         guard let p = postage else { return nil }
         let rm = p.royalMail
         let dpd = p.dpd
+        let evri = p.evri
         return SellerPostageOptions(
             royalMailEnabled: rm?.enabled ?? false,
             royalMailStandardPrice: rm?.standardPrice,
+            royalMailStandardDays: rm?.standardDays,
             royalMailFirstClassPrice: rm?.firstClassPrice,
+            royalMailFirstClassDays: rm?.firstClassDays,
             dpdEnabled: dpd?.enabled ?? false,
-            dpdPrice: dpd?.standardPrice
+            dpdPrice: dpd?.standardPrice,
+            dpdDays: dpd?.standardDays,
+            evriEnabled: evri?.enabled ?? false,
+            evriPrice: evri?.standardPrice,
+            evriDays: evri?.standardDays,
+            customOptions: p.customOptions?.map {
+                CustomDeliveryOption(
+                    id: $0.id ?? UUID().uuidString,
+                    name: $0.name ?? "Custom delivery",
+                    enabled: $0.enabled ?? true,
+                    price: $0.price,
+                    deliveryDays: $0.deliveryDays
+                )
+            } ?? []
         )
     }
 
@@ -1666,10 +1851,26 @@ struct SellerPostageOptions: Hashable {
     func toMetaPostage() -> [String: Any] {
         var royalMail: [String: Any] = ["enabled": royalMailEnabled]
         if let p = royalMailStandardPrice { royalMail["standardPrice"] = p }
+        if let d = royalMailStandardDays { royalMail["standardDays"] = d }
         if let p = royalMailFirstClassPrice { royalMail["firstClassPrice"] = p }
+        if let d = royalMailFirstClassDays { royalMail["firstClassDays"] = d }
         var dpd: [String: Any] = ["enabled": dpdEnabled]
         if let p = dpdPrice { dpd["standardPrice"] = p }
-        return ["royalMail": royalMail, "dpd": dpd]
+        if let d = dpdDays { dpd["standardDays"] = d }
+        var evri: [String: Any] = ["enabled": evriEnabled]
+        if let p = evriPrice { evri["standardPrice"] = p }
+        if let d = evriDays { evri["standardDays"] = d }
+        let custom: [[String: Any]] = customOptions.map {
+            var row: [String: Any] = [
+                "id": $0.id,
+                "name": $0.name,
+                "enabled": $0.enabled
+            ]
+            if let p = $0.price { row["price"] = p }
+            if let d = $0.deliveryDays { row["deliveryDays"] = d }
+            return row
+        }
+        return ["royalMail": royalMail, "dpd": dpd, "evri": evri, "customOptions": custom]
     }
 }
 
@@ -1679,6 +1880,15 @@ struct SellerDeliveryOption: Hashable {
     let deliveryProvider: String
     let deliveryType: String
     let shippingFee: Double
+    let estimatedDays: Int?
+}
+
+struct CustomDeliveryOption: Hashable, Identifiable {
+    let id: String
+    var name: String
+    var enabled: Bool
+    var price: Double?
+    var deliveryDays: Int?
 }
 
 struct LocationData: Decodable {
@@ -1746,15 +1956,27 @@ struct SafeMetaDecode: Decodable {
 struct PostageMetaDecode: Decodable {
     let royalMail: RoyalMailMetaDecode?
     let dpd: DpdMetaDecode?
+    let evri: DpdMetaDecode?
+    let customOptions: [CustomOptionMetaDecode]?
 }
 struct RoyalMailMetaDecode: Decodable {
     let enabled: Bool?
     let standardPrice: Double?
+    let standardDays: Int?
     let firstClassPrice: Double?
+    let firstClassDays: Int?
 }
 struct DpdMetaDecode: Decodable {
     let enabled: Bool?
     let standardPrice: Double?
+    let standardDays: Int?
+}
+struct CustomOptionMetaDecode: Decodable {
+    let id: String?
+    let name: String?
+    let enabled: Bool?
+    let price: Double?
+    let deliveryDays: Int?
 }
 
 struct ReviewStatsData: Decodable {
@@ -1846,6 +2068,15 @@ struct ChangeEmailPayload: Decodable {
     let message: String?
 }
 
+struct SendSmsOtpResponse: Decodable {
+    let sendSmsOtp: SendSmsOtpPayload?
+}
+
+struct SendSmsOtpPayload: Decodable {
+    let success: Bool?
+    let message: String?
+}
+
 /// One multi-buy discount tier (minItems → discount %). Matches MultibuyDiscountType.
 struct MultibuyDiscount {
     let id: Int?
@@ -1867,6 +2098,8 @@ struct RaiseOrderIssueResult: Decodable {
     let message: String?
     let issueId: Int?
     let publicId: String?
+    /// Buyer ↔ support system thread (persisted); use with Help Chat / admin replies.
+    let supportConversationId: Int?
 }
 
 struct OrderIssueDetails: Decodable, Identifiable {
@@ -1934,18 +2167,25 @@ struct OrderIssueDetails: Decodable, Identifiable {
 /// Order from userOrders query. Used in My Orders list and detail.
 struct Order: Identifiable {
     let id: String
+    let publicId: String?
     let priceTotal: String
     let status: String
     let createdAt: Date
     let otherParty: User?
     let products: [OrderProductSummary]
     let shippingAddress: ShippingAddress?
+    let shipmentService: String?
+    let deliveryDate: Date?
+    let trackingNumber: String?
+    let trackingUrl: String?
+    let buyerOrderCountWithSeller: Int?
 
     /// Order ID for display: always starts with "PR" (e.g. PR23DG2DF3 or PR225 for legacy numeric).
     var displayOrderId: String {
+        if let publicId, !publicId.isEmpty { return publicId }
         let raw = id.trimmingCharacters(in: .whitespacesAndNewlines)
-        if raw.uppercased().hasPrefix("PR") { return raw }
-        return "PR" + raw
+        if raw.uppercased().hasPrefix("PO") { return raw }
+        return "PO" + raw
     }
 }
 
@@ -1955,6 +2195,12 @@ struct OrderProductSummary: Identifiable {
     let name: String
     let imageUrl: String?
     let price: String?
+    let condition: String?
+    let colors: [String]
+    let style: String?
+    let size: String?
+    let brand: String?
+    let materials: [String]
 }
 
 /// Payment method from userPaymentMethods query.
@@ -2001,11 +2247,14 @@ struct RecommendedSeller {
 
 enum UserError: Error, LocalizedError {
     case userNotFound
+    case backendMessage(String)
     
     var errorDescription: String? {
         switch self {
         case .userNotFound:
             return "User not found"
+        case .backendMessage(let message):
+            return message
         }
     }
 }

@@ -17,6 +17,8 @@ struct ItemNotAsDescribedHelpView: View {
     @State private var submitError: String?
     @State private var createdIssueId: Int?
     @State private var createdIssuePublicId: String?
+    /// GraphQL support thread id returned from createOrderCase (persisted Help Chat).
+    @State private var supportConversationId: String?
     @State private var showSupportChat = false
     @State private var relatedItem: Item?
     @State private var isLoadingRelatedProduct = false
@@ -24,6 +26,7 @@ struct ItemNotAsDescribedHelpView: View {
     private let userService = UserService()
     private let productService = ProductService()
     private let fileUploadService = FileUploadService()
+    private let chatService = ChatService()
     private let descriptionFieldCornerRadius: CGFloat = 30
 
     private let issueTypes: [(id: String, label: String)] = [
@@ -153,13 +156,19 @@ struct ItemNotAsDescribedHelpView: View {
         .toolbar(.hidden, for: .tabBar)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Button(action: { Task { await startSupportConversation() } }) {
-                Text("Start a conversation with support")
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .background(Theme.primaryColor)
-                    .clipShape(RoundedRectangle(cornerRadius: 26))
+                HStack(spacing: Theme.Spacing.sm) {
+                    if isSubmittingIssue {
+                        ProgressView()
+                            .tint(.white)
+                    }
+                    Text(isSubmittingIssue ? "Starting conversation..." : "Start a conversation with support")
+                        .font(Theme.Typography.headline)
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Spacing.md)
+                .background(Theme.primaryColor)
+                .clipShape(RoundedRectangle(cornerRadius: 26))
             }
             .disabled(selectedIssueType == nil || isSubmittingIssue)
             .opacity((selectedIssueType == nil || isSubmittingIssue) ? 0.55 : 1.0)
@@ -167,11 +176,28 @@ struct ItemNotAsDescribedHelpView: View {
             .padding(.vertical, Theme.Spacing.sm)
             .background(Theme.Colors.background)
         }
+        .overlay {
+            if isSubmittingIssue {
+                ZStack {
+                    Color.black.opacity(0.25).ignoresSafeArea()
+                    VStack(spacing: Theme.Spacing.sm) {
+                        ProgressView()
+                        Text("Starting support conversation...")
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                    .padding(.horizontal, Theme.Spacing.lg)
+                    .padding(.vertical, Theme.Spacing.md)
+                    .background(Theme.Colors.background)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+            }
+        }
         .background(
             NavigationLink(
                 destination: HelpChatView(
                     orderId: orderId,
-                    conversationId: conversationId,
+                    conversationId: supportConversationId ?? conversationId,
                     issueDraft: SupportIssueDraft(
                         selectedOptions: selectedIssueLabels,
                         description: description.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -233,9 +259,23 @@ struct ItemNotAsDescribedHelpView: View {
                 imagesUrl: uploadedUrls,
                 otherIssueDescription: selectedIssueType == "OTHER" ? desc : nil
             )
+            if let scid = result.supportConversationId {
+                await sendSupportIssueContextMessage(
+                    conversationId: String(scid),
+                    orderId: oid,
+                    issueType: selectedIssueType,
+                    description: desc,
+                    imageUrls: uploadedUrls,
+                    issueId: result.issueId,
+                    publicId: result.publicId
+                )
+            }
             await MainActor.run {
                 createdIssueId = result.issueId
                 createdIssuePublicId = result.publicId
+                if let scid = result.supportConversationId {
+                    supportConversationId = String(scid)
+                }
                 isSubmittingIssue = false
                 showSupportChat = true
             }
@@ -245,6 +285,34 @@ struct ItemNotAsDescribedHelpView: View {
                 submitError = error.localizedDescription
             }
         }
+    }
+
+    private func sendSupportIssueContextMessage(
+        conversationId: String,
+        orderId: Int,
+        issueType: String,
+        description: String,
+        imageUrls: [String],
+        issueId: Int?,
+        publicId: String?
+    ) async {
+        chatService.updateAuthToken(authService.authToken)
+        var payload: [String: Any] = [
+            "type": "order_issue",
+            "order_id": orderId,
+            "issue_type": issueType,
+            "description": description,
+            "imagesUrl": imageUrls
+        ]
+        if let issueId { payload["issue_id"] = issueId }
+        if let publicId, !publicId.isEmpty { payload["public_id"] = publicId }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let text = String(data: data, encoding: .utf8) else { return }
+        _ = try? await chatService.sendMessage(
+            conversationId: conversationId,
+            message: text,
+            messageUuid: UUID().uuidString
+        )
     }
 
     @ViewBuilder

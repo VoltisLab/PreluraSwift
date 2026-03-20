@@ -133,8 +133,24 @@ struct GraphQLResponse<T: Decodable>: Decodable {
 struct GraphQLErrorResponse: Decodable {
     let message: String
     let locations: [Location]?
-    let path: [String]?
-    
+    /// Omitted from decoding: GraphQL `path` is often `[String | Int]` which breaks `[String]`.
+    /// We only need `message` for user-facing errors.
+
+    enum CodingKeys: String, CodingKey {
+        case message
+        case locations
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let raw = try c.decodeIfPresent(String.self, forKey: .message), !raw.isEmpty {
+            message = raw
+        } else {
+            message = "GraphQL error"
+        }
+        locations = try c.decodeIfPresent([Location].self, forKey: .locations)
+    }
+
     struct Location: Decodable {
         let line: Int
         let column: Int
@@ -159,7 +175,29 @@ enum GraphQLError: Error, LocalizedError {
         case .noData:
             return "No data returned"
         case .decodingError(let error):
-            return "Decoding error: \(error.localizedDescription)"
+            return "Decoding error: \(Self.describeDecodingError(error))"
         }
+    }
+
+    private static func describeDecodingError(_ error: Error) -> String {
+        if let decoding = error as? DecodingError {
+            switch decoding {
+            case .keyNotFound(let key, let context):
+                return "missing key \(key.stringValue) at \(codingPathString(context.codingPath))"
+            case .typeMismatch(let type, let context):
+                return "type mismatch (expected \(type)) at \(codingPathString(context.codingPath)): \(context.debugDescription)"
+            case .valueNotFound(let type, let context):
+                return "value not found (\(type)) at \(codingPathString(context.codingPath))"
+            case .dataCorrupted(let context):
+                return "data corrupted at \(codingPathString(context.codingPath)): \(context.debugDescription)"
+            @unknown default:
+                return decoding.localizedDescription
+            }
+        }
+        return error.localizedDescription
+    }
+
+    private static func codingPathString(_ path: [CodingKey]) -> String {
+        path.map(\.stringValue).joined(separator: ".")
     }
 }

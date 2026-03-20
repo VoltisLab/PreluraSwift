@@ -30,6 +30,14 @@ struct UserProfileView: View {
         _viewModel = StateObject(wrappedValue: UserProfileViewModel(seller: seller, authService: authService))
     }
 
+    private var isPreluraSupportProfile: Bool {
+        PreluraSupportBranding.isSupportRecipient(username: viewModel.user.username)
+    }
+
+    private var profileNavigationTitle: String {
+        PreluraSupportBranding.displayTitle(forRecipientUsername: viewModel.user.username)
+    }
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
         ScrollView {
@@ -68,7 +76,7 @@ struct UserProfileView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
-        .navigationTitle(viewModel.user.username)
+        .navigationTitle(profileNavigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(false)
         .toolbar {
@@ -177,7 +185,14 @@ struct UserProfileView: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack(alignment: .center, spacing: 0) {
                 Group {
-                    if let urlString = viewModel.user.avatarURL, !urlString.isEmpty, let url = URL(string: urlString) {
+                    if isPreluraSupportProfile {
+                        PreluraSupportBranding.supportAvatar(size: Self.profilePhotoSize)
+                            .overlay(
+                                Circle()
+                                    .stroke(Theme.Colors.profileRingBorder, lineWidth: 2.5)
+                                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                            )
+                    } else if let urlString = viewModel.user.avatarURL, !urlString.isEmpty, let url = URL(string: urlString) {
                         Button(action: { showProfilePhotoFullScreen = true }) {
                             AsyncImage(url: url) { phase in
                                 switch phase {

@@ -345,6 +345,11 @@ struct PaymentView: View {
                 Text(String(format: "£%.2f", option.shippingFee))
                     .font(Theme.Typography.caption)
                     .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.secondaryText)
+                if let days = option.estimatedDays, days > 0 {
+                    Text(days == 1 ? "1 day delivery" : "\(days) days delivery")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.secondaryText)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.md)
@@ -502,8 +507,10 @@ struct PaymentView: View {
                 }
                 // Match Flutter: ensure conversation and sold-confirmation message exist by calling the mutation (backend handle_payment_success may have already done it; mutation is idempotent).
                 chatService.updateAuthToken(authService.authToken)
+                var soldConversationId: Int?
                 do {
-                    let (success, _) = try await chatService.createSoldConfirmationMessage(orderId: orderIdInt)
+                    let (success, conversationId) = try await chatService.createSoldConfirmationMessage(orderId: orderIdInt)
+                    soldConversationId = conversationId
                     NSLog("[PAY_DEBUG] createSoldConfirmationMessage orderId=%d success=%@", orderIdInt, String(success))
                 } catch {
                     NSLog("[PAY_DEBUG] createSoldConfirmationMessage failed: %@", error.localizedDescription)
@@ -513,27 +520,30 @@ struct PaymentView: View {
                 var conversationToOpen: Conversation?
                 if let seller = products.first?.seller, !seller.username.isEmpty {
                     chatService.updateAuthToken(authService.authToken)
-                    func fetchAndPick() async throws -> Conversation? {
+                    func fetchByOrderId() async throws -> Conversation? {
                         let list = try await chatService.getConversations()
                         let withSeller = list.filter { $0.recipient.username == seller.username }
                         let withOrder = withSeller.first { $0.order?.id == orderResult.orderId }
-                        let withAnyOrder = withSeller.first { $0.order != nil }
-                        return withOrder ?? withAnyOrder ?? withSeller.first
+                        return withOrder
                     }
                     do {
-                        NSLog("[PAY_DEBUG] waiting 1.5s then fetch conversations")
-                        try await Task.sleep(nanoseconds: 1_500_000_000)
-                        conversationToOpen = try await fetchAndPick()
-                        NSLog("[PAY_DEBUG] fetchAndPick first try: conv=%@", conversationToOpen?.id ?? "nil")
-                        if conversationToOpen == nil {
-                            try await Task.sleep(nanoseconds: 1_500_000_000)
-                            conversationToOpen = try await fetchAndPick()
-                            NSLog("[PAY_DEBUG] fetchAndPick retry: conv=%@", conversationToOpen?.id ?? "nil")
+                        if let convoId = soldConversationId {
+                            conversationToOpen = try await chatService.getConversationById(
+                                conversationId: String(convoId),
+                                currentUsername: authService.username
+                            )
+                            NSLog("[PAY_DEBUG] getConversationById from sold_confirmation: conv=%@", conversationToOpen?.id ?? "nil")
                         }
                         if conversationToOpen == nil {
-                            NSLog("[PAY_DEBUG] creating new chat for seller=%@", seller.username)
-                            let newConv = try await chatService.createChat(recipient: seller.username)
-                            conversationToOpen = newConv
+                            NSLog("[PAY_DEBUG] waiting 1.5s then fetch conversations by order id")
+                            try await Task.sleep(nanoseconds: 1_500_000_000)
+                            conversationToOpen = try await fetchByOrderId()
+                            NSLog("[PAY_DEBUG] fetchByOrderId first try: conv=%@", conversationToOpen?.id ?? "nil")
+                            if conversationToOpen == nil {
+                                try await Task.sleep(nanoseconds: 1_500_000_000)
+                                conversationToOpen = try await fetchByOrderId()
+                                NSLog("[PAY_DEBUG] fetchByOrderId retry: conv=%@", conversationToOpen?.id ?? "nil")
+                            }
                         }
                     } catch {
                         NSLog("[PAY_DEBUG] conversation fetch/create failed: %@", error.localizedDescription)

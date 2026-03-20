@@ -322,6 +322,14 @@ struct NotificationDestinationView: View {
 private struct NotificationRowView: View {
     let notification: AppNotification
 
+    private var senderUsername: String? {
+        notification.sender?.username
+    }
+
+    private var isSupportNotification: Bool {
+        PreluraSupportBranding.isSupportSender(username: senderUsername)
+    }
+
     /// Strips the sender's username from the start of the message (e.g. "shinor Transaction paused" → "Transaction paused").
     private var displayMessage: String {
         let msg = notification.message
@@ -335,7 +343,9 @@ private struct NotificationRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            if let sender = notification.sender, let urlString = sender.profilePictureUrl, let url = URL(string: urlString) {
+            if isSupportNotification {
+                PreluraSupportBranding.supportAvatar(size: 44)
+            } else if let sender = notification.sender, let urlString = sender.profilePictureUrl, let url = URL(string: urlString) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):

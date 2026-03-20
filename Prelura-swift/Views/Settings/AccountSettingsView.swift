@@ -17,6 +17,11 @@ struct AccountSettingsView: View {
     @State private var showDatePicker = false
     @State private var showGenderPicker = false
     @State private var showSuccess = false
+    @State private var pendingPhoneVerification: PendingPhoneVerification?
+    @State private var phoneOtpCode: String = ""
+    @State private var phoneOtpError: String?
+    @State private var isSendingPhoneOtp = false
+    @State private var isVerifyingPhoneOtp = false
     @FocusState private var focusedField: Field?
     @State private var loadedUser: User?
     /// When non-nil, we've requested an email change; show verification sheet so user enters the new code.
@@ -53,13 +58,13 @@ struct AccountSettingsView: View {
                     )
                     .focused($focusedField, equals: .email)
 
-                    SettingsTextField(
-                        placeholder: "Phone",
-                        text: $phone,
-                        keyboardType: .phonePad,
-                        textContentType: .telephoneNumber
-                    )
-                    .focused($focusedField, equals: .phone)
+                    VStack(alignment: .leading, spacing: 6) {
+                        phoneField
+                        Text("UK number only (without +44)")
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .padding(.horizontal, Theme.Spacing.sm)
+                    }
 
                     SettingsTextField(
                         placeholder: "Date of birth",
@@ -108,6 +113,9 @@ struct AccountSettingsView: View {
                 }
             )
             .environmentObject(authService)
+        }
+        .sheet(item: $pendingPhoneVerification) { wrapper in
+            phoneVerificationSheet(for: wrapper)
         }
         .alert(L10n.string("Saved"), isPresented: $showSuccess) {
             Button("OK", role: .cancel) { }
@@ -167,7 +175,7 @@ struct AccountSettingsView: View {
                     firstName = first
                     lastName = last
                     email = user.email ?? ""
-                    phone = user.phoneDisplay ?? ""
+                    phone = nationalPhoneSuffix(from: user.phoneDisplay)
                     dateOfBirth = user.dateOfBirth
                     dateOfBirthText = user.dateOfBirth.map { formatDOB($0) } ?? ""
                     gender = user.gender ?? ""
@@ -194,6 +202,59 @@ struct AccountSettingsView: View {
         return ("", "")
     }
 
+    @ViewBuilder
+    private func phoneVerificationSheet(for pending: PendingPhoneVerification) -> some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                Text("Enter the 6-digit code sent to \(pending.displayPhone)")
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                TextField("OTP code", text: $phoneOtpCode)
+                    .keyboardType(.numberPad)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .frame(height: 56)
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(Capsule())
+                    .onChange(of: phoneOtpCode) { _, newValue in
+                        phoneOtpCode = String(newValue.filter(\.isNumber).prefix(6))
+                        phoneOtpError = nil
+                    }
+                if let phoneOtpError {
+                    Text(phoneOtpError)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(.red)
+                }
+                Spacer()
+                PrimaryGlassButton(
+                    "Verify and save",
+                    isLoading: isVerifyingPhoneOtp,
+                    action: verifyPhoneOtpAndSave
+                )
+                .disabled(phoneOtpCode.count != 6 || isVerifyingPhoneOtp)
+                Button(isSendingPhoneOtp ? "Sending..." : "Resend code") {
+                    resendPhoneOtp(pending)
+                }
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.primaryColor)
+                .disabled(isSendingPhoneOtp || isVerifyingPhoneOtp)
+            }
+            .padding(Theme.Spacing.md)
+            .navigationTitle("Verify phone")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        pendingPhoneVerification = nil
+                        phoneOtpCode = ""
+                        phoneOtpError = nil
+                    }
+                }
+            }
+        }
+    }
+
     private func save() {
         guard let user = loadedUser else { return }
         isSaving = true
@@ -210,23 +271,21 @@ struct AccountSettingsView: View {
                     }
                     return
                 }
-                let firstTrimmed = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
-                let lastTrimmed = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
-                let genderToSend = gender.isEmpty ? nil : gender
-                let phoneParsed = parsePhone(phone.trimmingCharacters(in: .whitespacesAndNewlines), existing: user.phoneDisplay)
-                let displayNameToSend: String? = {
-                    if firstTrimmed.isEmpty && lastTrimmed.isEmpty { return nil }
-                    if lastTrimmed.isEmpty { return firstTrimmed }
-                    return "\(firstTrimmed) \(lastTrimmed)"
-                }()
-                try await userService.updateProfile(
-                    displayName: displayNameToSend,
-                    firstName: firstTrimmed.isEmpty ? nil : firstTrimmed,
-                    lastName: lastTrimmed.isEmpty ? nil : lastTrimmed,
-                    gender: genderToSend,
-                    dob: dateOfBirth,
-                    phoneNumber: phoneParsed
-                )
+                let phoneParsed = parsePhone(phone.trimmingCharacters(in: .whitespacesAndNewlines))
+                if hasPhoneChanged(phoneParsed, existing: user.phoneDisplay), let phoneParsed {
+                    try await userService.sendPhoneOtp(phoneNumber: "+\(phoneParsed.countryCode)\(phoneParsed.number)")
+                    await MainActor.run {
+                        isSaving = false
+                        phoneOtpCode = ""
+                        phoneOtpError = nil
+                        pendingPhoneVerification = PendingPhoneVerification(
+                            countryCode: phoneParsed.countryCode,
+                            number: phoneParsed.number
+                        )
+                    }
+                    return
+                }
+                try await performProfileUpdate(user: user, verifiedPhone: nil, otp: nil)
                 await MainActor.run {
                     isSaving = false
                     showSuccess = true
@@ -240,20 +299,149 @@ struct AccountSettingsView: View {
         }
     }
 
-    /// Parse "+44 123456789" or "44123456789" into (countryCode, number). Matches Flutter account_setting_view logic.
-    private func parsePhone(_ raw: String, existing: String?) -> (countryCode: String, number: String)? {
+    private func resendPhoneOtp(_ pending: PendingPhoneVerification) {
+        phoneOtpError = nil
+        isSendingPhoneOtp = true
+        Task {
+            do {
+                try await userService.sendPhoneOtp(phoneNumber: pending.e164)
+                await MainActor.run {
+                    isSendingPhoneOtp = false
+                }
+            } catch {
+                await MainActor.run {
+                    isSendingPhoneOtp = false
+                    phoneOtpError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func verifyPhoneOtpAndSave() {
+        guard let user = loadedUser, let pending = pendingPhoneVerification else { return }
+        guard phoneOtpCode.count == 6 else {
+            phoneOtpError = "Please enter the 6-digit OTP code."
+            return
+        }
+        phoneOtpError = nil
+        isVerifyingPhoneOtp = true
+        Task {
+            do {
+                try await performProfileUpdate(
+                    user: user,
+                    verifiedPhone: (countryCode: pending.countryCode, number: pending.number),
+                    otp: phoneOtpCode
+                )
+                await MainActor.run {
+                    isVerifyingPhoneOtp = false
+                    pendingPhoneVerification = nil
+                    phoneOtpCode = ""
+                    showSuccess = true
+                    loadUser()
+                }
+            } catch {
+                await MainActor.run {
+                    isVerifyingPhoneOtp = false
+                    phoneOtpError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func performProfileUpdate(
+        user: User,
+        verifiedPhone: (countryCode: String, number: String)?,
+        otp: String?
+    ) async throws {
+        let firstTrimmed = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lastTrimmed = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let genderToSend = gender.isEmpty ? nil : gender
+        let parsedFromForm = parsePhone(phone.trimmingCharacters(in: .whitespacesAndNewlines))
+        let phoneToSend: (countryCode: String, number: String)? = verifiedPhone ?? {
+            guard hasPhoneChanged(parsedFromForm, existing: user.phoneDisplay) else { return nil }
+            return parsedFromForm
+        }()
+        let displayNameToSend: String? = {
+            if firstTrimmed.isEmpty && lastTrimmed.isEmpty { return nil }
+            if lastTrimmed.isEmpty { return firstTrimmed }
+            return "\(firstTrimmed) \(lastTrimmed)"
+        }()
+        try await userService.updateProfile(
+            displayName: displayNameToSend,
+            firstName: firstTrimmed.isEmpty ? nil : firstTrimmed,
+            lastName: lastTrimmed.isEmpty ? nil : lastTrimmed,
+            gender: genderToSend,
+            dob: dateOfBirth,
+            phoneNumber: phoneToSend,
+            otp: otp
+        )
+    }
+
+    private var phoneField: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            HStack(spacing: 6) {
+                Text("🇬🇧")
+                Text("+44")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.Colors.primaryText)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .frame(height: 56)
+            .background(Theme.Colors.secondaryBackground)
+            .clipShape(Capsule())
+
+            TextField("Phone", text: $phone)
+                .keyboardType(.numberPad)
+                .textContentType(.telephoneNumber)
+                .focused($focusedField, equals: .phone)
+                .onChange(of: phone) { _, newValue in
+                    phone = newValue.filter(\.isNumber)
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .frame(height: 56)
+                .background(Theme.Colors.secondaryBackground)
+                .clipShape(Capsule())
+        }
+    }
+
+    private func hasPhoneChanged(
+        _ parsed: (countryCode: String, number: String)?,
+        existing: String?
+    ) -> Bool {
+        let existingDigits = normalizedExistingPhone(existing)
+        guard let parsed else {
+            return !existingDigits.isEmpty
+        }
+        return parsed.number != existingDigits
+    }
+
+    /// Parse UK national suffix into (countryCode, number). Country code is fixed at +44.
+    private func parsePhone(_ raw: String) -> (countryCode: String, number: String)? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let digits = trimmed.filter { $0.isNumber }
+        var digits = trimmed.filter { $0.isNumber }
         guard !digits.isEmpty else { return nil }
-        if trimmed.hasPrefix("+") {
-            // Assume 1–3 digit country code (e.g. 44, 1, 353)
-            let codeLen = digits.count <= 3 ? min(2, digits.count) : (digits.hasPrefix("1") ? 1 : 2)
-            let code = String(digits.prefix(codeLen))
-            let num = String(digits.dropFirst(codeLen))
-            return (code.isEmpty ? "44" : code, num)
+        if digits.hasPrefix("44") {
+            digits = String(digits.dropFirst(2))
+        } else if digits.hasPrefix("0") {
+            digits = String(digits.dropFirst())
         }
         return ("44", digits)
+    }
+
+    private func nationalPhoneSuffix(from display: String?) -> String {
+        let digits = (display ?? "").filter(\.isNumber)
+        guard !digits.isEmpty else { return "" }
+        if digits.hasPrefix("44") {
+            return String(digits.dropFirst(2))
+        }
+        return digits
+    }
+
+    private func normalizedExistingPhone(_ existing: String?) -> String {
+        let suffix = nationalPhoneSuffix(from: existing)
+        if suffix.hasPrefix("0") { return String(suffix.dropFirst()) }
+        return suffix
     }
 }
 
@@ -261,4 +449,13 @@ struct AccountSettingsView: View {
 private struct PendingEmail: Identifiable {
     let id = UUID()
     let email: String
+}
+
+private struct PendingPhoneVerification: Identifiable {
+    let id = UUID()
+    let countryCode: String
+    let number: String
+
+    var e164: String { "+\(countryCode)\(number)" }
+    var displayPhone: String { "+\(countryCode) \(number)" }
 }

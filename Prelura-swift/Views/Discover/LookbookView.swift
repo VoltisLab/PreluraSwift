@@ -294,7 +294,7 @@ private struct LookbookFeedImage: View {
             if let urlString = imageUrl, let url = URL(string: urlString) {
                 AsyncImage(url: url) { phase in
                     switch phase {
-                    case .success(let image): image.resizable().scaledToFit()
+                    case .success(let image): image.resizable().scaledToFill()
                     case .failure: Image(systemName: "photo").resizable().scaledToFit().foregroundStyle(Theme.Colors.secondaryText)
                     default: ProgressView().frame(maxWidth: .infinity).frame(minHeight: 200)
                     }
@@ -305,11 +305,11 @@ private struct LookbookFeedImage: View {
                let uiImage = UIImage(data: data) {
                 Image(uiImage: uiImage)
                     .resizable()
-                    .scaledToFit()
+                    .scaledToFill()
             } else {
                 Image(imageName)
                     .resizable()
-                    .scaledToFit()
+                    .scaledToFill()
             }
         }
     }
@@ -318,6 +318,7 @@ private struct LookbookFeedImage: View {
         imageView
             .scaleEffect(scale)
             .frame(maxWidth: .infinity)
+            .clipped()
             .overlay(alignment: .topTrailing) {
                 if hasTaggedProducts {
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showTaggedProducts.toggle() } }) {
@@ -483,9 +484,17 @@ private struct LookbookPostCard: View {
     }
 
     private let iconSize: CGFloat = 18
+    private let mediaHeight: CGFloat = 240
+
+    private var detailLine: String {
+        if let first = entry.styles.first, !first.isEmpty {
+            return "\(StyleSelectionView.displayName(for: first)) fit"
+        }
+        return "New fit"
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack(spacing: Theme.Spacing.sm) {
                 Circle()
                     .fill(Theme.Colors.secondaryBackground)
@@ -501,7 +510,12 @@ private struct LookbookPostCard: View {
                 Spacer()
             }
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.top, Theme.Spacing.sm)
+
+            Text("📍 \(detailLine)")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Theme.Colors.primaryText)
+                .padding(.horizontal, Theme.Spacing.md)
 
             LookbookFeedImage(
                 imageName: entry.imageNames.first ?? "",
@@ -518,7 +532,10 @@ private struct LookbookPostCard: View {
             },
                 onProductTap: onProductTap
             )
-                .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity)
+            .frame(height: mediaHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .padding(.horizontal, Theme.Spacing.md)
 
             HStack(spacing: Theme.Spacing.lg) {
                 Button(action: {
@@ -559,10 +576,11 @@ private struct LookbookPostCard: View {
                 Spacer()
             }
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.sm)
 
-            Divider()
-                .background(Theme.Colors.glassBorder.opacity(0.5))
+            Rectangle()
+                .fill(Theme.Colors.glassBorder.opacity(0.45))
+                .frame(height: 0.5)
                 .padding(.leading, Theme.Spacing.md)
         }
         .onChange(of: entry.isLiked) { _, new in isLiked = new }

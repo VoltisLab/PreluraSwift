@@ -37,7 +37,22 @@ struct ChatWithSellerView: View {
     private func resolveConversation() async {
         do {
             let convs = try await chatService.getConversations()
-            let existing = convs.first { $0.recipient.username == seller.username }
+            let existing: Conversation? = {
+                guard let productId = item?.productId, !productId.isEmpty else {
+                    return convs.first { $0.recipient.username == seller.username }
+                }
+                let sameSeller = convs.filter { $0.recipient.username == seller.username }
+                // Product-scoped reuse: only reuse when the thread is already tied to this product.
+                if let offerMatch = sameSeller.first(where: {
+                    $0.offer?.products?.contains(where: { $0.id == productId }) == true
+                }) {
+                    return offerMatch
+                }
+                if let orderMatch = sameSeller.first(where: { $0.order?.firstProductId == productId }) {
+                    return orderMatch
+                }
+                return nil
+            }()
             if let conv = existing {
                 await MainActor.run {
                     resolvedConversation = conv
@@ -193,7 +208,16 @@ struct ChatDetailView: View {
     }
 
     private var recipientTitle: String {
-        displayedConversation.recipient.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        PreluraSupportBranding.displayTitle(forRecipientUsername: displayedConversation.recipient.username)
+    }
+
+    private var typingDisplayName: String {
+        let raw = (typingUsername?.isEmpty == false ? typingUsername! : displayedConversation.recipient.username)
+        return PreluraSupportBranding.displayTitle(forRecipientUsername: raw)
+    }
+
+    private var isSupportConversation: Bool {
+        PreluraSupportBranding.isSupportRecipient(username: displayedConversation.recipient.username)
     }
 
     /// Messages to show: in offer conversations hide raw offer payload bubbles (offer card represents the offer).
@@ -210,12 +234,23 @@ struct ChatDetailView: View {
         isCurrentUser(username: displayedConversation.offer?.products?.first?.seller?.username)
     }
 
+    /// Seller role fallback for order-detail navigation when offer context is missing.
+    private var isSellerForOrderDetail: Bool {
+        if let soldEntry = timelineOrder.first(where: {
+            if case .sold = $0 { return true }
+            return false
+        }), case let .sold(orderInfo) = soldEntry {
+            return isCurrentUser(username: orderInfo.sellerUsername)
+        }
+        return isSeller
+    }
+
     private var messageInputBar: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             if isOtherUserTyping {
                 HStack(spacing: Theme.Spacing.xs) {
                     TypingDotsView()
-                    Text("\((typingUsername?.isEmpty == false ? typingUsername! : displayedConversation.recipient.username)) is typing")
+                    Text("\(typingDisplayName) is typing")
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
@@ -317,7 +352,8 @@ struct ChatDetailView: View {
                 let topPadding: CGFloat = timelineIndex == 0 ? 0 : (isSameGroupAsPrevious(timelineIndex: timelineIndex, message: message) ? Theme.Spacing.xs : Theme.Spacing.md)
                 if message.isOrderIssue {
                     let issueCard = OrderIssueChatCardView(
-                        message: message
+                        message: message,
+                        currentUsername: authService.username
                     )
                     .id(message.id)
                     if isCurrentUser(username: message.senderUsername) {
@@ -405,6 +441,8 @@ struct ChatDetailView: View {
                     order: orderInfo,
                     currentUsername: authService.username,
                     conversationId: displayedConversation.id,
+                    detailOrder: conversationOrderForDetail,
+                    isSellerView: isSellerForOrderDetail,
                     onOrderChanged: {
                         Task { await refetchConversationForOrder() }
                     }
@@ -953,16 +991,30 @@ struct ChatDetailView: View {
         for m in msgs {
             entries.append((m.timestamp, .message(m.id)))
         }
-        if let order = displayedConversation.order {
-            // Derive buyer/seller for the "bought" banner.
-            // `OfferInfo.buyer` is used for "who sent this offer" labeling and is not guaranteed to be the purchaser.
-            // The only reliable seller identity we have here is the listing seller username from offer.products.first.seller.
-            let seller = displayedConversation.offer?.products?.first?.seller?.username
+        if let order = displayedConversation.order, !isSupportConversation {
+            // Derive buyer/seller for the sold banner using the actual sold_confirmation sender when available.
+            // In backend mutation, sold_confirmation sender is buyer.
+            let soldSender = messages.first(where: { $0.isSoldConfirmation })?.senderUsername
             let current = authService.username ?? ""
             let recipientUsername = displayedConversation.recipient.username
             let buyer: String? = {
-                guard let s = seller, !s.isEmpty, !current.isEmpty else { return nil }
-                return s == current ? recipientUsername : current
+                let fromSold = soldSender?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let fromSold, !fromSold.isEmpty { return fromSold }
+                let offerBuyer = displayedConversation.offer?.buyer?.username?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let offerBuyer, !offerBuyer.isEmpty { return offerBuyer }
+                return nil
+            }()
+            let seller: String? = {
+                guard let buyer, !buyer.isEmpty else {
+                    let raw = displayedConversation.offer?.products?.first?.seller?.username?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return (raw?.isEmpty == false) ? raw : nil
+                }
+                let b = buyer.lowercased()
+                let c = current.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let r = recipientUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if !c.isEmpty, c != b { return current }
+                if !r.isEmpty, r != b { return recipientUsername }
+                return nil
             }()
             let orderInfo = OrderInfo.from(conversationOrder: order, buyerUsername: buyer, sellerUsername: seller)
             entries.append((orderInfo.createdAt, .sold(orderInfo)))
@@ -1272,7 +1324,7 @@ struct ChatDetailView: View {
                     .font(Theme.Typography.body)
                     .fontWeight(.semibold)
                     .foregroundColor(Theme.primaryColor)
-                Text(orderStatusDisplay(order.status))
+                Text(orderHeaderStatusText(order: order))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
@@ -1285,13 +1337,45 @@ struct ChatDetailView: View {
         .padding(.vertical, Theme.Spacing.sm)
         .background(Theme.Colors.background)
         .contentShape(Rectangle())
-        if let item = orderProductItem {
+        if let detailOrder = conversationOrderForDetail {
             return AnyView(
-                NavigationLink(destination: ItemDetailView(item: item, authService: authService)) { bar }
+                NavigationLink(destination: OrderDetailView(order: detailOrder, isSeller: isSellerForOrderDetail)) { bar }
                     .buttonStyle(.plain)
             )
         }
         return AnyView(bar)
+    }
+
+    /// Map conversation order summary to full Order model for navigation from chat header.
+    private var conversationOrderForDetail: Order? {
+        guard let order = displayedConversation.order else { return nil }
+        let product = OrderProductSummary(
+            id: order.firstProductId ?? "0",
+            name: order.firstProductName ?? "Order item",
+            imageUrl: order.firstProductImageUrl,
+            price: String(format: "%.2f", order.total),
+            condition: nil,
+            colors: [],
+            style: nil,
+            size: nil,
+            brand: nil,
+            materials: []
+        )
+        return Order(
+            id: order.id,
+            publicId: nil,
+            priceTotal: String(format: "%.2f", order.total),
+            status: order.status,
+            createdAt: order.createdAt ?? Date(),
+            otherParty: displayedConversation.recipient,
+            products: [product],
+            shippingAddress: nil,
+            shipmentService: nil,
+            deliveryDate: nil,
+            trackingNumber: nil,
+            trackingUrl: nil,
+            buyerOrderCountWithSeller: nil
+        )
     }
 
     private func orderStatusDisplay(_ status: String) -> String {
@@ -1303,6 +1387,13 @@ struct ChatDetailView: View {
         case "REFUNDED": return "Refunded"
         default: return status
         }
+    }
+
+    private func orderHeaderStatusText(order: ConversationOrder) -> String {
+        if messages.contains(where: { $0.isOrderIssue }) {
+            return "Order on hold"
+        }
+        return orderStatusDisplay(order.status)
     }
 
     private var offerProductHeaderBar: some View {
@@ -1395,27 +1486,32 @@ struct ChatDetailView: View {
         }
     }
 
+    @ViewBuilder
     private func chatTitleAvatar(url: String?, username: String) -> some View {
-        Group {
-            if let u = url, !u.isEmpty, let parsed = URL(string: u) {
-                AsyncImage(url: parsed) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFill()
-                    case .failure:
-                        chatAvatarPlaceholder(username: username)
-                    case .empty:
-                        chatAvatarPlaceholder(username: username)
-                    @unknown default:
-                        chatAvatarPlaceholder(username: username)
+        if PreluraSupportBranding.isSupportRecipient(username: username) {
+            PreluraSupportBranding.supportAvatar(size: Self.chatAvatarSize)
+        } else {
+            Group {
+                if let u = url, !u.isEmpty, let parsed = URL(string: u) {
+                    AsyncImage(url: parsed) { phase in
+                        switch phase {
+                        case .success(let img):
+                            img.resizable().scaledToFill()
+                        case .failure:
+                            chatAvatarPlaceholder(username: username)
+                        case .empty:
+                            chatAvatarPlaceholder(username: username)
+                        @unknown default:
+                            chatAvatarPlaceholder(username: username)
+                        }
                     }
+                } else {
+                    chatAvatarPlaceholder(username: username)
                 }
-            } else {
-                chatAvatarPlaceholder(username: username)
             }
+            .frame(width: Self.chatAvatarSize, height: Self.chatAvatarSize)
+            .clipShape(Circle())
         }
-        .frame(width: Self.chatAvatarSize, height: Self.chatAvatarSize)
-        .clipShape(Circle())
     }
 
     private func chatAvatarPlaceholder(username: String) -> some View {
@@ -2117,10 +2213,13 @@ struct SoldConfirmationCardView: View {
     let order: OrderInfo
     let currentUsername: String?
     var conversationId: String? = nil
+    var detailOrder: Order? = nil
+    var isSellerView: Bool? = nil
     var onOrderChanged: (() -> Void)? = nil
     @EnvironmentObject var authService: AuthService
     @State private var showBuyerHelp = false
     @State private var showSellerOptions = false
+    @State private var showOrderDetails = false
 
     private var isBuyer: Bool {
         currentUsername.map {
@@ -2149,13 +2248,13 @@ struct SoldConfirmationCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             HStack {
-                Image(systemName: "checkmark.circle.fill")
+                Image(systemName: "shippingbox")
                     .font(.system(size: 24))
-                    .foregroundColor(Theme.primaryColor)
+                    .foregroundColor(Theme.Colors.secondaryText)
                 Text(
                     isSeller
                         ? "This item has sold"
-                        : (isBuyer ? "You bought this" : "\(order.buyerUsername) bought this")
+                        : (isBuyer ? "Payment successful!" : "\(order.buyerUsername) bought this")
                 )
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
@@ -2187,12 +2286,26 @@ struct SoldConfirmationCardView: View {
             RoundedRectangle(cornerRadius: 24)
                 .stroke(Theme.Colors.glassBorder, lineWidth: 1)
         )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard detailOrder != nil else { return }
+            showOrderDetails = true
+        }
         .background(
-            NavigationLink(
-                destination: OrderHelpView(orderId: order.orderId, conversationId: conversationId),
-                isActive: $showBuyerHelp
-            ) { EmptyView() }
-            .hidden()
+            Group {
+                NavigationLink(
+                    destination: OrderHelpView(orderId: order.orderId, conversationId: conversationId),
+                    isActive: $showBuyerHelp
+                ) { EmptyView() }
+                .hidden()
+                if let detailOrder {
+                    NavigationLink(
+                        destination: OrderDetailView(order: detailOrder, isSeller: isSellerView ?? isSeller),
+                        isActive: $showOrderDetails
+                    ) { EmptyView() }
+                    .hidden()
+                }
+            }
         )
         .sheet(isPresented: $showSellerOptions) {
             NavigationStack {
@@ -2290,6 +2403,7 @@ private struct SellerOrderProblemOptionsView: View {
 
 private struct OrderIssueChatCardView: View {
     let message: Message
+    var currentUsername: String?
 
     private static func relativeTimestamp(for date: Date) -> String {
         let now = Date()
@@ -2303,15 +2417,48 @@ private struct OrderIssueChatCardView: View {
 
     var body: some View {
         let payload = message.parsedOrderIssueDetails
+        let sender = message.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let me = (currentUsername ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let titleText: String = {
+            guard !sender.isEmpty, !me.isEmpty else { return "Order issue reported" }
+            if sender == me { return "You reported an issue" }
+            return "\(message.senderUsername) reported an issue"
+        }()
         NavigationLink(destination: OrderIssueDetailView(issueId: payload?.issueId, publicId: payload?.publicId)) {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                Text("You reported an issue")
+                Text(titleText)
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
                 if let rawType = payload?.issueType, !rawType.isEmpty {
                     Text(humanReadableIssueType(rawType))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
+                }
+                if let details = payload?.description,
+                   !details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(details)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
+                }
+                if let urls = payload?.imageUrls, !urls.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Spacing.xs) {
+                            ForEach(urls, id: \.self) { urlString in
+                                if let url = URL(string: urlString) {
+                                    AsyncImage(url: url) { phase in
+                                        switch phase {
+                                        case .success(let image):
+                                            image.resizable().scaledToFill()
+                                        default:
+                                            Rectangle().fill(Theme.Colors.tertiaryBackground)
+                                        }
+                                    }
+                                    .frame(width: 88, height: 88)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                }
+                            }
+                        }
+                    }
                 }
                 HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                     Text("Order on hold")
@@ -2391,21 +2538,26 @@ struct MessageBubbleView: View {
     /// Vertical offset so the avatar is centered with a single-line bubble. This position is kept for multi-line bubbles (avatar does not re-center).
     private static let avatarTopOffsetForSingleLineCenter: CGFloat = 4
 
+    @ViewBuilder
     private var messageAvatarView: some View {
-        Group {
-            if let u = avatarURL, !u.isEmpty, let url = URL(string: u) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img): img.resizable().scaledToFill()
-                    default: messageAvatarPlaceholder
+        if PreluraSupportBranding.isSupportRecipient(username: recipientUsername) {
+            PreluraSupportBranding.supportAvatar(size: Self.messageAvatarSize)
+        } else {
+            Group {
+                if let u = avatarURL, !u.isEmpty, let url = URL(string: u) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFill()
+                        default: messageAvatarPlaceholder
+                        }
                     }
+                } else {
+                    messageAvatarPlaceholder
                 }
-            } else {
-                messageAvatarPlaceholder
             }
+            .frame(width: Self.messageAvatarSize, height: Self.messageAvatarSize)
+            .clipShape(Circle())
         }
-        .frame(width: Self.messageAvatarSize, height: Self.messageAvatarSize)
-        .clipShape(Circle())
     }
 
     private var messageAvatarPlaceholder: some View {
@@ -2419,48 +2571,53 @@ struct MessageBubbleView: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.xs) {
-            if isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
-            if !isCurrentUser {
-                Group {
-                    if showAvatar {
-                        messageAvatarView
-                            .offset(y: Self.avatarTopOffsetForSingleLineCenter)
-                    } else {
-                        Color.clear
-                            .frame(width: Self.messageAvatarSize, height: Self.messageAvatarSize)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .top, spacing: Theme.Spacing.xs) {
+                if isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
+                if !isCurrentUser {
+                    Group {
+                        if showAvatar {
+                            messageAvatarView
+                                .offset(y: Self.avatarTopOffsetForSingleLineCenter)
+                        } else {
+                            Color.clear
+                                .frame(width: Self.messageAvatarSize, height: Self.messageAvatarSize)
+                        }
                     }
                 }
+                VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 4) {
+                    Text(message.displayContentForBubble(isFromCurrentUser: isCurrentUser))
+                        .font(Theme.Typography.body)
+                        .foregroundColor(isCurrentUser ? .white : Theme.Colors.primaryText)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.sm)
+                        .background(
+                            isCurrentUser
+                                ? LinearGradient(
+                                    colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.85)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                                : LinearGradient(
+                                    colors: [Theme.Colors.secondaryBackground, Theme.Colors.secondaryBackground],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                        )
+                        .cornerRadius(18)
+                }
+                .frame(maxWidth: bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
+                if !isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
             }
-            VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 4) {
-                Text(message.displayContentForBubble(isFromCurrentUser: isCurrentUser))
-                    .font(Theme.Typography.body)
-                    .foregroundColor(isCurrentUser ? .white : Theme.Colors.primaryText)
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.sm)
-                    .background(
-                        isCurrentUser
-                            ? LinearGradient(
-                                colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.85)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                            : LinearGradient(
-                                colors: [Theme.Colors.secondaryBackground, Theme.Colors.secondaryBackground],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                    )
-                    .cornerRadius(18)
-                if showTimestamp {
+            if showTimestamp {
+                HStack {
+                    Spacer(minLength: 0)
                     Text(message.formattedTimestamp)
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
+                .padding(.leading, isCurrentUser ? 0 : (Self.messageAvatarSize + Theme.Spacing.xs))
             }
-            .frame(maxWidth: bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
-            if !isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
         }
         .padding(.vertical, 2)
     }

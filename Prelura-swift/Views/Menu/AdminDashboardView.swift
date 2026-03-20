@@ -41,6 +41,13 @@ struct AdminDashboardView: View {
     var body: some View {
         List {
             Section {
+                NavigationLink {
+                    AdminOrderIssuesView()
+                } label: {
+                    adminRow("Order issues", icon: "exclamationmark.bubble", isDestructive: false)
+                }
+            }
+            Section {
                 Button(role: .destructive, action: { showDeleteUserSheet = true }) {
                     adminRow("Delete user", icon: "person.crop.circle.badge.minus")
                 }

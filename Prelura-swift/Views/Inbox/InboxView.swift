@@ -12,23 +12,33 @@ struct InboxView: View {
 
 struct InboxMessageRow: View {
     let message: Message
+
+    private var senderDisplayName: String {
+        PreluraSupportBranding.displayTitle(forRecipientUsername: message.senderUsername)
+    }
     
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Spacing.md) {
             // Profile Picture
-            ZStack {
-                Circle()
-                    .fill(Theme.primaryColor)
-                    .frame(width: 50, height: 50)
-                
-                Text(String(message.senderUsername.prefix(1)).uppercased())
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.white)
+            Group {
+                if PreluraSupportBranding.isSupportRecipient(username: message.senderUsername) {
+                    PreluraSupportBranding.supportAvatar(size: 50)
+                } else {
+                    ZStack {
+                        Circle()
+                            .fill(Theme.primaryColor)
+                            .frame(width: 50, height: 50)
+                        
+                        Text(String(message.senderUsername.prefix(1)).uppercased())
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
             }
             
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 // Sender Name
-                Text(message.senderUsername)
+                Text(senderDisplayName)
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.primaryText)
                 
@@ -78,7 +88,7 @@ struct MessageDetailView: View {
             .padding()
         }
         .background(Theme.Colors.background)
-        .navigationTitle(message.senderUsername)
+        .navigationTitle(PreluraSupportBranding.displayTitle(forRecipientUsername: message.senderUsername))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
