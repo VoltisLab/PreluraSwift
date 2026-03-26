@@ -47,6 +47,8 @@ class AuthService: ObservableObject {
         self.username = username
         self.isGuestMode = false
         client.setAuthToken(token)
+        // After login, upload FCM token to backend (same moment GraphQL has Bearer token).
+        NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
     }
     
     func login(username: String, password: String) async throws -> LoginResponse {

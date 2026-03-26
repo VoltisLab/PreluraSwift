@@ -249,7 +249,8 @@ class ChatService: ObservableObject {
                 buyer: base.buyer,
                 products: base.products,
                 createdAt: base.createdAt ?? parseGraphQLDateString(data.createdAt),
-                sentByCurrentUser: fromMe
+                sentByCurrentUser: fromMe,
+                financialBuyerUsername: base.financialBuyerUsername
             )
         }
     }
@@ -595,6 +596,10 @@ struct Conversation: Hashable {
         let price: Double = data.offerPrice?.value ?? 0
         // Prefer createdBy (sender of this offer/counter) for display so "X offered" is correct.
         let displayUsername = data.createdBy ?? data.buyer?.username
+        let financialBuyer: String? = {
+            let t = data.buyer?.username?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return t.isEmpty ? nil : t
+        }()
         let buyer: OfferInfo.OfferUser? = displayUsername.map { OfferInfo.OfferUser(username: $0, profilePictureUrl: data.buyer?.profilePictureUrl) }
         let products: [OfferInfo.OfferProduct]? = data.products?.map { p in
             OfferInfo.OfferProduct(
@@ -611,7 +616,8 @@ struct Conversation: Hashable {
             buyer: buyer,
             products: products,
             createdAt: parseGraphQLDateString(data.createdAt),
-            sentByCurrentUser: false
+            sentByCurrentUser: false,
+            financialBuyerUsername: financialBuyer
         )
     }
 }

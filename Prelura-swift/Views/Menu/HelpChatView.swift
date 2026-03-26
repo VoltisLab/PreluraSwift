@@ -454,8 +454,28 @@ struct HelpChatView: View {
         do {
             let msgs = try await chatService.getMessages(conversationId: cid, pageNumber: 1, pageCount: 100)
             let me = (authService.username ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            // Structured order-issue payload is rendered in the summary card; hide raw JSON bubbles.
-            let rendered = msgs.filter { !$0.isOrderIssue }
+            // Hide structured system-context payloads from bubbles:
+            // - order_issue (already summarized at the top)
+            // - account_report / product_report (reports context)
+            let rendered = msgs.filter { m in
+                // Suppress any structured system payloads that should be summarized, not bubbled
+                let trimmed = m.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.hasPrefix("{"),
+                   let data = trimmed.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let t = ((json["type"] as? String) ?? (json["message_type"] as? String) ?? (json["kind"] as? String))?.lowercased() ?? ""
+                    if t == "order_issue" || t == "account_report" || t == "product_report" {
+                        return false
+                    }
+                    // If common report keys exist, assume it's a report context blob and hide
+                    if json["public_id"] != nil && (json["reported_username"] != nil || json["reason"] != nil) {
+                        return false
+                    }
+                }
+                // Legacy flag
+                if m.isOrderIssue { return false }
+                return true
+            }
             let mapped: [SupportChatMessage] = rendered.map { m in
                 let sender = m.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                 let fromUser = !me.isEmpty && sender == me
@@ -483,17 +503,21 @@ struct HelpChatView: View {
         var seen = Set<String>()
         var issueTypeText: String?
         var description: String?
-        for message in messages where message.isOrderIssue {
+        for message in messages {
             let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard trimmed.hasPrefix("{"),
                   let data = trimmed.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+
+            let kind = ((json["type"] as? String) ?? (json["message_type"] as? String) ?? (json["kind"] as? String))?.lowercased()
+            guard kind == "order_issue" || kind == "account_report" || kind == "product_report" else { continue }
 
             if issueTypeText == nil {
                 issueTypeText = (json["issue_type"] as? String)
                     ?? (json["issueType"] as? String)
                     ?? (json["title"] as? String)
                     ?? (json["subject"] as? String)
+                    ?? (json["reason"] as? String)
             }
             if description == nil {
                 let rawDescription = (json["description"] as? String)

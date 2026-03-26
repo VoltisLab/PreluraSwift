@@ -20,3 +20,9 @@ xcuserdata/
 
 # API keys (paste your key in Secrets.plist; do not commit)
 Prelura-swift/Secrets.plist
+
+# Firebase iOS config (per-environment; create a dedicated Swift Firebase project — see docs/FIREBASE_IOS_SETUP.md)
+Prelura-swift/GoogleService-Info.plist
+
+# Apple APNs auth keys (.p8) — never commit; upload in Firebase Console only (see docs/FIREBASE_IOS_SETUP.md)
+*.p8

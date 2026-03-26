@@ -53,32 +53,67 @@ final class AppRouter: ObservableObject {
         }
     }
 
+    /// Flattens FCM/APNs `userInfo` so backend custom keys are readable (top-level, nested `data`, or JSON string).
+    static func normalizedPushUserInfo(_ userInfo: [AnyHashable: Any]) -> [AnyHashable: Any] {
+        var out: [String: Any] = [:]
+        for (key, value) in userInfo {
+            guard let k = key as? String else { continue }
+            out[k] = value
+        }
+        if let nested = userInfo[AnyHashable("data")] as? [String: Any] {
+            for (k, v) in nested { out[k] = v }
+        }
+        if let dataStr = userInfo[AnyHashable("data")] as? String,
+           let d = dataStr.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+            for (k, v) in obj { out[k] = v }
+        }
+        return Dictionary(uniqueKeysWithValues: out.map { (AnyHashable($0.key), $0.value) })
+    }
+
     /// Handle push notification payload (same keys as Flutter: page, object_id, conversation_id, title, is_offer, is_order).
+    /// Also accepts `username` / `sender_username` for chat; `title` may come from aps.alert.
     func handle(notificationPayload: [AnyHashable: Any]) {
-        guard let page = notificationPayload["page"] as? String else { return }
+        let p = Self.normalizedPushUserInfo(notificationPayload)
+        var page = (p["page"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if page?.isEmpty != false {
+            let hasConv = (p["conversation_id"] as? String).map { !$0.isEmpty } == true
+                || p["conversation_id"] as? Int != nil
+            if hasConv { page = "MESSAGE" }
+        }
+        guard let page, !page.isEmpty else { return }
         var dest: DeepLinkDestination?
-        switch page {
+        switch page.uppercased() {
         case "PRODUCT":
-            if let objectId = notificationPayload["object_id"] as? String, let id = Int(objectId) {
+            if let objectId = p["object_id"] as? String, let id = Int(objectId) {
                 dest = .product(productId: id)
-            } else if let objectId = notificationPayload["object_id"] as? Int {
+            } else if let objectId = p["object_id"] as? Int {
                 dest = .product(productId: objectId)
             }
         case "USER":
-            if let username = notificationPayload["object_id"] as? String {
+            if let username = p["object_id"] as? String {
                 dest = .user(username: username)
             }
-        case "CONVERSATION", "OFFER", "ORDER":
+        case "CONVERSATION", "OFFER", "ORDER", "MESSAGE", "CHAT":
             let convId: String? = {
-                if let s = notificationPayload["conversation_id"] as? String { return s }
-                if let i = notificationPayload["conversation_id"] as? Int { return String(i) }
+                if let s = p["conversation_id"] as? String, !s.isEmpty { return s }
+                if let i = p["conversation_id"] as? Int { return String(i) }
                 return nil
             }()
-            if let convId = convId, let title = notificationPayload["title"] as? String {
-                let isOffer: Bool = (notificationPayload["is_offer"] as? String)?.lowercased() == "true" || page == "OFFER"
-                let isOrder: Bool = (notificationPayload["is_order"] as? String)?.lowercased() == "true" || page == "ORDER"
-                dest = .conversation(conversationId: convId, username: title, isOffer: isOffer, isOrder: isOrder)
-            }
+            guard let convId, !convId.isEmpty else { break }
+            let peerName: String = {
+                if let t = p["title"] as? String, !t.isEmpty { return t }
+                if let u = p["username"] as? String, !u.isEmpty { return u }
+                if let s = p["sender_username"] as? String, !s.isEmpty { return s }
+                if let aps = p["aps"] as? [String: Any],
+                   let alert = aps["alert"] as? [String: Any],
+                   let t = alert["title"] as? String, !t.isEmpty { return t }
+                return "Chat"
+            }()
+            let pageUpper = page.uppercased()
+            let isOffer: Bool = (p["is_offer"] as? String)?.lowercased() == "true" || pageUpper == "OFFER"
+            let isOrder: Bool = (p["is_order"] as? String)?.lowercased() == "true" || pageUpper == "ORDER"
+            dest = .conversation(conversationId: convId, username: peerName, isOffer: isOffer, isOrder: isOrder)
         default:
             break
         }

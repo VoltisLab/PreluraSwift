@@ -239,7 +239,7 @@ struct ChatDetailView: View {
         if let soldEntry = timelineOrder.first(where: {
             if case .sold = $0 { return true }
             return false
-        }), case let .sold(orderInfo) = soldEntry {
+        }), case let .sold(orderInfo) = soldEntry, orderInfo.rolesConfirmed {
             return isCurrentUser(username: orderInfo.sellerUsername)
         }
         return isSeller
@@ -738,7 +738,8 @@ struct ChatDetailView: View {
                                 buyer: accepted.buyer,
                                 products: accepted.products,
                                 createdAt: accepted.createdAt ?? combined[i].createdAt,
-                                sentByCurrentUser: accepted.sentByCurrentUser
+                                sentByCurrentUser: accepted.sentByCurrentUser,
+                                financialBuyerUsername: accepted.financialBuyerUsername
                             )
                         }
 
@@ -808,7 +809,7 @@ struct ChatDetailView: View {
         }
         if let hist = displayedConversation.offerHistory, !hist.isEmpty {
             let list = hist.map { o in
-                OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser)
+                OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser, financialBuyerUsername: o.financialBuyerUsername)
             }
 
             // Make ACCEPTED immutable even after a full reload: server offerHistory may downgrade old accepted offers.
@@ -842,7 +843,8 @@ struct ChatDetailView: View {
                     buyer: accepted.buyer,
                     products: accepted.products,
                     createdAt: accepted.createdAt ?? combined[i].createdAt,
-                    sentByCurrentUser: accepted.sentByCurrentUser
+                    sentByCurrentUser: accepted.sentByCurrentUser,
+                    financialBuyerUsername: accepted.financialBuyerUsername
                 )
             }
 
@@ -867,11 +869,11 @@ struct ChatDetailView: View {
         }
         if Self.offerHistoryCache[cacheKey] == nil, let persisted = Self.loadOfferHistory(key: cacheKey), !persisted.isEmpty {
             Self.offerHistoryCache[cacheKey] = persisted.map { o in
-                OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser)
+                OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser, financialBuyerUsername: o.financialBuyerUsername)
             }
         }
         if let cached = Self.offerHistoryCache[cacheKey], !cached.isEmpty {
-            var list = cached.map { o in OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser) }
+            var list = cached.map { o in OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser, financialBuyerUsername: o.financialBuyerUsername) }
             // If server has an offer that isn't our last cached offer (e.g. counter received), append it so it appears in the thread.
             if let serverOffer = displayedConversation.offer {
                 let serverId = serverOffer.id
@@ -893,7 +895,7 @@ struct ChatDetailView: View {
                             tc.pendingOfferPrice = nil
                         }
                     }
-                    let newOffer = OfferInfo(id: serverId, backendId: serverId, status: serverOffer.status ?? "PENDING", offerPrice: offerPrice, buyer: serverOffer.buyer, products: serverOffer.products, createdAt: serverOffer.createdAt ?? Date(), sentByCurrentUser: fromMe)
+                    let newOffer = OfferInfo(id: serverId, backendId: serverId, status: serverOffer.status ?? "PENDING", offerPrice: offerPrice, buyer: serverOffer.buyer, products: serverOffer.products, createdAt: serverOffer.createdAt ?? Date(), sentByCurrentUser: fromMe, financialBuyerUsername: serverOffer.financialBuyerUsername)
                     list.append(newOffer)
                     Self.offerHistoryCache[cacheKey] = list
                     Self.persistOfferHistory(key: cacheKey, offers: list)
@@ -921,7 +923,7 @@ struct ChatDetailView: View {
                 }
             }
             offers = [
-                OfferInfo(id: sid, backendId: sid, status: status, offerPrice: offerPrice, buyer: serverOffer.buyer, products: serverOffer.products, createdAt: serverOffer.createdAt ?? Date(), sentByCurrentUser: fromMe)
+                OfferInfo(id: sid, backendId: sid, status: status, offerPrice: offerPrice, buyer: serverOffer.buyer, products: serverOffer.products, createdAt: serverOffer.createdAt ?? Date(), sentByCurrentUser: fromMe, financialBuyerUsername: serverOffer.financialBuyerUsername)
             ]
         } else {
             offers = []
@@ -951,7 +953,8 @@ struct ChatDetailView: View {
                 buyer: buyer,
                 products: products,
                 createdAt: msg.timestamp,
-                sentByCurrentUser: fromMe
+                sentByCurrentUser: fromMe,
+                financialBuyerUsername: nil
             )
             added.append(o)
             existingIds.insert(idStr)
@@ -980,6 +983,57 @@ struct ChatDetailView: View {
         !offer.sentByCurrentUser
     }
 
+    /// Buyer/seller for the sold banner. Prefer `sold_confirmation` sender as buyer; do not trust offer row `buyer.username` alone (it may be `createdBy` from counters).
+    private func inferPartiesForSoldBanner() -> (buyer: String, seller: String, rolesConfirmed: Bool) {
+        let current = (authService.username ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let recipientRaw = displayedConversation.recipient.username.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        func inferSellerGivenBuyer(_ buyer: String) -> String? {
+            let b = buyer.lowercased()
+            let c = current.lowercased()
+            let r = recipientRaw.lowercased()
+            if !c.isEmpty, c != b { return current }
+            if !r.isEmpty, r != b { return displayedConversation.recipient.username }
+            let raw = displayedConversation.offer?.products?.first?.seller?.username?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (raw?.isEmpty == false) ? raw! : nil
+        }
+
+        let soldSender = messages.last(where: { $0.isSoldConfirmation })?.senderUsername
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let ss = soldSender, !ss.isEmpty {
+            let seller = inferSellerGivenBuyer(ss)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let ok = !seller.isEmpty && seller.lowercased() != ss.lowercased()
+            return (ss, seller, ok)
+        }
+
+        if !hasFinishedInitialConversationFetch {
+            return ("", "", false)
+        }
+
+        let offer = displayedConversation.offer
+        let trimmedFinancial = offer?.financialBuyerUsername?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let buyerFromFinancial = trimmedFinancial.isEmpty ? nil : trimmedFinancial
+        let trimmedDisplayBuyer = offer?.buyer?.username?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let buyerCandidate = buyerFromFinancial ?? (trimmedDisplayBuyer.isEmpty ? nil : trimmedDisplayBuyer)
+
+        if let bc = buyerCandidate, !bc.isEmpty {
+            let seller = inferSellerGivenBuyer(bc)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let ok = !seller.isEmpty && seller.lowercased() != bc.lowercased()
+            return (bc, seller, ok)
+        }
+
+        let ps = offer?.products?.first?.seller?.username?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !ps.isEmpty else { return ("", "", false) }
+        let pl = ps.lowercased()
+        if recipientRaw.lowercased() == pl, !current.isEmpty {
+            return (current, ps, true)
+        }
+        if current.lowercased() == pl, !recipientRaw.isEmpty {
+            return (recipientRaw, ps, true)
+        }
+        return ("", "", false)
+    }
+
     /// Build timeline order by merging offers, messages, and sold event; sort by date.
     private func rebuildTimelineOrder() {
         // Once order is sold, hide historical offer cards to avoid duplicate/stacked sale banners.
@@ -993,31 +1047,13 @@ struct ChatDetailView: View {
             entries.append((m.timestamp, .message(m.id)))
         }
         if let order = displayedConversation.order, !isSupportConversation {
-            // Derive buyer/seller for the sold banner using the actual sold_confirmation sender when available.
-            // In backend mutation, sold_confirmation sender is buyer.
-            let soldSender = messages.first(where: { $0.isSoldConfirmation })?.senderUsername
-            let current = authService.username ?? ""
-            let recipientUsername = displayedConversation.recipient.username
-            let buyer: String? = {
-                let fromSold = soldSender?.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let fromSold, !fromSold.isEmpty { return fromSold }
-                let offerBuyer = displayedConversation.offer?.buyer?.username?.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let offerBuyer, !offerBuyer.isEmpty { return offerBuyer }
-                return nil
-            }()
-            let seller: String? = {
-                guard let buyer, !buyer.isEmpty else {
-                    let raw = displayedConversation.offer?.products?.first?.seller?.username?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    return (raw?.isEmpty == false) ? raw : nil
-                }
-                let b = buyer.lowercased()
-                let c = current.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                let r = recipientUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                if !c.isEmpty, c != b { return current }
-                if !r.isEmpty, r != b { return recipientUsername }
-                return nil
-            }()
-            let orderInfo = OrderInfo.from(conversationOrder: order, buyerUsername: buyer, sellerUsername: seller)
+            let parties = inferPartiesForSoldBanner()
+            let orderInfo = OrderInfo.from(
+                conversationOrder: order,
+                buyerUsername: parties.buyer,
+                sellerUsername: parties.seller,
+                rolesConfirmed: parties.rolesConfirmed
+            )
             entries.append((orderInfo.createdAt, .sold(orderInfo)))
         }
         entries.sort { $0.0 < $1.0 }
@@ -1035,7 +1071,7 @@ struct ChatDetailView: View {
         await MainActor.run {
             isRespondingToOffer = true
             offerError = nil
-            let optimistic = OfferInfo(id: UUID().uuidString, backendId: nil, status: "PENDING", offerPrice: offerPrice, buyer: offer.buyer, products: offer.products, createdAt: Date(), sentByCurrentUser: true)
+            let optimistic = OfferInfo(id: UUID().uuidString, backendId: nil, status: "PENDING", offerPrice: offerPrice, buyer: offer.buyer, products: offer.products, createdAt: Date(), sentByCurrentUser: true, financialBuyerUsername: offer.financialBuyerUsername)
             offers = offers + [optimistic]
             rebuildTimelineOrder()
         }
@@ -1082,7 +1118,8 @@ struct ChatDetailView: View {
                     buyer: serverOfferFromCreate?.buyer ?? offer.buyer,
                     products: serverOfferFromCreate?.products ?? offer.products,
                     createdAt: offers[optIdx].createdAt ?? Date(),
-                    sentByCurrentUser: true
+                    sentByCurrentUser: true,
+                    financialBuyerUsername: serverOfferFromCreate?.financialBuyerUsername ?? offer.financialBuyerUsername
                 )
                 var nextOffers = offers
                 nextOffers[optIdx] = confirmed
@@ -1114,7 +1151,7 @@ struct ChatDetailView: View {
         let newPrice = offerPrice ?? offer.offerPrice
         if isCounter {
             await MainActor.run {
-                let optimistic = OfferInfo(id: UUID().uuidString, backendId: nil, status: "PENDING", offerPrice: newPrice, buyer: offer.buyer, products: offer.products, createdAt: Date(), sentByCurrentUser: true)
+                let optimistic = OfferInfo(id: UUID().uuidString, backendId: nil, status: "PENDING", offerPrice: newPrice, buyer: offer.buyer, products: offer.products, createdAt: Date(), sentByCurrentUser: true, financialBuyerUsername: offer.financialBuyerUsername)
                 offers = offers + [optimistic]
                 rebuildTimelineOrder()
             }
@@ -1170,7 +1207,8 @@ struct ChatDetailView: View {
                         buyer: serverOffer?.buyer ?? offer.buyer,
                         products: serverOffer?.products ?? offer.products,
                         createdAt: offers[optIdx].createdAt ?? Date(),
-                        sentByCurrentUser: true
+                        sentByCurrentUser: true,
+                        financialBuyerUsername: serverOffer?.financialBuyerUsername ?? offer.financialBuyerUsername
                     )
                     var nextOffers = offers
                     nextOffers[optIdx] = confirmed
@@ -1224,7 +1262,8 @@ struct ChatDetailView: View {
                             buyer: buyer,
                             products: products,
                             createdAt: last.createdAt ?? Date(),
-                            sentByCurrentUser: last.sentByCurrentUser
+                            sentByCurrentUser: last.sentByCurrentUser,
+                            financialBuyerUsername: serverMatchesTarget ? serverOffer.financialBuyerUsername : last.financialBuyerUsername
                         )
                         var nextOffers = offers
                         nextOffers[idx] = updatedOffer
@@ -1297,24 +1336,15 @@ struct ChatDetailView: View {
         guard let order = displayedConversation.order else { return AnyView(EmptyView()) }
         let headerPrice = latestAcceptedOfferPriceForHeader ?? order.total
         let priceStr = String(format: "£%.2f", headerPrice)
+        let rawOrderImage = orderProductItem?.imageURLs.first ?? order.firstProductImageUrl
+        let trimmedOrderImage = rawOrderImage?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let orderThumb: (url: URL?, invalidURL: Bool) = {
+            guard let t = trimmedOrderImage, !t.isEmpty else { return (nil, false) }
+            if let u = URL(string: t) { return (u, false) }
+            return (nil, true)
+        }()
         let bar = HStack(spacing: Theme.Spacing.md) {
-            Group {
-                if let urlString = orderProductItem?.imageURLs.first ?? order.firstProductImageUrl,
-                   let url = URL(string: urlString) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().scaledToFill()
-                        default: ImageShimmerPlaceholderFilled(cornerRadius: 8)
-                        }
-                    }
-                } else {
-                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
-                }
-            }
-            .aspectRatio(1, contentMode: .fill)
-            .frame(width: 56, height: 56)
-            .clipped()
-            .cornerRadius(8)
+            ChatHeaderProductThumbnail(imageURL: orderThumb.url, invalidURLFromAPI: orderThumb.invalidURL)
             VStack(alignment: .leading, spacing: 2) {
                 Text(order.firstProductName ?? "Order")
                     .font(Theme.Typography.subheadline)
@@ -1400,23 +1430,15 @@ struct ChatDetailView: View {
     private var offerProductHeaderBar: some View {
         let offer = displayedConversation.offer!
         let priceStr = String(format: "£%.2f", offer.offerPrice)
+        let rawOfferImage = offerProductItem?.imageURLs.first
+        let trimmedOfferImage = rawOfferImage?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let offerThumb: (url: URL?, invalidURL: Bool) = {
+            guard let t = trimmedOfferImage, !t.isEmpty else { return (nil, false) }
+            if let u = URL(string: t) { return (u, false) }
+            return (nil, true)
+        }()
         let bar = HStack(spacing: Theme.Spacing.md) {
-            Group {
-                if let item = offerProductItem, let urlString = item.imageURLs.first, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().scaledToFill()
-                        default: ImageShimmerPlaceholderFilled(cornerRadius: 8)
-                        }
-                    }
-                } else {
-                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
-                }
-            }
-            .aspectRatio(1, contentMode: .fill)
-            .frame(width: 56, height: 56)
-            .clipped()
-            .cornerRadius(8)
+            ChatHeaderProductThumbnail(imageURL: offerThumb.url, invalidURLFromAPI: offerThumb.invalidURL)
             VStack(alignment: .leading, spacing: 2) {
                 Text(offerProductItem?.title ?? offer.products?.first?.name ?? "Product")
                     .font(Theme.Typography.subheadline)
@@ -1538,7 +1560,8 @@ struct ChatDetailView: View {
             buyer: existing.buyer,
             products: existing.products,
             createdAt: existing.createdAt ?? Date(),
-            sentByCurrentUser: existing.sentByCurrentUser
+            sentByCurrentUser: existing.sentByCurrentUser,
+            financialBuyerUsername: existing.financialBuyerUsername
         )
         let senderNorm = event.senderUsername?.trimmingCharacters(in: .whitespacesAndNewlines)
         let explicitMine: Bool? = {
@@ -1561,7 +1584,8 @@ struct ChatDetailView: View {
             buyer: displayBuyer,
             products: incoming.products ?? existing.products,
             createdAt: incoming.createdAt ?? Date(),
-            sentByCurrentUser: sentByMe
+            sentByCurrentUser: sentByMe,
+            financialBuyerUsername: incoming.financialBuyerUsername ?? existing.financialBuyerUsername
         )
         next.append(newRow)
         offers = next
@@ -1601,7 +1625,8 @@ struct ChatDetailView: View {
                     buyer: OfferInfo.OfferUser(username: sender, profilePictureUrl: o.buyer?.profilePictureUrl),
                     products: o.products,
                     createdAt: o.createdAt ?? Date(),
-                    sentByCurrentUser: false
+                    sentByCurrentUser: false,
+                    financialBuyerUsername: o.financialBuyerUsername
                 )
                 var next = offers
                 next[existingIdx] = corrected
@@ -1650,7 +1675,8 @@ struct ChatDetailView: View {
                         buyer: displayBuyer ?? existing.buyer,
                         products: offer.products ?? existing.products,
                         createdAt: offer.createdAt ?? existing.createdAt ?? Date(),
-                        sentByCurrentUser: true
+                        sentByCurrentUser: true,
+                        financialBuyerUsername: offer.financialBuyerUsername ?? existing.financialBuyerUsername
                     )
                     var nextOffers = offers
                     nextOffers[optIdx] = upgraded
@@ -1666,7 +1692,8 @@ struct ChatDetailView: View {
                         buyer: displayBuyer,
                         products: offer.products,
                         createdAt: offer.createdAt ?? Date(),
-                        sentByCurrentUser: isMineForNew
+                        sentByCurrentUser: isMineForNew,
+                        financialBuyerUsername: offer.financialBuyerUsername
                     )
                     offers.append(newOffer)
                     if isMineForNew {
@@ -1700,7 +1727,8 @@ struct ChatDetailView: View {
                 buyer: o.buyer,
                 products: o.products,
                 createdAt: o.createdAt ?? Date(),
-                sentByCurrentUser: o.sentByCurrentUser
+                sentByCurrentUser: o.sentByCurrentUser,
+                financialBuyerUsername: o.financialBuyerUsername
             )
             offers = nextOffers
             Self.offerHistoryCache[offerCacheKey(convId: displayedConversation.id)] = offers
@@ -1724,6 +1752,8 @@ struct ChatDetailView: View {
                 if msg.isOfferContent {
                     mergeOffersFromMessages()
                     rebuildTimelineOrder()
+                } else if msg.isSoldConfirmation {
+                    rebuildTimelineOrder()
                 }
                 return
             }
@@ -1732,6 +1762,8 @@ struct ChatDetailView: View {
             messages.sort { $0.timestamp < $1.timestamp }
             if msg.isOfferContent {
                 mergeOffersFromMessages()
+                rebuildTimelineOrder()
+            } else if msg.isSoldConfirmation {
                 rebuildTimelineOrder()
             }
         }
@@ -2132,6 +2164,57 @@ struct ChatProductCardView: View {
     }
 }
 
+/// Order/offer header thumbnail: shows a spinner while the URL is missing or the image is loading (avoids shimmer placeholder flash).
+private struct ChatHeaderProductThumbnail: View {
+    var imageURL: URL?
+    /// Non-empty image string from API that did not parse as a URL — show photo placeholder, not an endless spinner.
+    var invalidURLFromAPI: Bool = false
+
+    var body: some View {
+        Group {
+            if invalidURLFromAPI {
+                thumbnailUnavailable
+            } else if let url = imageURL {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    case .failure:
+                        thumbnailUnavailable
+                    default:
+                        thumbnailLoading
+                    }
+                }
+            } else {
+                thumbnailLoading
+            }
+        }
+        .aspectRatio(1, contentMode: .fill)
+        .frame(width: 56, height: 56)
+        .clipped()
+        .cornerRadius(8)
+    }
+
+    private var thumbnailLoading: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Theme.Colors.secondaryBackground)
+            ProgressView()
+                .progressViewStyle(.circular)
+                .tint(Theme.primaryColor)
+        }
+    }
+
+    private var thumbnailUnavailable: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Theme.Colors.secondaryBackground)
+            Image(systemName: "photo")
+                .foregroundColor(Theme.Colors.secondaryText)
+        }
+    }
+}
+
 /// Order confirmation card shown in timeline when conversation has an order (sale details). Includes timestamp for chronological ordering.
 struct OrderConfirmationCardView: View {
     let order: ConversationOrder
@@ -2248,17 +2331,26 @@ struct SoldConfirmationCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack {
+            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                 Image(systemName: "shippingbox")
                     .font(.system(size: 24))
                     .foregroundColor(Theme.Colors.secondaryText)
-                Text(
-                    isSeller
-                        ? "This item has sold"
-                        : (isBuyer ? "Payment successful!" : "\(order.buyerUsername) bought this")
-                )
+                if order.rolesConfirmed {
+                    Text(
+                        isSeller
+                            ? "This item has sold"
+                            : (isBuyer ? "Payment successful!" : "\(order.buyerUsername) bought this")
+                    )
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
+                } else {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(Theme.primaryColor)
+                    Text("Loading…")
+                        .font(Theme.Typography.headline)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
             }
             HStack {
                 Button(action: {
@@ -2273,6 +2365,7 @@ struct SoldConfirmationCardView: View {
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
                 .buttonStyle(.plain)
+                .disabled(!order.rolesConfirmed)
                 Spacer(minLength: Theme.Spacing.sm)
                 Text(Self.relativeTimestamp(for: order.createdAt))
                     .font(Theme.Typography.caption)
@@ -2289,7 +2382,7 @@ struct SoldConfirmationCardView: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            guard detailOrder != nil else { return }
+            guard order.rolesConfirmed, detailOrder != nil else { return }
             showOrderDetails = true
         }
         .background(

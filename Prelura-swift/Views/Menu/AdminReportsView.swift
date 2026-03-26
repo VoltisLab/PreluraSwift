@@ -55,19 +55,36 @@ struct AdminReportsView: View {
                             ),
                             content: { detail(report) },
                             label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(report.publicId ?? "Report #\(report.rawId)")
-                                        .font(Theme.Typography.headline)
-                                    Text((report.reportType ?? "REPORT") + " • " + (report.status ?? "PENDING"))
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText)
-                                    if let by = report.reportedByUsername, !by.isEmpty {
-                                        Text("Raised by \(by)")
+                                HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(report.publicId ?? "Report #\(report.rawId)")
+                                            .font(Theme.Typography.headline)
+                                        Text((report.reportType ?? "REPORT") + " • " + (report.status ?? "PENDING"))
                                             .font(Theme.Typography.caption)
                                             .foregroundColor(Theme.Colors.secondaryText)
+                                        if let by = report.reportedByUsername, !by.isEmpty {
+                                            Text("Raised by \(by)")
+                                                .font(Theme.Typography.caption)
+                                                .foregroundColor(Theme.Colors.secondaryText)
+                                        }
+                                        if let created = report.dateCreated, !created.isEmpty {
+                                            Text(Self.formatAdminRelativeDate(iso: created))
+                                                .font(Theme.Typography.caption)
+                                                .foregroundColor(Theme.Colors.secondaryText)
+                                        }
                                     }
-                                    if let created = report.dateCreated, !created.isEmpty {
-                                        Text(Self.formatAdminRelativeDate(iso: created))
+                                    Spacer()
+                                    if let cid = report.conversationId {
+                                        NavigationLink {
+                                            AdminReportOrderChatLoaderView(conversationId: String(cid))
+                                        } label: {
+                                            Image(systemName: "bubble.right.fill")
+                                                .foregroundColor(Theme.primaryColor)
+                                                .imageScale(.medium)
+                                        }
+                                        .buttonStyle(.plain)
+                                    } else {
+                                        Text("No chat")
                                             .font(Theme.Typography.caption)
                                             .foregroundColor(Theme.Colors.secondaryText)
                                     }
@@ -164,22 +181,17 @@ struct AdminReportsView: View {
                     }
                 }
             }
-            if let cid = report.supportConversationId {
+            if let cid = report.conversationId {
                 NavigationLink {
-                    HelpChatView(
-                        orderId: nil,
-                        conversationId: String(cid),
-                        issueDraft: nil,
-                        isAdminSupportThread: true,
-                        customerUsername: report.reportedByUsername
-                    )
+                    AdminReportOrderChatLoaderView(conversationId: String(cid))
                 } label: {
-                    Text("Reply via chat")
+                    Text("View conversation")
                         .font(Theme.Typography.body.weight(.semibold))
                         .foregroundColor(Theme.primaryColor)
                 }
+                .buttonStyle(.plain)
             } else {
-                Text("No support thread linked for this report.")
+                Text("No conversation linked for this report.")
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
@@ -229,6 +241,55 @@ struct AdminReportsView: View {
         let value = formatter.localizedString(for: date, relativeTo: now)
         if value.lowercased().hasPrefix("in ") { return iso }
         return value
+    }
+
+}
+
+private struct AdminReportOrderChatLoaderView: View {
+    let conversationId: String
+    @EnvironmentObject var authService: AuthService
+    @StateObject private var chatService = ChatService()
+    @State private var conversation: Conversation?
+    @State private var errorMessage: String?
+    @State private var isLoading = true
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView("Loading chat...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let conversation {
+                ChatDetailView(conversation: conversation)
+            } else {
+                Text(errorMessage ?? "Could not open this conversation.")
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding()
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            chatService.updateAuthToken(authService.authToken)
+            do {
+                let loaded = try await chatService.getConversationById(
+                    conversationId: conversationId,
+                    currentUsername: authService.username
+                )
+                await MainActor.run {
+                    conversation = loaded
+                    isLoading = false
+                    if loaded == nil {
+                        errorMessage = "Not found or no permission for this order chat."
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isLoading = false
+                }
+            }
+        }
     }
 }
 

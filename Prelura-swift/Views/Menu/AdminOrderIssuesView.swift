@@ -42,18 +42,36 @@ struct AdminOrderIssuesView: View {
                                 issueDetail(issue)
                             },
                             label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(issue.publicId ?? "Issue #\(issue.id)")
-                                        .font(Theme.Typography.headline)
-                                        .foregroundColor(Theme.Colors.primaryText)
-                                    Text(issue.issueType ?? "—")
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText)
-                                    Text("Raised by \(issue.raisedBy?.username ?? "—")")
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText)
-                                    if let created = issue.createdAt, !created.isEmpty {
-                                        Text(Self.formatAdminRelativeDate(iso: created))
+                                HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(issue.publicId ?? "Issue #\(issue.id)")
+                                            .font(Theme.Typography.headline)
+                                            .foregroundColor(Theme.Colors.primaryText)
+                                        Text(issue.issueType ?? "—")
+                                            .font(Theme.Typography.caption)
+                                            .foregroundColor(Theme.Colors.secondaryText)
+                                        Text("Raised by \(issue.raisedBy?.username ?? "—")")
+                                            .font(Theme.Typography.caption)
+                                            .foregroundColor(Theme.Colors.secondaryText)
+                                        if let created = issue.createdAt, !created.isEmpty {
+                                            Text(Self.formatAdminRelativeDate(iso: created))
+                                                .font(Theme.Typography.caption)
+                                                .foregroundColor(Theme.Colors.secondaryText)
+                                        }
+                                    }
+                                    Spacer()
+                                    if let orderCid = issue.order?.orderConversationId {
+                                        NavigationLink {
+                                            AdminStaffChatLoaderView(conversationId: String(orderCid))
+                                        } label: {
+                                            Image(systemName: "bubble.left.and.bubble.right.fill")
+                                                .foregroundColor(Theme.primaryColor)
+                                                .imageScale(.medium)
+                                                .accessibilityLabel("Open order chat")
+                                        }
+                                        .buttonStyle(.plain)
+                                    } else {
+                                        Text("No order chat")
                                             .font(Theme.Typography.caption)
                                             .foregroundColor(Theme.Colors.secondaryText)
                                     }

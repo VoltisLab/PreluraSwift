@@ -5,19 +5,41 @@
 //  Created by User on 09/03/2026.
 //
 
+import Combine
+import OSLog
 import SwiftUI
 import UIKit
+
+private let pushRegistrationLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Prelura", category: "PushRegistration")
 
 /// Storage key for appearance: "system" | "light" | "dark"
 let kAppearanceMode = "appearance_mode"
 
-/// When the user is logged in and we have an APNs device token, send it via updateProfile(fcmToken:) so the backend can deliver push notifications (same as Flutter).
+/// When the user is logged in and we have an FCM token, send it via `updateProfile(fcmToken:)` so the backend can deliver pushes (same mutation as Flutter).
 private func registerPushTokenIfNeeded(authService: AuthService) {
-    guard authService.isAuthenticated, let token = UserDefaults.standard.string(forKey: kDeviceTokenKey), !token.isEmpty else { return }
+    guard authService.isAuthenticated else {
+        pushRegistrationLogger.debug("Skip FCM upload: not authenticated.")
+        return
+    }
+    guard let token = UserDefaults.standard.string(forKey: kDeviceTokenKey), !token.isEmpty else {
+        pushRegistrationLogger.debug("Skip FCM upload: no local FCM token yet (notifications permission / Firebase).")
+        return
+    }
     Task { @MainActor in
         let userService = UserService()
         userService.updateAuthToken(authService.authToken)
-        _ = try? await userService.updateProfile(fcmToken: token)
+        do {
+            _ = try await userService.updateProfile(fcmToken: token)
+            pushRegistrationLogger.info("updateProfile(fcmToken:) succeeded — backend can target this device for FCM.")
+            #if DEBUG
+            print("[Push] updateProfile(fcmToken:) succeeded.")
+            #endif
+        } catch {
+            pushRegistrationLogger.error("updateProfile(fcmToken:) failed: \(String(describing: error), privacy: .public)")
+            #if DEBUG
+            print("[Push] updateProfile(fcmToken:) failed — \(error.localizedDescription)")
+            #endif
+        }
     }
 }
 
@@ -28,21 +50,45 @@ struct Prelura_swiftApp: App {
     @StateObject private var appRouter = AppRouter()
     @State private var showSplash = true
 
+    private func finishSplash() {
+        if let pending = AppDelegate.takePendingPostSplashNotificationUserInfo() {
+            appRouter.handle(notificationPayload: pending)
+        }
+        showSplash = false
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
                 if showSplash {
-                    SplashView(onFinish: { showSplash = false })
+                    SplashView(onFinish: finishSplash)
                 } else {
                     AppearanceRootView()
                 }
             }
             .environmentObject(authService)
             .environmentObject(appRouter)
+            .onReceive(NotificationCenter.default.publisher(for: .preluraNotificationTapped)) { notification in
+                guard let payload = notification.userInfo?[kNotificationTapPayloadKey] as? [AnyHashable: Any] else { return }
+                Task { @MainActor in
+                    if showSplash {
+                        AppDelegate.pendingPostSplashNotificationUserInfo = payload
+                    } else {
+                        appRouter.handle(notificationPayload: payload)
+                    }
+                }
+            }
             .onOpenURL { url in
                 Task { @MainActor in
                     appRouter.handle(url: url)
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                registerPushTokenIfNeeded(authService: authService)
+            }
+            // Also during splash: token can arrive before AppearanceRootView exists; still upload when logged in.
+            .onReceive(NotificationCenter.default.publisher(for: .preluraDeviceTokenDidUpdate)) { _ in
+                registerPushTokenIfNeeded(authService: authService)
             }
         }
     }
@@ -95,12 +141,6 @@ struct AppearanceRootView: View {
             DeepLinkOverlayView(item: item, onDismiss: { appRouter.clearPending() })
                 .environmentObject(authService)
             }
-            .onReceive(NotificationCenter.default.publisher(for: .preluraNotificationTapped)) { notification in
-            guard let payload = notification.userInfo?[kNotificationTapPayloadKey] as? [AnyHashable: Any] else { return }
-            Task { @MainActor in
-                appRouter.handle(notificationPayload: payload)
-            }
-        }
             .onAppear { registerPushTokenIfNeeded(authService: authService) }
             .onChange(of: authService.isAuthenticated) { _, _ in registerPushTokenIfNeeded(authService: authService) }
             .onReceive(NotificationCenter.default.publisher(for: .preluraDeviceTokenDidUpdate)) { _ in

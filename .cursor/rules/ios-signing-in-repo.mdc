@@ -1,0 +1,16 @@
+---
+description: iOS signing and push are configured in the Xcode project; avoid Xcode capability lectures
+globs: Prelura-swift/**/*.swift,Prelura-swift/**/*.entitlements,Prelura-swift.xcodeproj/**/*
+---
+
+# Prelura iOS signing assumptions
+
+The repo already encodes:
+
+- `CODE_SIGN_STYLE = Automatic` and `DEVELOPMENT_TEAM` in `project.pbxproj`
+- Push: `Prelura-swift/Prelura-swift.entitlements` (Debug, `aps-environment` development) and `Prelura-swift.Release.entitlements` (production)
+- `INFOPLIST_KEY_UIBackgroundModes = remote-notification` on the target
+
+Do **not** ask the user to manually enable Push Notifications or re-enter Team ID in Xcode unless they changed bundle ID/team or a **build log** shows a signing error.
+
+For CLI device builds from a clean machine, prefer `scripts/ios-device-build.sh` (uses `-allowProvisioningUpdates`).

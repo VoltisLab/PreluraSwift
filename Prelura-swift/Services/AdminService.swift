@@ -134,7 +134,7 @@ class AdminService: ObservableObject {
             accountReportedUsername
             productId
             productName
-            supportConversationId
+            conversationId
           }
         }
         """
@@ -597,7 +597,7 @@ struct AdminReportRow: Decodable, Identifiable, Hashable {
     let accountReportedUsername: String?
     let productId: Int?
     let productName: String?
-    let supportConversationId: Int?
+    let conversationId: Int?
 
     var id: String { "\(reportType ?? "REPORT")-\(rawId)" }
 
@@ -605,6 +605,6 @@ struct AdminReportRow: Decodable, Identifiable, Hashable {
         case rawId = "id"
         case publicId, reportType, reason, context, imagesUrl, status
         case dateCreated, updatedAt, reportedByUsername, accountReportedUsername
-        case productId, productName, supportConversationId
+        case productId, productName, conversationId
     }
 }

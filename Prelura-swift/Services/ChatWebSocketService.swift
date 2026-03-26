@@ -254,14 +254,19 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         }()
         // Backend sends senderUsername/sender_username in nested offer for counter attribution; prefer over buyer (buyer stays original purchaser).
         let senderFromOffer = (o["senderUsername"] as? String) ?? (o["sender_username"] as? String)
+        let rawBuyerAccount = parseOfferUser(o["buyer"] as? [String: Any])
+        let financialBuyerUsername: String? = {
+            let t = rawBuyerAccount?.username?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return t.isEmpty ? nil : t
+        }()
         let buyer: OfferInfo.OfferUser? = {
             if let s = senderFromOffer, !s.trimmingCharacters(in: .whitespaces).isEmpty {
-                return OfferInfo.OfferUser(username: s, profilePictureUrl: parseOfferUser(o["buyer"] as? [String: Any])?.profilePictureUrl)
+                return OfferInfo.OfferUser(username: s, profilePictureUrl: rawBuyerAccount?.profilePictureUrl)
             }
-            return parseOfferUser(o["buyer"] as? [String: Any])
+            return rawBuyerAccount
         }()
         let products = (o["products"] as? [[String: Any]])?.compactMap { parseOfferProduct($0) }
-        return OfferInfo(id: id, backendId: id, status: status, offerPrice: price, buyer: buyer, products: products, createdAt: createdAt ?? Date(), sentByCurrentUser: false)
+        return OfferInfo(id: id, backendId: id, status: status, offerPrice: price, buyer: buyer, products: products, createdAt: createdAt ?? Date(), sentByCurrentUser: false, financialBuyerUsername: financialBuyerUsername)
     }
 
     private func parseOfferUser(_ j: [String: Any]?) -> OfferInfo.OfferUser? {

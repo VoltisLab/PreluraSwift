@@ -22,6 +22,14 @@ The app reads API keys from **`Prelura-swift/Secrets.plist`**. You only need to 
 
 Do not commit `Secrets.plist` (it’s in `.gitignore`).
 
+## Firebase (push / FCM)
+
+Use **one canonical Firebase project** that matches **whatever project your API uses to send FCM** (see [docs/FIREBASE_IOS_SETUP.md](docs/FIREBASE_IOS_SETUP.md)). Add an iOS app with bundle ID **`com.prelura.preloved`**, download **`GoogleService-Info.plist`** into `Prelura-swift/`, upload your **APNs `.p8`** under Firebase → Cloud Messaging.
+
+The plist is **local / gitignored** — this repo has **no** `.github/workflows` that consume Firebase-related GitHub secrets unless you add CI later.
+
+**Full steps:** [docs/FIREBASE_IOS_SETUP.md](docs/FIREBASE_IOS_SETUP.md) · template: `Prelura-swift/GoogleService-Info.plist.example`.
+
 ## Build & run
 
 Open `Prelura-swift.xcodeproj` in Xcode. Build and run on simulator or device.  

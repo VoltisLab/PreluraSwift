@@ -59,6 +59,54 @@ struct LookbookEntry: Identifiable {
 
 private let lookbookSpacing: CGFloat = 12
 private let lookbookTopId = "lookbook_top"
+/// Max height for lookbook media so portrait shots don’t dominate the feed; width is full inset width.
+private let lookbookMediaMaxHeight: CGFloat = 420
+
+// MARK: - Feed row grouping (variable slides per row, duplicates allowed)
+
+private struct LookbookFeedRowModel: Identifiable {
+    let id: String
+    /// One or more slides; may repeat the same `LookbookEntry` to fill the row.
+    let slides: [LookbookEntry]
+}
+
+/// Deterministic pseudo-random for chunk/slide counts so the layout doesn’t flicker on re-render.
+private func lookbookRowMixSeed(rowIndex: Int, entryCount: Int) -> UInt64 {
+    var hasher = Hasher()
+    hasher.combine(rowIndex)
+    hasher.combine(entryCount)
+    return UInt64(bitPattern: Int64(hasher.finalize()))
+}
+
+/// Splits the feed into rows; each row is a horizontal slider with a pseudo-random number of slides (entries may repeat).
+private func buildLookbookFeedRows(from list: [LookbookEntry]) -> [LookbookFeedRowModel] {
+    guard !list.isEmpty else { return [] }
+    var rows: [LookbookFeedRowModel] = []
+    var index = 0
+    var rowIndex = 0
+    while index < list.count {
+        let remaining = list.count - index
+        let seed = lookbookRowMixSeed(rowIndex: rowIndex, entryCount: list.count)
+        let maxChunk = min(4, max(1, remaining))
+        let chunkSize = max(1, min(maxChunk, Int(seed % UInt64(maxChunk)) + 1))
+        let end = min(index + chunkSize, list.count)
+        let base = Array(list[index..<end])
+        let baseCount = base.count
+        // Target slide count: at least one per unique post in chunk, up to 5, with optional duplicates.
+        let extraSlides = Int((seed >> 8) % 3)
+        let targetSlides = min(5, max(baseCount, baseCount + extraSlides))
+        var slides: [LookbookEntry] = []
+        slides.reserveCapacity(targetSlides)
+        for s in 0..<targetSlides {
+            slides.append(base[s % baseCount])
+        }
+        let rowId = "\(rowIndex)-\(base[0].id.uuidString)"
+        rows.append(LookbookFeedRowModel(id: rowId, slides: slides))
+        index = end
+        rowIndex += 1
+    }
+    return rows
+}
 
 /// Style raw values for filter pills — same as StyleSelectionView (uploads). Subset used for display.
 private let lookbookStylePillValues: [String] = [
@@ -124,8 +172,8 @@ struct LookbookView: View {
                 } else if filteredEntries.isEmpty {
                     emptyPlaceholder(minHeight: geometry.size.height - 120)
                 } else {
-                        ForEach(filteredEntries) { entry in
-                            lookbookPostCard(entry: entry)
+                        ForEach(buildLookbookFeedRows(from: filteredEntries)) { row in
+                            lookbookFeedRow(model: row)
                         }
                     }
                 }
@@ -235,11 +283,11 @@ struct LookbookView: View {
         .frame(minHeight: max(minHeight, 200))
     }
 
-    private func lookbookPostCard(entry: LookbookEntry) -> some View {
-        let entryId = entry.id
-        return LookbookPostCard(
-            entry: entry,
-            onHeartTap: {
+    private func lookbookFeedRow(model: LookbookFeedRowModel) -> some View {
+        LookbookFeedRowView(
+            slides: model.slides,
+            onHeartTap: { entry in
+                let entryId = entry.id
                 guard let i = entries.firstIndex(where: { $0.id == entryId }) else { return }
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
@@ -248,7 +296,8 @@ struct LookbookView: View {
                     entries[i] = e
                 }
             },
-            onImageDoubleTap: {
+            onImageDoubleTap: { entry in
+                let entryId = entry.id
                 guard let i = entries.firstIndex(where: { $0.id == entryId }), !entries[i].isLiked else { return }
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
@@ -257,10 +306,10 @@ struct LookbookView: View {
                     entries[i] = e
                 }
             },
-            onCommentsTap: { commentsEntry = entry },
+            onCommentsTap: { entry in commentsEntry = entry },
             onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) }
         )
-        .id(entry.id.uuidString)
+        .id(model.id)
         .padding(.bottom, lookbookSpacing)
     }
 }
@@ -294,7 +343,10 @@ private struct LookbookFeedImage: View {
             if let urlString = imageUrl, let url = URL(string: urlString) {
                 AsyncImage(url: url) { phase in
                     switch phase {
-                    case .success(let image): image.resizable().scaledToFill()
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
                     case .failure: Image(systemName: "photo").resizable().scaledToFit().foregroundStyle(Theme.Colors.secondaryText)
                     default: ProgressView().frame(maxWidth: .infinity).frame(minHeight: 200)
                     }
@@ -305,11 +357,11 @@ private struct LookbookFeedImage: View {
                let uiImage = UIImage(data: data) {
                 Image(uiImage: uiImage)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
             } else {
                 Image(imageName)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
             }
         }
     }
@@ -318,6 +370,7 @@ private struct LookbookFeedImage: View {
         imageView
             .scaleEffect(scale)
             .frame(maxWidth: .infinity)
+            .frame(maxHeight: lookbookMediaMaxHeight)
             .clipped()
             .overlay(alignment: .topTrailing) {
                 if hasTaggedProducts {
@@ -461,32 +514,24 @@ private struct LookbookPostCardShimmer: View {
     }
 }
 
-// MARK: - Post card (poster, image with double-tap like + pinch-zoom, likes/comments row, bag for tagged products)
-// Like state is held locally in the card (Flutter pattern: setState first, then notify parent) so tap always updates UI.
-private struct LookbookPostCard: View {
-    let entry: LookbookEntry
-    let onHeartTap: () -> Void
-    let onImageDoubleTap: () -> Void
-    let onCommentsTap: () -> Void
+// MARK: - Feed row: paged slider with a pseudo-random number of slides (entries may repeat); images keep natural aspect ratio.
+private struct LookbookFeedRowView: View {
+    let slides: [LookbookEntry]
+    let onHeartTap: (LookbookEntry) -> Void
+    let onImageDoubleTap: (LookbookEntry) -> Void
+    let onCommentsTap: (LookbookEntry) -> Void
     let onProductTap: (String) -> Void
 
-    @State private var isLiked: Bool
-    @State private var likesCount: Int
-
-    init(entry: LookbookEntry, onHeartTap: @escaping () -> Void, onImageDoubleTap: @escaping () -> Void, onCommentsTap: @escaping () -> Void, onProductTap: @escaping (String) -> Void) {
-        self.entry = entry
-        self.onHeartTap = onHeartTap
-        self.onImageDoubleTap = onImageDoubleTap
-        self.onCommentsTap = onCommentsTap
-        self.onProductTap = onProductTap
-        _isLiked = State(initialValue: entry.isLiked)
-        _likesCount = State(initialValue: entry.likesCount)
-    }
+    @State private var selectedIndex: Int = 0
 
     private let iconSize: CGFloat = 18
-    private let mediaHeight: CGFloat = 240
 
-    private var detailLine: String {
+    private var currentSlide: LookbookEntry {
+        let i = min(max(0, selectedIndex), max(0, slides.count - 1))
+        return slides[i]
+    }
+
+    private func detailLine(for entry: LookbookEntry) -> String {
         if let first = entry.styles.first, !first.isEmpty {
             return "\(StyleSelectionView.displayName(for: first)) fit"
         }
@@ -500,11 +545,11 @@ private struct LookbookPostCard: View {
                     .fill(Theme.Colors.secondaryBackground)
                     .frame(width: 36, height: 36)
                     .overlay(
-                        Text(String(entry.posterUsername.prefix(1)).uppercased())
+                        Text(String(currentSlide.posterUsername.prefix(1)).uppercased())
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Theme.Colors.secondaryText)
                     )
-                Text(entry.posterUsername)
+                Text(currentSlide.posterUsername)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Theme.Colors.primaryText)
                 Spacer()
@@ -512,43 +557,53 @@ private struct LookbookPostCard: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.top, Theme.Spacing.sm)
 
-            Text("📍 \(detailLine)")
+            Text("📍 \(detailLine(for: currentSlide))")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(Theme.Colors.primaryText)
                 .padding(.horizontal, Theme.Spacing.md)
 
-            LookbookFeedImage(
-                imageName: entry.imageNames.first ?? "",
-                documentImagePath: entry.documentImagePath,
-                imageUrl: entry.imageUrl,
-                tags: entry.tags,
-                productSnapshots: entry.productSnapshots,
-                onDoubleTapLike: {
-                if !isLiked {
-                    isLiked = true
-                    likesCount += 1
+            Group {
+                if slides.count <= 1, let only = slides.first {
+                    LookbookFeedImage(
+                        imageName: only.imageNames.first ?? "",
+                        documentImagePath: only.documentImagePath,
+                        imageUrl: only.imageUrl,
+                        tags: only.tags,
+                        productSnapshots: only.productSnapshots,
+                        onDoubleTapLike: { onImageDoubleTap(only) },
+                        onProductTap: onProductTap
+                    )
+                } else {
+                    TabView(selection: $selectedIndex) {
+                        ForEach(Array(slides.enumerated()), id: \.offset) { idx, entry in
+                            LookbookFeedImage(
+                                imageName: entry.imageNames.first ?? "",
+                                documentImagePath: entry.documentImagePath,
+                                imageUrl: entry.imageUrl,
+                                tags: entry.tags,
+                                productSnapshots: entry.productSnapshots,
+                                onDoubleTapLike: { onImageDoubleTap(entry) },
+                                onProductTap: onProductTap
+                            )
+                            .tag(idx)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .automatic))
+                    .frame(minHeight: 220)
                 }
-                onImageDoubleTap()
-            },
-                onProductTap: onProductTap
-            )
+            }
             .frame(maxWidth: .infinity)
-            .frame(height: mediaHeight)
+            .background(Theme.Colors.secondaryBackground.opacity(0.35))
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .padding(.horizontal, Theme.Spacing.md)
 
             HStack(spacing: Theme.Spacing.lg) {
-                Button(action: {
-                    isLiked.toggle()
-                    likesCount += isLiked ? 1 : -1
-                    if likesCount < 0 { likesCount = 0 }
-                    onHeartTap()
-                }) {
+                Button(action: { onHeartTap(currentSlide) }) {
                     HStack(spacing: 4) {
-                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                        Image(systemName: currentSlide.isLiked ? "heart.fill" : "heart")
                             .font(.system(size: iconSize))
-                            .foregroundColor(isLiked ? Theme.primaryColor : Theme.Colors.primaryText)
-                        Text("\(likesCount)")
+                            .foregroundColor(currentSlide.isLiked ? Theme.primaryColor : Theme.Colors.primaryText)
+                        Text("\(currentSlide.likesCount)")
                             .font(.system(size: 14))
                             .foregroundColor(Theme.Colors.primaryText)
                         Text("Likes")
@@ -558,12 +613,12 @@ private struct LookbookPostCard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                Button(action: onCommentsTap) {
+                Button(action: { onCommentsTap(currentSlide) }) {
                     HStack(spacing: 4) {
                         Image(systemName: "bubble.right")
                             .font(.system(size: iconSize))
                             .foregroundColor(Theme.Colors.primaryText)
-                        Text("\(entry.commentsCount)")
+                        Text("\(currentSlide.commentsCount)")
                             .font(.system(size: 14))
                             .foregroundColor(Theme.Colors.primaryText)
                         Text("Comments")
@@ -583,8 +638,9 @@ private struct LookbookPostCard: View {
                 .frame(height: 0.5)
                 .padding(.leading, Theme.Spacing.md)
         }
-        .onChange(of: entry.isLiked) { _, new in isLiked = new }
-        .onChange(of: entry.likesCount) { _, new in likesCount = new }
+        .onChange(of: slides.count) { _, newCount in
+            if selectedIndex >= newCount { selectedIndex = max(0, newCount - 1) }
+        }
     }
 }
 

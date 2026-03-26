@@ -10,6 +10,8 @@ struct OfferInfo: Codable, Hashable {
     let status: String?
     let offerPrice: Double
     let buyer: OfferUser?
+    /// Account buyer from GraphQL `buyer.username` (marketplace buyer). Differs from `buyer.username` when that field holds `createdBy` for "who sent this row".
+    let financialBuyerUsername: String?
     let products: [OfferProduct]?
     /// When the offer was sent; used for card timestamp. Set locally when not from server.
     let createdAt: Date?
@@ -28,7 +30,7 @@ struct OfferInfo: Codable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, backendId, status, offerPrice, buyer, products, createdAt, sentByCurrentUser
+        case id, backendId, status, offerPrice, buyer, financialBuyerUsername, products, createdAt, sentByCurrentUser
     }
 
     init(from decoder: Decoder) throws {
@@ -49,6 +51,7 @@ struct OfferInfo: Codable, Hashable {
             offerPrice = 0
         }
         buyer = try c.decodeIfPresent(OfferUser.self, forKey: .buyer)
+        financialBuyerUsername = try c.decodeIfPresent(String.self, forKey: .financialBuyerUsername)
         products = try c.decodeIfPresent([OfferProduct].self, forKey: .products)
         if let interval = try? c.decodeIfPresent(Double.self, forKey: .createdAt) {
             createdAt = Date(timeIntervalSince1970: interval)
@@ -60,12 +63,13 @@ struct OfferInfo: Codable, Hashable {
         sentByCurrentUser = try c.decodeIfPresent(Bool.self, forKey: .sentByCurrentUser) ?? false
     }
 
-    init(id: String, backendId: String? = nil, status: String?, offerPrice: Double, buyer: OfferUser?, products: [OfferProduct]?, createdAt: Date? = nil, sentByCurrentUser: Bool) {
+    init(id: String, backendId: String? = nil, status: String?, offerPrice: Double, buyer: OfferUser?, products: [OfferProduct]?, createdAt: Date? = nil, sentByCurrentUser: Bool, financialBuyerUsername: String? = nil) {
         self.id = id
         self.backendId = backendId
         self.status = status
         self.offerPrice = offerPrice
         self.buyer = buyer
+        self.financialBuyerUsername = financialBuyerUsername
         self.products = products
         self.createdAt = createdAt
         self.sentByCurrentUser = sentByCurrentUser
@@ -78,6 +82,7 @@ struct OfferInfo: Codable, Hashable {
         try c.encodeIfPresent(status, forKey: .status)
         try c.encode(offerPrice, forKey: .offerPrice)
         try c.encodeIfPresent(buyer, forKey: .buyer)
+        try c.encodeIfPresent(financialBuyerUsername, forKey: .financialBuyerUsername)
         try c.encodeIfPresent(products, forKey: .products)
         try c.encodeIfPresent(createdAt?.timeIntervalSince1970, forKey: .createdAt)
         try c.encode(sentByCurrentUser, forKey: .sentByCurrentUser)
