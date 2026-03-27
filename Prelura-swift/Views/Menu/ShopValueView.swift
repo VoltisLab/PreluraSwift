@@ -18,7 +18,8 @@ struct ShopValueView: View {
 
     // MARK: - Data (API + derived/placeholder)
     private var currentShopValue: Double { earnings?.networth ?? 1240 }
-    private var balance: Double { earnings?.completedPayments.value ?? 87 }
+    /// Available balance from successful captures (`userEarnings.completedPayments`); defaults to 0 when not loaded.
+    private var balance: Double { earnings?.completedPayments.value ?? 0 }
     private var thisMonth: Double { earnings?.earningsInMonth.value ?? 240 }
     private var totalEarnings: Double { earnings?.totalEarnings.value ?? 3420 }
     /// Total earned since account creation (same as totalEarnings from API).
