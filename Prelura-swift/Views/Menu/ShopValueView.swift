@@ -85,6 +85,8 @@ struct ShopValueView: View {
             Task { await loadEarnings() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .preluraSellerEarningsShouldRefresh)) { _ in
+            // Avoid showing pre-wipe KPIs if the next fetch fails or is slow.
+            earnings = nil
             Task { await loadEarnings() }
         }
         .sheet(isPresented: $showWithdrawalFlow) {
@@ -105,6 +107,8 @@ struct ShopValueView: View {
             }
         } catch {
             await MainActor.run {
+                // Do not keep stale numbers from a previous successful response.
+                self.earnings = nil
                 self.errorMessage = error.localizedDescription
                 self.isLoading = false
             }
