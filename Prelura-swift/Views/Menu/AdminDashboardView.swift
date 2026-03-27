@@ -42,6 +42,11 @@ struct AdminDashboardView: View {
         List {
             Section {
                 NavigationLink {
+                    AdminAllOrdersView()
+                } label: {
+                    adminRow("Orders", icon: "bag", isDestructive: false)
+                }
+                NavigationLink {
                     AdminOrderIssuesView()
                 } label: {
                     adminRow("Order issues", icon: "exclamationmark.bubble", isDestructive: false)

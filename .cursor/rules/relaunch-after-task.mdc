@@ -1,19 +1,16 @@
 # Relaunch After Every Task
 
-**After completing any coding task, always run a build (see `always-build-after-task.mdc`). Then, when doing a full relaunch:**
+**After completing any coding task, always run a build (see `always-build-after-task.mdc`).** For a full relaunch, **always use both simulators** via **`/relaunch`** or **`/relaunch-both`** (same steps; see `.cursor/commands/relaunch.md`) — not iPhone 14 alone.
 
-1. **Rebuild** from iOS project root (required after any code change):
-   `xcodebuild -project Prelura-swift.xcodeproj -scheme Prelura-swift -destination 'platform=iOS Simulator,name=iPhone 14' -configuration Debug build`
+1. **Rebuild** from iOS project root (prefer generic simulator destination to avoid OS mismatch):  
+   `xcodebuild -project Prelura-swift.xcodeproj -scheme Prelura-swift -destination 'generic/platform=iOS Simulator' -configuration Debug build`
 
-2. **Terminate** any running instance:
-   `xcrun simctl terminate "iPhone 14" com.prelura.preloved`
+2. **Ensure iPhone 14 Alt** exists; create if missing (see `relaunch.md`).
 
-3. **Install** the new build (use DerivedData path from build output):
-   `xcrun simctl install "iPhone 14" <path-to-Prelura-swift.app>`
+3. **iPhone 14** — terminate (ignore errors), install `<path-to-Prelura-swift.app>`, launch `com.prelura.preloved`.
 
-4. **Launch** the app:
-   `xcrun simctl launch "iPhone 14" com.prelura.preloved`
+4. **iPhone 14 Alt** — same `.app`: boot, terminate, install, launch.
 
-5. **Report** build/install/launch result and process ID if the app launched.
+5. **Report** build/install/launch result and **both** process IDs.
 
-If the user runs `/relaunch`, follow the steps in `.cursor/commands/relaunch.md` and include monitoring/confirmation in the report.
+If the user runs `/relaunch` or `/relaunch-both`, follow the matching file under `.cursor/commands/` and include monitoring in the report.

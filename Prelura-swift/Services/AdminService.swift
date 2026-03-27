@@ -117,6 +117,138 @@ class AdminService: ObservableObject {
         return (r?.success ?? false, r?.message)
     }
 
+    /// Staff-only: paginated list of all orders (newest first).
+    func fetchAdminAllOrders(pageCount: Int = 50, pageNumber: Int = 1) async throws -> [AdminOrderListRow] {
+        let query = """
+        query AdminAllOrders($pageCount: Int, $pageNumber: Int) {
+          adminAllOrders(pageCount: $pageCount, pageNumber: $pageNumber) {
+            id
+            publicId
+            status
+            createdAt
+            updatedAt
+            priceTotal
+            user { username }
+            seller { username }
+          }
+        }
+        """
+        let variables: [String: Any] = ["pageCount": pageCount, "pageNumber": pageNumber]
+        struct Payload: Decodable { let adminAllOrders: [AdminOrderListRow]? }
+        let response: Payload = try await client.execute(
+            query: query,
+            variables: variables,
+            responseType: Payload.self
+        )
+        return response.adminAllOrders ?? []
+    }
+
+    /// Staff-only: full order snapshot for admin detail screen.
+    func fetchAdminOrder(orderId: Int) async throws -> AdminOrderDetailSnapshot? {
+        let query = """
+        query AdminOrder($orderId: Int!) {
+          adminOrder(orderId: $orderId) {
+            \(Self.adminOrderDetailSelection)
+          }
+        }
+        """
+        struct Payload: Decodable { let adminOrder: AdminOrderDetailSnapshot? }
+        let response: Payload = try await client.execute(
+            query: query,
+            variables: ["orderId": orderId],
+            responseType: Payload.self
+        )
+        return response.adminOrder
+    }
+
+    func adminMarkOrderDelivered(orderId: Int) async throws -> (success: Bool, message: String?) {
+        let mutation = """
+        mutation AdminMarkOrderDelivered($orderId: Int!) {
+          adminMarkOrderDelivered(orderId: $orderId) {
+            success
+            message
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let adminMarkOrderDelivered: AdminMutationSimple?
+        }
+        struct AdminMutationSimple: Decodable {
+            let success: Bool?
+            let message: String?
+        }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["orderId": orderId],
+            responseType: Payload.self
+        )
+        let r = response.adminMarkOrderDelivered
+        return (r?.success ?? false, r?.message)
+    }
+
+    /// GraphQL selection for a full admin `Order` (matches `AdminOrderDetailSnapshot`).
+    private static let adminOrderDetailSelection = """
+    id
+    publicId
+    status
+    createdAt
+    updatedAt
+    priceTotal
+    discountPrice
+    buyerProtectionFee
+    shippingFee
+    itemsSubtotal
+    shippingAddressJson
+    orderConversationId
+    trackingNumber
+    trackingUrl
+    carrierName
+    shippingLabelUrl
+    shipmentEstimatedDelivery
+    shipmentActualDelivery
+    shipmentInternalStatus
+    shipmentService
+    user { username }
+    seller { username }
+    offer { id status }
+    cancelledOrder {
+      buyerCancellationReason
+      sellerResponse
+      status
+      notes
+    }
+    lineItems {
+      id
+      productId
+      productName
+      priceAtPurchase
+      productImagesUrl
+    }
+    payments {
+      id
+      paymentRef
+      paymentStatus
+      paymentAmount
+      paymentMethod
+      paymentIntentId
+      createdAt
+      updatedAt
+    }
+    refunds {
+      id
+      refundAmount
+      status
+      reason
+      refundedAt
+      createdAt
+    }
+    statusTimeline {
+      id
+      status
+      createdAt
+    }
+    """
+
     func fetchAllReports() async throws -> [AdminReportRow] {
         let query = """
         query AllReports {
@@ -162,6 +294,7 @@ private enum AdminGraphQLQueries {
         resolvedBy { username }
         order {
           id
+          publicId
           status
           createdAt
           updatedAt
@@ -443,8 +576,43 @@ struct AdminCancelledOrderSnapshot: Decodable {
     let notes: String?
 }
 
+/// Row for `adminAllOrders` list.
+struct AdminOrderListRow: Decodable, Identifiable {
+    let id: String
+    let publicId: String?
+    let status: String?
+    let createdAt: String?
+    let updatedAt: String?
+    let priceTotal: Double?
+    let user: AdminUserBrief?
+    let seller: AdminUserBrief?
+
+    enum CodingKeys: String, CodingKey {
+        case id, publicId, status, createdAt, updatedAt, priceTotal, user, seller
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let s = try? c.decode(String.self, forKey: .id) {
+            id = s
+        } else if let i = try? c.decode(Int.self, forKey: .id) {
+            id = String(i)
+        } else {
+            throw DecodingError.dataCorruptedError(forKey: .id, in: c, debugDescription: "order id")
+        }
+        publicId = try c.decodeIfPresent(String.self, forKey: .publicId)
+        status = try c.decodeIfPresent(String.self, forKey: .status)
+        createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        updatedAt = try c.decodeIfPresent(String.self, forKey: .updatedAt)
+        priceTotal = try c.decodeAdminMoney(forKey: .priceTotal)
+        user = try c.decodeIfPresent(AdminUserBrief.self, forKey: .user)
+        seller = try c.decodeIfPresent(AdminUserBrief.self, forKey: .seller)
+    }
+}
+
 struct AdminOrderDetailSnapshot: Decodable {
     let id: String
+    let publicId: String?
     let status: String?
     let createdAt: String?
     let updatedAt: String?
@@ -473,7 +641,7 @@ struct AdminOrderDetailSnapshot: Decodable {
     let statusTimeline: [AdminOrderStatusEvent]?
 
     enum CodingKeys: String, CodingKey {
-        case id, status, createdAt, updatedAt
+        case id, publicId, status, createdAt, updatedAt
         case priceTotal, discountPrice, buyerProtectionFee, shippingFee, itemsSubtotal
         case shippingAddressJson, orderConversationId
         case trackingNumber, trackingUrl, carrierName, shippingLabelUrl
@@ -491,6 +659,7 @@ struct AdminOrderDetailSnapshot: Decodable {
         } else {
             throw DecodingError.dataCorruptedError(forKey: .id, in: c, debugDescription: "order id")
         }
+        publicId = try c.decodeIfPresent(String.self, forKey: .publicId)
         status = try c.decodeIfPresent(String.self, forKey: .status)
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
         updatedAt = try c.decodeIfPresent(String.self, forKey: .updatedAt)
