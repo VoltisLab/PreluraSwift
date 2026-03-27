@@ -26,3 +26,22 @@ When the user runs `/testflight`, follow these steps:
    - Report any errors and suggest fixes (e.g., missing app icons, signing issues, validation failures).
    - Mention that the build will be available in TestFlight after App Store Connect processing completes (usually takes a few minutes).
    - Monitoring must be part of every run.
+
+## Backend health (optional)
+
+To poll production GraphQL every **5 minutes** with **live lines** on screen and a log file for `tail -f`:
+
+```bash
+cd PreluraSwift
+./scripts/watch-prelura-backend.sh --log /tmp/prelura-backend.log
+```
+
+Second terminal (follow the same log):
+
+```bash
+tail -f /tmp/prelura-backend.log
+```
+
+One-off check: `./scripts/watch-prelura-backend.sh --once`  
+Custom interval (seconds): `./scripts/watch-prelura-backend.sh --interval 120`  
+Override URL: `PRELURA_GRAPHQL_URL=https://…/graphql/ ./scripts/watch-prelura-backend.sh`
