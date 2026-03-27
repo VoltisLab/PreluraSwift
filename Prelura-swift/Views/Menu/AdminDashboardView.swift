@@ -117,7 +117,7 @@ struct AdminDashboardView: View {
             Button("Delete", role: .destructive) { performDeleteAllOrders() }
         } message: {
             if let n = ordersConfirmCount {
-                Text("This will delete \(n) conversations and their linked orders. This cannot be undone.")
+                Text("This will delete all orders and payments in the database, plus \(n) conversations. This cannot be undone.")
             }
         }
         .alert("Result", isPresented: $showOrdersResult) {
