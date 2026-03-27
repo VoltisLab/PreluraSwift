@@ -17,19 +17,19 @@ struct ShopValueView: View {
     }
 
     // MARK: - Data (API + derived/placeholder)
-    private var currentShopValue: Double { earnings?.networth ?? 1240 }
-    /// Available balance from successful captures (`userEarnings.completedPayments`); defaults to 0 when not loaded.
+    private var currentShopValue: Double { earnings?.networth ?? 0 }
+    /// Cleared for payout: delivered/completed orders only (`userEarnings.completedPayments`).
     private var balance: Double { earnings?.completedPayments.value ?? 0 }
-    private var thisMonth: Double { earnings?.earningsInMonth.value ?? 240 }
-    private var totalEarnings: Double { earnings?.totalEarnings.value ?? 3420 }
+    private var thisMonth: Double { earnings?.earningsInMonth.value ?? 0 }
+    private var totalEarnings: Double { earnings?.totalEarnings.value ?? 0 }
     /// Total earned since account creation (same as totalEarnings from API).
     private var lifetimeEarnings: Double { totalEarnings }
-    private var transactionsCompleted: Int { earnings?.totalEarnings.quantity ?? 58 }
+    private var transactionsCompleted: Int { earnings?.totalEarnings.quantity ?? 0 }
     private var pendingValue: Double { earnings?.pendingPayments.value ?? 0 }
-    private var pendingOrdersCount: Int { earnings?.pendingPayments.quantity ?? 3 }
+    private var pendingOrdersCount: Int { earnings?.pendingPayments.quantity ?? 0 }
 
     private var viewsThisMonth: Int { 1240 }
-    private var itemsSold: Int { max(14, transactionsCompleted) }
+    private var itemsSold: Int { transactionsCompleted }
     private var conversionRate: Double { viewsThisMonth > 0 ? Double(itemsSold) / Double(viewsThisMonth) * 100 : 4.8 }
     private var averageItemPrice: Double { itemsSold > 0 ? totalEarnings / Double(itemsSold) : 32 }
     private var sellerRating: Double { 4.9 }
