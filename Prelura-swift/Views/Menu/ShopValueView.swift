@@ -28,6 +28,11 @@ struct ShopValueView: View {
     private var transactionsCompleted: Int { earnings?.totalEarnings.quantity ?? 0 }
     private var pendingValue: Double { earnings?.pendingPayments.value ?? 0 }
     private var pendingOrdersCount: Int { earnings?.pendingPayments.quantity ?? 0 }
+    /// Shown under Balance: sum from `pendingPayments.value` (in-flight / uncaptured payments).
+    private var balancePendingSubtitle: String? {
+        guard pendingOrdersCount > 0 || pendingValue > 0 else { return nil }
+        return String(format: L10n.string("Pending %@"), formatCurrency(pendingValue))
+    }
 
     private var viewsThisMonth: Int { 1240 }
     private var itemsSold: Int { transactionsCompleted }
@@ -150,7 +155,7 @@ struct ShopValueView: View {
                 .font(Theme.Typography.headline)
                 .foregroundColor(Theme.Colors.primaryText)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Theme.Spacing.sm) {
-                DashboardKPICard(title: L10n.string("Balance"), value: formatCurrency(balance))
+                DashboardKPICard(title: L10n.string("Balance"), value: formatCurrency(balance), subtitle: balancePendingSubtitle)
                 DashboardKPICard(title: L10n.string("Pending orders"), value: "\(pendingOrdersCount)")
                 DashboardKPICard(title: L10n.string("This month"), value: formatCurrency(thisMonth), percentChange: thisMonth > 0 ? thisMonthPercentChange : nil)
                 DashboardKPICard(title: L10n.string("Total earnings"), value: formatCurrency(totalEarnings), percentChange: totalEarnings > 0 ? totalEarningsPercentChange : nil)
@@ -268,7 +273,10 @@ private struct DashboardKPICard: View {
     /// Percent change vs previous period; positive = increase, negative = decrease. Shown with arrow and colour (e.g. +8%, -2%).
     var percentChange: Double? = nil
 
-    private let cardMinHeight: CGFloat = 92
+    private var cardMinHeight: CGFloat {
+        if let sub = subtitle, !sub.isEmpty { return 108 }
+        return 92
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -279,12 +287,13 @@ private struct DashboardKPICard: View {
             Text(value)
                 .font(.system(size: 18, weight: .semibold, design: .rounded))
                 .foregroundColor(Theme.Colors.primaryText)
-            Spacer(minLength: 0)
             if let sub = subtitle, !sub.isEmpty {
                 Text(sub)
                     .font(.caption2)
-                    .foregroundColor(Theme.primaryColor)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer(minLength: 0)
             if let pct = percentChange {
                 HStack(spacing: 2) {
                     Image(systemName: pct >= 0 ? "arrow.up.right" : "arrow.down.right")
@@ -295,7 +304,7 @@ private struct DashboardKPICard: View {
                 .foregroundColor(pct >= 0 ? Theme.primaryColor : Theme.Colors.error)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: cardMinHeight, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: cardMinHeight, alignment: .topLeading)
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.secondaryBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
