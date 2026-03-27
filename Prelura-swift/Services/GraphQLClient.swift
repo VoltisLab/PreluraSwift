@@ -29,6 +29,7 @@ class GraphQLClient {
     ) async throws -> T {
         var request = URLRequest(url: baseURL)
         request.httpMethod = "POST"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         
@@ -90,6 +91,7 @@ class GraphQLClient {
     ) async throws -> T {
         var request = URLRequest(url: baseURL)
         request.httpMethod = "POST"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token = authToken {

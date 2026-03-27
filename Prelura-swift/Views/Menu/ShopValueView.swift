@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Dashboard screen — seller metrics, KPIs, and charts. Fetches UserEarnings from API; some metrics use derived/placeholder values until backend supports them.
 struct ShopValueView: View {
@@ -42,9 +43,10 @@ struct ShopValueView: View {
     private var lifetimePercentChange: Double { 5.0 }
     private var projectedEarningsPercentChange: Double { 10.0 }
 
-    /// Mock weekly earnings for chart (last 6 weeks) — deterministic so chart doesn’t jump on redraw
+    /// Mock weekly earnings for chart (last 6 weeks). Flat zeros when month-to-date is zero so UI matches data.
     private var earningsTrendPoints: [Double] {
-        let m = max(1, thisMonth)
+        let m = thisMonth
+        if m <= 0 { return [0, 0, 0, 0, 0, 0] }
         return [m * 0.15, m * 0.35, m * 0.55, m * 0.75, m * 0.88, m]
     }
 
@@ -79,6 +81,12 @@ struct ShopValueView: View {
         .toolbar(.hidden, for: .tabBar)
         .refreshable { await loadEarnings() }
         .onAppear { Task { await loadEarnings() } }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            Task { await loadEarnings() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .preluraSellerEarningsShouldRefresh)) { _ in
+            Task { await loadEarnings() }
+        }
         .sheet(isPresented: $showWithdrawalFlow) {
             NavigationStack {
                 WithdrawalFlowView(availableBalance: balance, onDismiss: { showWithdrawalFlow = false })
@@ -140,10 +148,10 @@ struct ShopValueView: View {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Theme.Spacing.sm) {
                 DashboardKPICard(title: L10n.string("Balance"), value: formatCurrency(balance))
                 DashboardKPICard(title: L10n.string("Pending orders"), value: "\(pendingOrdersCount)")
-                DashboardKPICard(title: L10n.string("This month"), value: formatCurrency(thisMonth), percentChange: thisMonthPercentChange)
-                DashboardKPICard(title: L10n.string("Total earnings"), value: formatCurrency(totalEarnings), percentChange: totalEarningsPercentChange)
+                DashboardKPICard(title: L10n.string("This month"), value: formatCurrency(thisMonth), percentChange: thisMonth > 0 ? thisMonthPercentChange : nil)
+                DashboardKPICard(title: L10n.string("Total earnings"), value: formatCurrency(totalEarnings), percentChange: totalEarnings > 0 ? totalEarningsPercentChange : nil)
                 DashboardKPICard(title: L10n.string("Transactions completed"), value: "\(transactionsCompleted)")
-                DashboardKPICard(title: L10n.string("Lifetime"), value: formatCurrency(lifetimeEarnings), percentChange: lifetimePercentChange)
+                DashboardKPICard(title: L10n.string("Lifetime"), value: formatCurrency(lifetimeEarnings), percentChange: lifetimeEarnings > 0 ? lifetimePercentChange : nil)
             }
         }
     }

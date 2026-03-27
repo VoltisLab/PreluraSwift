@@ -20,9 +20,14 @@ extension Notification.Name {
     static let preluraUserProfileDidUpdate = Notification.Name("PreluraUserProfileDidUpdate")
     /// Posted when the user views a product so Discover (and Recently viewed) can refresh.
     static let preluraRecentlyViewedDidUpdate = Notification.Name("PreluraRecentlyViewedDidUpdate")
+    /// Posted after admin wipes orders/payments so Dashboard can refetch `userEarnings`.
+    static let preluraSellerEarningsShouldRefresh = Notification.Name("PreluraSellerEarningsShouldRefresh")
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
+
+    /// `FirebaseApp.configure()` aborts if the default plist is missing or invalid. Only true after a successful configure.
+    private static var isFirebaseConfigured: Bool { FirebaseApp.app() != nil }
     /// Payload to route after splash: cold-open from push (`launchOptions`) or tap received while splash is visible (root `onReceive` cannot present yet).
     static var pendingPostSplashNotificationUserInfo: [AnyHashable: Any]?
 
@@ -32,24 +37,55 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        FirebaseApp.configure()
-        if let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
-           let plist = NSDictionary(contentsOfFile: path) as? [String: Any],
-           let projectId = plist["PROJECT_ID"] as? String {
-            pushBootstrapLog.info("Firebase PROJECT_ID=\(projectId, privacy: .public) — must match server GOOGLE_CRED_PROJECT_ID.")
-            #if DEBUG
-            print("[Push] Firebase PROJECT_ID=\(projectId)")
-            #endif
-        } else {
-            pushBootstrapLog.error("GoogleService-Info.plist missing from app bundle — Firebase push will not work.")
+        configureFirebaseIfPossible()
+        if Self.isFirebaseConfigured {
+            Messaging.messaging().delegate = self
         }
-        Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
         if let remote = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             Self.pendingPostSplashNotificationUserInfo = remote
         }
         requestNotificationPermissionAndRegister(application: application)
         return true
+    }
+
+    /// Loads `GoogleService-Info.plist` when present and not a template. Calling `FirebaseApp.configure()` with no plist aborts the process.
+    private func configureFirebaseIfPossible() {
+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+              FileManager.default.fileExists(atPath: path) else {
+            pushBootstrapLog.error("GoogleService-Info.plist missing from app bundle — Firebase push disabled. Add from Firebase Console (docs/FIREBASE_IOS_SETUP.md).")
+            #if DEBUG
+            print("[Push] No GoogleService-Info.plist in bundle — add Prelura-swift/GoogleService-Info.plist for FCM.")
+            #endif
+            return
+        }
+        guard let plist = NSDictionary(contentsOfFile: path) as? [String: Any] else {
+            pushBootstrapLog.error("GoogleService-Info.plist could not be read — Firebase push disabled.")
+            return
+        }
+        let apiKey = (plist["API_KEY"] as? String) ?? ""
+        let googleAppId = (plist["GOOGLE_APP_ID"] as? String) ?? ""
+        if apiKey.contains("REPLACE_ME") || googleAppId.contains("REPLACE_ME") {
+            pushBootstrapLog.warning("GoogleService-Info.plist still has REPLACE_ME placeholders — Firebase not configured.")
+            #if DEBUG
+            print("[Push] Replace placeholders in GoogleService-Info.plist with values from Firebase Console.")
+            #endif
+            return
+        }
+        guard let options = FirebaseOptions(contentsOfFile: path) else {
+            pushBootstrapLog.error("FirebaseOptions could not load GoogleService-Info.plist — Firebase push disabled.")
+            return
+        }
+        if let bid = Bundle.main.bundleIdentifier {
+            options.bundleID = bid
+        }
+        FirebaseApp.configure(options: options)
+        if let projectId = plist["PROJECT_ID"] as? String {
+            pushBootstrapLog.info("Firebase PROJECT_ID=\(projectId, privacy: .public) — must match server GOOGLE_CRED_PROJECT_ID.")
+            #if DEBUG
+            print("[Push] Firebase PROJECT_ID=\(projectId)")
+            #endif
+        }
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
@@ -62,6 +98,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             guard ok else { return }
             DispatchQueue.main.async {
                 application.registerForRemoteNotifications()
+                guard Self.isFirebaseConfigured else { return }
                 // After Firebase/backend changes, FCM token can rotate; refresh and notify only if it changed
                 // so we re-run updateProfile(fcmToken:) without spamming identical tokens each foreground.
                 Messaging.messaging().token { token, error in
@@ -108,6 +145,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     /// Store device token and notify so the app can send it to the backend when the user is logged in.
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        guard Self.isFirebaseConfigured else { return }
         Messaging.messaging().apnsToken = deviceToken
         // Explicit fetch: delegate can lag; ensures UserDefaults + backend sync see a token.
         Messaging.messaging().token { token, error in
