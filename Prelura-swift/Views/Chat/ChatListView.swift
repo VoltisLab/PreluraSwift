@@ -432,8 +432,18 @@ struct ChatRowView: View {
         return type == "order_issue"
     }
 
-    /// Human-readable preview for list. Use last message sender: if I sent the last message (offer), "You sent an offer"; else "Offer received". When there's an order, show order summary.
+    /// Human-readable preview for list. Use last message sender: if I sent the last message (offer), "You sent an offer"; else "Offer received". When there's an order, show order summary. Accepted offers use `updatedBy` / accepter for copy.
     static func previewText(for raw: String?, conversation: Conversation, currentUsername: String?) -> String? {
+        if let offer = conversation.offer, offer.isAccepted, conversation.order == nil {
+            let accepter = offer.updatedByUsername?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let accepter, !accepter.isEmpty {
+                if usernamesMatch(accepter, currentUsername) {
+                    return "You accepted an offer"
+                }
+                return "\(accepter) accepted your offer"
+            }
+            return "Offer accepted"
+        }
         /// True when the current user sent the latest offer (last message sender matches).
         let iSentLastOffer = usernamesMatch(conversation.lastMessageSenderUsername, currentUsername)
         guard let raw = raw, !raw.isEmpty else {
@@ -461,6 +471,8 @@ struct ChatRowView: View {
         case "order_issue": return "You reported an issue"
         case "order": return "Order update"
         case "offer": return iSentLastOffer ? "You sent an offer" : "Offer received"
+        case "account_report": return Message.humanReadableReportLine(json: json, reportType: type, maxLength: 56)
+        case "product_report": return Message.humanReadableReportLine(json: json, reportType: type, maxLength: 56)
         case "sold_confirmation":
             // Seller = person who listed the product (offer’s product seller). Buyer sees "Order confirmed".
             if usernamesMatch(conversation.offer?.products?.first?.seller?.username, currentUsername) {

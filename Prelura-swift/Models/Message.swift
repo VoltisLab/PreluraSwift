@@ -11,7 +11,9 @@ struct Message: Identifiable {
     let type: String
     let orderID: String?
     let thumbnailURL: String?
-    
+    /// From backend: for **messages you sent**, true once the other participant has opened the thread and marked messages read.
+    let read: Bool
+
     init(
         id: UUID = UUID(),
         backendId: Int? = nil,
@@ -20,7 +22,8 @@ struct Message: Identifiable {
         timestamp: Date = Date(),
         type: String = "order_issue",
         orderID: String? = nil,
-        thumbnailURL: String? = nil
+        thumbnailURL: String? = nil,
+        read: Bool = false
     ) {
         self.id = id
         self.backendId = backendId
@@ -31,6 +34,26 @@ struct Message: Identifiable {
         self.type = type
         self.orderID = orderID
         self.thumbnailURL = thumbnailURL
+        self.read = read
+    }
+
+    /// Plain-text / emoji-only messages: scale for 1–4 emoji (5×…2×); 5+ emoji use 1×. Nil if not emoji-only (e.g. JSON or mixed text).
+    var emojiOnlyScaleMultiplier: Double? {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.hasPrefix("{") else { return nil }
+        var emojiCount = 0
+        for ch in trimmed where !ch.isWhitespace {
+            guard ch.isEmojiForChatBubble else { return nil }
+            emojiCount += 1
+        }
+        guard emojiCount > 0 else { return nil }
+        switch emojiCount {
+        case 1: return 5
+        case 2: return 4
+        case 3: return 3
+        case 4: return 2
+        default: return 1
+        }
     }
     
     /// One-line preview for inbox/lists; never surface raw JSON for structured message types.
@@ -45,10 +68,26 @@ struct Message: Identifiable {
             case "order": return "Order update"
             case "offer": return "Offer"
             case "sold_confirmation": return "Order confirmed"
+            case "account_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
+            case "product_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             default: break
             }
         }
         return String(content.prefix(50)) + "..."
+    }
+
+    /// `reason` first, then `description`; truncates for list rows. Used by chat inbox preview too.
+    static func humanReadableReportLine(json: [String: Any], reportType: String, maxLength: Int) -> String {
+        let label = reportType == "account_report" ? "Account report" : "Product report"
+        let rawDetail = (json["reason"] as? String) ?? (json["description"] as? String)
+        let detail = rawDetail?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ") ?? ""
+        guard !detail.isEmpty else { return label }
+        let full = "\(label): \(detail)"
+        guard full.count > maxLength else { return full }
+        guard maxLength > 2 else { return "…" }
+        return String(full.prefix(maxLength - 1)) + "…"
     }
 
     var formattedTimestamp: String {
@@ -109,6 +148,8 @@ struct Message: Identifiable {
             case "order": return "Order update"
             case "offer": return isFromCurrentUser ? "Offer sent" : "New offer"
             case "sold_confirmation": return "Order confirmed"
+            case "account_report": return Self.humanReadableReportLine(json: json, reportType: type, maxLength: 280)
+            case "product_report": return Self.humanReadableReportLine(json: json, reportType: type, maxLength: 280)
             default: break
             }
         }
@@ -249,4 +290,19 @@ extension Message {
             thumbnailURL: "https://picsum.photos/seed/strapless1/200/200"
         )
     ]
+}
+
+private extension Character {
+    var isEmojiForChatBubble: Bool {
+        let scalars = unicodeScalars
+        let allowed = scalars.allSatisfy { s in
+            s.properties.isEmoji
+                || s.properties.isEmojiModifier
+                || s.value == 0x200D
+                || s.value == 0xFE0F
+                || s.properties.isVariationSelector
+        }
+        guard allowed else { return false }
+        return scalars.contains { $0.properties.isEmoji }
+    }
 }

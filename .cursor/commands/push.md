@@ -1,6 +1,8 @@
-# Push
+# Push (PreluraSwift repo only)
 
-When the user runs `/push`, follow these steps:
+To push **both** `prelura-app` and `PreluraSwift`, use the workspace command: **`prelura-workspace/.cursor/commands/push.md`** (run from the parent folder that contains both repos).
+
+When the user runs `/push` from **this** repo only, follow these steps:
 
 1. **Token**
    - Read the GitHub Personal Access Token from `scripts/github-token` (one line, no quotes or spaces).

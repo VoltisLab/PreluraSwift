@@ -109,7 +109,13 @@ struct MyOrdersView: View {
                 boughtOrders = boughtResult.orders
             }
         } catch {
-            await MainActor.run { errorMessage = error.localizedDescription }
+            // Pull-to-refresh cancels the task when the gesture ends; don't show that as a red error.
+            let isCancelled = (error as? CancellationError) != nil
+                || (error as? URLError)?.code == .cancelled
+                || error.localizedDescription.lowercased().contains("cancelled")
+            await MainActor.run {
+                errorMessage = isCancelled ? nil : error.localizedDescription
+            }
         }
     }
 }

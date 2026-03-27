@@ -1099,6 +1099,11 @@ class UserService: ObservableObject {
         }
     }
 
+    /// Clear payout bank account from user meta (same path as AddBankAccountView).
+    func clearPayoutBankAccount() async throws {
+        try await updateProfile(meta: ["payoutBankAccount": NSNull()])
+    }
+
     /// Create a Stripe payment intent for an order. Matches Flutter createPaymentIntent. Returns clientSecret (for Stripe SDK) and paymentRef (for confirmPayment).
     func createPaymentIntent(orderId: Int, paymentMethodId: String) async throws -> (clientSecret: String, paymentRef: String) {
         NSLog("[PAY_DEBUG] createPaymentIntent orderId=%d", orderId)

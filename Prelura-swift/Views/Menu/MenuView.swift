@@ -45,10 +45,8 @@ struct MenuView: View {
                     menuRow(L10n.string("Admin Dashboard"), icon: "shield.lefthalf.filled")
                 }
             }
-            if listingCount > 0 {
-                NavigationLink(destination: ShopValueView(listingCount: listingCount)) {
-                    menuRow(L10n.string("Dashboard"), icon: "chart.bar")
-                }
+            NavigationLink(destination: ShopValueView(listingCount: listingCount)) {
+                menuRow(L10n.string("Dashboard"), icon: "chart.bar")
             }
             NavigationLink(destination: MyOrdersView()) {
                 menuRow(L10n.string("Orders"), icon: "bag")

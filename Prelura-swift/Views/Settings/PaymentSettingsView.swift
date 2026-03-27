@@ -7,7 +7,9 @@ struct PaymentSettingsView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var isDeleting = false
+    @State private var isDeletingBank = false
     @State private var showDeleteConfirm = false
+    @State private var showDeleteBankConfirm = false
 
     @EnvironmentObject private var authService: AuthService
     private let userService = UserService()
@@ -52,7 +54,7 @@ struct PaymentSettingsView: View {
                                 }
                                 .frame(maxWidth: .infinity)
                             }
-                            .disabled(isDeleting)
+                            .disabled(isDeleting || isDeletingBank)
                         } else {
                             Text(L10n.string("No payment method added"))
                                 .foregroundColor(Theme.Colors.secondaryText)
@@ -87,16 +89,27 @@ struct PaymentSettingsView: View {
                             Text(L10n.string("Payouts are sent here when delivery is complete."))
                                 .font(Theme.Typography.caption)
                                 .foregroundColor(Theme.Colors.secondaryText)
+                            Button(role: .destructive) {
+                                showDeleteBankConfirm = true
+                            } label: {
+                                HStack {
+                                    if isDeletingBank {
+                                        ProgressView()
+                                            .scaleEffect(0.9)
+                                            .tint(Theme.Colors.error)
+                                    } else {
+                                        Text(L10n.string("Delete"))
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .disabled(isDeleting || isDeletingBank)
                         } else {
                             Text(L10n.string("No bank account added"))
                                 .foregroundColor(Theme.Colors.secondaryText)
                         }
                     }
                     Section {
-                        NavigationLink(destination: AddPaymentCardView(onAdded: { Task { await load() } })) {
-                            Label("Add Payment Card", systemImage: "creditcard")
-                                .foregroundColor(Theme.Colors.primaryText)
-                        }
                         NavigationLink(destination: AddBankAccountView(onSaved: { Task { await load() } })) {
                             Label("Add Bank Account", systemImage: "building.columns")
                                 .foregroundColor(Theme.Colors.primaryText)
@@ -128,6 +141,14 @@ struct PaymentSettingsView: View {
         } message: {
             Text(L10n.string("This card will be removed from your account."))
         }
+        .confirmationDialog(L10n.string("Remove bank account?"), isPresented: $showDeleteBankConfirm, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                Task { await deletePayoutBankAccount() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(L10n.string("Payouts will not be sent until you add a bank account again."))
+        }
     }
 
     private func load() async {
@@ -156,6 +177,19 @@ struct PaymentSettingsView: View {
         do {
             try await userService.deletePaymentMethod(paymentMethodId: id)
             paymentMethod = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func deletePayoutBankAccount() async {
+        isDeletingBank = true
+        errorMessage = nil
+        defer { isDeletingBank = false }
+        userService.updateAuthToken(authService.authToken)
+        do {
+            try await userService.clearPayoutBankAccount()
+            payoutBankAccount = nil
         } catch {
             errorMessage = error.localizedDescription
         }

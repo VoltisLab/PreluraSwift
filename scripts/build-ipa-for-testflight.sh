@@ -95,8 +95,37 @@ if [ "$UPLOAD" = true ]; then
         exit 1
     fi
     
-    # Parse credentials (must be JSON with "method": "password" or "api_key")
-    METHOD=$(echo "$CREDENTIALS" | tr -d '\n' | grep -oE '"method"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')
+    # Keychain may store the password as a hex-encoded UTF-8 JSON blob (security -w returns hex).
+    if command -v python3 &>/dev/null; then
+        CREDENTIALS=$(printf '%s' "$CREDENTIALS" | python3 -c "
+import sys, binascii, json
+raw = sys.stdin.read().strip()
+if not raw:
+    sys.exit(0)
+try:
+    json.loads(raw)
+    print(raw, end='')
+    sys.exit(0)
+except json.JSONDecodeError:
+    pass
+if len(raw) >= 4 and len(raw) % 2 == 0 and all(c in '0123456789abcdefABCDEF' for c in raw):
+    try:
+        dec = binascii.unhexlify(raw).decode('utf-8')
+        json.loads(dec)
+        print(dec, end='')
+        sys.exit(0)
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError):
+        pass
+print(raw, end='')
+")
+    fi
+    
+    # Parse credentials (must be JSON with \"method\": \"password\" or \"api_key\")
+    if command -v python3 &>/dev/null; then
+        METHOD=$(printf '%s' "$CREDENTIALS" | python3 -c "import sys, json; print(json.load(sys.stdin).get('method', ''))" 2>/dev/null)
+    else
+        METHOD=$(printf '%s' "$CREDENTIALS" | tr -d '\n' | grep -oE '\"method\"[[:space:]]*:[[:space:]]*\"[^\"]*\"' | head -1 | sed 's/.*: *\"\([^\"]*\)\".*/\1/')
+    fi
     
     if [ -z "$METHOD" ]; then
         echo "❌ Credentials are not valid JSON with a \"method\" field."
@@ -125,8 +154,13 @@ if [ "$UPLOAD" = true ]; then
         
     elif [ "$METHOD" = "api_key" ]; then
         # API Key method
-        API_KEY_ID=$(echo "$CREDENTIALS" | grep -o '"api_key_id":"[^"]*"' | cut -d'"' -f4)
-        ISSUER_ID=$(echo "$CREDENTIALS" | grep -o '"issuer_id":"[^"]*"' | cut -d'"' -f4)
+        if command -v python3 &>/dev/null; then
+            API_KEY_ID=$(printf '%s' "$CREDENTIALS" | python3 -c "import sys, json; print(json.load(sys.stdin).get('api_key_id', ''))" 2>/dev/null)
+            ISSUER_ID=$(printf '%s' "$CREDENTIALS" | python3 -c "import sys, json; print(json.load(sys.stdin).get('issuer_id', ''))" 2>/dev/null)
+        else
+            API_KEY_ID=$(printf '%s' "$CREDENTIALS" | tr -d '\n' | grep -oE '\"api_key_id\"[[:space:]]*:[[:space:]]*\"[^\"]*\"' | head -1 | sed 's/.*: *\"\([^\"]*\)\".*/\1/')
+            ISSUER_ID=$(printf '%s' "$CREDENTIALS" | tr -d '\n' | grep -oE '\"issuer_id\"[[:space:]]*:[[:space:]]*\"[^\"]*\"' | head -1 | sed 's/.*: *\"\([^\"]*\)\".*/\1/')
+        fi
         
         echo "Uploading with API Key authentication..."
         xcrun altool --upload-app \

@@ -7,26 +7,31 @@ When the user runs `/relaunchlogs`, follow these steps:
    - From the iOS project root: `xcodebuild -project Prelura-swift.xcodeproj -scheme Prelura-swift -destination 'platform=iOS Simulator,name=iPhone 14' -configuration Debug build`
    - Monitor build output until it completes. If the build fails, report the error and fix before continuing.
 
-2. **Terminate, install, launch on iPhone 14**
-   - Ensure iPhone 14 simulator is booted (e.g. `xcrun simctl list devices booted`); if not, boot it.
-   - Terminate any running instance: `xcrun simctl terminate "iPhone 14" com.prelura.preloved`
-   - Find the built .app: Look in `~/Library/Developer/Xcode/DerivedData/Prelura-swift-*/Build/Products/Debug-iphonesimulator/Prelura-swift.app` (find the most recent one)
-   - Install the newly built .app: `xcrun simctl install "iPhone 14" <path-to-.app>`
-   - Launch: `xcrun simctl launch "iPhone 14" com.prelura.preloved`
-   - Capture the process ID from the launch output.
+2. **Ensure iPhone 16e and resolve `.app`**
+   - Same as `/relaunch`: if no iPhone 16e in `xcrun simctl list devices available`, create it (`simctl create` with `com.apple.CoreSimulator.SimDeviceType.iPhone-16e` and an available iOS runtime).
+   - Find the built `.app`: `~/Library/Developer/Xcode/DerivedData/Prelura-swift-*/Build/Products/Debug-iphonesimulator/Prelura-swift.app` (most recent).
 
-3. **Stream logs (required)**
-   - Immediately after launch, start streaming logs: `xcrun simctl spawn "iPhone 14" log stream --predicate 'processImagePath contains "Prelura-swift" OR processImagePath contains "preloved"' --level debug --style compact`
-   - Keep the log stream running and visible to the user.
-   - The logs should show app startup, any errors, and runtime output.
+3. **Terminate, install, launch on iPhone 14**
+   - Boot if needed; terminate: `xcrun simctl terminate "iPhone 14" com.prelura.preloved` (ignore if not running).
+   - Install: `xcrun simctl install "iPhone 14" <path-to-.app>`
+   - Launch: `xcrun simctl launch "iPhone 14" com.prelura.preloved` — capture PID.
 
-4. **Monitoring (required)**
+4. **Terminate, install, launch on iPhone 16e**
+   - Boot if needed; terminate: `xcrun simctl terminate "iPhone 16e" com.prelura.preloved` (ignore if not running).
+   - Install same `.app`: `xcrun simctl install "iPhone 16e" <path-to-.app>`
+   - Launch: `xcrun simctl launch "iPhone 16e" com.prelura.preloved` — capture PID.
+
+5. **Stream logs (required)**
+   - For **each** simulator where the app was launched, stream logs (run the **iPhone 14** stream in the foreground; run **iPhone 16e** in the background if both are used):  
+     `xcrun simctl spawn "iPhone 14" log stream --predicate 'processImagePath contains "Prelura-swift" OR processImagePath contains "preloved"' --level debug --style compact`  
+     `xcrun simctl spawn "iPhone 16e" log stream --predicate 'processImagePath contains "Prelura-swift" OR processImagePath contains "preloved"' --level debug --style compact`
+   - Keep log stream(s) running so the user can see real-time app output.
+
+6. **Monitoring (required)**
    - Watch build, install, and launch output until they complete.
-   - Confirm the app is running (e.g. process ID from launch output) or report any failure.
-   - Keep the log stream active so the user can see real-time app output.
+   - Confirm the app is running on each simulator attempted (PIDs) or report any failure.
 
-5. **Report**
-   - Confirm the app is running on the iPhone 14 simulator and give the process ID if printed.
-   - Confirm that logs are streaming.
+7. **Report**
+   - Confirm the app is running on **iPhone 14** and **iPhone 16e** (when available) with process IDs.
+   - Confirm that log streaming is active (both simulators if both launched).
    - If anything failed, show the error and suggest a fix.
-   - Monitoring and log streaming must be part of every run.

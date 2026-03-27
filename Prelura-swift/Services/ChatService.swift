@@ -51,6 +51,7 @@ class ChatService: ObservableObject {
               status
               offerPrice
               createdBy
+              updatedBy
               buyer { username profilePictureUrl }
               products { id name seller { username profilePictureUrl } }
               createdAt
@@ -152,6 +153,7 @@ class ChatService: ObservableObject {
               status
               offerPrice
               createdBy
+              updatedBy
               buyer { username profilePictureUrl }
               products { id name seller { username profilePictureUrl } }
               createdAt
@@ -161,6 +163,7 @@ class ChatService: ObservableObject {
               status
               offerPrice
               createdBy
+              updatedBy
               buyer { username profilePictureUrl }
               products { id name seller { username profilePictureUrl } }
               createdAt
@@ -250,7 +253,8 @@ class ChatService: ObservableObject {
                 products: base.products,
                 createdAt: base.createdAt ?? parseGraphQLDateString(data.createdAt),
                 sentByCurrentUser: fromMe,
-                financialBuyerUsername: base.financialBuyerUsername
+                financialBuyerUsername: base.financialBuyerUsername,
+                updatedByUsername: data.updatedBy ?? base.updatedByUsername
             )
         }
     }
@@ -269,6 +273,7 @@ class ChatService: ObservableObject {
             id
             text
             createdAt
+            read
             sender {
               id
               username
@@ -337,7 +342,8 @@ class ChatService: ObservableObject {
                 timestamp: parseDate(msg.createdAt) ?? Date(),
                 type: messageType,
                 orderID: msg.itemId.map { String($0) },
-                thumbnailURL: nil
+                thumbnailURL: nil,
+                read: msg.read ?? false
             )
         }
         return list.sorted { $0.timestamp < $1.timestamp }
@@ -617,7 +623,8 @@ struct Conversation: Hashable {
             products: products,
             createdAt: parseGraphQLDateString(data.createdAt),
             sentByCurrentUser: false,
-            financialBuyerUsername: financialBuyer
+            financialBuyerUsername: financialBuyer,
+            updatedByUsername: data.updatedBy
         )
     }
 }
@@ -729,6 +736,8 @@ struct OfferData: Decodable {
     fileprivate let offerPrice: OfferPriceValue?
     /// Username of who sent this offer (created_by); use for "X offered" when present so counters show correct sender.
     let createdBy: String?
+    /// Username of who last updated status (e.g. accepted); GraphQL `updatedBy`.
+    let updatedBy: String?
     let buyer: OfferUserData?
     let products: [OfferProductData]?
     let createdAt: String?
@@ -799,6 +808,7 @@ struct MessageData: Decodable {
     let id: AnyCodable?
     let text: String?
     let createdAt: String?
+    let read: Bool?
     let sender: UserData?
     let isItem: Bool?
     let itemId: Int?

@@ -455,8 +455,11 @@ enum L10n {
         "Active bank account": "Ενεργός τραπεζικός λογαριασμός",
         "No bank account added": "Δεν προστέθηκε τραπεζικός λογαριασμός",
         "Payouts are sent here when delivery is complete.": "Οι πληρωμές αποστέλλονται εδώ όταν η παράδοση ολοκληρωθεί.",
+        "Seen": "Φαίνεται",
         "Delete": "Διαγραφή",
         "This card will be removed from your account.": "Αυτή η κάρτα θα αφαιρεθεί από τον λογαριασμό σας.",
+        "Remove bank account?": "Αφαίρεση τραπεζικού λογαριασμού;",
+        "Payouts will not be sent until you add a bank account again.": "Οι πληρωμές δεν θα αποστέλλονται μέχρι να προσθέσετε ξανά τραπεζικό λογαριασμό.",
         "General": "Γενικά",
         "Notification Settings": "Ρυθμίσεις ειδοποιήσεων",
 

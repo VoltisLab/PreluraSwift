@@ -224,14 +224,17 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         let itemType = (json["itemType"] as? String) ?? (json["item_type"] as? String)
         let itemId = (json["itemId"] as? Int).map { String($0) } ?? (json["item_id"] as? Int).map { String($0) }
         let messageType: String = (itemType?.isEmpty == false) ? itemType! : (isItem ? "item" : "text")
+        let read = (json["read"] as? Bool) ?? false
         return Message(
             id: uuid,
+            backendId: (json["id"] as? Int) ?? (json["id"] as? String).flatMap { Int($0) },
             senderUsername: senderName,
             content: text,
             timestamp: createdAt,
             type: messageType,
             orderID: itemId,
-            thumbnailURL: nil
+            thumbnailURL: nil,
+            read: read
         )
     }
 
@@ -266,7 +269,8 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
             return rawBuyerAccount
         }()
         let products = (o["products"] as? [[String: Any]])?.compactMap { parseOfferProduct($0) }
-        return OfferInfo(id: id, backendId: id, status: status, offerPrice: price, buyer: buyer, products: products, createdAt: createdAt ?? Date(), sentByCurrentUser: false, financialBuyerUsername: financialBuyerUsername)
+        let updatedBy = (o["updatedBy"] as? String) ?? (o["updated_by"] as? String)
+        return OfferInfo(id: id, backendId: id, status: status, offerPrice: price, buyer: buyer, products: products, createdAt: createdAt ?? Date(), sentByCurrentUser: false, financialBuyerUsername: financialBuyerUsername, updatedByUsername: updatedBy)
     }
 
     private func parseOfferUser(_ j: [String: Any]?) -> OfferInfo.OfferUser? {

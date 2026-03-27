@@ -17,6 +17,8 @@ struct OfferInfo: Codable, Hashable {
     let createdAt: Date?
     /// When true, this offer was sent by the current user. Always set — never guess from buyer.
     let sentByCurrentUser: Bool
+    /// Username of the user who last changed offer status (e.g. who accepted); from GraphQL `updatedBy`.
+    let updatedByUsername: String?
 
     struct OfferUser: Codable, Hashable {
         let username: String?
@@ -30,7 +32,7 @@ struct OfferInfo: Codable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, backendId, status, offerPrice, buyer, financialBuyerUsername, products, createdAt, sentByCurrentUser
+        case id, backendId, status, offerPrice, buyer, financialBuyerUsername, products, createdAt, sentByCurrentUser, updatedByUsername
     }
 
     init(from decoder: Decoder) throws {
@@ -61,9 +63,10 @@ struct OfferInfo: Codable, Hashable {
             createdAt = nil
         }
         sentByCurrentUser = try c.decodeIfPresent(Bool.self, forKey: .sentByCurrentUser) ?? false
+        updatedByUsername = try c.decodeIfPresent(String.self, forKey: .updatedByUsername)
     }
 
-    init(id: String, backendId: String? = nil, status: String?, offerPrice: Double, buyer: OfferUser?, products: [OfferProduct]?, createdAt: Date? = nil, sentByCurrentUser: Bool, financialBuyerUsername: String? = nil) {
+    init(id: String, backendId: String? = nil, status: String?, offerPrice: Double, buyer: OfferUser?, products: [OfferProduct]?, createdAt: Date? = nil, sentByCurrentUser: Bool, financialBuyerUsername: String? = nil, updatedByUsername: String? = nil) {
         self.id = id
         self.backendId = backendId
         self.status = status
@@ -73,6 +76,7 @@ struct OfferInfo: Codable, Hashable {
         self.products = products
         self.createdAt = createdAt
         self.sentByCurrentUser = sentByCurrentUser
+        self.updatedByUsername = updatedByUsername
     }
 
     func encode(to encoder: Encoder) throws {
@@ -86,6 +90,7 @@ struct OfferInfo: Codable, Hashable {
         try c.encodeIfPresent(products, forKey: .products)
         try c.encodeIfPresent(createdAt?.timeIntervalSince1970, forKey: .createdAt)
         try c.encode(sentByCurrentUser, forKey: .sentByCurrentUser)
+        try c.encodeIfPresent(updatedByUsername, forKey: .updatedByUsername)
     }
 
     /// Backend id for API calls (e.g. respondToOffer).

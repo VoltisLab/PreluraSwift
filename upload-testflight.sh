@@ -29,8 +29,32 @@ if [ -z "$CREDENTIALS_RAW" ]; then
     exit 1
 fi
 
-# Decode hex-encoded credentials if needed
-CREDENTIALS=$(echo "$CREDENTIALS_RAW" | xxd -r -p 2>/dev/null || echo "$CREDENTIALS_RAW")
+# Decode hex-encoded keychain JSON if needed (security -w may return hex)
+if command -v python3 &>/dev/null; then
+    CREDENTIALS=$(printf '%s' "$CREDENTIALS_RAW" | python3 -c "
+import sys, binascii, json
+raw = sys.stdin.read().strip()
+if not raw:
+    sys.exit(0)
+try:
+    json.loads(raw)
+    print(raw, end='')
+    sys.exit(0)
+except json.JSONDecodeError:
+    pass
+if len(raw) >= 4 and len(raw) % 2 == 0 and all(c in '0123456789abcdefABCDEF' for c in raw):
+    try:
+        dec = binascii.unhexlify(raw).decode('utf-8')
+        json.loads(dec)
+        print(dec, end='')
+        sys.exit(0)
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError):
+        pass
+print(raw, end='')
+")
+else
+    CREDENTIALS=$(printf '%s' "$CREDENTIALS_RAW" | xxd -r -p 2>/dev/null || printf '%s' "$CREDENTIALS_RAW")
+fi
 
 # Parse credentials using Python for reliable JSON parsing
 METHOD=$(echo "$CREDENTIALS" | python3 -c "import sys, json; print(json.load(sys.stdin)['method'])" 2>/dev/null)

@@ -257,12 +257,15 @@ struct ChatDetailView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .transition(.opacity)
             }
-            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
-                TextField("Type a message...", text: $newMessage)
+            HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
+                TextField("Type a message...", text: $newMessage, axis: .vertical)
                     .textFieldStyle(.plain)
                     .focused($isMessageFieldFocused)
+                    .lineLimit(1...10)
+                    .multilineTextAlignment(.leading)
                     .padding(.horizontal, Theme.Spacing.md)
-                    .frame(minHeight: 44)
+                    .padding(.vertical, 10)
+                    .frame(minHeight: 44, alignment: .leading)
                     .background(Theme.Colors.secondaryBackground)
                     .cornerRadius(22)
                     .overlay(
@@ -372,13 +375,19 @@ struct ChatDetailView: View {
                     }
                 } else {
                     let isCurrentUserMessage = isCurrentUser(username: message.senderUsername)
+                    let showSeenLabel: Bool = {
+                        guard isCurrentUserMessage, message.read else { return false }
+                        guard let lastOwn = displayedMessages.lastIndex(where: { isCurrentUser(username: $0.senderUsername) }) else { return false }
+                        return lastOwn == index
+                    }()
                     MessageBubbleView(
                         message: message,
                         isCurrentUser: isCurrentUserMessage,
                         showAvatar: showAvatarForMessage(at: index),
                         showTimestamp: showTimestampForMessage(at: index),
                         avatarURL: showAvatarForMessage(at: index) ? displayedConversation.recipient.avatarURL : nil,
-                        recipientUsername: displayedConversation.recipient.username
+                        recipientUsername: displayedConversation.recipient.username,
+                        showSeenLabel: showSeenLabel
                     )
                     .id(message.id)
                     .contextMenu {
@@ -695,7 +704,12 @@ struct ChatDetailView: View {
         isLoading = true
         Task {
             let updatedConv: Conversation? = try? await chatService.getConversationById(conversationId: convId, currentUsername: authService.username)
-            let msgs: [Message] = (try? await chatService.getMessages(conversationId: convId)) ?? []
+            let fetchedMsgs: [Message]?
+            do {
+                fetchedMsgs = try await chatService.getMessages(conversationId: convId)
+            } catch {
+                fetchedMsgs = nil
+            }
             await MainActor.run {
                 guard displayedConversation.id == convId else { return }
                 if let conv = updatedConv {
@@ -739,7 +753,8 @@ struct ChatDetailView: View {
                                 products: accepted.products,
                                 createdAt: accepted.createdAt ?? combined[i].createdAt,
                                 sentByCurrentUser: accepted.sentByCurrentUser,
-                                financialBuyerUsername: accepted.financialBuyerUsername
+                                financialBuyerUsername: accepted.financialBuyerUsername,
+                                updatedByUsername: accepted.updatedByUsername ?? combined[i].updatedByUsername
                             )
                         }
 
@@ -758,7 +773,12 @@ struct ChatDetailView: View {
                         Self.persistOfferHistory(key: key, offers: combined)
                     }
                 }
-                self.messages = msgs
+                if let m = fetchedMsgs {
+                    self.messages = m
+                } else if self.messages.isEmpty {
+                    // Network/decoding failure: avoid wiping the thread with [] (user sees "chat doesn't persist").
+                    self.messages = []
+                }
                 // Do not call loadOffers() here: it can race with the send-success block and overwrite the just-sent offer with stale server data. Offers are loaded on appear and when conversation id changes; loadOffers() also guards against overwriting a recently added offer.
                 self.isLoading = false
                 self.hasFinishedInitialConversationFetch = true
@@ -771,7 +791,7 @@ struct ChatDetailView: View {
                     self.rebuildTimelineOrder()
                 }
             }
-            if !msgs.isEmpty {
+            if let msgs = fetchedMsgs, !msgs.isEmpty {
                 let idsToMarkRead = msgs
                     .filter { !isCurrentUser(username: $0.senderUsername) }
                     .compactMap(\.backendId)
@@ -809,7 +829,7 @@ struct ChatDetailView: View {
         }
         if let hist = displayedConversation.offerHistory, !hist.isEmpty {
             let list = hist.map { o in
-                OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser, financialBuyerUsername: o.financialBuyerUsername)
+                OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser, financialBuyerUsername: o.financialBuyerUsername, updatedByUsername: o.updatedByUsername)
             }
 
             // Make ACCEPTED immutable even after a full reload: server offerHistory may downgrade old accepted offers.
@@ -844,7 +864,8 @@ struct ChatDetailView: View {
                     products: accepted.products,
                     createdAt: accepted.createdAt ?? combined[i].createdAt,
                     sentByCurrentUser: accepted.sentByCurrentUser,
-                    financialBuyerUsername: accepted.financialBuyerUsername
+                    financialBuyerUsername: accepted.financialBuyerUsername,
+                    updatedByUsername: accepted.updatedByUsername ?? combined[i].updatedByUsername
                 )
             }
 
@@ -869,11 +890,11 @@ struct ChatDetailView: View {
         }
         if Self.offerHistoryCache[cacheKey] == nil, let persisted = Self.loadOfferHistory(key: cacheKey), !persisted.isEmpty {
             Self.offerHistoryCache[cacheKey] = persisted.map { o in
-                OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser, financialBuyerUsername: o.financialBuyerUsername)
+                OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser, financialBuyerUsername: o.financialBuyerUsername, updatedByUsername: o.updatedByUsername)
             }
         }
         if let cached = Self.offerHistoryCache[cacheKey], !cached.isEmpty {
-            var list = cached.map { o in OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser, financialBuyerUsername: o.financialBuyerUsername) }
+            var list = cached.map { o in OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser, financialBuyerUsername: o.financialBuyerUsername, updatedByUsername: o.updatedByUsername) }
             // If server has an offer that isn't our last cached offer (e.g. counter received), append it so it appears in the thread.
             if let serverOffer = displayedConversation.offer {
                 let serverId = serverOffer.id
@@ -895,7 +916,7 @@ struct ChatDetailView: View {
                             tc.pendingOfferPrice = nil
                         }
                     }
-                    let newOffer = OfferInfo(id: serverId, backendId: serverId, status: serverOffer.status ?? "PENDING", offerPrice: offerPrice, buyer: serverOffer.buyer, products: serverOffer.products, createdAt: serverOffer.createdAt ?? Date(), sentByCurrentUser: fromMe, financialBuyerUsername: serverOffer.financialBuyerUsername)
+                    let newOffer = OfferInfo(id: serverId, backendId: serverId, status: serverOffer.status ?? "PENDING", offerPrice: offerPrice, buyer: serverOffer.buyer, products: serverOffer.products, createdAt: serverOffer.createdAt ?? Date(), sentByCurrentUser: fromMe, financialBuyerUsername: serverOffer.financialBuyerUsername, updatedByUsername: serverOffer.updatedByUsername)
                     list.append(newOffer)
                     Self.offerHistoryCache[cacheKey] = list
                     Self.persistOfferHistory(key: cacheKey, offers: list)
@@ -923,8 +944,20 @@ struct ChatDetailView: View {
                 }
             }
             offers = [
-                OfferInfo(id: sid, backendId: sid, status: status, offerPrice: offerPrice, buyer: serverOffer.buyer, products: serverOffer.products, createdAt: serverOffer.createdAt ?? Date(), sentByCurrentUser: fromMe, financialBuyerUsername: serverOffer.financialBuyerUsername)
+                OfferInfo(id: sid, backendId: sid, status: status, offerPrice: offerPrice, buyer: serverOffer.buyer, products: serverOffer.products, createdAt: serverOffer.createdAt ?? Date(), sentByCurrentUser: fromMe, financialBuyerUsername: serverOffer.financialBuyerUsername, updatedByUsername: serverOffer.updatedByUsername)
             ]
+        } else if displayedConversation.order != nil {
+            // After checkout, GraphQL often omits `offer` on the conversation; do not wipe an in-memory thread or disk cache.
+            if offers.isEmpty {
+                if Self.offerHistoryCache[cacheKey] == nil, let persisted = Self.loadOfferHistory(key: cacheKey), !persisted.isEmpty {
+                    Self.offerHistoryCache[cacheKey] = persisted.map { o in
+                        OfferInfo(id: o.id, backendId: o.backendId, status: o.status, offerPrice: o.offerPrice, buyer: o.buyer, products: o.products, createdAt: o.createdAt ?? Date(), sentByCurrentUser: o.sentByCurrentUser, updatedByUsername: o.updatedByUsername)
+                    }
+                }
+                if let cached = Self.offerHistoryCache[cacheKey], !cached.isEmpty {
+                    offers = cached
+                }
+            }
         } else {
             offers = []
         }
@@ -1036,8 +1069,8 @@ struct ChatDetailView: View {
 
     /// Build timeline order by merging offers, messages, and sold event; sort by date.
     private func rebuildTimelineOrder() {
-        // Once order is sold, hide historical offer cards to avoid duplicate/stacked sale banners.
-        let offerList = displayedConversation.order != nil ? [] : offers
+        // Keep full offer history after payment so the negotiation thread stays visible; cards are greyed via `forceGreyedOut` when sold (see `isSold`).
+        let offerList = offers
         let msgs = displayedMessages
         var entries: [(Date, ChatItem)] = []
         for o in offerList {
@@ -1253,6 +1286,12 @@ struct ChatDetailView: View {
                         let offerPrice = serverMatchesTarget ? serverOffer.offerPrice : last.offerPrice
                         let buyer = serverMatchesTarget ? serverOffer.buyer : last.buyer
                         let products = serverMatchesTarget ? serverOffer.products : last.products
+                        let resolvedUpdatedBy: String? = {
+                            if action == "ACCEPT", resolvedStatus.uppercased() == "ACCEPTED" {
+                                return authService.username ?? (serverMatchesTarget ? serverOffer.updatedByUsername : last.updatedByUsername)
+                            }
+                            return serverMatchesTarget ? serverOffer.updatedByUsername : last.updatedByUsername
+                        }()
 
                         let updatedOffer = OfferInfo(
                             id: last.id,
@@ -1263,7 +1302,8 @@ struct ChatDetailView: View {
                             products: products,
                             createdAt: last.createdAt ?? Date(),
                             sentByCurrentUser: last.sentByCurrentUser,
-                            financialBuyerUsername: serverMatchesTarget ? serverOffer.financialBuyerUsername : last.financialBuyerUsername
+                            financialBuyerUsername: serverMatchesTarget ? serverOffer.financialBuyerUsername : last.financialBuyerUsername,
+                            updatedByUsername: resolvedUpdatedBy
                         )
                         var nextOffers = offers
                         nextOffers[idx] = updatedOffer
@@ -1561,7 +1601,8 @@ struct ChatDetailView: View {
             products: existing.products,
             createdAt: existing.createdAt ?? Date(),
             sentByCurrentUser: existing.sentByCurrentUser,
-            financialBuyerUsername: existing.financialBuyerUsername
+            financialBuyerUsername: existing.financialBuyerUsername,
+            updatedByUsername: existing.updatedByUsername
         )
         let senderNorm = event.senderUsername?.trimmingCharacters(in: .whitespacesAndNewlines)
         let explicitMine: Bool? = {
@@ -1585,7 +1626,8 @@ struct ChatDetailView: View {
             products: incoming.products ?? existing.products,
             createdAt: incoming.createdAt ?? Date(),
             sentByCurrentUser: sentByMe,
-            financialBuyerUsername: incoming.financialBuyerUsername ?? existing.financialBuyerUsername
+            financialBuyerUsername: incoming.financialBuyerUsername ?? existing.financialBuyerUsername,
+            updatedByUsername: incoming.updatedByUsername
         )
         next.append(newRow)
         offers = next
@@ -1626,7 +1668,8 @@ struct ChatDetailView: View {
                     products: o.products,
                     createdAt: o.createdAt ?? Date(),
                     sentByCurrentUser: false,
-                    financialBuyerUsername: o.financialBuyerUsername
+                    financialBuyerUsername: o.financialBuyerUsername,
+                    updatedByUsername: o.updatedByUsername
                 )
                 var next = offers
                 next[existingIdx] = corrected
@@ -1676,7 +1719,8 @@ struct ChatDetailView: View {
                         products: offer.products ?? existing.products,
                         createdAt: offer.createdAt ?? existing.createdAt ?? Date(),
                         sentByCurrentUser: true,
-                        financialBuyerUsername: offer.financialBuyerUsername ?? existing.financialBuyerUsername
+                        financialBuyerUsername: offer.financialBuyerUsername ?? existing.financialBuyerUsername,
+                        updatedByUsername: offer.updatedByUsername ?? existing.updatedByUsername
                     )
                     var nextOffers = offers
                     nextOffers[optIdx] = upgraded
@@ -1693,7 +1737,8 @@ struct ChatDetailView: View {
                         products: offer.products,
                         createdAt: offer.createdAt ?? Date(),
                         sentByCurrentUser: isMineForNew,
-                        financialBuyerUsername: offer.financialBuyerUsername
+                        financialBuyerUsername: offer.financialBuyerUsername,
+                        updatedByUsername: offer.updatedByUsername
                     )
                     offers.append(newOffer)
                     if isMineForNew {
@@ -1718,6 +1763,12 @@ struct ChatDetailView: View {
                 ? "ACCEPTED"
                 : normalizedIncomingStatus
 
+            let acceptorForPreview: String? = {
+                guard resolvedStatus.uppercased() == "ACCEPTED" else { return o.updatedByUsername }
+                let fromEvent = event.senderUsername?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let fromEvent, !fromEvent.isEmpty { return fromEvent }
+                return o.updatedByUsername
+            }()
             var nextOffers = offers
             nextOffers[idx] = OfferInfo(
                 id: o.id,
@@ -1728,7 +1779,8 @@ struct ChatDetailView: View {
                 products: o.products,
                 createdAt: o.createdAt ?? Date(),
                 sentByCurrentUser: o.sentByCurrentUser,
-                financialBuyerUsername: o.financialBuyerUsername
+                financialBuyerUsername: o.financialBuyerUsername,
+                updatedByUsername: acceptorForPreview
             )
             offers = nextOffers
             Self.offerHistoryCache[offerCacheKey(convId: displayedConversation.id)] = offers
@@ -1958,6 +2010,10 @@ struct OfferCardView: View {
         offer.sentByCurrentUser
     }
 
+    private var timestampLabel: String {
+        offer.createdAt.map { Self.relativeTimestamp(for: $0) } ?? "—"
+    }
+
     /// Same relative format as message bubbles (e.g. "Just now", "9 mins ago").
     private static func relativeTimestamp(for date: Date) -> String {
         let now = Date()
@@ -1978,9 +2034,23 @@ struct OfferCardView: View {
                 .fontWeight(.semibold)
                 .foregroundColor(Theme.Colors.primaryText)
             if shouldShowStatus {
-                Text(statusText)
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(statusColor)
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                    Text(statusText)
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(statusColor)
+                    Spacer(minLength: 0)
+                    Text(timestampLabel)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.trailing)
+                }
+            } else {
+                HStack {
+                    Spacer(minLength: 0)
+                    Text(timestampLabel)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
             }
             if let err = errorMessage, !err.isEmpty {
                 Text(err)
@@ -2089,13 +2159,6 @@ struct OfferCardView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
-            }
-            // Timestamp row (relative).
-            HStack {
-                Spacer(minLength: 0)
-                Text(offer.createdAt.map { Self.relativeTimestamp(for: $0) } ?? "—")
-                    .font(Theme.Typography.caption)
-                    .foregroundColor(Theme.Colors.secondaryText)
             }
         }
         .padding(Theme.Spacing.md)
@@ -2292,6 +2355,71 @@ struct OrderConfirmationCardView: View {
     }
 }
 
+/// Animated primary-gradient border used for the sale banner.
+private struct AnimatedPrimaryGradientBorder: View {
+    let cornerRadius: CGFloat
+    let lineWidth: CGFloat
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            // Slow but clearly visible rotation. Loops forever.
+            let angle = Angle(degrees: (t * 25).truncatingRemainder(dividingBy: 360))
+            let gradient = AngularGradient(
+                gradient: Gradient(colors: [
+                    Theme.primaryColor.opacity(0.10),
+                    Theme.primaryColor.opacity(0.95),
+                    Theme.primaryColor.opacity(0.35),
+                    Theme.primaryColor.opacity(0.10),
+                ]),
+                center: .center,
+                angle: angle
+            )
+
+            ZStack {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(gradient, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+
+                // Soft glow so the card reads as "sale" rather than "offer".
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(gradient.opacity(0.45), style: StrokeStyle(lineWidth: lineWidth + 2.5, lineCap: .round, lineJoin: .round))
+                    .blur(radius: 6)
+                    .opacity(0.9)
+            }
+        }
+    }
+}
+
+/// Slowly drifts a primary-tinted gradient horizontally (left to right).
+private struct AnimatedPrimaryHorizontalFill: View {
+    let cornerRadius: CGFloat
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            // Smooth left-to-right drift that loops forever.
+            let p = (t * 0.05).truncatingRemainder(dividingBy: 1) // [0,1)
+            let xCenter = CGFloat(p) * 0.8 + 0.1 // [0.1,0.9]
+
+            let start = UnitPoint(x: xCenter - 0.30, y: 0.0)
+            let end = UnitPoint(x: xCenter + 0.30, y: 1.0)
+
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Theme.primaryColor.opacity(0.22),
+                            Theme.primaryColor.opacity(0.08),
+                            Color.clear
+                        ],
+                        startPoint: start,
+                        endPoint: end
+                    )
+                )
+        }
+    }
+}
+
 /// Sold event card in timeline: "You bought this for £X" / "X bought this for £X".
 struct SoldConfirmationCardView: View {
     let order: OrderInfo
@@ -2332,9 +2460,23 @@ struct SoldConfirmationCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             HStack(alignment: .center, spacing: Theme.Spacing.sm) {
-                Image(systemName: "shippingbox")
-                    .font(.system(size: 24))
-                    .foregroundColor(Theme.Colors.secondaryText)
+                ZStack {
+                    Circle()
+                        .fill(Theme.primaryColor.opacity(0.12))
+                        .frame(width: 42, height: 42)
+                    Circle()
+                        .stroke(Theme.primaryColor.opacity(0.25), lineWidth: 1)
+                        .frame(width: 42, height: 42)
+                    Image(systemName: "shippingbox")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.55)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
                 if order.rolesConfirmed {
                     Text(
                         isSeller
@@ -2374,12 +2516,31 @@ struct SoldConfirmationCardView: View {
         }
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.secondaryBackground)
-        .cornerRadius(24)
-        .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+        .background(
+            ZStack(alignment: .topLeading) {
+                Theme.Colors.secondaryBackground
+                AnimatedPrimaryHorizontalFill(cornerRadius: 24)
+                    .opacity(0.85)
+            }
         )
+        .cornerRadius(24)
+        .overlay {
+            AnimatedPrimaryGradientBorder(cornerRadius: 24, lineWidth: 2)
+        }
+        .overlay(alignment: .topTrailing) {
+            // Small sparkle accent so this card feels different from the plain offer cards.
+            Image(systemName: "sparkles")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Theme.primaryColor.opacity(0.95), Theme.primaryColor.opacity(0.35)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .padding(Theme.Spacing.md)
+                .opacity(order.rolesConfirmed ? 1 : 0)
+        }
         .contentShape(Rectangle())
         .onTapGesture {
             guard order.rolesConfirmed, detailOrder != nil else { return }
@@ -2626,8 +2787,11 @@ struct MessageBubbleView: View {
     var showTimestamp: Bool = true
     var avatarURL: String? = nil
     var recipientUsername: String = ""
+    /// Shown only for the **last** message you sent when the other participant has read it (single label for the thread).
+    var showSeenLabel: Bool = false
 
     private var bubbleMaxWidth: CGFloat { UIScreen.main.bounds.width * 0.78 }
+    private var baseMessageFontSize: CGFloat { 17 }
     private static let messageAvatarSize: CGFloat = 28
     /// Vertical offset so the avatar is centered with a single-line bubble. This position is kept for multi-line bubbles (avatar does not re-center).
     private static let avatarTopOffsetForSingleLineCenter: CGFloat = 4
@@ -2665,6 +2829,10 @@ struct MessageBubbleView: View {
     }
 
     var body: some View {
+        let emojiMult = message.emojiOnlyScaleMultiplier
+        let isEmojiOnlyStyle = emojiMult != nil
+        let bubbleText = message.displayContentForBubble(isFromCurrentUser: isCurrentUser)
+
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .top, spacing: Theme.Spacing.xs) {
                 if isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
@@ -2680,33 +2848,49 @@ struct MessageBubbleView: View {
                     }
                 }
                 VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 4) {
-                    Text(message.displayContentForBubble(isFromCurrentUser: isCurrentUser))
-                        .font(Theme.Typography.body)
-                        .foregroundColor(isCurrentUser ? .white : Theme.Colors.primaryText)
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.vertical, Theme.Spacing.sm)
-                        .background(
-                            isCurrentUser
-                                ? LinearGradient(
-                                    colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.85)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                                : LinearGradient(
-                                    colors: [Theme.Colors.secondaryBackground, Theme.Colors.secondaryBackground],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                        )
-                        .cornerRadius(18)
+                    if isEmojiOnlyStyle, let mult = emojiMult {
+                        Text(message.content.trimmingCharacters(in: .whitespacesAndNewlines))
+                            .font(.system(size: baseMessageFontSize * CGFloat(mult)))
+                            .foregroundColor(isCurrentUser ? Theme.primaryColor : Theme.Colors.primaryText)
+                            .multilineTextAlignment(isCurrentUser ? .trailing : .leading)
+                    } else {
+                        Text(bubbleText)
+                            .font(Theme.Typography.body)
+                            .foregroundColor(isCurrentUser ? .white : Theme.Colors.primaryText)
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.sm)
+                            .background(
+                                isCurrentUser
+                                    ? LinearGradient(
+                                        colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.85)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                    : LinearGradient(
+                                        colors: [Theme.Colors.secondaryBackground, Theme.Colors.secondaryBackground],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                            )
+                            .cornerRadius(18)
+                    }
                 }
-                .frame(maxWidth: bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
+                .frame(maxWidth: isEmojiOnlyStyle ? .infinity : bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
                 if !isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
             }
             if showTimestamp {
                 HStack {
                     Spacer(minLength: 0)
                     Text(message.formattedTimestamp)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+                .padding(.leading, isCurrentUser ? 0 : (Self.messageAvatarSize + Theme.Spacing.xs))
+            }
+            if showSeenLabel {
+                HStack {
+                    Spacer(minLength: 0)
+                    Text(L10n.string("Seen"))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
