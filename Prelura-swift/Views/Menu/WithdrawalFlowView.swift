@@ -5,6 +5,8 @@ struct WithdrawalFlowView: View {
     let availableBalance: Double
     var onDismiss: () -> Void
 
+    @EnvironmentObject private var authService: AuthService
+    @State private var payoutBank: PayoutBankAccountDisplay?
     @State private var step: Step = .amount
     @State private var amountText: String = ""
     @State private var sortCode: String = ""
@@ -44,6 +46,18 @@ struct WithdrawalFlowView: View {
             && !accountHolderName.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    /// Last digits shown on saved payout account (e.g. "6096"), from `****6096`.
+    private var savedPayoutAccountEnding: String? {
+        guard let m = payoutBank?.maskedAccountNumber, m.hasPrefix("****"), m.count > 4 else { return nil }
+        return String(m.dropFirst(4))
+    }
+
+    private var userService: UserService {
+        let s = UserService()
+        if let token = authService.authToken { s.updateAuthToken(token) }
+        return s
+    }
+
     var body: some View {
         Group {
             if didSucceed {
@@ -77,6 +91,9 @@ struct WithdrawalFlowView: View {
                     }
                     .navigationTitle(navigationTitle)
                     .navigationBarTitleDisplayMode(.inline)
+                    .task {
+                        await loadSavedPayoutBank()
+                    }
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             if step == .amount || didSucceed {
@@ -99,6 +116,15 @@ struct WithdrawalFlowView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func loadSavedPayoutBank() async {
+        do {
+            let user = try await userService.getUser()
+            await MainActor.run { payoutBank = user.payoutBankAccount }
+        } catch {
+            await MainActor.run { payoutBank = nil }
         }
     }
 
@@ -145,6 +171,22 @@ struct WithdrawalFlowView: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                if let ending = savedPayoutAccountEnding {
+                    Text(String(format: L10n.string("Withdrawing to account ending in %@"), ending))
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                } else {
+                    Text(L10n.string("You'll add your bank details on the next step."))
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+                Text(L10n.string("Withdrawals usually reach your bank within 30 minutes."))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+            .padding(.top, Theme.Spacing.xs)
+
             if let err = errorMessage {
                 Text(err)
                     .font(Theme.Typography.caption)
@@ -155,7 +197,7 @@ struct WithdrawalFlowView: View {
 
     private var bankDetailsStepContent: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-            Text(L10n.string("Enter your UK bank details. Payments typically arrive within 1–3 working days."))
+            Text(L10n.string("Enter your UK bank details. Withdrawals usually reach your bank within 30 minutes."))
                 .font(Theme.Typography.subheadline)
                 .foregroundColor(Theme.Colors.secondaryText)
 
@@ -256,7 +298,7 @@ struct WithdrawalFlowView: View {
             Text(L10n.string("Withdrawal requested"))
                 .font(Theme.Typography.title2)
                 .foregroundColor(Theme.Colors.primaryText)
-            Text(L10n.string("Your withdrawal of %@ will be sent to your bank account within 1–3 working days.").replacingOccurrences(of: "%@", with: formatCurrency(amountValue ?? 0)))
+            Text(L10n.string("Your withdrawal of %@ will usually reach your bank within 30 minutes.").replacingOccurrences(of: "%@", with: formatCurrency(amountValue ?? 0)))
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.secondaryText)
                 .multilineTextAlignment(.center)
@@ -331,4 +373,5 @@ struct WithdrawalFlowView: View {
 
 #Preview {
     WithdrawalFlowView(availableBalance: 87, onDismiss: {})
+        .environmentObject(AuthService())
 }

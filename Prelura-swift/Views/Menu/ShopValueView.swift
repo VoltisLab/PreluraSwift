@@ -97,6 +97,7 @@ struct ShopValueView: View {
         .sheet(isPresented: $showWithdrawalFlow) {
             NavigationStack {
                 WithdrawalFlowView(availableBalance: balance, onDismiss: { showWithdrawalFlow = false })
+                    .environmentObject(authService)
             }
         }
     }
