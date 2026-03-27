@@ -155,7 +155,12 @@ struct ShopValueView: View {
                 .font(Theme.Typography.headline)
                 .foregroundColor(Theme.Colors.primaryText)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Theme.Spacing.sm) {
-                DashboardKPICard(title: L10n.string("Balance"), value: formatCurrency(balance), subtitle: balancePendingSubtitle)
+                DashboardKPICard(
+                    title: L10n.string("Balance"),
+                    value: formatCurrency(balance),
+                    subtitle: balancePendingSubtitle,
+                    pinSubtitleToBottom: true
+                )
                 DashboardKPICard(title: L10n.string("Pending orders"), value: "\(pendingOrdersCount)")
                 DashboardKPICard(title: L10n.string("This month"), value: formatCurrency(thisMonth), percentChange: thisMonth > 0 ? thisMonthPercentChange : nil)
                 DashboardKPICard(title: L10n.string("Total earnings"), value: formatCurrency(totalEarnings), percentChange: totalEarnings > 0 ? totalEarningsPercentChange : nil)
@@ -270,6 +275,8 @@ private struct DashboardKPICard: View {
     let title: String
     let value: String
     var subtitle: String? = nil
+    /// When true, subtitle is pinned to the bottom of the card (gap under the main value).
+    var pinSubtitleToBottom: Bool = false
     /// Percent change vs previous period; positive = increase, negative = decrease. Shown with arrow and colour (e.g. +8%, -2%).
     var percentChange: Double? = nil
 
@@ -287,13 +294,23 @@ private struct DashboardKPICard: View {
             Text(value)
                 .font(.system(size: 18, weight: .semibold, design: .rounded))
                 .foregroundColor(Theme.Colors.primaryText)
-            if let sub = subtitle, !sub.isEmpty {
-                Text(sub)
-                    .font(.caption2)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+            if pinSubtitleToBottom {
+                Spacer(minLength: 0)
+                if let sub = subtitle, !sub.isEmpty {
+                    Text(sub)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                if let sub = subtitle, !sub.isEmpty {
+                    Text(sub)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
             if let pct = percentChange {
                 HStack(spacing: 2) {
                     Image(systemName: pct >= 0 ? "arrow.up.right" : "arrow.down.right")
