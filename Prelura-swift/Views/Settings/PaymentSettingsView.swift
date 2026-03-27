@@ -68,13 +68,17 @@ struct PaymentSettingsView: View {
                                     Text("\(bank.maskedSortCode)  \(bank.maskedAccountNumber)")
                                         .font(Theme.Typography.headline)
                                         .foregroundColor(Theme.Colors.primaryText)
-                                    Text(bank.accountHolderName)
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText)
-                                    if let label = bank.accountLabel, !label.isEmpty {
-                                        Text(label)
+                                    HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                                        Text(bank.accountHolderName)
                                             .font(Theme.Typography.caption)
                                             .foregroundColor(Theme.Colors.secondaryText)
+                                        Spacer(minLength: 0)
+                                        if let label = bank.accountLabel, !label.isEmpty {
+                                            Text(label)
+                                                .font(Theme.Typography.caption)
+                                                .foregroundColor(Theme.Colors.secondaryText)
+                                                .multilineTextAlignment(.trailing)
+                                        }
                                     }
                                 }
                                 Spacer()
