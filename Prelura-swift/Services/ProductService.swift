@@ -132,6 +132,7 @@ class ProductService: ObservableObject {
                 return nil
             }
             let imageURLs = extractImageURLs(from: product.imagesUrl)
+            let listDisplayURL = ProductListImageURL.preferredString(fromImagesUrlArray: product.imagesUrl) ?? imageURLs.first
             let sellerIdString: String
             let sellerUserIdInt: Int?
             if let sellerId = product.seller?.id {
@@ -173,6 +174,7 @@ class ProductService: ObservableObject {
                 price: finalPrice,
                 originalPrice: itemOriginalPrice,
                 imageURLs: imageURLs,
+                listDisplayImageURL: listDisplayURL,
                 category: Category.fromName(product.category?.name ?? ""),
                 categoryName: product.category?.name,
                 seller: User(
@@ -1209,7 +1211,8 @@ extension ProductService {
             
             // Extract image URLs from imagesUrl array (which contains JSON strings)
             let imageURLs = extractImageURLs(from: product.imagesUrl)
-            
+            let listDisplayURL = ProductListImageURL.preferredString(fromImagesUrlArray: product.imagesUrl) ?? imageURLs.first
+
             // Get brand name (use customBrand as fallback)
             let brandName = product.brand?.name ?? product.customBrand
             
@@ -1224,6 +1227,7 @@ extension ProductService {
                 price: finalPrice,
                 originalPrice: itemOriginalPrice,
                 imageURLs: imageURLs,
+                listDisplayImageURL: listDisplayURL,
                 category: Category.fromName(product.category?.name ?? ""),
                 categoryName: product.category?.name, // Store actual category name from API (subcategory)
                 seller: User(
@@ -1447,7 +1451,8 @@ extension ProductService {
         
             // Extract image URLs from imagesUrl array (which contains JSON strings)
             let imageURLs = extractImageURLs(from: product.imagesUrl)
-            
+            let listDisplayURL = ProductListImageURL.preferredString(fromImagesUrlArray: product.imagesUrl) ?? imageURLs.first
+
             // Get brand name (use customBrand as fallback)
             let brandName = product.brand?.name ?? product.customBrand
         
@@ -1462,6 +1467,7 @@ extension ProductService {
             price: finalPrice,
             originalPrice: itemOriginalPrice,
             imageURLs: imageURLs,
+            listDisplayImageURL: listDisplayURL,
             category: Category.fromName(product.category?.name ?? ""),
             categoryName: product.category?.name,
             seller: User(

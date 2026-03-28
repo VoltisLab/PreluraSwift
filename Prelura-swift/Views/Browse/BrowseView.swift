@@ -56,7 +56,7 @@ struct BrowseView: View {
                                 NavigationLink(destination: ItemDetailView(item: item)) {
                                     ItemCard(item: item)
                                 }
-                                .buttonStyle(PlainButtonStyle())
+                                .buttonStyle(PlainTappableButtonStyle())
                             }
                         }
                         .padding(.horizontal, Theme.Spacing.md)

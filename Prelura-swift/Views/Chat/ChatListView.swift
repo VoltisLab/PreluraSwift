@@ -89,7 +89,7 @@ struct ChatListView: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .contentShape(Rectangle())
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(PlainTappableButtonStyle())
                                 .id(index == 0 ? "inbox_top" : conversation.id)
                                 .listRowBackground(Theme.Colors.background)
                                 .listRowInsets(EdgeInsets(top: 8, leading: Theme.Spacing.md, bottom: 8, trailing: Theme.Spacing.md))
@@ -263,14 +263,12 @@ struct ChatRowView: View {
     }
 
     private var productImageURL: URL? {
-        if let s = conversation.order?.firstProductImageUrl, let url = URL(string: s), !s.isEmpty {
-            return url
+        if let s = conversation.order?.firstProductImageUrl, !s.isEmpty {
+            return ProductListImageURL.url(forListDisplay: s)
         }
         if let id = offerThumbProductId {
-            if let s = Self.offerProductImageCache[id] ?? loadedOfferProductImageURL,
-               let url = URL(string: s),
-               !s.isEmpty {
-                return url
+            if let s = Self.offerProductImageCache[id] ?? loadedOfferProductImageURL, !s.isEmpty {
+                return ProductListImageURL.url(forListDisplay: s) ?? URL(string: s)
             }
         }
         return nil
@@ -286,11 +284,11 @@ struct ChatRowView: View {
         defer { isLoadingOfferProductImage = false }
 
         guard let product = try? await productService.getProduct(id: productId) else { return }
-        let firstURL = product.imageURLs.first
+        let thumbURL = product.thumbnailURLForChrome
         await MainActor.run {
-            guard let firstURL, !firstURL.isEmpty else { return }
-            Self.offerProductImageCache[productId] = firstURL
-            loadedOfferProductImageURL = firstURL
+            guard let thumbURL, !thumbURL.isEmpty else { return }
+            Self.offerProductImageCache[productId] = thumbURL
+            loadedOfferProductImageURL = thumbURL
         }
     }
 
@@ -332,12 +330,6 @@ struct ChatRowView: View {
                     Text(PreluraSupportBranding.displayTitle(forRecipientUsername: conversation.recipient.username))
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
-
-                    if ChatRowView.isOrderIssueLastMessage(conversation.lastMessage) {
-                        Text("• Order on hold")
-                            .font(Theme.Typography.caption)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                    }
 
                     if let time = conversation.lastMessageTime {
                         Text("• \(formatTime(time))")
@@ -429,17 +421,6 @@ struct ChatRowView: View {
         return a == b
     }
 
-    /// True when `lastMessage` text is an persisted order-issue card (`type: order_issue`).
-    static func isOrderIssueLastMessage(_ raw: String?) -> Bool {
-        guard let raw = raw, !raw.isEmpty else { return false }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("{"),
-              let data = trimmed.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = json["type"] as? String else { return false }
-        return type == "order_issue"
-    }
-
     /// Human-readable preview for list. Use last message sender: if I sent the last message (offer), "You sent an offer"; else "Offer received". When there's an order, show order summary. Accepted offers use `updatedBy` / accepter for copy.
     static func previewText(for raw: String?, conversation: Conversation, currentUsername: String?) -> String? {
         if let offer = conversation.offer, offer.isAccepted, conversation.order == nil {
@@ -476,7 +457,14 @@ struct ChatRowView: View {
             return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
         }
         switch type {
-        case "order_issue": return "You reported an issue"
+        case "order_issue":
+            if usernamesMatch(conversation.lastMessageSenderUsername, currentUsername) {
+                return "You reported an issue"
+            }
+            if let sender = conversation.lastMessageSenderUsername?.trimmingCharacters(in: .whitespacesAndNewlines), !sender.isEmpty {
+                return "\(sender) reported an issue"
+            }
+            return "Issue reported"
         case "order": return "Order update"
         case "offer": return iSentLastOffer ? "You sent an offer" : "Offer received"
         case "account_report": return Message.humanReadableReportLine(json: json, reportType: type, maxLength: 56)

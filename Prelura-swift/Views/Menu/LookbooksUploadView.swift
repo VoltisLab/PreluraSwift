@@ -322,7 +322,7 @@ struct LookbooksUploadView: View {
                                         .background(isSelected ? Theme.primaryColor : Theme.Colors.secondaryBackground)
                                         .cornerRadius(20)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(PlainTappableButtonStyle())
                                 .disabled(!canSelect && !isSelected)
                             }
                         }
@@ -902,7 +902,7 @@ struct LookbookTagProductsView: View {
             }
             .frame(width: totalWidth, alignment: .leading)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
         .position(x: imageFrame.minX + imageFrame.width * tag.x - pointerSize / 2 + totalWidth / 2, y: imageFrame.minY + imageFrame.height * tag.y)
         .contentShape(Rectangle())
         .highPriorityGesture(

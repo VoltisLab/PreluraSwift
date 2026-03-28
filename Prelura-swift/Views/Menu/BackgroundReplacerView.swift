@@ -286,7 +286,7 @@ private struct ThemeCard: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
     }
 }
 

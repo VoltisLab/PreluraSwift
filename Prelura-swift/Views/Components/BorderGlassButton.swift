@@ -40,13 +40,15 @@ struct BorderGlassButton: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.md)
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
         .background(Color.clear)
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius)
                 .strokeBorder(Theme.primaryColor, lineWidth: strokeLineWidth)
         )
+        .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
         .opacity(isEnabled ? 1 : 0.6)
         .disabled(!isEnabled)
     }

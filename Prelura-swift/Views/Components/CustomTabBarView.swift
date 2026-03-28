@@ -28,7 +28,7 @@ struct CustomTabBarView: View {
                     .frame(maxWidth: .infinity)
                     .foregroundColor(selectedTab == item.tag ? Theme.primaryColor : Color(uiColor: .secondaryLabel))
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(PlainTappableButtonStyle())
             }
         }
         .padding(.top, 8)

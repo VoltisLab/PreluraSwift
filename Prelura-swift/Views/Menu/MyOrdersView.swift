@@ -79,7 +79,7 @@ struct MyOrdersView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.md)

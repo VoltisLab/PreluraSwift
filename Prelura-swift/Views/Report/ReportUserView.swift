@@ -55,7 +55,7 @@ struct ReportUserView: View {
                     }
                     .padding(.vertical, Theme.Spacing.sm)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             }
         }
         .listStyle(.insetGrouped)

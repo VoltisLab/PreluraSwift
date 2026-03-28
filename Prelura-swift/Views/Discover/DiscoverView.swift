@@ -228,7 +228,7 @@ struct DiscoverView: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
         .padding(.vertical, Theme.Spacing.sm)
     }
 
@@ -293,7 +293,7 @@ struct DiscoverView: View {
                     .padding(.vertical, Theme.Spacing.md)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
                 if index < Self.categories.count - 1 {
                     ContentDivider()
                 }
@@ -347,7 +347,7 @@ struct DiscoverView: View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
         .frame(width: containerWidth, height: Self.bannerHeight)
         .onAppear {
             startShopByStyleImageTimer()
@@ -392,7 +392,7 @@ struct DiscoverView: View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
         .frame(width: containerWidth, height: Self.bannerHeight)
     }
     
@@ -424,7 +424,7 @@ struct DiscoverView: View {
                             })
                                 .frame(width: 160)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -466,7 +466,7 @@ struct DiscoverView: View {
                             })
                                 .frame(width: 160)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -548,7 +548,7 @@ struct DiscoverView: View {
                                     .lineLimit(1)
                             }
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -587,7 +587,7 @@ struct DiscoverView: View {
                             DiscoverItemCard(item: item)
                                 .frame(width: 160)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -629,7 +629,7 @@ struct DiscoverView: View {
                             })
                                 .frame(width: 160)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -686,7 +686,7 @@ private struct AnimatedBrandRow: View {
                                         .strokeBorder(pillBorderColor, lineWidth: 0.5)
                                 )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PlainTappableButtonStyle())
                         .simultaneousGesture(TapGesture().onEnded { _ in
                             animationStopped = true
                         })
@@ -933,7 +933,7 @@ private struct CategoryPrimaryButton: View {
                 .padding(.horizontal, Theme.Spacing.lg)
                 .padding(.vertical, Theme.Spacing.md)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
         .background(
             RoundedRectangle(cornerRadius: cornerRadius)
                 .fill(isSelected ? Theme.primaryColor : Color.clear)

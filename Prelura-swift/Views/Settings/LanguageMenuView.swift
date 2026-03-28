@@ -37,7 +37,7 @@ struct LanguageMenuView: View {
                             }
                         }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
             } footer: {
                 Text(L10n.string("Greek displays the app in Greek."))

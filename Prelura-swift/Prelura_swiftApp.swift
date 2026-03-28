@@ -19,26 +19,27 @@ let kAppearanceMode = "appearance_mode"
 private func registerPushTokenIfNeeded(authService: AuthService) {
     guard authService.isAuthenticated else {
         pushRegistrationLogger.debug("Skip FCM upload: not authenticated.")
+        print("[Push] Skip FCM → backend: not logged in.")
         return
     }
     guard let token = UserDefaults.standard.string(forKey: kDeviceTokenKey), !token.isEmpty else {
         pushRegistrationLogger.debug("Skip FCM upload: no local FCM token yet (notifications permission / Firebase).")
+        print("[Push] Skip FCM → backend: no local FCM token yet (notifications allowed? Firebase plist OK?).")
         return
     }
+    print("[Push] Uploading FCM token to backend via updateProfile (local token \(token.count) chars)…")
     Task { @MainActor in
         let userService = UserService()
         userService.updateAuthToken(authService.authToken)
         do {
             _ = try await userService.updateProfile(fcmToken: token)
+            PushRegistrationDebug.recordUploadSuccess()
             pushRegistrationLogger.info("updateProfile(fcmToken:) succeeded — backend can target this device for FCM.")
-            #if DEBUG
             print("[Push] updateProfile(fcmToken:) succeeded.")
-            #endif
         } catch {
+            PushRegistrationDebug.recordUploadFailure(error.localizedDescription)
             pushRegistrationLogger.error("updateProfile(fcmToken:) failed: \(String(describing: error), privacy: .public)")
-            #if DEBUG
             print("[Push] updateProfile(fcmToken:) failed — \(error.localizedDescription)")
-            #endif
         }
     }
 }

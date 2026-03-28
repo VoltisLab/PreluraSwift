@@ -104,7 +104,7 @@ struct MyFavouritesView: View {
                                 )
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PlainTappableButtonStyle())
                             .onAppear {
                                 if item.id == filteredItems.last?.id {
                                     loadMoreIfNeeded()
@@ -138,7 +138,7 @@ struct MyFavouritesView: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
                 .accessibilityLabel("Toggle shopping bag mode")
             }
         }
@@ -174,7 +174,7 @@ struct MyFavouritesView: View {
                         .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
                         .glassEffectTransition(.materialize)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
                 .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
                 Spacer()

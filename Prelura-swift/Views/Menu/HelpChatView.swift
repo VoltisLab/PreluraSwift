@@ -174,7 +174,7 @@ private struct SupportOrderProductHeader: View {
             .background(Theme.Colors.secondaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
     }
 }
 
@@ -187,6 +187,8 @@ struct HelpChatView: View {
     /// Admin opened thread from Order issues list.
     var isAdminSupportThread: Bool = false
     var customerUsername: String? = nil
+    /// When true, chat is read-only (e.g. after submitting "Item not as described" — user already sent context).
+    var hidesMessageComposer: Bool = false
 
     @EnvironmentObject var authService: AuthService
     @StateObject private var chatService = ChatService()
@@ -217,7 +219,7 @@ struct HelpChatView: View {
                 NavigationLink(destination: ItemDetailView(item: item)) {
                     SupportOrderProductHeader(item: item) { }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.xs)
             } else if isLoadingHeaderProduct {
@@ -278,7 +280,9 @@ struct HelpChatView: View {
                 }
             }
 
-            messageComposer
+            if !hidesMessageComposer {
+                messageComposer
+            }
         }
         .background(Theme.Colors.background)
         .navigationTitle(navigationTitleText)

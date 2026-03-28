@@ -64,7 +64,7 @@ struct Message: Identifiable {
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let type = json["type"] as? String {
             switch type {
-            case "order_issue": return "You reported an issue"
+            case "order_issue": return "Issue reported"
             case "order": return "Order update"
             case "offer": return "Offer"
             case "sold_confirmation": return "Order confirmed"
@@ -144,7 +144,10 @@ struct Message: Identifiable {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let type = json["type"] as? String {
             switch type {
-            case "order_issue": return "You reported an issue"
+            case "order_issue":
+                if isFromCurrentUser { return "You reported an issue" }
+                let u = senderUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+                return u.isEmpty ? "Issue reported" : "\(senderUsername) reported an issue"
             case "order": return "Order update"
             case "offer": return isFromCurrentUser ? "Offer sent" : "New offer"
             case "sold_confirmation": return "Order confirmed"

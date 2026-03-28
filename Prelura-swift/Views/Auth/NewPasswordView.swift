@@ -53,7 +53,7 @@ struct NewPasswordView: View {
                                     .font(.system(size: 18))
                                     .foregroundColor(Theme.Colors.secondaryText)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
                         .padding(Theme.Spacing.md)
                         .background(Theme.Colors.secondaryBackground)
@@ -78,7 +78,7 @@ struct NewPasswordView: View {
                                     .font(.system(size: 18))
                                     .foregroundColor(Theme.Colors.secondaryText)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
                         .padding(Theme.Spacing.md)
                         .background(Theme.Colors.secondaryBackground)

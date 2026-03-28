@@ -32,7 +32,7 @@ struct GlassMaterialsView: View {
                         .padding(.horizontal, Theme.Spacing.lg)
                         .padding(.vertical, Theme.Spacing.md)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
                 .glassEffect(.regular, in: .rect(cornerRadius: 12))
 
                 // Glass clear button (fully glassy — used for Discover category buttons)
@@ -44,7 +44,7 @@ struct GlassMaterialsView: View {
                         .padding(.horizontal, Theme.Spacing.lg)
                         .padding(.vertical, Theme.Spacing.md)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
                 .glassEffect(.clear, in: .rect(cornerRadius: 30))
 
                 // Liquid Glass (clear + primary colour tint)
@@ -56,7 +56,7 @@ struct GlassMaterialsView: View {
                         .padding(.horizontal, Theme.Spacing.lg)
                         .padding(.vertical, Theme.Spacing.md)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
                 .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 12))
 
                 // Liquid Glass (clear + primary tint, corner radius 30) — PrimaryGlassButton component
@@ -72,7 +72,7 @@ struct GlassMaterialsView: View {
                         .padding(.vertical, Theme.Spacing.md)
                         .background(Color.orange, in: RoundedRectangle(cornerRadius: 12))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             }
         }
     }
@@ -97,7 +97,7 @@ struct GlassMaterialsView: View {
                 .padding(.horizontal, Theme.Spacing.lg)
                 .padding(.vertical, Theme.Spacing.md)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
         .background(Color.clear)
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius)

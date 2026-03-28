@@ -94,7 +94,7 @@ struct ItemDetailView: View {
                                 .frame(width: 44, height: 44)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PlainTappableButtonStyle())
                         .accessibilityLabel("Toggle shopping bag mode")
                     }
                     Button(action: { showProductOptionsSheet = true }) {
@@ -104,7 +104,7 @@ struct ItemDetailView: View {
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
             }
 
@@ -546,7 +546,7 @@ struct ItemDetailView: View {
                         }
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
 
                 Spacer()
 
@@ -556,7 +556,7 @@ struct ItemDetailView: View {
                             .font(.system(size: 20))
                             .foregroundColor(Theme.primaryColor)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
             }
         }
@@ -629,14 +629,14 @@ struct ItemDetailView: View {
                 NavigationLink(destination: FilteredProductsView(title: brandName, filterType: .byBrand(brandName: brandName), authService: authService)) {
                     attributeRow(label: "Material", value: brandName, valueColor: Theme.primaryColor)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             }
             if let size = effectiveItem.size {
                 let displaySize = sizeDisplayValue(size)
                 NavigationLink(destination: FilteredProductsView(title: displaySize, filterType: .bySize(sizeName: size), authService: authService)) {
                     attributeRow(label: "Size", value: displaySize, valueColor: Theme.primaryColor)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             }
             attributeRow(label: "Condition", value: effectiveItem.formattedCondition)
             attributeRow(label: "Views", value: "\(effectiveItem.views)")
@@ -746,7 +746,7 @@ struct ItemDetailView: View {
                             HomeItemCard(item: memberItem)
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.sm)
@@ -785,7 +785,7 @@ struct ItemDetailView: View {
                             HomeItemCard(item: similarItem)
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.sm)
@@ -994,9 +994,10 @@ struct TabButton: View {
                     .fill(isSelected ? Theme.primaryColor : Color.clear)
                     .frame(height: 2)
             }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
         .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
-        .frame(maxWidth: .infinity)
     }
 }
 

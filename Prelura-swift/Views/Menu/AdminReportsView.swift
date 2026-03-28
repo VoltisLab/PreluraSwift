@@ -82,7 +82,7 @@ struct AdminReportsView: View {
                                                 .foregroundColor(Theme.primaryColor)
                                                 .imageScale(.medium)
                                         }
-                                        .buttonStyle(.plain)
+                                        .buttonStyle(PlainTappableButtonStyle())
                                     } else {
                                         Text("No chat")
                                             .font(Theme.Typography.caption)
@@ -129,7 +129,7 @@ struct AdminReportsView: View {
                                     .stroke(Theme.Colors.glassBorder, lineWidth: 1)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
             }
         }
@@ -157,7 +157,7 @@ struct AdminReportsView: View {
                                 .font(Theme.Typography.body.weight(.semibold))
                                 .foregroundColor(Theme.primaryColor)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 } else {
                     labeled("Reported product", productName)
@@ -189,7 +189,7 @@ struct AdminReportsView: View {
                         .font(Theme.Typography.body.weight(.semibold))
                         .foregroundColor(Theme.primaryColor)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             } else {
                 Text("No conversation linked for this report.")
                     .font(Theme.Typography.caption)

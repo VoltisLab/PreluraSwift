@@ -98,7 +98,7 @@ struct FilteredProductsView: View {
                             )
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(PlainTappableButtonStyle())
                         .onAppear {
                             if item.id == viewModel.filteredItems.suffix(4).first?.id {
                                 viewModel.loadMore()
@@ -404,7 +404,7 @@ struct FilteredProductsView: View {
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                     .accessibilityLabel("Toggle shopping bag mode")
 
                     NavigationLink(destination: MyFavouritesView(fromShopAll: true)) {
@@ -413,7 +413,7 @@ struct FilteredProductsView: View {
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
             }
         }
@@ -451,7 +451,7 @@ struct FilteredProductsView: View {
                         .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
                         .glassEffectTransition(.materialize)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
                 .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
                 Spacer()

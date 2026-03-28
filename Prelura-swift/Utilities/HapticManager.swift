@@ -61,12 +61,21 @@ enum HapticManager {
 
 // MARK: - Button styles with haptics
 
+/// Same as `.plain` but the entire label frame is tappable, not only text/icon glyphs.
+struct PlainTappableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .contentShape(Rectangle())
+    }
+}
+
 /// ButtonStyle that fires haptic on press. Use for icon buttons, menu items, etc.
 struct HapticTapButtonStyle: ButtonStyle {
     var haptic: () -> Void = { HapticManager.tap() }
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .contentShape(Rectangle())
             .onChange(of: configuration.isPressed) { _, isPressed in
                 if isPressed { haptic() }
             }

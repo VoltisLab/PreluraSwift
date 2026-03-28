@@ -26,7 +26,7 @@ struct InviteFriendView: View {
                             subtitle: "Choose from your contacts"
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
 
                     Button(action: { shareProfileLink() }) {
                         inviteRow(
@@ -35,7 +35,7 @@ struct InviteFriendView: View {
                             subtitle: "Copy or share your link"
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
 
                     Button(action: {}) {
                         inviteRow(
@@ -45,7 +45,7 @@ struct InviteFriendView: View {
                             iconColor: Color(red: 0.23, green: 0.35, blue: 0.6)
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
                 .padding(.horizontal, Theme.Spacing.md)
             }

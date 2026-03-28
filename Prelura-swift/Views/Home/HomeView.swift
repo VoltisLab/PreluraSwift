@@ -149,7 +149,7 @@ struct HomeView: View {
                         HomeItemCard(item: item, onLikeTap: nil, hideLikeButton: true)
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(PlainTappableButtonStyle())
                     // Like button outside NavigationLink so taps go to button; overlay aligned over image (seller row then image)
                     VStack(spacing: 0) {
                         Color.clear.frame(height: 28)

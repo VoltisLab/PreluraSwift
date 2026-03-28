@@ -2,14 +2,17 @@
 
 **Use this command after tasks that touch the iOS app** so both simulators always run the latest build.
 
+Run builds and `simctl` in **Cursor’s integrated terminal** (not Terminal.app). For live runtime logs after launch, use `/relaunchlogs` / `/relaunch-logs` or `./scripts/stream-prelura-simulator-logs.sh` in another Cursor terminal tab.
+
 When the user runs `/relaunch-both`, follow these steps:
 
 **Build:** Use `-destination 'generic/platform=iOS Simulator'` so the build does not depend on a specific simulator OS matching “latest” (see workspace `relaunch-both` in `~/.cursor/commands` for full notes).
 
-1. **Rebuild (once)**
-   - From the iOS project root (folder containing `Prelura-swift.xcodeproj`):  
-     `xcodebuild -project Prelura-swift.xcodeproj -scheme Prelura-swift -destination 'generic/platform=iOS Simulator' -configuration Debug build`
-   - Monitor until **BUILD SUCCEEDED** or fix errors. Resolve `<path-to-.app>` from the log or:  
+1. **Rebuild (once) — full log**
+   - **Preferred:** `./scripts/relaunch-both-live-build.sh` (tees full `xcodebuild` to `/tmp/prelura-xcodebuild-*.log`; live: `tail -f` that path in another **Cursor** terminal tab).
+   - **Or** manual with tee (do not pipe `xcodebuild` only to `tail`):  
+     `LOG=/tmp/prelura-xcodebuild-$(date +%Y%m%d-%H%M%S).log && xcodebuild -project Prelura-swift.xcodeproj -scheme Prelura-swift -destination 'generic/platform=iOS Simulator' -configuration Debug build 2>&1 | tee "$LOG"`
+   - Monitor until **BUILD SUCCEEDED** or fix errors. Tell the user the **log path**. Resolve `<path-to-.app>` from the log or:  
      `~/Library/Developer/Xcode/DerivedData/Prelura-swift-<hash>/Build/Products/Debug-iphonesimulator/Prelura-swift.app`
 
 2. **Ensure iPhone 14 Alt exists**

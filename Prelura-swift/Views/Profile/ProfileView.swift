@@ -133,7 +133,7 @@ struct ProfileView: View {
                                     )) {
                                         shoppingBagButtonLabel
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(PlainTappableButtonStyle())
                                 } else {
                                     shoppingBagButtonLabel
                                         .opacity(0.6)
@@ -393,11 +393,11 @@ struct ProfileView: View {
                 NavigationLink(destination: FollowingListView(username: u.username)) {
                     StatColumn(value: "\(u.followingsCount)", label: L10n.string("Following"), compact: true)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
                 NavigationLink(destination: FollowersListView(username: u.username)) {
                     StatColumn(value: "\(u.followersCount)", label: (u.followersCount == 1 ? L10n.string("Follower") : L10n.string("Followers")), compact: true)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             } else {
                 StatColumn(value: "\(viewModel.user?.followingsCount ?? 0)", label: L10n.string("Following"), compact: true)
                 StatColumn(value: "\(viewModel.user?.followersCount ?? 0)", label: L10n.string("Followers"), compact: true)
@@ -422,7 +422,7 @@ struct ProfileView: View {
                         .padding(.top, Theme.Spacing.xs)
                         .padding(.bottom, Theme.Spacing.sm)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             } else {
                 Text(displayText)
                     .font(Theme.Typography.subheadline)
@@ -591,7 +591,7 @@ struct ProfileView: View {
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                     Spacer()
                     if viewModel.user?.isMultibuyEnabled ?? isMultiBuyEnabled {
                         Button(action: {
@@ -613,7 +613,7 @@ struct ProfileView: View {
                                         .fill(isMultiBuySelectionMode ? Theme.primaryColor : Theme.primaryColor.opacity(0.2))
                                 )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -829,7 +829,7 @@ struct ProfileView: View {
                             NavigationLink(value: AppRoute.itemDetail(item)) {
                                 WardrobeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.md)
@@ -932,12 +932,12 @@ struct ProfileView: View {
                                     }
                                 )
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(PlainTappableButtonStyle())
                         } else {
                             NavigationLink(value: AppRoute.itemDetail(item)) {
                                 WardrobeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
                     }
                 }

@@ -52,7 +52,7 @@ struct NotificationsListView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PlainTappableButtonStyle())
                         .listRowBackground(Theme.Colors.background)
                         .listRowInsets(EdgeInsets(top: 4, leading: Theme.Spacing.md, bottom: 4, trailing: Theme.Spacing.md))
                         .navigationLinkIndicatorVisibility(.hidden)

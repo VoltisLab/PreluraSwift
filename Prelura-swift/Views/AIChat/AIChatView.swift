@@ -498,7 +498,7 @@ struct ChatBubbleView: View {
                             })
                                             .frame(width: 140, alignment: .topLeading)
                                     }
-                                    .buttonStyle(PlainButtonStyle())
+                                    .buttonStyle(PlainTappableButtonStyle())
                                 }
                             }
                             .padding(.horizontal, Theme.Spacing.md)
@@ -542,13 +542,13 @@ struct ChatBubbleView: View {
                                             OrderSliderCard(order: ctx.order, isSeller: ctx.isSeller)
                                                 .frame(width: 160, alignment: .topLeading)
                                         }
-                                        .buttonStyle(PlainButtonStyle())
+                                        .buttonStyle(PlainTappableButtonStyle())
                                     } else {
                                         NavigationLink(destination: OrderDetailView(order: ctx.order, isSeller: ctx.isSeller)) {
                                             OrderSliderCard(order: ctx.order, isSeller: ctx.isSeller)
                                                 .frame(width: 160, alignment: .topLeading)
                                         }
-                                        .buttonStyle(PlainButtonStyle())
+                                        .buttonStyle(PlainTappableButtonStyle())
                                     }
                                 }
                             }
@@ -670,7 +670,7 @@ struct AIResultsView: View {
                             })
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
             }
             .padding(.horizontal, Theme.Spacing.md)

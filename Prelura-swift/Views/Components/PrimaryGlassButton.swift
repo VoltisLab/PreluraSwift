@@ -45,9 +45,12 @@ struct PrimaryGlassButton: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.md)
+            // Full control bounds tappable (not only glyph bounds of Text/Image).
+            .contentShape(RoundedRectangle(cornerRadius: 30))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
         .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
+        .contentShape(RoundedRectangle(cornerRadius: 30))
         .opacity(isEnabled && !isLoading ? 1 : 0.6)
         .disabled(!isEnabled || isLoading)
     }

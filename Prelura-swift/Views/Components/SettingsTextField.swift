@@ -43,7 +43,7 @@ struct SettingsTextField: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, verticalPadding)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             } else if isSecure {
                 HStack(spacing: Theme.Spacing.sm) {
                     Group {
@@ -68,7 +68,7 @@ struct SettingsTextField: View {
                             .font(.system(size: 18))
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
             } else {
                 TextField(placeholder, text: $text)

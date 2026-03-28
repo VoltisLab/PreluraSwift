@@ -28,7 +28,7 @@ struct CurrencySettingsView: View {
                         }
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             }
             if saved {
                 Text(L10n.string("Saved"))

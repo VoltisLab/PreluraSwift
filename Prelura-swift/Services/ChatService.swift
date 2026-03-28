@@ -700,18 +700,13 @@ struct ConversationOrderData: Decodable {
         init(from decoder: Decoder) throws {
             let c = try decoder.singleValueContainer()
             if let s = try? c.decode(String.self) {
-                if s.hasPrefix("{"), let data = s.data(using: .utf8),
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let u = json["url"] as? String, !u.isEmpty {
-                    urlString = u
-                } else if !s.isEmpty && (s.hasPrefix("http://") || s.hasPrefix("https://")) {
-                    urlString = s
-                } else {
-                    urlString = s.isEmpty ? nil : s
-                }
+                urlString = ProductListImageURL.preferredString(from: s)
                 return
             }
-            if let dict = try? c.decode([String: String].self), let u = dict["url"] { urlString = u; return }
+            if let dict = try? c.decode([String: String].self) {
+                urlString = ProductListImageURL.preferredString(fromStringKeyedJSON: dict)
+                return
+            }
             urlString = nil
         }
     }

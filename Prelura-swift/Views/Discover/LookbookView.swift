@@ -383,7 +383,7 @@ private struct LookbookFeedImage: View {
                             .clipShape(Circle())
                             .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                     .padding(Theme.Spacing.sm)
                 }
             }
@@ -444,7 +444,7 @@ private struct LookbookFeedImage: View {
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.Colors.glassBorder, lineWidth: 1))
             .shadow(color: .black.opacity(0.2), radius: 6, x: 0, y: 2)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
     }
 }
 
@@ -612,7 +612,7 @@ private struct LookbookFeedRowView: View {
                     }
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
                 Button(action: { onCommentsTap(currentSlide) }) {
                     HStack(spacing: 4) {
                         Image(systemName: "bubble.right")
@@ -627,7 +627,7 @@ private struct LookbookFeedRowView: View {
                     }
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
                 Spacer()
             }
             .padding(.horizontal, Theme.Spacing.md)

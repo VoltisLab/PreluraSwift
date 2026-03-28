@@ -106,7 +106,7 @@ struct MenuItemRow: View {
         Button(action: action) {
             MenuRowContent(title: title, subtitle: subtitle, icon: icon, isDestructive: isDestructive, iconAndSubtitleColor: iconAndSubtitleColor)
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(PlainTappableButtonStyle())
     }
 }
 
@@ -339,7 +339,7 @@ struct HelpCentreView: View {
                     .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.vertical, Theme.Spacing.md)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
                 .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
             }
         }

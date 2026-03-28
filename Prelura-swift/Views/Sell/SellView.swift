@@ -176,7 +176,7 @@ struct SellView: View {
                             .font(.system(size: 18, weight: .medium))
                             .foregroundColor(Theme.Colors.primaryText)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if !selectedImages.isEmpty {
@@ -420,7 +420,7 @@ private struct SellPhotoSliderCell: View {
                     .foregroundStyle(.white)
                     .background(Circle().fill(.black.opacity(0.5)))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             .padding(6)
         }
         .frame(width: cellWidth, height: cellHeight)
@@ -504,7 +504,7 @@ extension SellView {
             Button(action: { showCategoryPicker = true }) {
                 SellFormRow(title: L10n.string("Category"), value: category?.name)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
             .sheet(isPresented: $showCategoryPicker) {
                 NavigationStack {
@@ -515,13 +515,13 @@ extension SellView {
             NavigationLink(destination: BrandInputView(selectedBrand: $brand)) {
                 SellFormRow(title: L10n.string("Brand"), value: brand)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
 
             NavigationLink(destination: ConditionSelectionView(selectedCondition: $condition)) {
                 SellFormRow(title: L10n.string("Condition"), value: ConditionSelectionView.displayName(for: condition))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
 
             NavigationLink(destination: ColoursSelectionView(selectedColours: $colours)) {
@@ -530,7 +530,7 @@ extension SellView {
                     value: colours.isEmpty ? nil : colours.joined(separator: ", ")
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
 
             NavigationLink(destination: SizeSelectionView(
@@ -540,7 +540,7 @@ extension SellView {
             )) {
                 SellFormRow(title: L10n.string("Size"), value: sizeName)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
         }
         .background(Theme.Colors.background)
@@ -562,14 +562,14 @@ extension SellView {
             NavigationLink(destination: MeasurementsView(measurements: $measurements)) {
                 SellFormRow(title: L10n.string("Measurements (Optional)"), value: measurements)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
 
             // Material Field
             NavigationLink(destination: MaterialSelectionView(selectedMaterial: $material)) {
                 SellFormRow(title: L10n.string("Material (Optional)"), value: material)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
 
             // Style Field
@@ -579,7 +579,7 @@ extension SellView {
                     value: styles.isEmpty ? nil : styles.map { StyleSelectionView.displayName(for: $0) }.joined(separator: ", ")
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
         }
     }
@@ -603,7 +603,7 @@ extension SellView {
                     value: price.map { "£\(String(format: "%.0f", $0))" }
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
 
             // Discount Price Field
@@ -614,14 +614,14 @@ extension SellView {
                     preferSecondaryStyle: true
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
 
             // Parcel Size Field
             NavigationLink(destination: ParcelSizeSelectionView(selectedParcelSize: $parcelSize)) {
                 SellFormRow(title: L10n.string("Parcel Size"), value: parcelSize)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
 
             // Info Banner (Flutter: primary 0.1 bg, primary icon & text)
@@ -666,7 +666,7 @@ private struct SellDraftsListSheet: View {
                         }) {
                             draftRowContent(draft: draft, showChevron: true)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
             }
@@ -734,7 +734,7 @@ private struct SellDraftsListSheet: View {
             }
             .padding(.vertical, Theme.Spacing.xs)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
     }
 
     private func draftRowContent(draft: SellDraft, showChevron: Bool) -> some View {
@@ -886,7 +886,7 @@ struct CategorySelectionView: View {
                                 .padding(.horizontal, Theme.Spacing.md)
                                 .padding(.vertical, Theme.Spacing.md)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PlainTappableButtonStyle())
                         if entry.displayPath != results.last?.displayPath {
                             ContentDivider()
                         }
@@ -926,7 +926,7 @@ struct CategorySelectionView: View {
                             )) {
                                 categoryRow(cat.name, isSelected: isInSelectedPath)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PlainTappableButtonStyle())
                         } else {
                             Button(action: {
                                 selectedCategory = SellCategory(id: cat.id, name: cat.name, pathNames: [cat.name], pathIds: [cat.id], fullPath: cat.fullPath)
@@ -1030,7 +1030,7 @@ struct SubCategoryView: View {
                             )) {
                                 subCategoryRow(cat)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PlainTappableButtonStyle())
                         } else {
                             Button(action: {
                                 selectedCategory = SellCategory(
@@ -1508,7 +1508,7 @@ struct MeasurementsView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, Theme.Spacing.md)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.bottom, Theme.Spacing.md)
     }
@@ -2284,7 +2284,7 @@ struct BrandInputView: View {
                                 .padding(.vertical, Theme.Spacing.md)
                                 .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PlainTappableButtonStyle())
                             if brand != filteredBrands.last {
                                 ContentDivider()
                             }

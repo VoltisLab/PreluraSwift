@@ -93,14 +93,14 @@ struct UserProfileView: View {
                             .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                     NavigationLink(destination: ReportUserView(username: viewModel.user.username)) {
                         Image(systemName: "flag")
                             .foregroundColor(Theme.Colors.primaryText)
                             .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
             }
         }
@@ -130,7 +130,7 @@ struct UserProfileView: View {
                                     )) {
                                         shoppingBagButtonLabel
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(PlainTappableButtonStyle())
                                 } else {
                                     shoppingBagButtonLabel
                                         .opacity(0.6)
@@ -215,7 +215,7 @@ struct UserProfileView: View {
                             }
                             .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PlainTappableButtonStyle())
                         .overlay(
                             Circle()
                                 .stroke(Theme.Colors.profileRingBorder, lineWidth: 2.5)
@@ -238,11 +238,11 @@ struct UserProfileView: View {
                     NavigationLink(destination: FollowingListView(username: viewModel.user.username)) {
                         StatColumn(value: "\(viewModel.user.followingsCount)", label: L10n.string("Following"), compact: true)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                     NavigationLink(destination: FollowersListView(username: viewModel.user.username)) {
                         StatColumn(value: "\(viewModel.displayedFollowersCount)", label: viewModel.displayedFollowersCount == 1 ? L10n.string("Follower") : L10n.string("Followers"), compact: true)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
                 .fixedSize(horizontal: true, vertical: false)
                 Spacer(minLength: Theme.Spacing.xl)
@@ -341,7 +341,7 @@ struct UserProfileView: View {
                         .padding(.top, Theme.Spacing.xs)
                         .padding(.bottom, Theme.Spacing.sm)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             } else {
                 Text(displayText)
                     .font(Theme.Typography.subheadline)
@@ -441,7 +441,7 @@ struct UserProfileView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.md)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(PlainTappableButtonStyle())
 
                 if expandedCategories {
                     VStack(spacing: 0) {
@@ -467,7 +467,7 @@ struct UserProfileView: View {
                                 .padding(.horizontal, Theme.Spacing.md)
                                 .padding(.vertical, Theme.Spacing.md)
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(PlainTappableButtonStyle())
                             if category.name != viewModel.categoriesWithCounts.last?.name {
                                 ContentDivider()
                                     .padding(.leading, Theme.Spacing.md)
@@ -504,7 +504,7 @@ struct UserProfileView: View {
                                         .fill(isMultiBuySelectionMode ? Theme.primaryColor : Theme.primaryColor.opacity(0.2))
                                 )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -616,7 +616,7 @@ struct UserProfileView: View {
                         .padding(.horizontal, Theme.Spacing.md)
                         .padding(.vertical, Theme.Spacing.md)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                     optionDivider
                 }
                 Text(L10n.string("Price range"))
@@ -704,7 +704,7 @@ struct UserProfileView: View {
                             NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
                                 WardrobeItemCard(item: item)
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.md)
@@ -787,12 +787,12 @@ struct UserProfileView: View {
                                     }
                                 )
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(PlainTappableButtonStyle())
                         } else {
                             NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
                                 WardrobeItemCard(item: item)
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
                     }
                 }

@@ -8,6 +8,8 @@ struct Item: Identifiable, Hashable {
     let price: Double
     let originalPrice: Double? // For discount calculations
     let imageURLs: [String]
+    /// Prefer for inbox/chat thumbnails when API JSON includes `thumbnail` (smaller than full `url`).
+    let listDisplayImageURL: String?
     let category: Category
     let categoryName: String? // Store the actual category name from API (subcategory)
     let seller: User
@@ -31,6 +33,7 @@ struct Item: Identifiable, Hashable {
         price: Double,
         originalPrice: Double? = nil,
         imageURLs: [String],
+        listDisplayImageURL: String? = nil,
         category: Category,
         categoryName: String? = nil,
         seller: User,
@@ -51,6 +54,7 @@ struct Item: Identifiable, Hashable {
         self.price = price
         self.originalPrice = originalPrice
         self.imageURLs = imageURLs
+        self.listDisplayImageURL = listDisplayImageURL
         self.category = category
         self.categoryName = categoryName
         self.seller = seller
@@ -92,6 +96,7 @@ struct Item: Identifiable, Hashable {
             price: price,
             originalPrice: originalPrice,
             imageURLs: imageURLs,
+            listDisplayImageURL: listDisplayImageURL,
             category: category,
             categoryName: categoryName,
             seller: seller,
@@ -117,6 +122,13 @@ struct Item: Identifiable, Hashable {
     
     var formattedPrice: String {
         Self.formatPrice(price)
+    }
+
+    /// First image URL for small UI chrome (message list, chat headers): uses list thumbnail when available.
+    var thumbnailURLForChrome: String? {
+        if let s = listDisplayImageURL?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty { return s }
+        guard let u = imageURLs.first?.trimmingCharacters(in: .whitespacesAndNewlines), !u.isEmpty else { return nil }
+        return u
     }
     
     var formattedOriginalPrice: String {

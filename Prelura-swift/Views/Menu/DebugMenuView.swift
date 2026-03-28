@@ -12,6 +12,14 @@ struct DebugMenuView: View {
                 Text("Info")
             }
             Section {
+                NavigationLink(destination: PushDiagnosticsView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "bell.badge")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Push diagnostics")
+                    }
+                }
                 NavigationLink(destination: OrderChatMockDebugView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "bubble.left.and.bubble.right")

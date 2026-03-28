@@ -109,7 +109,7 @@ struct MyReportsView: View {
                             )
                             .overlay(Capsule().stroke(Theme.Colors.glassBorder, lineWidth: 1))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
             }
         }

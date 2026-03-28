@@ -165,10 +165,10 @@ struct ChatDetailView: View {
     @State private var hasFinishedInitialConversationFetch = false
     /// Shown when we’re waiting on server `offerHistory` and have no local cache.
     @State private var isLoadingOfferHistory = false
-    /// Trigger to force a "scroll to bottom" once when opening a chat.
-    @State private var scrollToBottomToken = UUID()
-    /// Prevent repeated auto-scrolling while the user is reading older parts of the thread.
+    /// Prevent repeated initial scroll bursts when re-entering the same thread.
     @State private var hasAutoScrolledToBottomForThisChat = false
+    /// Stable id at end of scroll content so `scrollTo` works with `LazyVStack` (last message id may not be laid out yet).
+    private static let chatBottomAnchorId = "chat_bottom_anchor"
 
     private let productService = ProductService()
 
@@ -288,12 +288,35 @@ struct ChatDetailView: View {
 
     /// Messages to show: in offer conversations hide raw offer payload bubbles (offer card represents the offer).
     /// Hide sold_confirmation message bubbles (order is shown by OrderConfirmationCardView banner only).
+    /// Collapse duplicate `order_issue` payloads (same issue id / public id / identical JSON) so support threads don’t show twin report cards.
     private var displayedMessages: [Message] {
         var list = messages.filter { !$0.isSoldConfirmation }
         if displayedConversation.offer != nil {
             list = list.filter { !$0.isOfferContent }
         }
-        return list
+        return Self.dedupeOrderIssueMessagesPreservingOrder(list)
+    }
+
+    /// One visible card per logical order-issue report (backend or client may persist the same context twice).
+    private static func dedupeOrderIssueMessagesPreservingOrder(_ messages: [Message]) -> [Message] {
+        var seen = Set<String>()
+        return messages.filter { m in
+            guard m.isOrderIssue else { return true }
+            let key = orderIssueDedupeKey(m)
+            if seen.contains(key) { return false }
+            seen.insert(key)
+            return true
+        }
+    }
+
+    private static func orderIssueDedupeKey(_ m: Message) -> String {
+        if let d = m.parsedOrderIssueDetails {
+            if let iid = d.issueId { return "iid:\(iid)" }
+            let pid = d.publicId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !pid.isEmpty { return "pid:\(pid)" }
+        }
+        let trimmed = m.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "raw:\(trimmed)"
     }
 
     private var isSeller: Bool {
@@ -395,19 +418,22 @@ struct ChatDetailView: View {
     }
 
     private func scrollToLatest(with proxy: ScrollViewProxy, animated: Bool) {
-        guard !timelineOrder.isEmpty else { return }
-        let last = timelineOrder[timelineOrder.count - 1]
         let action = {
-            switch last {
-            case .message(let id): proxy.scrollTo(id, anchor: .bottom)
-            case .offer(let id): proxy.scrollTo(id, anchor: .bottom)
-            case .sold(let order): proxy.scrollTo("sold_\(order.id)", anchor: .bottom)
-            }
+            proxy.scrollTo(Self.chatBottomAnchorId, anchor: .bottom)
         }
         if animated {
             withAnimation(.easeOut(duration: 0.2)) { action() }
         } else {
             action()
+        }
+    }
+
+    /// `LazyVStack` often has not materialized the last row on first layout; retry so open-thread lands at the bottom.
+    private func scheduleScrollToBottom(proxy: ScrollViewProxy, delays: [TimeInterval], animated: Bool) {
+        for delay in delays {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                scrollToLatest(with: proxy, animated: animated)
+            }
         }
     }
 
@@ -587,16 +613,18 @@ struct ChatDetailView: View {
                                 timelineRow(timelineIndex: timelineIndex, entry: entry)
                             }
                         }
+                        Color.clear
+                            .frame(height: 1)
+                            .id(Self.chatBottomAnchorId)
                     }
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .onAppear {
-                    // Ensure chat opens at latest timeline entry, even when count-based onChange doesn't fire.
                     guard !hasAutoScrolledToBottomForThisChat else { return }
-                    DispatchQueue.main.async {
-                        scrollToLatest(with: proxy, animated: false)
+                    scheduleScrollToBottom(proxy: proxy, delays: [0, 0.05, 0.15, 0.35], animated: false)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
                         hasAutoScrolledToBottomForThisChat = true
                     }
                 }
@@ -605,11 +633,8 @@ struct ChatDetailView: View {
                     scrollToLatest(with: proxy, animated: true)
                 }
                 .onChange(of: hasFinishedInitialConversationFetch) { _, done in
-                    guard done, !hasAutoScrolledToBottomForThisChat else { return }
-                    DispatchQueue.main.async {
-                        scrollToLatest(with: proxy, animated: false)
-                        hasAutoScrolledToBottomForThisChat = true
-                    }
+                    guard done else { return }
+                    scheduleScrollToBottom(proxy: proxy, delays: [0, 0.08, 0.25], animated: false)
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     messageInputBar
@@ -632,7 +657,7 @@ struct ChatDetailView: View {
                     }
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
@@ -707,7 +732,7 @@ struct ChatDetailView: View {
             }
             refreshOfferHistoryLoadingFlagsForCurrentConversation()
             restoreCachedMessagesBeforeLoad()
-            if let it = item, let pid = it.productId.flatMap({ Int($0) }), let u = it.imageURLs.first {
+            if let it = item, let pid = it.productId.flatMap({ Int($0) }), let u = it.thumbnailURLForChrome {
                 ChatHeaderProductImageURLStore.persist(productId: pid, url: u)
             }
             connectWebSocket()
@@ -1473,8 +1498,8 @@ struct ChatDetailView: View {
         let headerPrice = latestAcceptedOfferPriceForHeader ?? order.total
         let priceStr = String(format: "£%.2f", headerPrice)
         let orderProductId = order.firstProductId.flatMap { Int($0) }
-        let rawOrderImage = orderProductItem?.imageURLs.first
-            ?? order.firstProductImageUrl
+        let rawOrderImage = orderProductItem?.thumbnailURLForChrome
+            ?? order.firstProductImageUrl.flatMap { ProductListImageURL.preferredString(from: $0) ?? $0 }
             ?? orderProductId.flatMap { ChatHeaderProductImageURLStore.url(forProductId: $0) }
         let trimmedOrderImage = rawOrderImage?.trimmingCharacters(in: .whitespacesAndNewlines)
         let orderThumb: (url: URL?, invalidURL: Bool) = {
@@ -1510,7 +1535,7 @@ struct ChatDetailView: View {
         if let detailOrder = conversationOrderForDetail {
             return AnyView(
                 NavigationLink(destination: OrderDetailView(order: detailOrder, isSeller: isSellerForOrderDetail)) { bar }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
             )
         }
         return AnyView(bar)
@@ -1570,7 +1595,7 @@ struct ChatDetailView: View {
         let offer = displayedConversation.offer!
         let priceStr = String(format: "£%.2f", offer.offerPrice)
         let offerProductId = offer.products?.first?.id.flatMap { Int($0) }
-        let rawOfferImage = offerProductItem?.imageURLs.first
+        let rawOfferImage = offerProductItem?.thumbnailURLForChrome
             ?? offerProductId.flatMap { ChatHeaderProductImageURLStore.url(forProductId: $0) }
         let trimmedOfferImage = rawOfferImage?.trimmingCharacters(in: .whitespacesAndNewlines)
         let offerThumb: (url: URL?, invalidURL: Bool) = {
@@ -1603,7 +1628,7 @@ struct ChatDetailView: View {
         return Group {
             if let item = offerProductItem {
                 NavigationLink(destination: ItemDetailView(item: item, authService: authService)) { bar }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
             } else {
                 bar
             }
@@ -1618,7 +1643,7 @@ struct ChatDetailView: View {
         }
         if let cached = Self.offerProductCache[firstId] {
             offerProductItem = cached
-            if let u = cached.imageURLs.first {
+            if let u = cached.thumbnailURLForChrome {
                 ChatHeaderProductImageURLStore.persist(productId: firstId, url: u)
             }
             return
@@ -1628,7 +1653,7 @@ struct ChatDetailView: View {
                 await MainActor.run {
                     Self.offerProductCache[firstId] = product
                     offerProductItem = product
-                    if let u = product.imageURLs.first {
+                    if let u = product.thumbnailURLForChrome {
                         ChatHeaderProductImageURLStore.persist(productId: firstId, url: u)
                     }
                 }
@@ -1644,7 +1669,7 @@ struct ChatDetailView: View {
         }
         if let cached = Self.orderProductCache[firstId] {
             orderProductItem = cached
-            if let u = cached.imageURLs.first {
+            if let u = cached.thumbnailURLForChrome {
                 ChatHeaderProductImageURLStore.persist(productId: firstId, url: u)
             }
             return
@@ -1654,7 +1679,7 @@ struct ChatDetailView: View {
                 await MainActor.run {
                     Self.orderProductCache[firstId] = product
                     orderProductItem = product
-                    if let u = product.imageURLs.first {
+                    if let u = product.thumbnailURLForChrome {
                         ChatHeaderProductImageURLStore.persist(productId: firstId, url: u)
                     }
                 }
@@ -2055,19 +2080,21 @@ struct ChatDetailView: View {
         timelineOrder.append(.message(optimistic.id))
         pendingMessageUUID = messageUUID
         if let ws = webSocket {
+            // WebSocket path persists on the server and triggers push; GraphQL SendMessage would duplicate the row.
             ws.send(message: text, messageUUID: messageUUID)
-        }
-        Task {
-            do {
-                _ = try await chatService.sendMessage(conversationId: displayedConversation.id, message: text, messageUuid: messageUUID)
-                await MainActor.run {
-                    pendingMessageUUID = nil
-                    loadMessages()
-                }
-            } catch {
-                await MainActor.run {
-                    messages.removeAll { $0.id.uuidString == messageUUID }
-                    pendingMessageUUID = nil
+        } else {
+            Task {
+                do {
+                    _ = try await chatService.sendMessage(conversationId: displayedConversation.id, message: text, messageUuid: messageUUID)
+                    await MainActor.run {
+                        pendingMessageUUID = nil
+                        loadMessages()
+                    }
+                } catch {
+                    await MainActor.run {
+                        messages.removeAll { $0.id.uuidString == messageUUID }
+                        pendingMessageUUID = nil
+                    }
                 }
             }
         }
@@ -2295,7 +2322,7 @@ struct ChatProductCardView: View {
 
     /// Prefer live URLs on `item`, then last persisted header URL for this product (same store as offer/order headers).
     private var displayImageURLString: String? {
-        if let s = item.imageURLs.first?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+        if let s = item.thumbnailURLForChrome?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
             return s
         }
         guard let pid = item.productId.flatMap({ Int($0) }) else { return nil }
@@ -2349,7 +2376,7 @@ struct ChatProductCardView: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
     }
 }
 
@@ -2462,7 +2489,7 @@ struct OrderConfirmationCardView: View {
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.primaryColor)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             HStack {
                 Spacer(minLength: 0)
                 Text(order.createdAt.map { Self.relativeTimestamp(for: $0) } ?? "—")
@@ -2632,7 +2659,7 @@ struct SoldConfirmationCardView: View {
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
                 .disabled(!order.rolesConfirmed)
                 Spacer(minLength: Theme.Spacing.sm)
                 Text(Self.relativeTimestamp(for: order.createdAt))
@@ -2860,7 +2887,7 @@ private struct OrderIssueChatCardView: View {
                     .stroke(Theme.Colors.glassBorder, lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
     }
 
     private func humanReadableIssueType(_ raw: String) -> String {

@@ -186,7 +186,7 @@ struct SearchMembersView: View {
             }
         }
         .disabled(isToggling)
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
         .fixedSize(horizontal: true, vertical: true)
     }
 

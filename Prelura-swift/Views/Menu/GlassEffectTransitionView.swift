@@ -133,7 +133,7 @@ private struct MatchedGeometryDemo: View {
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.primaryColor)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
             GlassEffectContainer(spacing: Theme.Spacing.md) {
                 if showA {
                     Text("View A")

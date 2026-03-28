@@ -143,7 +143,7 @@ struct PaymentView: View {
                     NavigationLink(destination: ShippingAddressView()) {
                         paymentRow(title: currentUser?.shippingAddress.map { formatAddress($0) } ?? currentUser?.location ?? "No address set", trailing: "chevron.right")
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
 
                     sectionHeader("Delivery Option")
                     deliveryOptionsSection

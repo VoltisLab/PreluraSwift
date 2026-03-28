@@ -1,7 +1,7 @@
 import SwiftUI
 import PhotosUI
 
-/// "Item not as described" help flow (Flutter ItemNotAsDescribedHelpScreen). Option to describe issue and start conversation.
+/// "Item not as described" help flow (Flutter ItemNotAsDescribedHelpScreen). User submits issue details, then lands on read-only help chat.
 struct ItemNotAsDescribedHelpView: View {
     var orderId: String?
     var conversationId: String?
@@ -72,7 +72,7 @@ struct ItemNotAsDescribedHelpView: View {
                                 }
                             }
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
 
@@ -161,7 +161,7 @@ struct ItemNotAsDescribedHelpView: View {
                         ProgressView()
                             .tint(.white)
                     }
-                    Text(isSubmittingIssue ? "Starting conversation..." : "Start a conversation with support")
+                    Text(isSubmittingIssue ? "Submitting..." : "Submit")
                         .font(Theme.Typography.headline)
                         .foregroundColor(.white)
                 }
@@ -182,7 +182,7 @@ struct ItemNotAsDescribedHelpView: View {
                     Color.black.opacity(0.25).ignoresSafeArea()
                     VStack(spacing: Theme.Spacing.sm) {
                         ProgressView()
-                        Text("Starting support conversation...")
+                        Text("Submitting...")
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.Colors.primaryText)
                     }
@@ -205,7 +205,8 @@ struct ItemNotAsDescribedHelpView: View {
                         issueTypeCode: selectedIssueType,
                         issueId: createdIssueId,
                         issuePublicId: createdIssuePublicId
-                    )
+                    ),
+                    hidesMessageComposer: true
                 ),
                 isActive: $showSupportChat
             ) { EmptyView() }
@@ -360,7 +361,7 @@ struct ItemNotAsDescribedHelpView: View {
                 .padding(.vertical, Theme.Spacing.sm)
                 .background(Theme.Colors.background)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PlainTappableButtonStyle())
         } else if isLoadingRelatedProduct {
             HStack {
                 ProgressView()

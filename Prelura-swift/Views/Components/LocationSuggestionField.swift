@@ -75,7 +75,7 @@ struct LocationSuggestionField: View {
                                 .padding(.horizontal, Theme.Spacing.md)
                                 .padding(.vertical, Theme.Spacing.sm)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PlainTappableButtonStyle())
                         if suggestion != suggestions.last {
                             Divider()
                                 .background(Theme.Colors.glassBorder.opacity(0.5))

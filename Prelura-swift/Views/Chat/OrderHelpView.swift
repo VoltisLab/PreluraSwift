@@ -73,7 +73,7 @@ struct OrderHelpView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, Theme.Spacing.xs)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
     }
 }
 

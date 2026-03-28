@@ -1,5 +1,8 @@
-import Foundation
 import Combine
+import Foundation
+import OSLog
+
+private let authSessionLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Prelura", category: "AuthSession")
 
 @MainActor
 class AuthService: ObservableObject {
@@ -49,6 +52,9 @@ class AuthService: ObservableObject {
         client.setAuthToken(token)
         // After login, upload FCM token to backend (same moment GraphQL has Bearer token).
         NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
+        // OSLog: visible when filtering `subsystem == com.prelura.preloved`. Never log raw JWTs.
+        authSessionLogger.info("Session stored for \(username, privacy: .public) — access JWT \(token.count, privacy: .public) chars, refresh \(refreshToken.count, privacy: .public) chars.")
+        print("[Auth] Session stored for \(username) — access JWT \(token.count) chars, refresh \(refreshToken.count) chars.")
     }
     
     func login(username: String, password: String) async throws -> LoginResponse {

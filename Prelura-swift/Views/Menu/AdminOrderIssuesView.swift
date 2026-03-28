@@ -69,7 +69,7 @@ struct AdminOrderIssuesView: View {
                                                 .imageScale(.medium)
                                                 .accessibilityLabel("Open order chat")
                                         }
-                                        .buttonStyle(.plain)
+                                        .buttonStyle(PlainTappableButtonStyle())
                                     } else {
                                         Text("No order chat")
                                             .font(Theme.Typography.caption)
@@ -304,7 +304,7 @@ struct AdminOrderIssuesView: View {
                         .foregroundColor(Theme.primaryColor)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
 
                 Button {
                     actionSheetIssue = issue
@@ -317,7 +317,7 @@ struct AdminOrderIssuesView: View {
                         .foregroundColor(Theme.Colors.primaryText)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             }
             .padding(.top, Theme.Spacing.xs)
 
@@ -352,7 +352,7 @@ struct AdminOrderIssuesView: View {
                 }
             }
             if issue.supportConversationId == nil && issue.sellerSupportConversationId == nil {
-                Text("No help chats yet (buyer must use “Start a conversation with support”, or seller “Contact support”).")
+                Text("No help chats yet (buyer must submit from Item not as described, or seller “Contact support”).")
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             }

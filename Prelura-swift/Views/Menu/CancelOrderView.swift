@@ -71,7 +71,7 @@ struct CancelOrderView: View {
                         .background(Theme.Colors.secondaryBackground)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
 
                 Text(L10n.string("Additional notes (required)"))

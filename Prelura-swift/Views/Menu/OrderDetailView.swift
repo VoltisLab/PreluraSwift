@@ -116,7 +116,7 @@ struct OrderDetailView: View {
                                 .background(Theme.Colors.secondaryBackground)
                                 .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
                     }
                     .padding(Theme.Spacing.md)
@@ -260,7 +260,7 @@ struct OrderDetailView: View {
                     .stroke(Theme.Colors.glassBorder, lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
     }
 
     private var outlinedPartyCard: some View {
@@ -362,7 +362,7 @@ struct OrderDetailView: View {
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.primaryColor)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             } else if let trackingNumber = effectiveOrder.trackingNumber?.trimmingCharacters(in: .whitespacesAndNewlines),
                       !trackingNumber.isEmpty {
                 Button {
@@ -380,7 +380,7 @@ struct OrderDetailView: View {
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.primaryColor)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
             } else {
                 Text("No tracking information available")
                     .font(Theme.Typography.caption)
@@ -682,7 +682,7 @@ struct OrderDetailView: View {
                             .font(.system(size: 28))
                             .foregroundColor(i <= rateStars ? Theme.primaryColor : Theme.Colors.tertiaryBackground)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainTappableButtonStyle())
                 }
             }
             TextField(L10n.string("Add a comment (optional)"), text: $rateComment, axis: .vertical)
@@ -743,7 +743,7 @@ struct OrderDetailView: View {
                     .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.vertical, Theme.Spacing.md)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PlainTappableButtonStyle())
                 .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
                 .disabled(sellerShippingActionsLocked)
                 .opacity(sellerShippingActionsLocked ? 0.45 : 1)

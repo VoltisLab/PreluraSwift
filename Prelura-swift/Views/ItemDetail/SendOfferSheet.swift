@@ -231,7 +231,7 @@ struct OfferModalContent: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 20))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainTappableButtonStyle())
     }
 }
 

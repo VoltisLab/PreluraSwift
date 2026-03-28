@@ -48,7 +48,7 @@ struct PillTag: View {
                 y: isSelected ? 0 : inactiveShadowY
             )
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(PlainTappableButtonStyle())
     }
 
     private var foregroundColor: Color {

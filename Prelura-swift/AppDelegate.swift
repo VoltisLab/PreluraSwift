@@ -86,6 +86,26 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             print("[Push] Firebase PROJECT_ID=\(projectId)")
             #endif
         }
+        #if DEBUG
+        diagnoseFirebasePlistVersusRuntime(plist: plist)
+        #endif
+    }
+
+    /// Helps explain “Flutter push works, Swift doesn’t”: each `GOOGLE_APP_ID` belongs to one iOS app registration in Firebase (one bundle). Overriding `options.bundleID` does not change that.
+    private func diagnoseFirebasePlistVersusRuntime(plist: [String: Any]) {
+        let plistBundle = (plist["BUNDLE_ID"] as? String) ?? ""
+        let runtimeBundle = Bundle.main.bundleIdentifier ?? ""
+        let googleAppId = (plist["GOOGLE_APP_ID"] as? String) ?? ""
+        if !plistBundle.isEmpty, !runtimeBundle.isEmpty, plistBundle != runtimeBundle {
+            pushBootstrapLog.warning("GoogleService BUNDLE_ID (\(plistBundle, privacy: .public)) ≠ executable (\(runtimeBundle, privacy: .public)) — replace plist from Firebase for this target.")
+            print("[Push] WARNING: plist BUNDLE_ID (\(plistBundle)) ≠ app bundle (\(runtimeBundle)).")
+        }
+        // Prelura Flutter iOS app (com.prelura.app) uses this id in-repo; Swift must use a plist from a *separate* Firebase iOS app for com.prelura.preloved (different GOOGLE_APP_ID).
+        let flutterIOSGoogleAppId = "1:756569142928:ios:f4f7f4a1af7989832d4a15"
+        if runtimeBundle == "com.prelura.preloved", googleAppId == flutterIOSGoogleAppId {
+            pushBootstrapLog.warning("This GOOGLE_APP_ID is the Flutter iOS client. FCM may issue a token, but APNs delivery for com.prelura.preloved often fails. Add an iOS app in Firebase for com.prelura.preloved and replace GoogleService-Info.plist (new GOOGLE_APP_ID).")
+            print("[Push] WARNING: plist still uses Flutter’s GOOGLE_APP_ID. Download a new plist from Firebase → iOS app com.prelura.preloved (not com.prelura.app).")
+        }
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
@@ -129,6 +149,17 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                         DispatchQueue.main.async {
                             if granted {
                                 application.registerForRemoteNotifications()
+                                // Without an explicit token fetch here, FCM can lag until the next foreground cycle.
+                                guard Self.isFirebaseConfigured else { return }
+                                Messaging.messaging().token { token, error in
+                                    if let error {
+                                        pushBootstrapLog.error("Messaging.token() after permission: \(error.localizedDescription, privacy: .public)")
+                                        return
+                                    }
+                                    guard let token, !token.isEmpty else { return }
+                                    UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
+                                    NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
+                                }
                             } else {
                                 pushBootstrapLog.warning("User declined notification permission — enable in Settings → Prelura → Notifications.")
                             }
@@ -171,9 +202,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         guard let fcmToken, !fcmToken.isEmpty else { return }
         UserDefaults.standard.set(fcmToken, forKey: kDeviceTokenKey)
         NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
-        pushBootstrapLog.debug("FCM registration token refreshed (length \(fcmToken.count))")
+        pushBootstrapLog.info("FCM token length=\(fcmToken.count, privacy: .public) — stored; upload runs when logged in.")
+        // Log prefix in Release too so Console.app / TestFlight feedback helps without DEBUG.
+        let prefix = fcmToken.prefix(16)
+        print("[Push] FCM token received (\(fcmToken.count) chars), prefix: \(prefix)…")
         #if DEBUG
-        print("[FCM TEST] Copy this token into Firebase → Send test message:\n\(fcmToken)")
+        print("[FCM TEST] Copy full token into Firebase → Send test message:\n\(fcmToken)")
         #endif
     }
 

@@ -1601,7 +1601,8 @@ class UserService: ObservableObject {
             
             // Extract image URLs from imagesUrl array
             let imageURLs = extractImageURLs(from: product.imagesUrl)
-            
+            let listDisplayURL = ProductListImageURL.preferredString(fromImagesUrlArray: product.imagesUrl) ?? imageURLs.first
+
             // Extract seller id (string for UUID, int for backend userId / multibuy)
             let sellerIdString: String
             let sellerUserIdInt: Int?
@@ -1652,6 +1653,7 @@ class UserService: ObservableObject {
                 price: finalPrice,
                 originalPrice: itemOriginalPrice,
                 imageURLs: imageURLs,
+                listDisplayImageURL: listDisplayURL,
                 category: Category.fromName(product.category?.name ?? ""),
                 categoryName: product.category?.name, // Store actual category name from API (subcategory)
                 seller: User(
