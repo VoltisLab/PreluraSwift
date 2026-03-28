@@ -152,6 +152,14 @@ struct ChatListView: View {
             tabCoordinator.registerRefresh(tab: 3) {
                 Task { await loadInboxConversations() }
             }
+            if tabCoordinator.openInboxListOnly {
+                tabCoordinator.openInboxListOnly = false
+                path = []
+                guard !authService.isGuestMode else { return }
+                inboxViewModel.updateAuthToken(authService.authToken)
+                inboxViewModel.refresh()
+                return
+            }
             if path.isEmpty, let preview = tabCoordinator.lastMessagePreviewForConversation {
                 inboxViewModel.updatePreview(conversationId: preview.id, text: preview.text, date: preview.date)
                 tabCoordinator.lastMessagePreviewForConversation = nil

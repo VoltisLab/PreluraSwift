@@ -854,10 +854,11 @@ class ProductService: ObservableObject {
     }
 
     /// Create an order (buy now or from accepted offer). Matches Flutter createOrder. Pass either productId (single) or productIds (multi); deliveryDetails required.
-    func createOrder(productId: Int? = nil, productIds: [Int]? = nil, buyerProtection: Bool? = nil, shippingFee: Float? = nil, deliveryDetails: CreateOrderDeliveryDetails) async throws -> CreateOrderResult {
+    /// When `productIds` span multiple sellers, pass `sellerShippingFees` (backend seller user id + fee) so the API can create one order per seller.
+    func createOrder(productId: Int? = nil, productIds: [Int]? = nil, buyerProtection: Bool? = nil, shippingFee: Float? = nil, sellerShippingFees: [(sellerId: Int, shippingFee: Float)]? = nil, deliveryDetails: CreateOrderDeliveryDetails) async throws -> CreateOrderResult {
         let mutation = """
-        mutation CreateOrder($productId: Int, $productIds: [Int], $buyerProtection: Boolean, $shippingFee: Float, $deliveryDetails: DeliveryDetailsInputType!) {
-          createOrder(productId: $productId, productIds: $productIds, buyerProtection: $buyerProtection, shippingFee: $shippingFee, deliveryDetails: $deliveryDetails) {
+        mutation CreateOrder($productId: Int, $productIds: [Int], $buyerProtection: Boolean, $shippingFee: Float, $sellerShippingFees: [SellerShippingFeeInput!], $deliveryDetails: DeliveryDetailsInputType!) {
+          createOrder(productId: $productId, productIds: $productIds, buyerProtection: $buyerProtection, shippingFee: $shippingFee, sellerShippingFees: $sellerShippingFees, deliveryDetails: $deliveryDetails) {
             success
             order { id priceTotal status }
           }
@@ -882,6 +883,9 @@ class ProductService: ObservableObject {
         if let pids = productIds { variables["productIds"] = pids }
         if let bp = buyerProtection { variables["buyerProtection"] = bp }
         if let fee = shippingFee { variables["shippingFee"] = fee }
+        if let rows = sellerShippingFees, !rows.isEmpty {
+            variables["sellerShippingFees"] = rows.map { ["sellerId": $0.sellerId, "shippingFee": $0.shippingFee] }
+        }
         let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
         guard let create = response.createOrder else { throw NSError(domain: "CreateOrder", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unknown error"]) }
         if create.success != true {
@@ -1461,7 +1465,7 @@ extension ProductService {
             category: Category.fromName(product.category?.name ?? ""),
             categoryName: product.category?.name,
             seller: User(
-                id: UUID(uuidString: sellerIdString) ?? UUID(),
+                id: sellerUserIdInt.map { User.stableIdForSeller(backendUserId: $0) } ?? (UUID(uuidString: sellerIdString) ?? UUID()),
                 userId: sellerUserIdInt,
                 username: product.seller?.username ?? "",
                 displayName: product.seller?.displayName ?? "",

@@ -20,6 +20,8 @@ final class TabCoordinator: ObservableObject {
     @Published var readyForRefresh: Set<Int> = []
     /// When set, Inbox should navigate to this conversation (e.g. after sending an offer).
     @Published var pendingOpenConversation: Conversation?
+    /// After multi-seller checkout: show Inbox list (new threads) instead of opening one chat.
+    @Published var openInboxListOnly: Bool = false
     /// When true, the next chat load should treat a single REJECTED/CANCELLED offer as PENDING (we just sent from product page).
     @Published var pendingOfferJustSent: Bool = false
     /// Conversation id that `pendingOfferJustSent` applies to (avoids wrong "You offered" on other chats).

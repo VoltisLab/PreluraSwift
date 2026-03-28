@@ -19,7 +19,8 @@ struct EmailVerificationCodeView: View {
     @State private var errorMessage: String?
     /// User-entered email for resend when emailForResend was not provided (e.g. from login).
     @State private var resendEmailInput: String = ""
-    @FocusState private var focusedIndex: Int?
+    /// One hidden field handles full-code paste and `.oneTimeCode` SMS autofill (multi-box fields often drop the first paste).
+    @FocusState private var otpFieldFocused: Bool
 
     private let codeLength = 4
     private let boxSize: CGFloat = 56
@@ -27,7 +28,8 @@ struct EmailVerificationCodeView: View {
 
     /// Code string sent to API (digits + letters, letters always uppercase).
     private var codeTrimmed: String {
-        String(codeString.prefix(codeLength)).uppercased()
+        let filtered = codeString.uppercased().compactMap { Self.normalizedCodeCharacter($0) }
+        return String(filtered.prefix(codeLength))
     }
     private var canSubmit: Bool {
         codeTrimmed.count == codeLength
@@ -46,14 +48,46 @@ struct EmailVerificationCodeView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
 
-                    // 4 separate digit fields with auto-advance
-                    HStack(spacing: Theme.Spacing.sm) {
-                        ForEach(0..<codeLength, id: \.self) { index in
-                            digitField(index: index)
+                    // Visual boxes + invisible field so paste / SMS autofill receives the full code at once.
+                    ZStack {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            ForEach(0..<codeLength, id: \.self) { index in
+                                let src = codeTrimmed
+                                let char: String = {
+                                    guard index < src.count else { return "" }
+                                    let i = src.index(src.startIndex, offsetBy: index)
+                                    return String(src[i])
+                                }()
+                                Text(char)
+                                    .font(.system(size: 24, weight: .semibold, design: .rounded))
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                    .frame(width: boxSize, height: boxSize)
+                                    .background(Theme.Colors.secondaryBackground)
+                                    .clipShape(RoundedRectangle(cornerRadius: boxCornerRadius))
+                            }
                         }
+                        TextField("", text: $codeString)
+                            .focused($otpFieldFocused)
+                            .textContentType(.oneTimeCode)
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled()
+                            .keyboardType(.default)
+                            .font(.system(size: 1))
+                            .foregroundColor(.clear)
+                            .tint(.clear)
+                            .frame(width: boxSize * CGFloat(codeLength) + Theme.Spacing.sm * CGFloat(codeLength - 1), height: boxSize)
+                            .onChange(of: codeString) { _, newVal in
+                                let filtered = newVal.uppercased().compactMap { Self.normalizedCodeCharacter($0) }
+                                let clipped = String(filtered.prefix(codeLength))
+                                if clipped != newVal {
+                                    codeString = clipped
+                                }
+                            }
                     }
                     .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.top, Theme.Spacing.md)
+                    .contentShape(Rectangle())
+                    .onTapGesture { otpFieldFocused = true }
 
                     if let err = errorMessage {
                         Text(err)
@@ -116,7 +150,7 @@ struct EmailVerificationCodeView: View {
             }
         }
         .onAppear {
-            focusedIndex = 0
+            otpFieldFocused = true
         }
     }
 
@@ -125,74 +159,6 @@ struct EmailVerificationCodeView: View {
         if c.isNumber { return c }
         if c.isLetter { return Character(c.uppercased()) }
         return nil
-    }
-
-    private func digitField(index: Int) -> some View {
-        TextField("", text: Binding(
-            get: {
-                guard index < codeString.count else { return "" }
-                let i = codeString.index(codeString.startIndex, offsetBy: index)
-                return String(codeString[i])
-            },
-            set: { newValue in
-                let uppercased = newValue.uppercased()
-                let allowed = uppercased.compactMap { Self.normalizedCodeCharacter($0) }
-                var newCode = codeString
-                if allowed.count > 1 {
-                    // Paste: replace with up to 4 allowed characters
-                    newCode = String(allowed.prefix(codeLength)).uppercased()
-                    codeString = newCode
-                    DispatchQueue.main.async {
-                        if newCode.count >= codeLength {
-                            focusedIndex = nil
-                        } else {
-                            focusedIndex = min(newCode.count, codeLength - 1)
-                        }
-                    }
-                    return
-                }
-                let newChar = allowed.first.map { String($0) }
-                if let ch = newChar {
-                    // Insert or replace at index
-                    if index < newCode.count {
-                        let i = newCode.index(newCode.startIndex, offsetBy: index)
-                        newCode.replaceSubrange(i...i, with: ch)
-                    } else {
-                        newCode.append(ch)
-                    }
-                    newCode = String(newCode.prefix(codeLength))
-                    codeString = newCode
-                    DispatchQueue.main.async {
-                        if index < codeLength - 1 && newCode.count > index + 1 {
-                            focusedIndex = index + 1
-                        } else if newCode.count >= codeLength {
-                            focusedIndex = nil
-                        }
-                    }
-                } else {
-                    // Backspace: remove character at index (only when user explicitly cleared)
-                    if index < newCode.count {
-                        let i = newCode.index(newCode.startIndex, offsetBy: index)
-                        newCode.remove(at: i)
-                        codeString = newCode
-                        DispatchQueue.main.async {
-                            let next = min(index, newCode.count)
-                            focusedIndex = next >= 0 ? next : 0
-                        }
-                    }
-                }
-            }
-        ))
-        .keyboardType(.numberPad)
-        .textInputAutocapitalization(.characters)
-        .autocorrectionDisabled()
-        .font(.system(size: 24, weight: .semibold, design: .rounded))
-        .multilineTextAlignment(.center)
-        .foregroundColor(Theme.Colors.primaryText)
-        .focused($focusedIndex, equals: index)
-        .frame(width: boxSize, height: boxSize)
-        .background(Theme.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: boxCornerRadius))
     }
 
     private func verifyAndLogin() {

@@ -23,17 +23,20 @@ struct FilteredProductsView: View {
     @State private var showFilterSheet = false
     @State private var showStylesSheet = false
     @State private var tryCartSearchTask: Task<Void, Never>?
-    @StateObject private var shopAllBag = ShopAllBagStore()
+    @EnvironmentObject private var shopAllBag: ShopAllBagStore
     @State private var showGuestSignInPrompt: Bool = false
+    /// Try Cart: when on, grid + detail use the shared bag (toolbar bag on Shop All).
+    @State private var shopAllBagToolbarActive = false
 
     let title: String
     let filterType: ProductFilterType
     /// When false, item detail shows only Buy now (no Send an offer). Used for Try Cart.
     let offersAllowed: Bool
-    /// When false, hide Add to bag on grid and floating Shopping bag bar (e.g. Shop by style). When nil, use (filterType == .tryCartSearch).
+    /// When false, hide floating Shopping bag bar (e.g. Shop by style). When nil, use (filterType == .tryCartSearch). Grid cards never show Add to bag; item detail uses the toolbar bag toggle.
     var showAddToBag: Bool? = nil
 
-    private var effectiveShowAddToBag: Bool {
+    /// Try Cart (or explicit flag): floating bag + pass `shopAllBag` into item detail for optional toolbar cart mode.
+    private var tryCartShoppingEnabled: Bool {
         showAddToBag ?? (filterType == .tryCartSearch)
     }
 
@@ -78,14 +81,20 @@ struct FilteredProductsView: View {
                     spacing: Theme.Spacing.md
                 ) {
                     ForEach(viewModel.filteredItems) { item in
-                        NavigationLink(destination: ItemDetailView(item: item, authService: authService, offersAllowed: offersAllowed, shopAllBag: effectiveShowAddToBag ? shopAllBag : nil)) {
+                        NavigationLink(destination: ItemDetailView(
+                            item: item,
+                            authService: authService,
+                            offersAllowed: offersAllowed,
+                            shopAllBag: (tryCartShoppingEnabled && shopAllBagToolbarActive) ? shopAllBag : nil,
+                            activateShopBagActionsInitially: tryCartShoppingEnabled && shopAllBagToolbarActive
+                        )) {
                             HomeItemCard(
                                 item: item,
                                 onLikeTap: likeAction(for: item),
-                                showAddToBag: effectiveShowAddToBag,
-                                onAddToBag: effectiveShowAddToBag ? { shopAllBag.add(item) } : nil,
-                                isInBag: effectiveShowAddToBag && shopAllBag.items.contains(where: { $0.id == item.id }),
-                                onRemove: effectiveShowAddToBag ? { shopAllBag.remove(item) } : nil
+                                showAddToBag: false,
+                                onAddToBag: nil,
+                                isInBag: false,
+                                onRemove: nil
                             )
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
@@ -120,7 +129,7 @@ struct FilteredProductsView: View {
             // Search Bar (same position as feed / discover / inbox)
             DiscoverSearchField(
                 text: Binding(get: { viewModel.searchText }, set: { viewModel.searchText = $0 }),
-                placeholder: effectiveShowAddToBag ? "Search anything to add to bag" : L10n.string("Search items, brands or styles"),
+                placeholder: tryCartShoppingEnabled ? "Search anything to add to bag" : L10n.string("Search items, brands or styles"),
                 showClearButton: true,
                 onClear: { viewModel.searchText = "" },
                 topPadding: Theme.Spacing.xs
@@ -384,9 +393,21 @@ struct FilteredProductsView: View {
                     .foregroundColor(Theme.Colors.primaryText)
                 }
             }
-            if effectiveShowAddToBag {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: MyFavouritesView(fromShopAll: true, shopAllBag: shopAllBag)) {
+            if tryCartShoppingEnabled {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button {
+                        shopAllBagToolbarActive.toggle()
+                    } label: {
+                        Image(systemName: shopAllBagToolbarActive ? "bag.fill" : "bag")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(shopAllBagToolbarActive ? Theme.primaryColor : Theme.Colors.primaryText)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Toggle shopping bag mode")
+
+                    NavigationLink(destination: MyFavouritesView(fromShopAll: true)) {
                         Image(systemName: "heart")
                             .foregroundColor(Theme.Colors.primaryText)
                             .frame(width: 44, height: 44)
@@ -397,7 +418,7 @@ struct FilteredProductsView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if effectiveShowAddToBag {
+            if tryCartShoppingEnabled {
                 shopAllFloatingBar
             }
         }

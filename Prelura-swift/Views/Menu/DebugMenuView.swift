@@ -44,6 +44,14 @@ struct DebugMenuView: View {
                         Text("Glass effect transition")
                     }
                 }
+                NavigationLink(destination: AnimatedScreenDebugView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Animated screen")
+                    }
+                }
                 NavigationLink(destination: BlackScreensMenuView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "square.fill")

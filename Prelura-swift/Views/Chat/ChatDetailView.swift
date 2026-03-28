@@ -1,5 +1,21 @@
 import SwiftUI
 
+/// Persists the last-known product image URL for chat headers so thumbnails do not show an endless spinner after leaving the thread.
+fileprivate enum ChatHeaderProductImageURLStore {
+    private static let prefix = "chatHeaderImg_"
+
+    static func persist(productId: Int, url: String?) {
+        let key = prefix + String(productId)
+        if let u = url?.trimmingCharacters(in: .whitespacesAndNewlines), !u.isEmpty {
+            UserDefaults.standard.set(u, forKey: key)
+        }
+    }
+
+    static func url(forProductId productId: Int) -> String? {
+        UserDefaults.standard.string(forKey: prefix + String(productId))
+    }
+}
+
 /// Resolves conversation with seller (existing or new) then shows ChatDetailView. Used when tapping message icon on product detail.
 /// When opened from product detail, pass `item` so the chat shows the product at the top (Flutter behavior).
 struct ChatWithSellerView: View {
@@ -162,6 +178,9 @@ struct ChatDetailView: View {
     /// Order of items in the chat (message / offer / sold), sorted by date.
     @State private var timelineOrder: [ChatItem] = []
     private static var timelineOrderCache: [String: [ChatItem]] = [:]
+    /// In-memory + disk cache for thread messages (same key scheme as offer history).
+    private static var messagesMemoryCache: [String: [Message]] = [:]
+    private static let messagesUserDefaultsPrefix = "chatMessages_"
 
     /// Cache key per conversation and current user so switching accounts doesn't show wrong sender.
     private func offerCacheKey(convId: String) -> String {
@@ -177,6 +196,42 @@ struct ChatDetailView: View {
         guard let data = UserDefaults.standard.data(forKey: offerHistoryUserDefaultsPrefix + key),
               let offers = try? JSONDecoder().decode([OfferInfo].self, from: data) else { return nil }
         return offers
+    }
+
+    private static func persistMessagesCache(key: String, messages: [Message]) {
+        let enc = JSONEncoder()
+        enc.dateEncodingStrategy = .secondsSince1970
+        guard let data = try? enc.encode(messages) else { return }
+        UserDefaults.standard.set(data, forKey: messagesUserDefaultsPrefix + key)
+    }
+
+    private static func loadMessagesCache(key: String) -> [Message]? {
+        guard let data = UserDefaults.standard.data(forKey: messagesUserDefaultsPrefix + key) else { return nil }
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .secondsSince1970
+        return try? dec.decode([Message].self, from: data)
+    }
+
+    /// Restore messages from memory or disk before network fetch so back navigation and cold relaunch don’t flash an empty thread.
+    private func restoreCachedMessagesBeforeLoad() {
+        let convId = displayedConversation.id
+        guard convId != "0" else { return }
+        let key = offerCacheKey(convId: convId)
+        if let mem = Self.messagesMemoryCache[key], !mem.isEmpty {
+            messages = mem
+            return
+        }
+        if let disk = Self.loadMessagesCache(key: key), !disk.isEmpty {
+            messages = disk
+            Self.messagesMemoryCache[key] = disk
+        }
+    }
+
+    private func cacheMessagesForConversation(_ msgs: [Message], convId: String) {
+        guard convId != "0" else { return }
+        let key = offerCacheKey(convId: convId)
+        Self.messagesMemoryCache[key] = msgs
+        Self.persistMessagesCache(key: key, messages: msgs)
     }
 
     private func hasLocalOfferHistoryCache(convId: String) -> Bool {
@@ -205,6 +260,17 @@ struct ChatDetailView: View {
         self.conversation = conversation
         self.item = item
         _displayedConversation = State(initialValue: conversation)
+        // Hydrate from in-memory product cache immediately so the header URL exists on first layout (onAppear ran too late → spinner).
+        if let pid = conversation.offer?.products?.first?.id.flatMap({ Int($0) }) {
+            _offerProductItem = State(initialValue: Self.offerProductCache[pid])
+        } else {
+            _offerProductItem = State(initialValue: nil)
+        }
+        if let oid = conversation.order?.firstProductId.flatMap({ Int($0) }) {
+            _orderProductItem = State(initialValue: Self.orderProductCache[oid])
+        } else {
+            _orderProductItem = State(initialValue: nil)
+        }
     }
 
     private var recipientTitle: String {
@@ -492,20 +558,34 @@ struct ChatDetailView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        if isLoadingOfferHistory {
-                            HStack(spacing: Theme.Spacing.sm) {
-                                Spacer(minLength: 0)
+                        if displayedConversation.id != "0",
+                           !hasFinishedInitialConversationFetch,
+                           messages.isEmpty,
+                           timelineOrder.isEmpty {
+                            VStack(spacing: Theme.Spacing.md) {
                                 ProgressView()
-                                Text("Loading")
+                                Text("Loading messages…")
                                     .font(Theme.Typography.caption)
                                     .foregroundColor(Theme.Colors.secondaryText)
-                                Spacer(minLength: 0)
                             }
-                            .padding(.vertical, Theme.Spacing.lg)
                             .frame(maxWidth: .infinity)
-                        }
-                        ForEach(Array(timelineOrder.enumerated()), id: \.1) { timelineIndex, entry in
-                            timelineRow(timelineIndex: timelineIndex, entry: entry)
+                            .padding(.vertical, 120)
+                        } else {
+                            if isLoadingOfferHistory {
+                                HStack(spacing: Theme.Spacing.sm) {
+                                    Spacer(minLength: 0)
+                                    ProgressView()
+                                    Text("Loading")
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(Theme.Colors.secondaryText)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.vertical, Theme.Spacing.lg)
+                                .frame(maxWidth: .infinity)
+                            }
+                            ForEach(Array(timelineOrder.enumerated()), id: \.1) { timelineIndex, entry in
+                                timelineRow(timelineIndex: timelineIndex, entry: entry)
+                            }
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.md)
@@ -622,7 +702,14 @@ struct ChatDetailView: View {
         }
         .onAppear {
             hasAutoScrolledToBottomForThisChat = false
+            if let token = authService.authToken {
+                chatService.updateAuthToken(token)
+            }
             refreshOfferHistoryLoadingFlagsForCurrentConversation()
+            restoreCachedMessagesBeforeLoad()
+            if let it = item, let pid = it.productId.flatMap({ Int($0) }), let u = it.imageURLs.first {
+                ChatHeaderProductImageURLStore.persist(productId: pid, url: u)
+            }
             connectWebSocket()
             fetchOfferProductIfNeeded()
             fetchOrderProductIfNeeded()
@@ -636,12 +723,14 @@ struct ChatDetailView: View {
             fetchOrderProductIfNeeded()
         }
         .onChange(of: displayedConversation.id) { _, _ in
+            messages = []
             offers = []
             timelineOrder = []
             hasAutoScrolledToBottomForThisChat = false
             isOtherUserTyping = false
             typingUsername = nil
             refreshOfferHistoryLoadingFlagsForCurrentConversation()
+            restoreCachedMessagesBeforeLoad()
             loadOffers()
             loadConversationAndMessagesFromBackend()
         }
@@ -655,6 +744,9 @@ struct ChatDetailView: View {
             }
             if !timelineOrder.isEmpty {
                 Self.timelineOrderCache[displayedConversation.id] = timelineOrder
+            }
+            if !messages.isEmpty, displayedConversation.id != "0" {
+                cacheMessagesForConversation(messages, convId: displayedConversation.id)
             }
             if let last = messages.last, displayedConversation.id != "0", let tc = tabCoordinator {
                 // Use same rules as inbox row so we never flash raw JSON (e.g. order_issue) before refetch.
@@ -701,7 +793,10 @@ struct ChatDetailView: View {
     private func loadConversationAndMessagesFromBackend() {
         guard displayedConversation.id != "0" else { return }
         let convId = displayedConversation.id
-        isLoading = true
+        let hadCachedMessages = !messages.isEmpty
+        if !hadCachedMessages {
+            isLoading = true
+        }
         Task {
             let updatedConv: Conversation? = try? await chatService.getConversationById(conversationId: convId, currentUsername: authService.username)
             let fetchedMsgs: [Message]?
@@ -775,6 +870,7 @@ struct ChatDetailView: View {
                 }
                 if let m = fetchedMsgs {
                     self.messages = m
+                    self.cacheMessagesForConversation(m, convId: convId)
                 } else if self.messages.isEmpty {
                     // Network/decoding failure: avoid wiping the thread with [] (user sees "chat doesn't persist").
                     self.messages = []
@@ -1376,7 +1472,10 @@ struct ChatDetailView: View {
         guard let order = displayedConversation.order else { return AnyView(EmptyView()) }
         let headerPrice = latestAcceptedOfferPriceForHeader ?? order.total
         let priceStr = String(format: "£%.2f", headerPrice)
-        let rawOrderImage = orderProductItem?.imageURLs.first ?? order.firstProductImageUrl
+        let orderProductId = order.firstProductId.flatMap { Int($0) }
+        let rawOrderImage = orderProductItem?.imageURLs.first
+            ?? order.firstProductImageUrl
+            ?? orderProductId.flatMap { ChatHeaderProductImageURLStore.url(forProductId: $0) }
         let trimmedOrderImage = rawOrderImage?.trimmingCharacters(in: .whitespacesAndNewlines)
         let orderThumb: (url: URL?, invalidURL: Bool) = {
             guard let t = trimmedOrderImage, !t.isEmpty else { return (nil, false) }
@@ -1470,7 +1569,9 @@ struct ChatDetailView: View {
     private var offerProductHeaderBar: some View {
         let offer = displayedConversation.offer!
         let priceStr = String(format: "£%.2f", offer.offerPrice)
+        let offerProductId = offer.products?.first?.id.flatMap { Int($0) }
         let rawOfferImage = offerProductItem?.imageURLs.first
+            ?? offerProductId.flatMap { ChatHeaderProductImageURLStore.url(forProductId: $0) }
         let trimmedOfferImage = rawOfferImage?.trimmingCharacters(in: .whitespacesAndNewlines)
         let offerThumb: (url: URL?, invalidURL: Bool) = {
             guard let t = trimmedOfferImage, !t.isEmpty else { return (nil, false) }
@@ -1517,6 +1618,9 @@ struct ChatDetailView: View {
         }
         if let cached = Self.offerProductCache[firstId] {
             offerProductItem = cached
+            if let u = cached.imageURLs.first {
+                ChatHeaderProductImageURLStore.persist(productId: firstId, url: u)
+            }
             return
         }
         Task {
@@ -1524,6 +1628,9 @@ struct ChatDetailView: View {
                 await MainActor.run {
                     Self.offerProductCache[firstId] = product
                     offerProductItem = product
+                    if let u = product.imageURLs.first {
+                        ChatHeaderProductImageURLStore.persist(productId: firstId, url: u)
+                    }
                 }
             }
         }
@@ -1537,6 +1644,9 @@ struct ChatDetailView: View {
         }
         if let cached = Self.orderProductCache[firstId] {
             orderProductItem = cached
+            if let u = cached.imageURLs.first {
+                ChatHeaderProductImageURLStore.persist(productId: firstId, url: u)
+            }
             return
         }
         Task {
@@ -1544,6 +1654,9 @@ struct ChatDetailView: View {
                 await MainActor.run {
                     Self.orderProductCache[firstId] = product
                     orderProductItem = product
+                    if let u = product.imageURLs.first {
+                        ChatHeaderProductImageURLStore.persist(productId: firstId, url: u)
+                    }
                 }
             }
         }
@@ -1874,13 +1987,17 @@ struct ChatDetailView: View {
             return
         }
         let convId = displayedConversation.id
-        isLoading = true
+        let hadCached = !messages.isEmpty
+        if !hadCached {
+            isLoading = true
+        }
         Task {
             do {
                 let msgs = try await chatService.getMessages(conversationId: convId)
                 await MainActor.run {
                     guard displayedConversation.id == convId else { return }
                     self.messages = msgs
+                    self.cacheMessagesForConversation(msgs, convId: convId)
                     self.isLoading = false
                     self.mergeOffersFromMessages()
                     self.rebuildTimelineOrder()
@@ -2176,11 +2293,20 @@ struct OfferCardView: View {
 struct ChatProductCardView: View {
     let item: Item
 
+    /// Prefer live URLs on `item`, then last persisted header URL for this product (same store as offer/order headers).
+    private var displayImageURLString: String? {
+        if let s = item.imageURLs.first?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            return s
+        }
+        guard let pid = item.productId.flatMap({ Int($0) }) else { return nil }
+        return ChatHeaderProductImageURLStore.url(forProductId: pid)
+    }
+
     var body: some View {
         NavigationLink(destination: ItemDetailView(item: item)) {
             HStack(alignment: .top, spacing: Theme.Spacing.sm) {
                 Group {
-                    if let urlString = item.imageURLs.first, let url = URL(string: urlString) {
+                    if let urlString = displayImageURLString, let url = URL(string: urlString) {
                         AsyncImage(url: url) { phase in
                             switch phase {
                             case .success(let image):

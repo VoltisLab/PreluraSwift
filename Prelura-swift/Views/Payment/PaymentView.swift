@@ -32,8 +32,8 @@ struct PaymentView: View {
     @Environment(\.optionalTabCoordinator) private var tabCoordinator
     @State private var currentUser: User?
     @State private var selectedDelivery: DeliveryType = .homeDelivery
-    /// When seller has postage options, we use this instead of selectedDelivery.
-    @State private var selectedSellerOption: SellerDeliveryOption?
+    /// Chosen seller postage option per seller (one parcel per seller).
+    @State private var selectedSellerOptionBySellerID: [UUID: SellerDeliveryOption] = [:]
     @State private var buyerProtectionEnabled: Bool = false
     @State private var paymentMethod: PaymentMethod?
     @State private var isLoadingPaymentMethod = true
@@ -72,17 +72,43 @@ struct PaymentView: View {
         if p <= 200 { return (6 * p) / 100 }
         return (5 * p) / 100
     }
-    /// Seller's delivery options when all products from same seller and seller has postage set.
-    private var sellerDeliveryOptions: [SellerDeliveryOption] {
-        guard let first = products.first, products.allSatisfy({ $0.seller.userId == first.seller.userId }) else { return [] }
-        return first.seller.postageOptions?.toDeliveryOptions() ?? []
+    /// Distinct sellers in the cart (one shipping charge per seller).
+    private var sellerGroups: [(seller: User, items: [Item])] {
+        let g = Dictionary(grouping: products, by: { $0.seller.id })
+        return g.values.compactMap { arr -> (User, [Item])? in
+            guard let s = arr.first?.seller else { return nil }
+            return (s, arr)
+        }
+        .sorted { $0.seller.username.localizedCaseInsensitiveCompare($1.seller.username) == .orderedAscending }
     }
-    private var useSellerPostage: Bool { !sellerDeliveryOptions.isEmpty }
-    private var effectiveShippingFee: Double {
-        if useSellerPostage, let opt = selectedSellerOption ?? sellerDeliveryOptions.first {
+
+    private func deliveryOptions(for seller: User) -> [SellerDeliveryOption] {
+        seller.postageOptions?.toDeliveryOptions() ?? []
+    }
+
+    private func selectedOption(for seller: User) -> SellerDeliveryOption? {
+        let opts = deliveryOptions(for: seller)
+        guard !opts.isEmpty else { return nil }
+        if let picked = selectedSellerOptionBySellerID[seller.id], opts.contains(picked) {
+            return picked
+        }
+        return opts.first
+    }
+
+    private func setSelectedOption(_ option: SellerDeliveryOption, for seller: User) {
+        selectedSellerOptionBySellerID[seller.id] = option
+    }
+
+    /// Shipping for one seller’s parcel: their chosen rate, or the global standard rate.
+    private func postageFee(for seller: User) -> Double {
+        if let opt = selectedOption(for: seller) {
             return opt.shippingFee
         }
         return selectedDelivery.shippingFee
+    }
+
+    private var effectiveShippingFee: Double {
+        sellerGroups.reduce(0) { $0 + postageFee(for: $1.seller) }
     }
     private var total: Double {
         afterDiscount + effectiveShippingFee + (buyerProtectionEnabled ? buyerProtectionFee : 0)
@@ -93,6 +119,11 @@ struct PaymentView: View {
         guard let first = products.first?.seller.userId else { return nil }
         let allSame = products.allSatisfy { $0.seller.userId == first }
         return allSame ? first : nil
+    }
+
+    /// More than one distinct backend seller user id (cart spans multiple sellers).
+    private var isMultiSellerCheckout: Bool {
+        Set(products.compactMap { $0.seller.userId }).count > 1
     }
 
     private func formatAddress(_ addr: ShippingAddress?) -> String {
@@ -115,19 +146,7 @@ struct PaymentView: View {
                     .buttonStyle(.plain)
 
                     sectionHeader("Delivery Option")
-                    if useSellerPostage {
-                        VStack(spacing: Theme.Spacing.sm) {
-                            ForEach(Array(sellerDeliveryOptions.enumerated()), id: \.offset) { _, option in
-                                sellerDeliveryOptionCard(option)
-                            }
-                        }
-                    } else {
-                        HStack(spacing: Theme.Spacing.sm) {
-                            ForEach(DeliveryType.allCases, id: \.self) { option in
-                                deliveryOptionCard(option)
-                            }
-                        }
-                    }
+                    deliveryOptionsSection
 
                     sectionHeader("Your Contact details")
                     paymentRow(title: currentUser?.phoneDisplay ?? "+44 ••••••••••", trailing: "chevron.right")
@@ -178,7 +197,7 @@ struct PaymentView: View {
                         if products.count > 1 && multiBuyDiscountPercent > 0 {
                             infoRow(String(format: L10n.string("Multi-buy discount (%d%%)"), multiBuyDiscountPercent), String(format: "-£%.2f", multiBuyDiscountAmount), valueColor: Theme.primaryColor)
                         }
-                        infoRow("Postage", String(format: "£%.2f", effectiveShippingFee))
+                        postageSummaryRows
                         if buyerProtectionEnabled {
                             infoRow(L10n.string("Buyer protection fee"), String(format: "£%.2f", buyerProtectionFee))
                         }
@@ -250,8 +269,11 @@ struct PaymentView: View {
             }
         }
         .onAppear {
-            if !sellerDeliveryOptions.isEmpty, selectedSellerOption == nil {
-                selectedSellerOption = sellerDeliveryOptions.first
+            for group in sellerGroups {
+                let opts = deliveryOptions(for: group.seller)
+                if !opts.isEmpty, selectedSellerOptionBySellerID[group.seller.id] == nil {
+                    selectedSellerOptionBySellerID[group.seller.id] = opts.first
+                }
             }
             Task {
                 await loadUser()
@@ -296,6 +318,50 @@ struct PaymentView: View {
         .cornerRadius(Theme.Glass.cornerRadius)
     }
 
+    @ViewBuilder
+    private var deliveryOptionsSection: some View {
+        let withCustom = sellerGroups.filter { !deliveryOptions(for: $0.seller).isEmpty }
+        let withDefault = sellerGroups.filter { deliveryOptions(for: $0.seller).isEmpty }
+
+        if !withCustom.isEmpty {
+            ForEach(withCustom, id: \.seller.id) { group in
+                if sellerGroups.count > 1 {
+                    Text(group.seller.username.isEmpty ? L10n.string("Seller") : "@\(group.seller.username)")
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .padding(.top, Theme.Spacing.xs)
+                }
+                VStack(spacing: Theme.Spacing.sm) {
+                    ForEach(Array(deliveryOptions(for: group.seller).enumerated()), id: \.offset) { _, option in
+                        sellerDeliveryOptionCard(option, seller: group.seller)
+                    }
+                }
+            }
+        }
+        if !withDefault.isEmpty {
+            if !withCustom.isEmpty {
+                sectionHeader("Standard shipping")
+            }
+            HStack(spacing: Theme.Spacing.sm) {
+                ForEach(DeliveryType.allCases, id: \.self) { option in
+                    deliveryOptionCard(option)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var postageSummaryRows: some View {
+        if sellerGroups.count <= 1 {
+            infoRow(L10n.string("Postage"), String(format: "£%.2f", effectiveShippingFee))
+        } else {
+            ForEach(sellerGroups, id: \.seller.id) { group in
+                let name = group.seller.username.isEmpty ? L10n.string("Seller") : group.seller.username
+                infoRow("\(L10n.string("Postage")) · \(name)", String(format: "£%.2f", postageFee(for: group.seller)))
+            }
+        }
+    }
+
     private func deliveryOptionCard(_ option: DeliveryType) -> some View {
         let isSelected = selectedDelivery == option
         return Button {
@@ -327,10 +393,11 @@ struct PaymentView: View {
         .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
     }
 
-    private func sellerDeliveryOptionCard(_ option: SellerDeliveryOption) -> some View {
-        let isSelected = selectedSellerOption?.name == option.name && selectedSellerOption?.shippingFee == option.shippingFee
+    private func sellerDeliveryOptionCard(_ option: SellerDeliveryOption, seller: User) -> some View {
+        let picked = selectedOption(for: seller)
+        let isSelected = picked?.name == option.name && picked?.shippingFee == option.shippingFee
         return Button {
-            selectedSellerOption = option
+            setSelectedOption(option, for: seller)
         } label: {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 HStack(spacing: Theme.Spacing.sm) {
@@ -436,13 +503,17 @@ struct PaymentView: View {
             productService.updateAuthToken(authService.authToken)
             do {
                 let phone = currentUser?.phoneDisplay ?? "0000000000"
-                let (provider, deliveryType, fee): (String, String, Float) = if useSellerPostage, let opt = selectedSellerOption ?? sellerDeliveryOptions.first {
-                    (opt.deliveryProvider, opt.deliveryType, Float(opt.shippingFee))
+                let fee = Float(effectiveShippingFee)
+                let primarySeller = products.first?.seller
+                let primaryOpts = primarySeller.map { deliveryOptions(for: $0) } ?? []
+                let primaryChosen = primarySeller.flatMap { selectedOption(for: $0) }
+                let (provider, deliveryType): (String, String) = if let s = primarySeller, let opt = primaryChosen, !primaryOpts.isEmpty {
+                    (opt.deliveryProvider, opt.deliveryType)
                 } else {
-                    ("EVRI", selectedDelivery == .collectionPoint ? "LOCAL_PICKUP" : "HOME_DELIVERY", Float(selectedDelivery.shippingFee))
+                    ("EVRI", selectedDelivery == .collectionPoint ? "LOCAL_PICKUP" : "HOME_DELIVERY")
                 }
-                let selectedShippingName: String? = if useSellerPostage {
-                    (selectedSellerOption ?? sellerDeliveryOptions.first)?.name
+                let selectedShippingName: String? = if let opt = primaryChosen, !primaryOpts.isEmpty {
+                    opt.name
                 } else {
                     selectedDelivery.rawValue
                 }
@@ -475,11 +546,27 @@ struct PaymentView: View {
                     )
                 } else {
                     NSLog("[PAY_DEBUG] createOrder multi product")
+                    let sellerFeeRows: [(sellerId: Int, shippingFee: Float)]? = {
+                        guard isMultiSellerCheckout else { return nil }
+                        let rows: [(Int, Float)] = sellerGroups.compactMap { group in
+                            guard let sid = group.seller.userId else { return nil }
+                            return (sid, Float(postageFee(for: group.seller)))
+                        }
+                        guard rows.count == sellerGroups.count, rows.count > 1 else { return nil }
+                        return rows.map { (sellerId: $0.0, shippingFee: $0.1) }
+                    }()
+                    if isMultiSellerCheckout, sellerFeeRows == nil {
+                        await MainActor.run {
+                            errorMessage = "Cannot complete checkout: missing seller id for one or more items. Try again from the product page."
+                        }
+                        return
+                    }
                     orderResult = try await productService.createOrder(
                         productId: nil,
                         productIds: productIds,
                         buyerProtection: buyerProtectionEnabled,
                         shippingFee: fee,
+                        sellerShippingFees: sellerFeeRows,
                         deliveryDetails: deliveryDetails
                     )
                 }
@@ -556,7 +643,11 @@ struct PaymentView: View {
                     }
                 }
                 await MainActor.run {
-                    if let conv = conversationToOpen {
+                    if isMultiSellerCheckout {
+                        tabCoordinator?.openInboxListOnly = true
+                        tabCoordinator?.selectTab(3)
+                        NSLog("[PAY_DEBUG] multi-seller: inbox list only")
+                    } else if let conv = conversationToOpen {
                         tabCoordinator?.selectTab(3)
                         tabCoordinator?.pendingOpenConversation = conv
                         NSLog("[PAY_DEBUG] opening conversation id=%@", conv.id)

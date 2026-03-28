@@ -3,10 +3,12 @@ import SwiftUI
 /// Favourites: fetch liked products, grid, search, empty state. Matches Flutter MyFavouriteScreen.
 struct MyFavouritesView: View {
     @EnvironmentObject var authService: AuthService
-    /// When true, opened from Shop All: show Add to bag on cards and item detail shows Add to bag only.
+    /// Shared with Shop All and item detail (injected from `MainTabView`).
+    @EnvironmentObject private var shopAllBag: ShopAllBagStore
+    /// When true, opened from Shop All (e.g. Try Cart rules already apply from that flow).
     var fromShopAll: Bool = false
-    /// Bag to add to when fromShopAll (Shop All floating bar).
-    var shopAllBag: ShopAllBagStore? = nil
+    /// User turns this on to pass the shared bag into item detail (toolbar bag on Favourites).
+    @State private var shopAllBagToolbarActive = false
     @State private var searchText: String = ""
     @State private var items: [Item] = []
     @State private var totalNumber: Int = 0
@@ -76,14 +78,29 @@ struct MyFavouritesView: View {
                         pinnedViews: []
                     ) {
                         ForEach(filteredItems) { item in
-                            NavigationLink(destination: ItemDetailView(item: item, authService: authService, offersAllowed: !fromShopAll, shopAllBag: fromShopAll ? shopAllBag : nil)) {
+                            let inBag = shopAllBag.items.contains(where: { $0.id == item.id })
+                            NavigationLink(destination: ItemDetailView(
+                                item: item,
+                                authService: authService,
+                                offersAllowed: !(fromShopAll || shopAllBagToolbarActive),
+                                shopAllBag: shopAllBagToolbarActive ? shopAllBag : nil,
+                                activateShopBagActionsInitially: shopAllBagToolbarActive
+                            )) {
                                 HomeItemCard(
                                     item: item,
                                     onLikeTap: { unfavourite(item) },
-                                    showAddToBag: fromShopAll && shopAllBag != nil,
-                                    onAddToBag: fromShopAll ? { shopAllBag?.add(item) } : nil,
-                                    isInBag: fromShopAll && (shopAllBag?.items.contains(where: { $0.id == item.id }) ?? false),
-                                    onRemove: fromShopAll ? { shopAllBag?.remove(item) } : nil
+                                    showAddToBag: shopAllBagToolbarActive,
+                                    onAddToBag: shopAllBagToolbarActive
+                                        ? {
+                                            if !shopAllBag.items.contains(where: { $0.id == item.id }) {
+                                                shopAllBag.add(item)
+                                            }
+                                        }
+                                        : nil,
+                                    isInBag: inBag,
+                                    onRemove: shopAllBagToolbarActive
+                                        ? { shopAllBag.remove(item) }
+                                        : nil
                                 )
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
                             }
@@ -97,7 +114,7 @@ struct MyFavouritesView: View {
                     }
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.md)
-                    .padding(.bottom, Theme.Spacing.lg)
+                    .padding(.bottom, shopAllBagToolbarActive ? 88 : Theme.Spacing.lg)
 
                     if isLoadingMore {
                         ProgressView()
@@ -110,8 +127,62 @@ struct MyFavouritesView: View {
         .toolbar(.hidden, for: .tabBar)
         .navigationTitle(L10n.string("Favourites"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    shopAllBagToolbarActive.toggle()
+                } label: {
+                    Image(systemName: shopAllBagToolbarActive ? "bag.fill" : "bag")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(shopAllBagToolbarActive ? Theme.primaryColor : Theme.Colors.primaryText)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Toggle shopping bag mode")
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if shopAllBagToolbarActive {
+                favouritesTryCartFloatingBar
+            }
+        }
         .refreshable { await load(resetPage: true) }
         .task { await load(resetPage: true) }
+    }
+
+    /// Same as Shop All Try Cart: tap opens `ShopAllBagView` → Checkout → `PaymentView`.
+    private var favouritesTryCartFloatingBar: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                GlassEffectContainer(spacing: 0) {
+                    NavigationLink(destination: ShopAllBagView(store: shopAllBag).environmentObject(authService)) {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "cart.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text(L10n.string("Shopping bag"))
+                                .font(Theme.Typography.headline)
+                            Spacer(minLength: 0)
+                            Text(shopAllBag.formattedTotal)
+                                .font(Theme.Typography.headline)
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, Theme.Spacing.lg)
+                        .padding(.vertical, Theme.Spacing.md)
+                        .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
+                        .glassEffectTransition(.materialize)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                Spacer()
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.bottom, 15)
+        }
+        .allowsHitTesting(true)
     }
 
     private func load(resetPage: Bool) async {

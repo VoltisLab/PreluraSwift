@@ -95,6 +95,25 @@ struct User: Identifiable, Hashable {
     var formattedRating: String {
         String(format: "%.1f", rating)
     }
+
+    /// Stable `id` for sellers from the numeric backend user id so multiple `Item`s from the same seller share one identity (e.g. checkout postage grouping).
+    static func stableIdForSeller(backendUserId: Int) -> UUID {
+        var be = backendUserId.bigEndian
+        let prefix = Swift.withUnsafeBytes(of: &be) { Data($0) }
+        var bytes = [UInt8](repeating: 0, count: 16)
+        let n = min(8, prefix.count)
+        if n > 0 {
+            _ = prefix.copyBytes(to: &bytes, count: n)
+        }
+        bytes[8] = 0x50
+        bytes[9] = 0x52
+        return UUID(uuid: (
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11],
+            bytes[12], bytes[13], bytes[14], bytes[15]
+        ))
+    }
 }
 
 // Sample data

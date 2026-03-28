@@ -1,6 +1,8 @@
 import SwiftUI
 import PhotosUI
 import Shimmer
+import Combine
+import UIKit
 
 struct SellView: View {
     private static let sellFormColourNames = ["Black", "White", "Red", "Blue", "Green", "Yellow", "Pink", "Purple", "Orange", "Brown", "Grey", "Beige", "Navy", "Maroon", "Teal"]
@@ -30,6 +32,8 @@ struct SellView: View {
     @State private var showCategoryPicker: Bool = false
     @State private var showDraftsSheet: Bool = false
     @State private var showSaveDraftConfirmation: Bool = false
+    /// Extra scroll bottom inset while the keyboard is visible so fields above the upload bar stay reachable.
+    @State private var keyboardBottomInset: CGFloat = 0
 
     private var discountPercentText: String {
         guard let price = price, let discountPrice = discountPrice, price > 0 else { return "0%" }
@@ -70,9 +74,22 @@ struct SellView: View {
                     // 6. Pricing & Shipping (Flutter)
                     pricingShippingSection
                 }
-                .padding(.bottom, 100)
+                .padding(.bottom, 100 + keyboardBottomInset)
             }
+            .scrollDismissesKeyboard(.interactively)
             .background(Theme.Colors.background)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+                guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                let h = frame.height
+                Task { @MainActor in
+                    keyboardBottomInset = max(0, h - 12)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                Task { @MainActor in
+                    keyboardBottomInset = 0
+                }
+            }
 
             PrimaryButtonBar {
                 PrimaryGlassButton(

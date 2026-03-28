@@ -26,15 +26,31 @@ struct ItemDetailView: View {
     @State private var deleteErrorMessage: String?
     @State private var markSoldErrorMessage: String?
     @State private var showGuestSignInPrompt: Bool = false
+    /// When `shopAllBag` is provided (e.g. Shop All), user must enable this via the toolbar bag button before "Add to bag" appears.
+    @State private var isTryCartToolbarActive: Bool = false
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authService: AuthService
     @Environment(\.optionalTabCoordinator) private var tabCoordinator
+
+    /// Bag used for bottom actions only after the user toggles the cart control on.
+    private var activeShopAllBag: ShopAllBagStore? {
+        guard let bag = shopAllBag, isTryCartToolbarActive else { return nil }
+        return bag
+    }
     
-    init(item: Item, authService: AuthService? = nil, offersAllowed: Bool = true, shopAllBag: ShopAllBagStore? = nil) {
+    /// When `shopAllBag` is set and this is true (e.g. user enabled bag mode on Shop All / Favourites), bottom bar shows Add to bag without an extra tap on the detail bag icon.
+    init(
+        item: Item,
+        authService: AuthService? = nil,
+        offersAllowed: Bool = true,
+        shopAllBag: ShopAllBagStore? = nil,
+        activateShopBagActionsInitially: Bool = false
+    ) {
         self.item = item
         self.offersAllowed = offersAllowed
         self.shopAllBag = shopAllBag
         _viewModel = StateObject(wrappedValue: ItemDetailViewModel(authService: authService))
+        _isTryCartToolbarActive = State(initialValue: shopAllBag != nil && activateShopBagActionsInitially)
     }
     
     var body: some View {
@@ -67,7 +83,20 @@ struct ItemDetailView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if shopAllBag != nil {
+                        Button {
+                            isTryCartToolbarActive.toggle()
+                        } label: {
+                            Image(systemName: isTryCartToolbarActive ? "bag.fill" : "bag")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Toggle shopping bag mode")
+                    }
                     Button(action: { showProductOptionsSheet = true }) {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 16, weight: .medium))
@@ -767,7 +796,7 @@ struct ItemDetailView: View {
     // MARK: - Bottom Action Buttons
     private var bottomActionButtons: some View {
         PrimaryButtonBar {
-            if let bag = shopAllBag {
+            if let bag = activeShopAllBag {
                 let isInBag = bag.items.contains(where: { $0.id == effectiveItem.id })
                 if isInBag {
                     BorderGlassButton(L10n.string("Remove"), icon: "minus.circle", action: {

@@ -196,6 +196,8 @@ struct MainTabView: View {
     @StateObject private var tabCoordinator = TabCoordinator()
     @StateObject private var discoverViewModel = DiscoverViewModel(authService: nil)
     @StateObject private var inboxViewModel = InboxViewModel()
+    /// Single Try Cart / Shop All bag shared across Shop All, Favourites, and item detail.
+    @StateObject private var shopAllBagStore = ShopAllBagStore()
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(kAppearanceMode) private var appearanceMode: String = "system"
 
@@ -244,6 +246,7 @@ struct MainTabView: View {
                 .tag(4)
         }
         .accentColor(Theme.primaryColor)
+        .environmentObject(shopAllBagStore)
         .onAppear {
             applyTabBarAppearance()
             discoverViewModel.updateAuthToken(authService.authToken)

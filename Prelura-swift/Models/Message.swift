@@ -245,6 +245,39 @@ struct Message: Identifiable {
     }
 }
 
+extension Message: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, backendId, senderUsername, content, timestamp, type, orderID, thumbnailURL, read
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        backendId = try c.decodeIfPresent(Int.self, forKey: .backendId)
+        senderUsername = try c.decode(String.self, forKey: .senderUsername)
+        content = try c.decode(String.self, forKey: .content)
+        timestamp = try c.decode(Date.self, forKey: .timestamp)
+        type = try c.decodeIfPresent(String.self, forKey: .type) ?? "order_issue"
+        orderID = try c.decodeIfPresent(String.self, forKey: .orderID)
+        thumbnailURL = try c.decodeIfPresent(String.self, forKey: .thumbnailURL)
+        read = try c.decodeIfPresent(Bool.self, forKey: .read) ?? false
+        preview = Self.makeListPreview(from: content)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encodeIfPresent(backendId, forKey: .backendId)
+        try c.encode(senderUsername, forKey: .senderUsername)
+        try c.encode(content, forKey: .content)
+        try c.encode(timestamp, forKey: .timestamp)
+        try c.encode(type, forKey: .type)
+        try c.encodeIfPresent(orderID, forKey: .orderID)
+        try c.encodeIfPresent(thumbnailURL, forKey: .thumbnailURL)
+        try c.encode(read, forKey: .read)
+    }
+}
+
 extension Message {
     static let sampleMessages: [Message] = [
         Message(
