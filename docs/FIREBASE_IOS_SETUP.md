@@ -142,6 +142,29 @@ If any of these are missing or still `placeholder_*`, logs show *Firebase creden
 | Push works on Android/old app but not Swift | Server or Firebase project mismatch; use new FCM credentials for the new project. |
 | Lost access to old Firebase | Creating a **new** project (this doc) is correct; you cannot recover plist from the repo if it was never committed. |
 
+## 8. Push troubleshooting checklist (Swift vs Flutter)
+
+1. **Firebase → Project settings → General (PreluraSwift / `com.prelura.preloved`)**  
+   Add **Team ID** (same as Apple Developer team, e.g. from your distribution profile). Optional but recommended.
+
+2. **Firebase → Cloud Messaging**  
+   Confirm **APNs authentication key (.p8)** is uploaded for the project (one key covers all iOS apps under your Apple team).
+
+3. **Apple Developer → Identifiers**  
+   App ID **`com.prelura.preloved`** must have **Push Notifications** enabled (separate from Flutter’s `com.prelura.app`).
+
+4. **Same FCM project as the API**  
+   Server `GOOGLE_CRED_PROJECT_ID` must be **`prelura-app`** (same as `PROJECT_ID` in `GoogleService-Info.plist`). In Django admin, confirm the user has **FCM tokens** listed after login on the Swift app (`updateProfile(fcmToken:)` success in logs).
+
+5. **Isolate Firebase vs API**  
+   Copy the FCM token from Xcode (`[FCM TEST]` in Debug) or Menu → Debug → Push diagnostics, then **Firebase → send test message** with the app **backgrounded**. If the test fails, fix Apple/Firebase/signing first.
+
+6. **Chat messages and “presence”**  
+   The API skips chat FCM when the receiver appears in the WebSocket room cache `chat_<conversationId>`. The Swift app now **disconnects the chat socket when the app backgrounds** so you are not stuck “in the room” after leaving the thread. Server logs: `Skipping chat push: receiver_id=…` means this path fired. To **always** send chat FCM regardless of presence, set env **`CHAT_SUPPRESS_PUSH_IF_RECEIVER_IN_ROOM=false`** (Django) and redeploy.
+
+7. **Shared cache in production**  
+   Use **Redis** for `CACHES` (not LocMem) so GraphQL workers and Channels see the same `chat_*` presence keys.
+
 ## Related files in this repo
 
 | File | Purpose |

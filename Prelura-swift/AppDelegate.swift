@@ -198,6 +198,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         print("[Push] APNs registration failed: \(error.localizedDescription)")
     }
 
+    /// Background / data updates; required to call `completionHandler` within ~30s. Helps FCM + iOS delivery bookkeeping.
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        if Self.isFirebaseConfigured {
+            _ = Messaging.messaging().appDidReceiveMessage(userInfo)
+        }
+        completionHandler(.newData)
+    }
+
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
         guard let fcmToken, !fcmToken.isEmpty else { return }
         UserDefaults.standard.set(fcmToken, forKey: kDeviceTokenKey)
@@ -232,6 +244,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let u = notification.request.content.userInfo
+        if let mid = u["gcm.message_id"] {
+            pushBootstrapLog.info("willPresent remote notification gcm.message_id=\(String(describing: mid), privacy: .public)")
+            print("[Push] Foreground notification (gcm.message_id=\(mid))")
+        }
         completionHandler([.banner, .badge, .sound])
     }
 }

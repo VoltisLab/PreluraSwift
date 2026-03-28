@@ -2,7 +2,7 @@
 
 Run every shell command in **Cursor’s integrated terminal** (not Terminal.app).
 
-**Simulators:** **iPhone 14** and **iPhone 14 Alt** (same as `/relaunch`). Do **not** use iPhone 16e for this project.
+**Simulators:** **iPhone 14** and **iPhone 14 Alt** (same as `/relaunch`).
 
 When the user runs `/relaunch-logs`, follow these steps:
 

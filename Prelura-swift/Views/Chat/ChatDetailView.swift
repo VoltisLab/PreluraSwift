@@ -121,6 +121,8 @@ struct ChatDetailView: View {
     @EnvironmentObject var authService: AuthService
     @Environment(\.optionalTabCoordinator) private var tabCoordinator
     @Environment(\.dismiss) private var dismiss
+    /// When the app backgrounds, drop the chat WebSocket so the server clears `chat_<id>` presence; otherwise FCM is skipped while the cache says the user is still “in the room.”
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var chatService = ChatService()
     @State private var displayedConversation: Conversation
     @State private var messages: [Message] = []
@@ -748,6 +750,11 @@ struct ChatDetailView: View {
             fetchOrderProductIfNeeded()
         }
         .onChange(of: displayedConversation.id) { _, _ in
+            webSocket?.disconnect()
+            webSocket = nil
+            typingResetTask?.cancel()
+            typingSendTask?.cancel()
+            didSendTypingStart = false
             messages = []
             offers = []
             timelineOrder = []
@@ -758,9 +765,26 @@ struct ChatDetailView: View {
             restoreCachedMessagesBeforeLoad()
             loadOffers()
             loadConversationAndMessagesFromBackend()
+            connectWebSocket()
         }
         .onChange(of: newMessage) { _, newValue in
             sendTypingForComposerChange(newValue)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                webSocket?.disconnect()
+                webSocket = nil
+                typingResetTask?.cancel()
+                typingSendTask?.cancel()
+                didSendTypingStart = false
+                isOtherUserTyping = false
+                typingUsername = nil
+            } else if phase == .active {
+                guard displayedConversation.id != "0",
+                      let t = authService.authToken, !t.isEmpty,
+                      webSocket == nil else { return }
+                connectWebSocket()
+            }
         }
         .onDisappear {
             if !offers.isEmpty {
