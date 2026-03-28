@@ -6,6 +6,8 @@
 //
 
 import Combine
+import FirebaseCore
+import FirebaseMessaging
 import OSLog
 import SwiftUI
 import UIKit
@@ -15,31 +17,51 @@ private let pushRegistrationLogger = Logger(subsystem: Bundle.main.bundleIdentif
 /// Storage key for appearance: "system" | "light" | "dark"
 let kAppearanceMode = "appearance_mode"
 
-/// When the user is logged in and we have an FCM token, send it via `updateProfile(fcmToken:)` so the backend can deliver pushes (same mutation as Flutter).
+/// When the user is logged in, read the **current** FCM token from Firebase and send it via `updateProfile(fcmToken:)`.
+/// Always uses `Messaging.messaging().token` so we do not rely on UserDefaults being filled before login (race after `storeTokens`).
 private func registerPushTokenIfNeeded(authService: AuthService) {
     guard authService.isAuthenticated else {
         pushRegistrationLogger.debug("Skip FCM upload: not authenticated.")
         print("[Push] Skip FCM → backend: not logged in.")
         return
     }
-    guard let token = UserDefaults.standard.string(forKey: kDeviceTokenKey), !token.isEmpty else {
-        pushRegistrationLogger.debug("Skip FCM upload: no local FCM token yet (notifications permission / Firebase).")
-        print("[Push] Skip FCM → backend: no local FCM token yet (notifications allowed? Firebase plist OK?).")
+    guard FirebaseApp.app() != nil else {
+        pushRegistrationLogger.debug("Skip FCM upload: Firebase not configured.")
+        print("[Push] Skip FCM → backend: Firebase not configured.")
         return
     }
-    print("[Push] Uploading FCM token to backend via updateProfile (local token \(token.count) chars)…")
-    Task { @MainActor in
-        let userService = UserService()
-        userService.updateAuthToken(authService.authToken)
-        do {
-            _ = try await userService.updateProfile(fcmToken: token)
-            PushRegistrationDebug.recordUploadSuccess()
-            pushRegistrationLogger.info("updateProfile(fcmToken:) succeeded — backend can target this device for FCM.")
-            print("[Push] updateProfile(fcmToken:) succeeded.")
-        } catch {
-            PushRegistrationDebug.recordUploadFailure(error.localizedDescription)
-            pushRegistrationLogger.error("updateProfile(fcmToken:) failed: \(String(describing: error), privacy: .public)")
-            print("[Push] updateProfile(fcmToken:) failed — \(error.localizedDescription)")
+    Messaging.messaging().token { token, error in
+        Task { @MainActor in
+            guard authService.isAuthenticated else { return }
+            if let error {
+                pushRegistrationLogger.error("Messaging.token() before upload: \(error.localizedDescription, privacy: .public)")
+                print("[Push] Messaging.token() before upload failed: \(error.localizedDescription)")
+                return
+            }
+            guard let token, !token.isEmpty else {
+                pushRegistrationLogger.debug("Skip FCM upload: empty token (notifications permission / APNs).")
+                print("[Push] Skip FCM → backend: empty FCM token (allow notifications + APNs registration).")
+                return
+            }
+            UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
+            if let last = UserDefaults.standard.string(forKey: kLastFcmTokenSentToBackendKey), last == token {
+                pushRegistrationLogger.debug("FCM token unchanged since last successful upload — skip.")
+                return
+            }
+            print("[Push] Uploading FCM token to backend via updateProfile (\(token.count) chars)…")
+            let userService = UserService()
+            userService.updateAuthToken(authService.authToken)
+            do {
+                _ = try await userService.updateProfile(fcmToken: token)
+                UserDefaults.standard.set(token, forKey: kLastFcmTokenSentToBackendKey)
+                PushRegistrationDebug.recordUploadSuccess()
+                pushRegistrationLogger.info("updateProfile(fcmToken:) succeeded — backend can target this device for FCM.")
+                print("[Push] updateProfile(fcmToken:) succeeded.")
+            } catch {
+                PushRegistrationDebug.recordUploadFailure(error.localizedDescription)
+                pushRegistrationLogger.error("updateProfile(fcmToken:) failed: \(String(describing: error), privacy: .public)")
+                print("[Push] updateProfile(fcmToken:) failed — \(error.localizedDescription)")
+            }
         }
     }
 }

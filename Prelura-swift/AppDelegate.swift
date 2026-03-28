@@ -11,6 +11,8 @@ let kNotificationTapPayloadKey = "payload"
 
 /// UserDefaults key for the current APNs device token (hex string). Used to send token to backend when user is logged in.
 let kDeviceTokenKey = "prelura_device_token"
+/// Last FCM token string successfully sent via `updateProfile`; cleared on logout so the next session always registers.
+let kLastFcmTokenSentToBackendKey = "prelura_last_fcm_token_sent_to_backend"
 
 extension Notification.Name {
     static let preluraNotificationTapped = Notification.Name("PreluraNotificationTapped")
@@ -76,9 +78,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             pushBootstrapLog.error("FirebaseOptions could not load GoogleService-Info.plist — Firebase push disabled.")
             return
         }
-        if let bid = Bundle.main.bundleIdentifier {
-            options.bundleID = bid
-        }
+        // Use plist BUNDLE_ID as shipped from Firebase; avoid overriding (can confuse FCM ↔ APNs linkage).
         FirebaseApp.configure(options: options)
         if let projectId = plist["PROJECT_ID"] as? String {
             pushBootstrapLog.info("Firebase PROJECT_ID=\(projectId, privacy: .public) — must match server GOOGLE_CRED_PROJECT_ID.")

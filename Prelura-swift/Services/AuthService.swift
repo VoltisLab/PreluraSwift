@@ -268,6 +268,7 @@ class AuthService: ObservableObject {
     }
 
     private func clearTokens() {
+        UserDefaults.standard.removeObject(forKey: kLastFcmTokenSentToBackendKey)
         UserDefaults.standard.removeObject(forKey: "AUTH_TOKEN")
         UserDefaults.standard.removeObject(forKey: "REFRESH_TOKEN")
         UserDefaults.standard.removeObject(forKey: "USERNAME")
