@@ -66,6 +66,13 @@ struct PushDiagnosticsView: View {
                 }
                 .disabled(isRefreshing || !authService.isAuthenticated)
 
+                if let full = UserDefaults.standard.string(forKey: kDeviceTokenKey), !full.isEmpty {
+                    Button("Copy full FCM token") {
+                        UIPasteboard.general.string = full
+                        refreshNote = "Token copied — paste into Firebase → Messaging → Send test message."
+                    }
+                }
+
                 if !refreshNote.isEmpty {
                     Text(refreshNote)
                         .font(.caption)
@@ -73,6 +80,20 @@ struct PushDiagnosticsView: View {
                 }
             } footer: {
                 Text("If “No FCM token yet” persists on a real iPhone, check Settings → Prelura → Notifications and Xcode Signing → Push capability. Deploy the latest API so GraphQL SendMessage schedules pushes.")
+            }
+
+            Section {
+                Text(
+                    "Your screen shows the hard part (device + API) is working. Alerts are delivered by Apple via Firebase.\n\n"
+                        + "1) Firebase Console → project prelura-app → Project settings → Your apps → select the iOS app with bundle ID com.prelura.preloved → Cloud Messaging → upload your APNs Authentication Key (.p8). Same .p8 as Flutter is fine; it must be attached to this app entry, not only com.prelura.app.\n\n"
+                        + "2) Firebase → Send test message → paste the token you copied; background the app first. If the test fails, fix Apple/Firebase — not the Prelura API.\n\n"
+                        + "3) In Prelura notification settings, ensure push is on. For chat, background the app — the server may skip FCM while that chat is open."
+                )
+                .font(.caption)
+                .foregroundStyle(Theme.Colors.secondaryText)
+                .listRowBackground(Color.clear)
+            } header: {
+                Text("Upload OK but still no alerts?")
             }
         }
         .listStyle(.insetGrouped)
