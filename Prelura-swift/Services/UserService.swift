@@ -346,6 +346,24 @@ class UserService: ObservableObject {
         )
     }
 
+    /// Debug: ask the API to send one real FCM to this user’s stored tokens (rate-limited server-side).
+    func sendDebugTestPush() async throws -> (success: Bool, message: String?) {
+        let mutation = """
+        mutation SendDebugTestPush {
+          sendDebugTestPush {
+            success
+            message
+          }
+        }
+        """
+        let response: SendDebugTestPushResponse = try await client.execute(
+            query: mutation,
+            responseType: SendDebugTestPushResponse.self
+        )
+        let p = response.sendDebugTestPush
+        return (p?.success == true, p?.message)
+    }
+
     /// Send a one-time OTP to a phone number for phone verification.
     func sendPhoneOtp(phoneNumber: String, channel: String = "SMS", action: String = "VERIFY") async throws {
         let mutation = """
@@ -2122,6 +2140,15 @@ struct UpdateProfileResponse: Decodable {
 }
 
 struct UpdateProfilePayload: Decodable {
+    let message: String?
+}
+
+struct SendDebugTestPushResponse: Decodable {
+    let sendDebugTestPush: SendDebugTestPushPayload?
+}
+
+struct SendDebugTestPushPayload: Decodable {
+    let success: Bool?
     let message: String?
 }
 

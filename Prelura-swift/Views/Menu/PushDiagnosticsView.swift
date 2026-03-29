@@ -4,6 +4,11 @@ import UserNotifications
 import FirebaseCore
 import FirebaseMessaging
 
+private struct DiagnosticLogEntry: Identifiable {
+    let id = UUID()
+    let text: String
+}
+
 /// Menu → Debug — confirms Firebase, permission, local FCM token, and last `updateProfile(fcmToken:)` result.
 struct PushDiagnosticsView: View {
     @EnvironmentObject private var authService: AuthService
@@ -16,6 +21,9 @@ struct PushDiagnosticsView: View {
     @State private var uploadTime = "—"
     @State private var isRefreshing = false
     @State private var refreshNote = ""
+    @State private var testPushCountdown: Int?
+    @State private var testPushBusy = false
+    @State private var eventLog: [DiagnosticLogEntry] = []
 
     var body: some View {
         List {
@@ -78,6 +86,20 @@ struct PushDiagnosticsView: View {
                         .font(.caption)
                         .foregroundStyle(Theme.Colors.secondaryText)
                 }
+
+                Button {
+                    scheduleServerTestPushAfterDelay()
+                } label: {
+                    HStack {
+                        if let c = testPushCountdown {
+                            Text("Test push in \(c)s…")
+                        } else {
+                            Text("Send server test push (waits 5s)")
+                        }
+                        if testPushBusy && testPushCountdown == nil { ProgressView() }
+                    }
+                }
+                .disabled(!authService.isAuthenticated || testPushBusy)
             } footer: {
                 Text("If “No FCM token yet” persists on a real iPhone, check Settings → Prelura → Notifications and Xcode Signing → Push capability. Deploy the latest API so GraphQL SendMessage schedules pushes.")
             }
@@ -94,6 +116,25 @@ struct PushDiagnosticsView: View {
                 .listRowBackground(Color.clear)
             } header: {
                 Text("Upload OK but still no alerts?")
+            }
+
+            Section {
+                if eventLog.isEmpty {
+                    Text("No test events yet — use the button above to run a server test.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                } else {
+                    ForEach(eventLog) { entry in
+                        Text(entry.text)
+                            .font(.caption2)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .textSelection(.enabled)
+                    }
+                }
+            } header: {
+                Text("Notification test log")
+            } footer: {
+                Text("The API allows one server test push every 60 seconds per account. Background the app before the countdown ends to see the banner clearly.")
             }
         }
         .listStyle(.insetGrouped)
@@ -133,6 +174,46 @@ struct PushDiagnosticsView: View {
         let a = full.prefix(12)
         let b = full.suffix(8)
         return "\(a)…\(b) (\(full.count) chars)"
+    }
+
+    private func logEvent(_ msg: String) {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        let line = "\(f.string(from: Date()))  \(msg)"
+        eventLog.insert(DiagnosticLogEntry(text: line), at: 0)
+        if eventLog.count > 40 {
+            eventLog.removeLast()
+        }
+    }
+
+    private func scheduleServerTestPushAfterDelay() {
+        guard authService.isAuthenticated, let bearer = authService.authToken, !testPushBusy else { return }
+        testPushBusy = true
+        logEvent("Scheduled server test push — 5s countdown…")
+        Task { @MainActor in
+            defer {
+                testPushBusy = false
+                testPushCountdown = nil
+            }
+            for s in stride(from: 5, through: 1, by: -1) {
+                testPushCountdown = s
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            testPushCountdown = nil
+            logEvent("Calling sendDebugTestPush…")
+            let userService = UserService()
+            userService.updateAuthToken(bearer)
+            do {
+                let result = try await userService.sendDebugTestPush()
+                if result.success {
+                    logEvent("API OK — \(result.message ?? "sent")")
+                } else {
+                    logEvent("API: \(result.message ?? "failed")")
+                }
+            } catch {
+                logEvent("API error: \(error.localizedDescription)")
+            }
+        }
     }
 
     @MainActor
