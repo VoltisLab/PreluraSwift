@@ -136,8 +136,8 @@ struct ChatDetailView: View {
     @State private var typingUsername: String?
     /// Keep typing indicator alive briefly after last event.
     @State private var typingResetTask: Task<Void, Never>?
-    /// Debounce outgoing typing notifications.
-    @State private var typingSendTask: Task<Void, Never>?
+    /// Periodically re-sends typing while the composer is non-empty so the peer’s indicator does not expire mid-sentence.
+    @State private var typingKeepaliveTask: Task<Void, Never>?
     @State private var didSendTypingStart = false
     @State private var pendingMessageUUID: String?
     @State private var showCounterOfferSheet = false
@@ -692,13 +692,9 @@ struct ChatDetailView: View {
             if let msg = reactionOverlayMessage {
                 WhatsAppStyleReactionOverlay(
                     bubbleFrame: reactionBubbleFrames[msg.id] ?? .zero,
-                    isOwnMessage: isCurrentUser(username: msg.senderUsername),
                     onPickEmoji: { emoji in
                         applyChatReaction(message: msg, emoji: emoji)
                     },
-                    onDelete: (isCurrentUser(username: msg.senderUsername) && msg.backendId != nil)
-                        ? { deleteMessage(msg) }
-                        : nil,
                     onDismiss: {
                         reactionOverlayMessage = nil
                         showExtendedReactionEmojis = false
@@ -837,7 +833,8 @@ struct ChatDetailView: View {
             webSocket?.disconnect()
             webSocket = nil
             typingResetTask?.cancel()
-            typingSendTask?.cancel()
+            typingKeepaliveTask?.cancel()
+            typingKeepaliveTask = nil
             didSendTypingStart = false
             messages = []
             offers = []
@@ -861,7 +858,8 @@ struct ChatDetailView: View {
                 webSocket?.disconnect()
                 webSocket = nil
                 typingResetTask?.cancel()
-                typingSendTask?.cancel()
+                typingKeepaliveTask?.cancel()
+                typingKeepaliveTask = nil
                 didSendTypingStart = false
                 isOtherUserTyping = false
                 typingUsername = nil
@@ -906,7 +904,8 @@ struct ChatDetailView: View {
             webSocket?.disconnect()
             webSocket = nil
             typingResetTask?.cancel()
-            typingSendTask?.cancel()
+            typingKeepaliveTask?.cancel()
+            typingKeepaliveTask = nil
             isOtherUserTyping = false
             typingUsername = nil
             didSendTypingStart = false
@@ -2092,7 +2091,7 @@ struct ChatDetailView: View {
             )
         }
         ws.onTypingEvent = { [self] event in
-            if let convId = event.conversationId, convId != displayedConversation.id { return }
+            if !typingEventMatchesCurrentChat(event.conversationId) { return }
             // Ignore our own typing echoes.
             if isCurrentUser(username: event.senderUsername) { return }
             typingUsername = event.senderUsername
@@ -2125,24 +2124,45 @@ struct ChatDetailView: View {
 
     private func sendTypingForComposerChange(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        typingSendTask?.cancel()
         if trimmed.isEmpty {
+            typingKeepaliveTask?.cancel()
+            typingKeepaliveTask = nil
             if didSendTypingStart {
                 webSocket?.sendTyping(isTyping: false)
                 didSendTypingStart = false
             }
             return
         }
-        // Debounced typing-start so we don't spam socket on every keypress.
-        typingSendTask = Task {
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            await MainActor.run {
-                if !didSendTypingStart {
-                    webSocket?.sendTyping(isTyping: true)
-                    didSendTypingStart = true
+        // Notify immediately on first character — a 350ms debounce meant peers saw nothing until the user paused.
+        if !didSendTypingStart {
+            webSocket?.sendTyping(isTyping: true)
+            didSendTypingStart = true
+        }
+        // Re-ping every ~2s while still composing so the other client’s 3s hide timer does not clear mid-paragraph.
+        if typingKeepaliveTask == nil {
+            typingKeepaliveTask = Task { @MainActor in
+                defer { typingKeepaliveTask = nil }
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    guard !Task.isCancelled else { break }
+                    let still = !newMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    if still, didSendTypingStart {
+                        webSocket?.sendTyping(isTyping: true)
+                    } else {
+                        break
+                    }
                 }
             }
         }
+    }
+
+    /// Treat missing server `conversation_id` as a match; normalize string vs numeric ids.
+    private func typingEventMatchesCurrentChat(_ eventConversationId: String?) -> Bool {
+        guard let raw = eventConversationId?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return true }
+        let displayed = displayedConversation.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw == displayed { return true }
+        if let a = Int(raw), let b = Int(displayed), a == b { return true }
+        return false
     }
 
     private func loadMessages() {
@@ -2183,23 +2203,6 @@ struct ChatDetailView: View {
                     }
                     self.rebuildTimelineOrder()
                 }
-            }
-        }
-    }
-
-    private func deleteMessage(_ message: Message) {
-        guard let backendId = message.backendId else { return }
-        let convId = displayedConversation.id
-        let rKey = ChatMessageReactionsStore.stableKey(for: message)
-        Task {
-            do {
-                try await chatService.deleteMessage(messageId: backendId)
-                await MainActor.run {
-                    ChatMessageReactionsStore.shared.removeReactions(for: convId, messageKey: rKey)
-                    messages.removeAll { $0.id == message.id }
-                }
-            } catch {
-                // Best-effort; could show an alert
             }
         }
     }

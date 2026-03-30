@@ -22,12 +22,10 @@ enum WhatsAppQuickReactions {
     ]
 }
 
-/// Full-screen dim + reaction capsule above the bubble; optional delete for own messages.
+/// Full-screen dim + reaction capsule above the bubble (reactions only — no message delete).
 struct WhatsAppStyleReactionOverlay: View {
     let bubbleFrame: CGRect
-    let isOwnMessage: Bool
     let onPickEmoji: (String) -> Void
-    let onDelete: (() -> Void)?
     let onDismiss: () -> Void
     @Binding var showMoreEmojis: Bool
 
@@ -53,32 +51,9 @@ struct WhatsAppStyleReactionOverlay: View {
                     .ignoresSafeArea()
                     .onTapGesture { onDismiss() }
 
-                VStack(spacing: 14) {
-                    reactionCapsule(maxWidth: maxTrayWidth)
-
-                    if isOwnMessage, let onDelete {
-                        Button {
-                            onDelete()
-                            onDismiss()
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 18, weight: .medium))
-                                Text(L10n.string("Delete"))
-                                    .font(.system(size: 17, weight: .regular))
-                            }
-                            .foregroundColor(.red)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .frame(maxWidth: maxTrayWidth)
-                    }
-                }
-                .frame(maxWidth: maxTrayWidth)
-                .position(x: barX, y: barY)
+                reactionCapsule(maxWidth: maxTrayWidth)
+                    .frame(maxWidth: maxTrayWidth)
+                    .position(x: barX, y: barY)
             }
         }
     }

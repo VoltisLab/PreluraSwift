@@ -53,10 +53,15 @@ struct LookbookEntry: Identifiable {
         self.id = UUID(uuidString: serverPost.id) ?? UUID()
         self.imageNames = []
         self.documentImagePath = nil
-        let fromServer = [serverPost.imageUrl]
+        let serverTrim = serverPost.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fromServer: [String] = serverTrim.isEmpty ? [] : [serverTrim]
         if let local = localRecord {
-            let localUrls = local.allImageUrls
-            self.imageUrls = localUrls.count > 1 ? localUrls : fromServer
+            let localUrls = dedupeOrderedValidLookbookURLs(local.allImageUrls)
+            if localUrls.count > 1 {
+                self.imageUrls = localUrls
+            } else {
+                self.imageUrls = fromServer.isEmpty ? localUrls : fromServer
+            }
         } else {
             self.imageUrls = fromServer
         }
@@ -72,6 +77,18 @@ struct LookbookEntry: Identifiable {
 
 private let lookbookSpacing: CGFloat = 12
 private let lookbookTopId = "lookbook_top"
+
+/// Ordered de-duplication so accidental duplicate URLs do not spawn a multi-page `TabView` with collapsed height.
+private func dedupeOrderedValidLookbookURLs(_ urls: [String]) -> [String] {
+    var seen = Set<String>()
+    var out: [String] = []
+    for u in urls {
+        let t = u.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, URL(string: t) != nil else { continue }
+        if seen.insert(t).inserted { out.append(t) }
+    }
+    return out
+}
 
 // MARK: - Canonical media frames (1080×1350, 1080×1080, 1920×1080)
 
@@ -360,6 +377,7 @@ private struct LookbookFeedImage: View {
                 if remoteLoading {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Theme.Colors.secondaryBackground.opacity(0.5))
                 } else {
                     Image(systemName: "photo")
                         .resizable()
@@ -418,6 +436,7 @@ private struct LookbookFeedImage: View {
                 }
             }
             .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onTapGesture(count: 2, perform: onDoubleTapLike)
             .highPriorityGesture(
                 MagnificationGesture()
@@ -583,9 +602,21 @@ private struct LookbookFeedRowView: View {
         return "New fit"
     }
 
-    @ViewBuilder
+    /// Stable height for the media slot: `TabView` + async image load otherwise collapsed to a few points in `LazyVStack`.
     private var mediaBlock: some View {
         let urls = entry.imageUrls
+        return Color.clear
+            .aspectRatio(LookbookCanonicalAspect.portrait1080x1350.rawValue, contentMode: .fit)
+            .overlay {
+                mediaOverlayInner(urls: urls)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+            }
+            .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func mediaOverlayInner(urls: [String]) -> some View {
         if urls.count > 1 {
             TabView(selection: $carouselIndex) {
                 ForEach(Array(urls.enumerated()), id: \.offset) { idx, url in

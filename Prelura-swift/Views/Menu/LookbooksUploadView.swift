@@ -804,6 +804,8 @@ struct LookbookTagProductsView: View {
                             .onPreferenceChange(ImageFramePreferenceKey.self) { imageFrame = $0 }
 
                         if imageFrame != .zero {
+                            // Dot first so product badges are hit-tested on top (otherwise only the placement dot could be dragged).
+                            draggableDot(geo: geo)
                             ForEach(tags) { tag in
                                 if let item = resolvedItems[tag.productId] {
                                     lookbookTagBadge(tag: tag, item: item, imageFrame: imageFrame) { newX, newY in
@@ -811,7 +813,6 @@ struct LookbookTagProductsView: View {
                                     }
                                 }
                             }
-                            draggableDot(geo: geo)
                         }
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
@@ -939,52 +940,48 @@ struct LookbookTagProductsView: View {
         let cardWidth: CGFloat = 100
         let spacing: CGFloat = 6
         let totalWidth = pointerSize + spacing + cardWidth
-        return Button(action: { selectedItemForDetail = item }) {
-            HStack(alignment: .center, spacing: spacing) {
-                Circle()
-                    .fill(Color.orange.opacity(0.9))
-                    .frame(width: pointerSize, height: pointerSize)
-                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                HStack(spacing: 6) {
-                    Group {
-                        if let urlString = item.imageURLs.first, let url = URL(string: urlString) {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .success(let img): img.resizable().scaledToFill()
-                                case .failure, .empty:
-                                    Rectangle()
-                                        .fill(Theme.Colors.secondaryBackground)
-                                        .overlay(Image(systemName: "photo").font(.caption2).foregroundColor(Theme.Colors.secondaryText))
-                                @unknown default: EmptyView()
-                                }
+        return HStack(alignment: .center, spacing: spacing) {
+            Circle()
+                .fill(Color.orange.opacity(0.9))
+                .frame(width: pointerSize, height: pointerSize)
+                .overlay(Circle().stroke(Color.white, lineWidth: 2))
+            HStack(spacing: 6) {
+                Group {
+                    if let urlString = item.imageURLs.first, let url = URL(string: urlString) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let img): img.resizable().scaledToFill()
+                            case .failure, .empty:
+                                Rectangle()
+                                    .fill(Theme.Colors.secondaryBackground)
+                                    .overlay(Image(systemName: "photo").font(.caption2).foregroundColor(Theme.Colors.secondaryText))
+                            @unknown default: EmptyView()
                             }
-                        } else {
-                            Rectangle()
-                                .fill(Theme.Colors.secondaryBackground)
-                                .overlay(Image(systemName: "photo").font(.caption2).foregroundColor(Theme.Colors.secondaryText))
                         }
+                    } else {
+                        Rectangle()
+                            .fill(Theme.Colors.secondaryBackground)
+                            .overlay(Image(systemName: "photo").font(.caption2).foregroundColor(Theme.Colors.secondaryText))
                     }
-                    .frame(width: thumbSize, height: thumbSize)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    Text(item.brand ?? item.title)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
-                .background(Color.black.opacity(0.75))
-                .cornerRadius(8)
-                .frame(width: cardWidth, alignment: .leading)
+                .frame(width: thumbSize, height: thumbSize)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                Text(item.brand ?? item.title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            .frame(width: totalWidth, alignment: .leading)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(Color.black.opacity(0.75))
+            .cornerRadius(8)
+            .frame(width: cardWidth, alignment: .leading)
         }
-        .buttonStyle(PlainTappableButtonStyle())
-        .position(x: imageFrame.minX + imageFrame.width * tag.x - pointerSize / 2 + totalWidth / 2, y: imageFrame.minY + imageFrame.height * tag.y)
+        .frame(width: totalWidth, alignment: .leading)
         .contentShape(Rectangle())
         .highPriorityGesture(
-            DragGesture(coordinateSpace: .named("lookbookContainer"))
+            DragGesture(minimumDistance: 10, coordinateSpace: .named("lookbookContainer"))
                 .onEnded { value in
                     let nx = (value.location.x - imageFrame.minX) / imageFrame.width
                     let ny = (value.location.y - imageFrame.minY) / imageFrame.height
@@ -993,6 +990,10 @@ struct LookbookTagProductsView: View {
                     onMove(clampedX, clampedY)
                 }
         )
+        .onTapGesture {
+            selectedItemForDetail = item
+        }
+        .position(x: imageFrame.minX + imageFrame.width * tag.x - pointerSize / 2 + totalWidth / 2, y: imageFrame.minY + imageFrame.height * tag.y)
         .contextMenu {
             Button(role: .destructive) {
                 removeTag(tag)

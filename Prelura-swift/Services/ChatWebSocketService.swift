@@ -161,6 +161,21 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         }
     }
 
+    /// JSON may send conversation id as String or Int.
+    private static func jsonString(_ value: Any?) -> String? {
+        switch value {
+        case let s as String:
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : t
+        case let i as Int:
+            return String(i)
+        case let n as NSNumber:
+            return n.stringValue
+        default:
+            return nil
+        }
+    }
+
     /// JSON may use Bool, 0/1, or NSNumber from mixed encoders.
     private static func coerceTypingFlag(_ value: Any?) -> Bool? {
         switch value {
@@ -211,7 +226,8 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         if type != "chat_message",
            type == "typing_status" || type == "typing"
            || json["is_typing"] != nil || json["isTyping"] != nil {
-            let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
+            let convId = Self.jsonString(json["conversationId"])
+                ?? Self.jsonString(json["conversation_id"])
             let isTyping = Self.coerceTypingFlag(json["is_typing"]) ?? Self.coerceTypingFlag(json["isTyping"]) ?? true
             let senderUsername = (json["senderUsername"] as? String)
                 ?? (json["sender_username"] as? String)
