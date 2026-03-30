@@ -7,16 +7,19 @@
 
 import SwiftUI
 import Shimmer
+import UIKit
 
-/// One lookbook post: image(s), poster, likes, comments, styles for filtering. Server-only (imageUrl) or legacy local (documentImagePath/imageNames).
-/// Optional tags + productSnapshots come from local LookbookFeedStore (merged when post id/imageUrl matches).
+/// One lookbook post: image(s), poster, likes, comments, styles for filtering. Remote URLs in `imageUrls` (carousel), or legacy document/asset.
+/// Optional tags + productSnapshots come from local LookbookFeedStore (merged when post id / URL matches).
 struct LookbookEntry: Identifiable {
     let id: UUID
     let imageNames: [String]
     /// When set, first image is loaded from Documents (legacy local).
     let documentImagePath: String?
-    /// When set, image is loaded from server URL.
-    let imageUrl: String?
+    /// Remote slide URLs (single or multiple for in-post carousel). Empty when using document/assets only.
+    let imageUrls: [String]
+    /// First remote URL, if any.
+    var imageUrl: String? { imageUrls.first }
     let posterUsername: String
     var likesCount: Int
     var commentsCount: Int
@@ -31,7 +34,11 @@ struct LookbookEntry: Identifiable {
         self.id = id ?? UUID()
         self.imageNames = imageNames
         self.documentImagePath = documentImagePath
-        self.imageUrl = imageUrl
+        if let u = imageUrl, !u.isEmpty {
+            self.imageUrls = [u]
+        } else {
+            self.imageUrls = []
+        }
         self.posterUsername = posterUsername
         self.likesCount = likesCount
         self.commentsCount = commentsCount
@@ -41,12 +48,18 @@ struct LookbookEntry: Identifiable {
         self.productSnapshots = productSnapshots
     }
 
-    /// Entry from server (feed). Merges local tags/snapshots when record matches.
+    /// Entry from server (feed). Merges local multi-image URLs and tags when record matches.
     init(from serverPost: ServerLookbookPost, localRecord: LookbookUploadRecord? = nil) {
         self.id = UUID(uuidString: serverPost.id) ?? UUID()
         self.imageNames = []
         self.documentImagePath = nil
-        self.imageUrl = serverPost.imageUrl
+        let fromServer = [serverPost.imageUrl]
+        if let local = localRecord {
+            let localUrls = local.allImageUrls
+            self.imageUrls = localUrls.count > 1 ? localUrls : fromServer
+        } else {
+            self.imageUrls = fromServer
+        }
         self.posterUsername = serverPost.username
         self.likesCount = serverPost.likesCount ?? 0
         self.commentsCount = serverPost.commentsCount ?? 0
@@ -59,53 +72,31 @@ struct LookbookEntry: Identifiable {
 
 private let lookbookSpacing: CGFloat = 12
 private let lookbookTopId = "lookbook_top"
-/// Max height for lookbook media so portrait shots don’t dominate the feed; width is full inset width.
-private let lookbookMediaMaxHeight: CGFloat = 420
 
-// MARK: - Feed row grouping (variable slides per row, duplicates allowed)
+// MARK: - Canonical media frames (1080×1350, 1080×1080, 1920×1080)
+
+/// Width ÷ height for each canonical lookbook crop; closest bucket is chosen from the loaded image’s pixel aspect ratio.
+private enum LookbookCanonicalAspect: CGFloat, CaseIterable {
+    case portrait1080x1350 = 0.8 // 1080/1350
+    case square1080 = 1
+    case landscape1920x1080 = 1.7777777777777777 // 1920/1080
+
+    static func bucket(for imageWidthOverHeight: CGFloat) -> Self {
+        allCases.min(by: { abs($0.rawValue - imageWidthOverHeight) < abs($1.rawValue - imageWidthOverHeight) })!
+    }
+}
+
+// MARK: - One feed row per post
 
 private struct LookbookFeedRowModel: Identifiable {
     let id: String
-    /// One or more slides; may repeat the same `LookbookEntry` to fill the row.
-    let slides: [LookbookEntry]
+    let entry: LookbookEntry
 }
 
-/// Deterministic pseudo-random for chunk/slide counts so the layout doesn’t flicker on re-render.
-private func lookbookRowMixSeed(rowIndex: Int, entryCount: Int) -> UInt64 {
-    var hasher = Hasher()
-    hasher.combine(rowIndex)
-    hasher.combine(entryCount)
-    return UInt64(bitPattern: Int64(hasher.finalize()))
-}
-
-/// Splits the feed into rows; each row is a horizontal slider with a pseudo-random number of slides (entries may repeat).
 private func buildLookbookFeedRows(from list: [LookbookEntry]) -> [LookbookFeedRowModel] {
-    guard !list.isEmpty else { return [] }
-    var rows: [LookbookFeedRowModel] = []
-    var index = 0
-    var rowIndex = 0
-    while index < list.count {
-        let remaining = list.count - index
-        let seed = lookbookRowMixSeed(rowIndex: rowIndex, entryCount: list.count)
-        let maxChunk = min(4, max(1, remaining))
-        let chunkSize = max(1, min(maxChunk, Int(seed % UInt64(maxChunk)) + 1))
-        let end = min(index + chunkSize, list.count)
-        let base = Array(list[index..<end])
-        let baseCount = base.count
-        // Target slide count: at least one per unique post in chunk, up to 5, with optional duplicates.
-        let extraSlides = Int((seed >> 8) % 3)
-        let targetSlides = min(5, max(baseCount, baseCount + extraSlides))
-        var slides: [LookbookEntry] = []
-        slides.reserveCapacity(targetSlides)
-        for s in 0..<targetSlides {
-            slides.append(base[s % baseCount])
-        }
-        let rowId = "\(rowIndex)-\(base[0].id.uuidString)"
-        rows.append(LookbookFeedRowModel(id: rowId, slides: slides))
-        index = end
-        rowIndex += 1
+    list.enumerated().map { i, entry in
+        LookbookFeedRowModel(id: "\(i)-\(entry.id.uuidString)", entry: entry)
     }
-    return rows
 }
 
 /// Style raw values for filter pills — same as StyleSelectionView (uploads). Subset used for display.
@@ -227,7 +218,11 @@ struct LookbookView: View {
 
     private func loadFeedFromServerAsync() async {
         guard authService.isAuthenticated else {
-            entries = []
+            await MainActor.run {
+                entries = []
+                feedLoading = false
+                feedError = nil
+            }
             return
         }
         await MainActor.run { feedLoading = true; feedError = nil }
@@ -247,13 +242,12 @@ struct LookbookView: View {
             }
         } catch {
             await MainActor.run {
-                entries = []
                 feedLoading = false
-                // Don't show "cancelled" when pull-to-refresh is dismissed (task cancelled)
                 let isCancelled = (error as? CancellationError) != nil
                     || (error as? URLError)?.code == .cancelled
                     || error.localizedDescription.lowercased().contains("cancelled")
                 feedError = isCancelled ? nil : error.localizedDescription
+                // Keep existing feed on refresh failure so the list doesn’t go blank.
             }
         }
     }
@@ -285,7 +279,7 @@ struct LookbookView: View {
 
     private func lookbookFeedRow(model: LookbookFeedRowModel) -> some View {
         LookbookFeedRowView(
-            slides: model.slides,
+            entry: model.entry,
             onHeartTap: { entry in
                 let entryId = entry.id
                 guard let i = entries.firstIndex(where: { $0.id == entryId }) else { return }
@@ -314,19 +308,24 @@ struct LookbookView: View {
     }
 }
 
-// MARK: - Feed image: double-tap to like, pinch zoom, bag icon to reveal tagged product thumbnails at pin positions.
+// MARK: - Feed image: canonical aspect bucket, fill frame, double-tap like, pinch zoom, bag for tagged products.
 private struct LookbookFeedImage: View {
     let imageName: String
     let documentImagePath: String?
     let imageUrl: String?
     let tags: [LookbookTagData]?
     let productSnapshots: [String: LookbookProductSnapshot]?
+    /// When false, tagged pins are hidden (e.g. secondary carousel slides).
+    let showTagOverlay: Bool
     let onDoubleTapLike: () -> Void
     let onProductTap: (String) -> Void
 
     @State private var scale: CGFloat = 1
     @State private var anchorScale: CGFloat = 1
     @State private var showTaggedProducts = false
+    @State private var bucket: LookbookCanonicalAspect = .square1080
+    @State private var remoteImage: UIImage?
+    @State private var remoteLoading = false
 
     private let minScale: CGFloat = 1
     private let maxScale: CGFloat = 4
@@ -334,43 +333,59 @@ private struct LookbookFeedImage: View {
     private let thumbSize: CGFloat = 56
 
     private var hasTaggedProducts: Bool {
-        guard let tags = tags, let snapshots = productSnapshots, !tags.isEmpty else { return false }
+        guard showTagOverlay, let tags = tags, let snapshots = productSnapshots, !tags.isEmpty else { return false }
         return tags.contains { snapshots[$0.productId] != nil }
     }
 
-    private var imageView: some View {
+    private var localUIImage: UIImage? {
+        if let path = documentImagePath,
+           let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appending(path: path),
+           let data = try? Data(contentsOf: url),
+           let ui = UIImage(data: data) { return ui }
+        if !imageName.isEmpty, let ui = UIImage(named: imageName) { return ui }
+        return nil
+    }
+
+    private var filledImageLayer: some View {
         Group {
-            if let urlString = imageUrl, let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                    case .failure: Image(systemName: "photo").resizable().scaledToFit().foregroundStyle(Theme.Colors.secondaryText)
-                    default: ProgressView().frame(maxWidth: .infinity).frame(minHeight: 200)
-                    }
-                }
-            } else if let path = documentImagePath,
-               let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appending(path: path),
-               let data = try? Data(contentsOf: url),
-               let uiImage = UIImage(data: data) {
-                Image(uiImage: uiImage)
+            if let ui = localUIImage {
+                Image(uiImage: ui)
                     .resizable()
-                    .scaledToFit()
-            } else {
+                    .scaledToFill()
+            } else if let ui = remoteImage {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFill()
+            } else if imageUrl != nil, let _ = URL(string: imageUrl!) {
+                if remoteLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    Image(systemName: "photo")
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                        .padding(48)
+                }
+            } else if !imageName.isEmpty {
                 Image(imageName)
                     .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "photo")
+                    .resizable()
                     .scaledToFit()
+                    .foregroundStyle(Theme.Colors.secondaryText)
+                    .padding(48)
             }
         }
     }
 
     var body: some View {
-        imageView
+        filledImageLayer
             .scaleEffect(scale)
             .frame(maxWidth: .infinity)
-            .frame(maxHeight: lookbookMediaMaxHeight)
+            .aspectRatio(bucket.rawValue, contentMode: .fit)
             .clipped()
             .overlay(alignment: .topTrailing) {
                 if hasTaggedProducts {
@@ -388,7 +403,7 @@ private struct LookbookFeedImage: View {
                 }
             }
             .overlay {
-                if showTaggedProducts, let tags = tags, let snapshots = productSnapshots {
+                if showTaggedProducts, showTagOverlay, let tags = tags, let snapshots = productSnapshots {
                     GeometryReader { g in
                         ForEach(tags.filter { snapshots[$0.productId] != nil }) { tag in
                             if let snapshot = snapshots[tag.productId] {
@@ -412,6 +427,41 @@ private struct LookbookFeedImage: View {
                         anchorScale = scale
                     }
             )
+            .onAppear(perform: syncBucketFromLocalIfPossible)
+            .task(id: imageUrl) { await loadRemoteIfNeeded() }
+    }
+
+    private func syncBucketFromLocalIfPossible() {
+        if let ui = localUIImage {
+            bucket = LookbookCanonicalAspect.bucket(for: ui.size.width / max(ui.size.height, 1))
+        }
+    }
+
+    private func loadRemoteIfNeeded() async {
+        guard let urlString = imageUrl, let url = URL(string: urlString) else {
+            await MainActor.run {
+                remoteImage = nil
+                remoteLoading = false
+            }
+            return
+        }
+        if localUIImage != nil { return }
+        await MainActor.run { remoteLoading = true }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let ui = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
+            let b = LookbookCanonicalAspect.bucket(for: ui.size.width / max(ui.size.height, 1))
+            await MainActor.run {
+                remoteImage = ui
+                bucket = b
+                remoteLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                remoteImage = nil
+                remoteLoading = false
+            }
+        }
     }
 
     private func productThumbnail(snapshot: LookbookProductSnapshot, onTap: @escaping () -> Void) -> some View {
@@ -514,28 +564,57 @@ private struct LookbookPostCardShimmer: View {
     }
 }
 
-// MARK: - Feed row: paged slider with a pseudo-random number of slides (entries may repeat); images keep natural aspect ratio.
+// MARK: - Feed row: one post; multiple images in a page TabView (carousel).
 private struct LookbookFeedRowView: View {
-    let slides: [LookbookEntry]
+    let entry: LookbookEntry
     let onHeartTap: (LookbookEntry) -> Void
     let onImageDoubleTap: (LookbookEntry) -> Void
     let onCommentsTap: (LookbookEntry) -> Void
     let onProductTap: (String) -> Void
 
-    @State private var selectedIndex: Int = 0
+    @State private var carouselIndex: Int = 0
 
     private let iconSize: CGFloat = 18
-
-    private var currentSlide: LookbookEntry {
-        let i = min(max(0, selectedIndex), max(0, slides.count - 1))
-        return slides[i]
-    }
 
     private func detailLine(for entry: LookbookEntry) -> String {
         if let first = entry.styles.first, !first.isEmpty {
             return "\(StyleSelectionView.displayName(for: first)) fit"
         }
         return "New fit"
+    }
+
+    @ViewBuilder
+    private var mediaBlock: some View {
+        let urls = entry.imageUrls
+        if urls.count > 1 {
+            TabView(selection: $carouselIndex) {
+                ForEach(Array(urls.enumerated()), id: \.offset) { idx, url in
+                    LookbookFeedImage(
+                        imageName: entry.imageNames.first ?? "",
+                        documentImagePath: idx == 0 ? entry.documentImagePath : nil,
+                        imageUrl: url,
+                        tags: entry.tags,
+                        productSnapshots: entry.productSnapshots,
+                        showTagOverlay: idx == 0,
+                        onDoubleTapLike: { onImageDoubleTap(entry) },
+                        onProductTap: onProductTap
+                    )
+                    .tag(idx)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .automatic))
+        } else {
+            LookbookFeedImage(
+                imageName: entry.imageNames.first ?? "",
+                documentImagePath: entry.documentImagePath,
+                imageUrl: urls.first,
+                tags: entry.tags,
+                productSnapshots: entry.productSnapshots,
+                showTagOverlay: true,
+                onDoubleTapLike: { onImageDoubleTap(entry) },
+                onProductTap: onProductTap
+            )
+        }
     }
 
     var body: some View {
@@ -545,11 +624,11 @@ private struct LookbookFeedRowView: View {
                     .fill(Theme.Colors.secondaryBackground)
                     .frame(width: 36, height: 36)
                     .overlay(
-                        Text(String(currentSlide.posterUsername.prefix(1)).uppercased())
+                        Text(String(entry.posterUsername.prefix(1)).uppercased())
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Theme.Colors.secondaryText)
                     )
-                Text(currentSlide.posterUsername)
+                Text(entry.posterUsername)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Theme.Colors.primaryText)
                 Spacer()
@@ -557,53 +636,24 @@ private struct LookbookFeedRowView: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.top, Theme.Spacing.sm)
 
-            Text("📍 \(detailLine(for: currentSlide))")
+            Text("📍 \(detailLine(for: entry))")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(Theme.Colors.primaryText)
                 .padding(.horizontal, Theme.Spacing.md)
 
-            Group {
-                if slides.count <= 1, let only = slides.first {
-                    LookbookFeedImage(
-                        imageName: only.imageNames.first ?? "",
-                        documentImagePath: only.documentImagePath,
-                        imageUrl: only.imageUrl,
-                        tags: only.tags,
-                        productSnapshots: only.productSnapshots,
-                        onDoubleTapLike: { onImageDoubleTap(only) },
-                        onProductTap: onProductTap
-                    )
-                } else {
-                    TabView(selection: $selectedIndex) {
-                        ForEach(Array(slides.enumerated()), id: \.offset) { idx, entry in
-                            LookbookFeedImage(
-                                imageName: entry.imageNames.first ?? "",
-                                documentImagePath: entry.documentImagePath,
-                                imageUrl: entry.imageUrl,
-                                tags: entry.tags,
-                                productSnapshots: entry.productSnapshots,
-                                onDoubleTapLike: { onImageDoubleTap(entry) },
-                                onProductTap: onProductTap
-                            )
-                            .tag(idx)
-                        }
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .automatic))
-                    .frame(minHeight: 220)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .background(Theme.Colors.secondaryBackground.opacity(0.35))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .padding(.horizontal, Theme.Spacing.md)
+            mediaBlock
+                .frame(maxWidth: .infinity)
+                .background(Theme.Colors.secondaryBackground.opacity(0.35))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .padding(.horizontal, Theme.Spacing.md)
 
             HStack(spacing: Theme.Spacing.lg) {
-                Button(action: { onHeartTap(currentSlide) }) {
+                Button(action: { onHeartTap(entry) }) {
                     HStack(spacing: 4) {
-                        Image(systemName: currentSlide.isLiked ? "heart.fill" : "heart")
+                        Image(systemName: entry.isLiked ? "heart.fill" : "heart")
                             .font(.system(size: iconSize))
-                            .foregroundColor(currentSlide.isLiked ? Theme.primaryColor : Theme.Colors.primaryText)
-                        Text("\(currentSlide.likesCount)")
+                            .foregroundColor(entry.isLiked ? Theme.primaryColor : Theme.Colors.primaryText)
+                        Text("\(entry.likesCount)")
                             .font(.system(size: 14))
                             .foregroundColor(Theme.Colors.primaryText)
                         Text("Likes")
@@ -613,12 +663,12 @@ private struct LookbookFeedRowView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainTappableButtonStyle())
-                Button(action: { onCommentsTap(currentSlide) }) {
+                Button(action: { onCommentsTap(entry) }) {
                     HStack(spacing: 4) {
                         Image(systemName: "bubble.right")
                             .font(.system(size: iconSize))
                             .foregroundColor(Theme.Colors.primaryText)
-                        Text("\(currentSlide.commentsCount)")
+                        Text("\(entry.commentsCount)")
                             .font(.system(size: 14))
                             .foregroundColor(Theme.Colors.primaryText)
                         Text("Comments")
@@ -638,8 +688,8 @@ private struct LookbookFeedRowView: View {
                 .frame(height: 0.5)
                 .padding(.leading, Theme.Spacing.md)
         }
-        .onChange(of: slides.count) { _, newCount in
-            if selectedIndex >= newCount { selectedIndex = max(0, newCount - 1) }
+        .onChange(of: entry.imageUrls.count) { _, newCount in
+            if carouselIndex >= newCount { carouselIndex = max(0, newCount - 1) }
         }
     }
 }
@@ -731,7 +781,7 @@ private struct LookbookEntryThumbnail: View {
     let entry: LookbookEntry
     var body: some View {
         Group {
-            if let urlString = entry.imageUrl, let url = URL(string: urlString) {
+            if let urlString = entry.imageUrls.first, let url = URL(string: urlString) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image): image.resizable().scaledToFill()

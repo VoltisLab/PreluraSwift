@@ -5,8 +5,9 @@ import UIKit
 /// On launch and simulator, `token()` is often called too early → "No APNS token specified…".
 /// This helper waits and retries instead of treating that as a fatal error.
 enum PreluraFCMRegistration {
-    private static let retryDelay: TimeInterval = 0.35
-    private static let maxAttempts = 15
+    /// APNs can arrive several seconds after `registerForRemoteNotifications()` (especially right after the permission prompt).
+    private static let retryDelay: TimeInterval = 0.45
+    private static let maxAttempts = 50
 
     /// Resolves the current FCM registration token after APNs is ready (or fails after retries).
     static func fetchRegistrationToken(
@@ -45,10 +46,15 @@ enum PreluraFCMRegistration {
     }
 
     private static var apnsTimeoutError: NSError {
-        NSError(
+        #if targetEnvironment(simulator)
+        let hint = " Simulator often never receives an APNs token — test FCM + banners on a physical iPhone with Push capability."
+        #else
+        let hint = " On device: confirm Push capability, a valid provisioning profile, and notification permission."
+        #endif
+        return NSError(
             domain: "PreluraFCM",
             code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "APNs device token not received in time — try a physical device or check Push capability."]
+            userInfo: [NSLocalizedDescriptionKey: "APNs device token not received in time (~\(Int(Double(maxAttempts) * retryDelay))s).\(hint)"]
         )
     }
 

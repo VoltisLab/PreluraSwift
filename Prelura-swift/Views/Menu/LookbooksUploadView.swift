@@ -165,13 +165,22 @@ struct LookbookProductSnapshot: Codable, Equatable {
 
 struct LookbookUploadRecord: Codable {
     let id: String
+    /// Primary image URL (first slide); matches server `imageUrl`.
     let imagePath: String
+    /// When the user posts multiple photos in one upload, all URLs (carousel). First matches `imagePath`.
+    var imageUrls: [String]?
     var tags: [LookbookTagData]
     var caption: String?
     /// Style tags (e.g. CASUAL, VINTAGE); max 3. Optional for backward compat.
     var styles: [String]?
     /// productId -> snapshot for thumbnails at pin positions (optional for backward compat).
     var productSnapshots: [String: LookbookProductSnapshot]?
+
+    /// URLs to render in the feed (single- or multi-image).
+    var allImageUrls: [String] {
+        if let u = imageUrls, !u.isEmpty { return u }
+        return [imagePath]
+    }
 }
 
 // MARK: - Store
@@ -218,7 +227,7 @@ private let lookbookUploadStylePills: [String] = [
 struct LookbooksUploadView: View {
     @EnvironmentObject var authService: AuthService
     @State private var selectedItems: [PhotosPickerItem] = []
-    @State private var selectedImage: UIImage?
+    @State private var selectedImages: [UIImage] = []
     @State private var caption: String = ""
     @State private var selectedStylePills: Set<String> = []
     @State private var uploadState: UploadState = .idle
@@ -230,6 +239,7 @@ struct LookbooksUploadView: View {
     @State private var showSuccessBanner = false
 
     private static let maxStylePills = 3
+    private static let maxPhotosPerPost = 10
 
     enum UploadState {
         case idle
@@ -243,23 +253,37 @@ struct LookbooksUploadView: View {
             // Upload banner: full width, placeholder or selected image
             PhotosPicker(
                 selection: $selectedItems,
-                maxSelectionCount: 1,
+                maxSelectionCount: Self.maxPhotosPerPost,
                 matching: .images,
                 photoLibrary: .shared()
             ) {
                 Group {
-                    if let image = selectedImage {
+                    if selectedImages.count == 1, let image = selectedImages.first {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFit()
                             .frame(maxWidth: .infinity)
+                    } else if selectedImages.count > 1 {
+                        TabView {
+                            ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, image in
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .tabViewStyle(.page(indexDisplayMode: .automatic))
+                        .frame(minHeight: 220)
                     } else {
                         VStack(spacing: Theme.Spacing.md) {
                             Image(systemName: "photo.badge.plus")
                                 .font(.system(size: 44))
                                 .foregroundStyle(Theme.Colors.secondaryText)
-                            Text("Tap to upload")
+                            Text("Tap to choose photos")
                                 .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                            Text("Up to \(Self.maxPhotosPerPost) — shows as one carousel post")
+                                .font(Theme.Typography.caption)
                                 .foregroundColor(Theme.Colors.secondaryText)
                         }
                         .frame(maxWidth: .infinity)
@@ -272,10 +296,10 @@ struct LookbooksUploadView: View {
                 .contentShape(Rectangle())
             }
             .onChange(of: selectedItems) { _, newValue in
-                Task { await loadImage(from: newValue.first) }
+                Task { await loadImages(from: newValue) }
             }
 
-            if selectedImage != nil {
+            if !selectedImages.isEmpty {
                 // Tagged products (shown after returning from Tag screen)
                 if !taggedProductItems.isEmpty {
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -356,11 +380,11 @@ struct LookbooksUploadView: View {
                 VStack(spacing: Theme.Spacing.sm) {
                     PrimaryGlassButton(
                         "Upload",
-                        isEnabled: selectedImage != nil && !uploadState.uploading,
+                        isEnabled: !selectedImages.isEmpty && !uploadState.uploading,
                         isLoading: uploadState.uploading,
                         action: uploadImage
                     )
-                    BorderGlassButton("Tag", isEnabled: selectedImage != nil, action: { showTagScreen = true })
+                    BorderGlassButton("Tag", isEnabled: !selectedImages.isEmpty, action: { showTagScreen = true })
                 }
             }
         }
@@ -401,7 +425,7 @@ struct LookbooksUploadView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .fullScreenCover(isPresented: $showTagScreen) {
-            if let image = selectedImage {
+            if let image = selectedImages.first {
                 LookbookTagProductsView(
                     image: image,
                     imageURL: uploadedRecord.flatMap { lookbookImageURL($0.imagePath) },
@@ -474,15 +498,22 @@ struct LookbooksUploadView: View {
         .offset(y: showSuccessBanner ? 0 : -30)
     }
 
-    private func loadImage(from pickerItem: PhotosPickerItem?) async {
-        guard let pickerItem = pickerItem else {
-            selectedImage = nil
+    private func loadImages(from items: [PhotosPickerItem]) async {
+        guard !items.isEmpty else {
+            await MainActor.run {
+                selectedImages = []
+            }
             return
         }
-        guard let data = try? await pickerItem.loadTransferable(type: Data.self),
-              let image = UIImage(data: data) else { return }
+        var images: [UIImage] = []
+        images.reserveCapacity(items.count)
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else { continue }
+            images.append(image)
+        }
         await MainActor.run {
-            selectedImage = image
+            selectedImages = images
             tagSessionId = UUID().uuidString
             taggedTags = []
             taggedProductItems = []
@@ -501,9 +532,9 @@ struct LookbooksUploadView: View {
     }
 
     private func uploadImage() {
-        guard let image = selectedImage,
-              let imageData = image.jpegData(compressionQuality: 0.85) else {
-            uploadState = .failed("Could not encode image")
+        let toUpload = selectedImages
+        guard !toUpload.isEmpty else {
+            uploadState = .failed("No photos selected")
             return
         }
         uploadState = .uploading
@@ -511,23 +542,36 @@ struct LookbooksUploadView: View {
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
+        let cap = caption
+        let styles = selectedStylePills
+        let tags = taggedTags
+        let snapshots = buildProductSnapshots()
         Task {
             do {
-                let imageUrl = try await service.uploadLookbookImage(imageData)
-                let post = try await service.createLookbook(imageUrl: imageUrl, caption: caption.isEmpty ? nil : caption)
-                let snapshots = buildProductSnapshots()
+                var urls: [String] = []
+                urls.reserveCapacity(toUpload.count)
+                for image in toUpload {
+                    guard let imageData = image.jpegData(compressionQuality: 0.85) else { continue }
+                    let imageUrl = try await service.uploadLookbookImage(imageData)
+                    urls.append(imageUrl)
+                }
+                guard let firstUrl = urls.first else {
+                    throw NSError(domain: "LookbooksUpload", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not upload images"])
+                }
+                let post = try await service.createLookbook(imageUrl: firstUrl, caption: cap.isEmpty ? nil : cap)
                 let record = LookbookUploadRecord(
                     id: post.id,
                     imagePath: post.imageUrl,
-                    tags: taggedTags,
-                    caption: caption.isEmpty ? nil : caption,
-                    styles: selectedStylePills.isEmpty ? nil : Array(selectedStylePills),
+                    imageUrls: urls.count > 1 ? urls : nil,
+                    tags: tags,
+                    caption: cap.isEmpty ? nil : cap,
+                    styles: styles.isEmpty ? nil : Array(styles),
                     productSnapshots: snapshots.isEmpty ? nil : snapshots
                 )
                 LookbookFeedStore.append(record)
                 await MainActor.run {
                     uploadState = .idle
-                    selectedImage = nil
+                    selectedImages = []
                     caption = ""
                     selectedStylePills = []
                     selectedItems = []

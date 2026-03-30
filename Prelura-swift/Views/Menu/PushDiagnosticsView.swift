@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Combine
 import UserNotifications
 import FirebaseCore
 
@@ -24,6 +25,12 @@ private enum PushTestInstructionKind {
     }
 }
 
+private enum PendingPushCountdown: Equatable {
+    case none
+    case local
+    case server(bearer: String)
+}
+
 /// Menu → Debug — confirms Firebase, permission, local FCM token, and last `updateProfile(fcmToken:)` result.
 struct PushDiagnosticsView: View {
     @EnvironmentObject private var authService: AuthService
@@ -36,7 +43,10 @@ struct PushDiagnosticsView: View {
     @State private var uploadTime = "—"
     @State private var isRefreshing = false
     @State private var refreshNote = ""
-    @State private var testPushCountdown: Int?
+    /// Wall-clock end time for push-test lead; UI uses `displayedCountdownSeconds` + `countdownTick`.
+    @State private var countdownDeadline: Date?
+    @State private var countdownPending: PendingPushCountdown = .none
+    @State private var countdownTick = 0
     @State private var testPushBusy = false
     @State private var traceEntries: [NotificationDebugLog.Entry] = []
     @State private var showBackgroundSheet = false
@@ -44,6 +54,14 @@ struct PushDiagnosticsView: View {
 
     /// Seconds to wait so you can swipe home before a test fires (`UNLocalNotification` or server push).
     private let pushTestLeadSeconds = 8
+
+    /// Remaining seconds until `countdownDeadline` (reads `countdownTick` so the timer redraws).
+    private var displayedCountdownSeconds: Int? {
+        guard countdownDeadline != nil else { return nil }
+        _ = countdownTick
+        guard let d = countdownDeadline else { return nil }
+        return max(0, Int(ceil(d.timeIntervalSinceNow)))
+    }
 
     var body: some View {
         List {
@@ -130,7 +148,7 @@ struct PushDiagnosticsView: View {
                 } label: {
                     HStack {
                         Text("Local on-device test (no server)")
-                        if testPushBusy, backgroundSheetKind == .localOnDevice, testPushCountdown != nil {
+                        if testPushBusy, backgroundSheetKind == .localOnDevice, countdownDeadline != nil {
                             ProgressView()
                         }
                     }
@@ -141,30 +159,33 @@ struct PushDiagnosticsView: View {
                     scheduleServerTestPushAfterDelay()
                 } label: {
                     HStack {
-                        if let c = testPushCountdown, backgroundSheetKind == .serverFCM {
+                        if let c = displayedCountdownSeconds, backgroundSheetKind == .serverFCM {
                             Text("Server test — \(c)s…")
                         } else {
                             Text("Server test push (FCM)")
                         }
-                        if testPushBusy, backgroundSheetKind == .serverFCM, testPushCountdown == nil { ProgressView() }
+                        if testPushBusy, backgroundSheetKind == .serverFCM, countdownDeadline == nil {
+                            ProgressView()
+                        }
                     }
                 }
                 .disabled(!authService.isAuthenticated || testPushBusy)
 
                 Text(
-                    "Both tests wait \(pushTestLeadSeconds) seconds. When the sheet appears, **leave Prelura** (swipe up / Home) so the alert can appear like a real push. Keeping the app open may still show a banner in some cases."
+                    "Both tests wait \(pushTestLeadSeconds) seconds. When the sheet appears, **leave Prelura** (swipe up / Home) so the alert can appear like a real push. Keeping the app open may still show a banner in some cases.\n\n"
+                        + "**Simulator:** the server test only proves the API + FCM send path. Apple often does **not** deliver remote APNs to the Simulator, so you may see no banner even when the event trace says sendDebugTestPush OK. **Use a physical iPhone** to know if Swift remote push works."
                 )
                 .font(.caption)
                 .foregroundStyle(Theme.Colors.secondaryText)
             } header: {
                 Text("Push tests")
             } footer: {
-                Text("Server test: wait at least 60 seconds between attempts if the API rate-limits. Local test can be repeated anytime.")
+                Text("Server test: wait at least 60 seconds between attempts if the API rate-limits. Remote banners on Simulator are unreliable; local test does not use APNs. Local test can be repeated anytime.")
             }
 
             Section {
                 Text(
-                    "If local test works but server test never shows a banner, fix **Firebase → iOS app com.prelura.preloved → Cloud Messaging → APNs key** (same .p8 as Flutter is OK; it must be on this app entry)."
+                    "If local test works but **on a real iPhone** server test still shows no banner after the API says OK, fix **Firebase → iOS app com.prelura.preloved → Cloud Messaging → APNs key** (same .p8 as Flutter is OK; it must be on this app entry). On Simulator only, no server banner is often expected."
                 )
                 .font(.caption)
                 .foregroundStyle(Theme.Colors.secondaryText)
@@ -215,7 +236,7 @@ struct PushDiagnosticsView: View {
                         .foregroundStyle(.secondary)
                     Text("**Now background Prelura:** swipe up from the bottom edge, double-tap Home, or use the Home button — then stay out of the app until the time hits zero.")
                         .font(.body)
-                    if let c = testPushCountdown {
+                    if let c = displayedCountdownSeconds {
                         Text("Fires in \(c)s")
                             .font(.system(size: 44, weight: .bold, design: .rounded))
                             .monospacedDigit()
@@ -232,7 +253,7 @@ struct PushDiagnosticsView: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Dismiss") {
-                            showBackgroundSheet = false
+                            cancelPushTestCountdown()
                         }
                     }
                 }
@@ -245,6 +266,14 @@ struct PushDiagnosticsView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .preluraNotificationDebugLogDidChange)) { _ in
             reloadTrace()
+        }
+        .onReceive(Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()) { _ in
+            guard countdownDeadline != nil else { return }
+            countdownTick &+= 1
+            checkCountdownExpired()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            checkCountdownExpired()
         }
     }
 
@@ -306,9 +335,7 @@ struct PushDiagnosticsView: View {
                 return
             }
             DispatchQueue.main.async {
-                runCountdownThen(kind: .localOnDevice) {
-                    await scheduleLocalTestNotification()
-                }
+                runCountdownThen(kind: .localOnDevice)
             }
         }
     }
@@ -350,9 +377,7 @@ struct PushDiagnosticsView: View {
 
     private func scheduleServerTestPushAfterDelay() {
         guard authService.isAuthenticated, let bearer = authService.authToken, !testPushBusy else { return }
-        runCountdownThen(kind: .serverFCM) {
-            await sendServerDebugPush(bearer: bearer)
-        }
+        runCountdownThen(kind: .serverFCM, serverBearer: bearer)
     }
 
     @MainActor
@@ -385,33 +410,126 @@ struct PushDiagnosticsView: View {
         reloadTrace()
     }
 
-    /// Shows the background sheet, counts down, then runs `action` (local schedule or server mutation).
-    private func runCountdownThen(
-        kind: PushTestInstructionKind,
-        action: @escaping @MainActor () async -> Void
-    ) {
+    /// Shows the background sheet and a wall-clock countdown. `Task.sleep` is not used — when the app is
+    /// backgrounded, suspended time does not advance, which used to freeze the UI and delay the API call.
+    private func runCountdownThen(kind: PushTestInstructionKind, serverBearer: String? = nil) {
+        switch kind {
+        case .localOnDevice:
+            countdownPending = .local
+        case .serverFCM:
+            guard let b = serverBearer else {
+                NotificationDebugLog.append(
+                    source: "diagnostics",
+                    message: "Server test: missing auth token",
+                    isError: true
+                )
+                reloadTrace()
+                return
+            }
+            countdownPending = .server(bearer: b)
+        }
         testPushBusy = true
         backgroundSheetKind = kind
         showBackgroundSheet = true
+        countdownDeadline = Date().addingTimeInterval(TimeInterval(pushTestLeadSeconds))
+        countdownTick = 0
         NotificationDebugLog.append(
             source: "diagnostics",
             message: "Push test (\(kind == .localOnDevice ? "local" : "server")) — \(pushTestLeadSeconds)s: leave the app (Home) for a real push-style banner",
             isError: false
         )
         reloadTrace()
+    }
+
+    private func checkCountdownExpired() {
+        guard let deadline = countdownDeadline, Date() >= deadline else { return }
+        finishCountdownAndRunAction()
+    }
+
+    /// Runs the pending local or server action, then clears busy state.
+    private func finishCountdownAndRunAction() {
+        guard countdownDeadline != nil else { return }
+        let pending = countdownPending
+        countdownDeadline = nil
+        countdownPending = .none
+        countdownTick = 0
+        showBackgroundSheet = false
         Task { @MainActor in
-            defer {
-                testPushBusy = false
-                testPushCountdown = nil
-                showBackgroundSheet = false
-                reloadTrace()
+            switch pending {
+            case .local:
+                await scheduleLocalTestNotification()
+            case .server(let bearer):
+                await sendServerDebugPush(bearer: bearer)
+            case .none:
+                break
             }
-            for s in stride(from: pushTestLeadSeconds, through: 1, by: -1) {
-                testPushCountdown = s
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            testPushBusy = false
+            reloadTrace()
+        }
+    }
+
+    private func cancelPushTestCountdown() {
+        guard countdownDeadline != nil else {
+            showBackgroundSheet = false
+            return
+        }
+        countdownDeadline = nil
+        countdownPending = .none
+        countdownTick = 0
+        testPushBusy = false
+        showBackgroundSheet = false
+        NotificationDebugLog.append(
+            source: "diagnostics",
+            message: "Push test countdown cancelled",
+            isError: false
+        )
+        reloadTrace()
+    }
+
+    /// Fails if GraphQL does not return within this window (spinner would otherwise run until URLSession’s 60s timeout).
+    private struct PushUploadTimeoutError: LocalizedError {
+        var errorDescription: String? {
+            "Upload timed out — check network/VPN and that the API at \(Constants.graphQLBaseURL) is reachable."
+        }
+    }
+
+    @MainActor
+    private func updateProfileFcmTokenWithTimeout(userService: UserService, token: String) async throws {
+        let timeoutNs: UInt64 = 50_000_000_000
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor in
+                _ = try await userService.updateProfile(fcmToken: token)
             }
-            testPushCountdown = nil
-            await action()
+            group.addTask {
+                try await Task.sleep(nanoseconds: timeoutNs)
+                throw PushUploadTimeoutError()
+            }
+            try await group.next()!
+            group.cancelAll()
+        }
+    }
+
+    /// Ensures we can register for APNs; prompts once if status is `notDetermined` (launch path may not have shown the sheet yet).
+    private func ensureNotificationPermissionForRemotePush() async -> Bool {
+        await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                DispatchQueue.main.async {
+                    switch settings.authorizationStatus {
+                    case .authorized, .provisional, .ephemeral:
+                        continuation.resume(returning: true)
+                    case .notDetermined:
+                        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+                            DispatchQueue.main.async {
+                                continuation.resume(returning: granted)
+                            }
+                        }
+                    case .denied:
+                        continuation.resume(returning: false)
+                    @unknown default:
+                        continuation.resume(returning: false)
+                    }
+                }
+            }
         }
     }
 
@@ -421,8 +539,6 @@ struct PushDiagnosticsView: View {
         refreshNote = ""
         defer { isRefreshing = false }
 
-        UIApplication.shared.registerForRemoteNotifications()
-
         guard FirebaseApp.app() != nil else {
             refreshNote = "Firebase not configured."
             NotificationDebugLog.append(source: "diagnostics", message: "Manual refresh: Firebase not configured", isError: true)
@@ -430,37 +546,53 @@ struct PushDiagnosticsView: View {
             return
         }
 
-        let token: String? = await withCheckedContinuation { cont in
+        let permitted = await ensureNotificationPermissionForRemotePush()
+        guard permitted else {
+            refreshNote = "Notification permission denied or not granted — enable in Settings → Prelura → Notifications."
+            NotificationDebugLog.append(
+                source: "diagnostics",
+                message: "Manual refresh: no notification permission",
+                isError: true
+            )
+            loadStaticState()
+            return
+        }
+
+        UIApplication.shared.registerForRemoteNotifications()
+        try? await Task.sleep(nanoseconds: 300_000_000)
+
+        let tokenResult: Result<String, Error> = await withCheckedContinuation { continuation in
             PreluraFCMRegistration.fetchRegistrationToken { result in
-                switch result {
-                case .success(let t):
-                    cont.resume(returning: t)
-                case .failure(let err):
-                    cont.resume(returning: nil)
-                    DispatchQueue.main.async {
-                        self.refreshNote = "FCM token: \(err.localizedDescription)"
-                    }
-                    NotificationDebugLog.append(
-                        source: "diagnostics",
-                        message: "Manual refresh FCM error (after APNs wait): \(err.localizedDescription)",
-                        isError: true
-                    )
-                }
+                continuation.resume(returning: result)
             }
         }
 
-        guard let token, !token.isEmpty else {
-            refreshNote = "FCM returned no token (APNs may not be registered — common on simulator or if Push capability is off)."
-            NotificationDebugLog.append(source: "diagnostics", message: "Manual refresh: empty FCM token", isError: true)
+        let token: String
+        switch tokenResult {
+        case .failure(let err):
+            refreshNote = "FCM: \(err.localizedDescription)"
+            NotificationDebugLog.append(
+                source: "diagnostics",
+                message: "Manual refresh FCM error (after APNs wait): \(err.localizedDescription)",
+                isError: true
+            )
             loadStaticState()
             return
+        case .success(let t):
+            guard !t.isEmpty else {
+                refreshNote = "FCM returned an empty token (APNs may not be registered — common on Simulator or without Push capability)."
+                NotificationDebugLog.append(source: "diagnostics", message: "Manual refresh: empty FCM token", isError: true)
+                loadStaticState()
+                return
+            }
+            token = t
         }
 
         UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
         NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
 
         guard authService.isAuthenticated, let bearer = authService.authToken else {
-            refreshNote = "Token received; sign in to upload to API."
+            refreshNote = "FCM token saved on device; sign in to upload to the API."
             NotificationDebugLog.append(source: "diagnostics", message: "Manual refresh: FCM OK but not signed in", isError: false)
             loadStaticState()
             return
@@ -469,12 +601,13 @@ struct PushDiagnosticsView: View {
         let userService = UserService()
         userService.updateAuthToken(bearer)
         do {
-            _ = try await userService.updateProfile(fcmToken: token)
+            try await updateProfileFcmTokenWithTimeout(userService: userService, token: token)
+            UserDefaults.standard.set(token, forKey: kLastFcmTokenSentToBackendKey)
             PushRegistrationDebug.recordUploadSuccess()
-            refreshNote = "Uploaded OK."
+            refreshNote = "Uploaded OK — profile FCM token updated."
         } catch {
             PushRegistrationDebug.recordUploadFailure(error.localizedDescription)
-            refreshNote = "Upload failed — see Last API upload."
+            refreshNote = "Upload failed — \(error.localizedDescription). See Last API upload below."
         }
         loadStaticState()
     }
