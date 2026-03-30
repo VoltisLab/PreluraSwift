@@ -3,6 +3,7 @@ import UIKit
 import Combine
 import UserNotifications
 import FirebaseCore
+import FirebaseMessaging
 
 private enum PushTestInstructionKind {
     case localOnDevice
@@ -37,6 +38,8 @@ struct PushDiagnosticsView: View {
 
     @State private var permissionText = "…"
     @State private var firebaseOk = false
+    @State private var apnsForFcmText = "…"
+    @State private var tokenStaleHint = ""
     @State private var tokenPreview = "—"
     @State private var uploadSummary = "—"
     @State private var uploadDetail = ""
@@ -87,6 +90,17 @@ struct PushDiagnosticsView: View {
                 }
                 LabeledContent("Signed in") {
                     Text(authService.isAuthenticated ? "Yes" : "No — token not uploaded")
+                }
+                LabeledContent("APNs for FCM") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(apnsForFcmText)
+                            .foregroundColor(apnsForFcmText.contains("Not received") ? .red : Theme.Colors.primaryText)
+                        if !tokenStaleHint.isEmpty {
+                            Text(tokenStaleHint)
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
                 }
                 LabeledContent("FCM token (device)") {
                     Text(tokenPreview)
@@ -139,7 +153,9 @@ struct PushDiagnosticsView: View {
             } header: {
                 Text("Registration")
             } footer: {
-                Text("If “No FCM token yet” persists on a real iPhone, check Settings → Prelura → Notifications and Xcode Signing → Push capability.")
+                Text(
+                    "If **APNs for FCM** stays “Not received” on TestFlight, enable **Push Notifications** for **com.prelura.preloved** in Apple Developer, ensure the **distribution** profile includes push, reinstall the app, then Settings → Prelura → Notifications. A stored FCM string without APNs is often stale."
+                )
             }
 
             Section {
@@ -261,6 +277,7 @@ struct PushDiagnosticsView: View {
             .presentationDetents([.medium, .large])
         }
         .onAppear {
+            UIApplication.shared.registerForRemoteNotifications()
             loadStaticState()
             reloadTrace()
         }
@@ -275,6 +292,9 @@ struct PushDiagnosticsView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             checkCountdownExpired()
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            loadStaticState()
+        }
     }
 
     private func reloadTrace() {
@@ -283,6 +303,21 @@ struct PushDiagnosticsView: View {
 
     private func loadStaticState() {
         firebaseOk = FirebaseApp.app() != nil
+        if firebaseOk, let apns = Messaging.messaging().apnsToken, !apns.isEmpty {
+            apnsForFcmText = "Received (\(apns.count) bytes) — remote registration can proceed"
+            tokenStaleHint = ""
+        } else if firebaseOk {
+            apnsForFcmText = "Not received — server push and FCM refresh will fail until iOS delivers a device token"
+            if let t = UserDefaults.standard.string(forKey: kDeviceTokenKey), !t.isEmpty {
+                tokenStaleHint =
+                    "A stored FCM string exists but APNs is missing — it may be stale from an older install; fix APNs first, then Refresh."
+            } else {
+                tokenStaleHint = ""
+            }
+        } else {
+            apnsForFcmText = "N/A (Firebase not configured)"
+            tokenStaleHint = ""
+        }
         if let t = UserDefaults.standard.string(forKey: kDeviceTokenKey), !t.isEmpty {
             tokenPreview = tokenSnippet(t)
         } else {

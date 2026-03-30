@@ -7,7 +7,12 @@ import UIKit
 enum PreluraFCMRegistration {
     /// APNs can arrive several seconds after `registerForRemoteNotifications()` (especially right after the permission prompt).
     private static let retryDelay: TimeInterval = 0.45
+    #if targetEnvironment(simulator)
     private static let maxAttempts = 50
+    #else
+    /// Physical devices / TestFlight: APNs can be slow; ~54s before we give up (was ~22s).
+    private static let maxAttempts = 120
+    #endif
 
     /// Resolves the current FCM registration token after APNs is ready (or fails after retries).
     static func fetchRegistrationToken(
@@ -49,7 +54,8 @@ enum PreluraFCMRegistration {
         #if targetEnvironment(simulator)
         let hint = " Simulator often never receives an APNs token — test FCM + banners on a physical iPhone with Push capability."
         #else
-        let hint = " On device: confirm Push capability, a valid provisioning profile, and notification permission."
+        let hint =
+            " On device: Apple Developer → Identifiers → com.prelura.preloved → enable Push Notifications, then regenerate the provisioning profile / reinstall the app. Also confirm notification permission and that the TestFlight build uses Release signing (production APNs)."
         #endif
         return NSError(
             domain: "PreluraFCM",

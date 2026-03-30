@@ -114,9 +114,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 isError: false
             )
         }
-        #if DEBUG
+        // TestFlight needs this too — wrong plist (e.g. Flutter’s GOOGLE_APP_ID) breaks APNs-linked FCM.
         diagnoseFirebasePlistVersusRuntime(plist: plist)
-        #endif
     }
 
     /// Helps explain “Flutter push works, Swift doesn’t”: each `GOOGLE_APP_ID` belongs to one iOS app registration in Firebase (one bundle). Overriding `options.bundleID` does not change that.
@@ -235,8 +234,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     /// Store device token and notify so the app can send it to the backend when the user is logged in.
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        guard Self.isFirebaseConfigured else { return }
-        Messaging.messaging().apnsToken = deviceToken
+        if Self.isFirebaseConfigured {
+            Messaging.messaging().apnsToken = deviceToken
+        } else {
+            NotificationDebugLog.append(
+                source: "apns",
+                message: "APNs device token received (\(deviceToken.count) bytes) but Firebase is not configured — not passed to FCM (fix GoogleService-Info.plist)",
+                isError: true
+            )
+            return
+        }
         NotificationDebugLog.append(
             source: "apns",
             message: "APNs device token received (\(deviceToken.count) bytes); fetching FCM token…",
