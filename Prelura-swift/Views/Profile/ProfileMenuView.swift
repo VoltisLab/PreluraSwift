@@ -152,10 +152,10 @@ struct SettingsMenuView: View {
                 }
             }
             Section(L10n.string("Notifications")) {
-                NavigationLink(destination: NotificationSettingsView(title: L10n.string("Push notifications"))) {
+                NavigationLink(destination: NotificationSettingsView(channel: .push)) {
                     settingsRow(L10n.string("Push notifications"), icon: "bell")
                 }
-                NavigationLink(destination: NotificationSettingsView(title: L10n.string("Email notifications"))) {
+                NavigationLink(destination: NotificationSettingsView(channel: .email)) {
                     settingsRow(L10n.string("Email notifications"), icon: "envelope")
                 }
             }

@@ -1,15 +1,30 @@
 import SwiftUI
 
+/// Push vs email channel (do not infer from localized title — e.g. "Email notifications" ≠ `"email"`).
+enum NotificationSettingsChannel {
+    case push
+    case email
+
+    var isEmailMode: Bool { self == .email }
+
+    var navigationTitle: String {
+        switch self {
+        case .push: return L10n.string("Push notifications")
+        case .email: return L10n.string("Email notifications")
+        }
+    }
+}
+
 /// Notification settings: full page matching Flutter NotificationSettingScreen.
 /// Push: main toggle + General (Likes, Messages, New Followers, Profile View).
 /// Email: same structure with email preference.
 struct NotificationSettingsView: View {
-    let title: String // "Push" or "Email"
+    private let channel: NotificationSettingsChannel
     @StateObject private var viewModel: NotificationSettingsViewModel
 
-    init(title: String) {
-        self.title = title
-        _viewModel = StateObject(wrappedValue: NotificationSettingsViewModel(title: title))
+    init(channel: NotificationSettingsChannel) {
+        self.channel = channel
+        _viewModel = StateObject(wrappedValue: NotificationSettingsViewModel(channel: channel))
     }
 
     var body: some View {
@@ -53,7 +68,7 @@ struct NotificationSettingsView: View {
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle("\(title) \(L10n.string("Notification Settings"))")
+        .navigationTitle(channel.navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .refreshable { await viewModel.load() }

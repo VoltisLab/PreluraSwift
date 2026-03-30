@@ -8,10 +8,10 @@ class NotificationSettingsViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var isUpdating = false
 
-    let title: String // "Push" or "Email"
+    let channel: NotificationSettingsChannel
     private let service = NotificationService()
 
-    var isEmailMode: Bool { title.lowercased() == "email" }
+    var isEmailMode: Bool { channel.isEmailMode }
     var mainToggleOn: Bool {
         get {
             guard let p = preference else { return true }
@@ -40,8 +40,8 @@ class NotificationSettingsViewModel: ObservableObject {
 
     var subTogglesDisabled: Bool { !mainToggleOn }
 
-    init(title: String) {
-        self.title = title
+    init(channel: NotificationSettingsChannel) {
+        self.channel = channel
     }
 
     func load() async {
