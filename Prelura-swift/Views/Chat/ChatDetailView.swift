@@ -147,6 +147,11 @@ struct ChatDetailView: View {
     @State private var offerError: String?
     @State private var offerModalSubmitting = false
     @State private var showReportUserSheet = false
+    /// WhatsApp-style long-press reactions (local persistence per device).
+    @ObservedObject private var messageReactionsStore = ChatMessageReactionsStore.shared
+    @State private var reactionOverlayMessage: Message?
+    @State private var reactionBubbleFrames: [UUID: CGRect] = [:]
+    @State private var showExtendedReactionEmojis = false
     private struct PayNowPayload: Identifiable {
         let id = UUID()
         let products: [Item]
@@ -234,6 +239,40 @@ struct ChatDetailView: View {
         let key = offerCacheKey(convId: convId)
         Self.messagesMemoryCache[key] = msgs
         Self.persistMessagesCache(key: key, messages: msgs)
+    }
+
+    /// Merge API messages with any local-only rows (typically optimistic sends without `backendId`) so a refetch cannot wipe text that the server has not returned yet.
+    private func mergedThreadMessages(server: [Message], local: [Message]) -> [Message] {
+        if server.isEmpty {
+            return local.sorted { $0.timestamp < $1.timestamp }
+        }
+        var result = server
+        let serverIds = Set(server.map(\.id))
+        for localMsg in local {
+            guard localMsg.backendId == nil else { continue }
+            guard isCurrentUser(username: localMsg.senderUsername) else { continue }
+            if localMsg.isOfferContent || localMsg.isSoldConfirmation || localMsg.isOrderIssue { continue }
+            let trimmed = localMsg.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if serverIds.contains(localMsg.id) { continue }
+            let duplicatedOnServer = server.contains { s in
+                s.content.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed
+                    && abs(s.timestamp.timeIntervalSince(localMsg.timestamp)) < 180
+            }
+            if duplicatedOnServer { continue }
+            result.append(localMsg)
+        }
+        return result.sorted { $0.timestamp < $1.timestamp }
+    }
+
+    /// Latest row suitable for inbox subtitle (skip offer / sold / issue payloads at the tail of the thread).
+    private func lastPlainChatMessageForInboxPreview() -> Message? {
+        for m in messages.reversed() {
+            if m.isOfferContent || m.isSoldConfirmation || m.isOrderIssue { continue }
+            if m.type == "item" || m.type == "sold_confirmation" { continue }
+            return m
+        }
+        return messages.last
     }
 
     private func hasLocalOfferHistoryCache(convId: String) -> Bool {
@@ -474,6 +513,11 @@ struct ChatDetailView: View {
                         guard let lastOwn = displayedMessages.lastIndex(where: { isCurrentUser(username: $0.senderUsername) }) else { return false }
                         return lastOwn == index
                     }()
+                    let reactionKey = ChatMessageReactionsStore.stableKey(for: message)
+                    let bubbleReactions = messageReactionsStore.reactionsByUsername(
+                        conversationId: displayedConversation.id,
+                        messageKey: reactionKey
+                    )
                     MessageBubbleView(
                         message: message,
                         isCurrentUser: isCurrentUserMessage,
@@ -481,16 +525,16 @@ struct ChatDetailView: View {
                         showTimestamp: showTimestampForMessage(at: index),
                         avatarURL: showAvatarForMessage(at: index) ? displayedConversation.recipient.avatarURL : nil,
                         recipientUsername: displayedConversation.recipient.username,
-                        showSeenLabel: showSeenLabel
+                        showSeenLabel: showSeenLabel,
+                        reactionsByUsername: bubbleReactions,
+                        onLongPress: displayedConversation.id != "0"
+                            ? {
+                                reactionOverlayMessage = message
+                            }
+                            : nil,
+                        isReactionTargeted: reactionOverlayMessage?.id == message.id
                     )
                     .id(message.id)
-                    .contextMenu {
-                        if isCurrentUser(username: message.senderUsername), let _ = message.backendId {
-                            Button(role: .destructive, action: { deleteMessage(message) }) {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
-                    }
                     .padding(.top, topPadding)
                 }
             }
@@ -638,8 +682,48 @@ struct ChatDetailView: View {
                     guard done else { return }
                     scheduleScrollToBottom(proxy: proxy, delays: [0, 0.08, 0.25], animated: false)
                 }
+                .onPreferenceChange(ChatBubbleFramePreferenceKey.self) { reactionBubbleFrames = $0 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     messageInputBar
+                }
+            }
+        }
+        .overlay {
+            if let msg = reactionOverlayMessage {
+                WhatsAppStyleReactionOverlay(
+                    bubbleFrame: reactionBubbleFrames[msg.id] ?? .zero,
+                    isOwnMessage: isCurrentUser(username: msg.senderUsername),
+                    onPickEmoji: { emoji in
+                        applyChatReaction(message: msg, emoji: emoji)
+                    },
+                    onDelete: (isCurrentUser(username: msg.senderUsername) && msg.backendId != nil)
+                        ? { deleteMessage(msg) }
+                        : nil,
+                    onDismiss: {
+                        reactionOverlayMessage = nil
+                        showExtendedReactionEmojis = false
+                    },
+                    showMoreEmojis: $showExtendedReactionEmojis
+                )
+                .transition(.opacity)
+                .zIndex(50)
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: reactionOverlayMessage?.id)
+        .sheet(isPresented: $showExtendedReactionEmojis) {
+            Group {
+                if let msg = reactionOverlayMessage {
+                    ExtendedEmojiReactionSheet(
+                        onPick: { emoji in
+                            applyChatReaction(message: msg, emoji: emoji)
+                            reactionOverlayMessage = nil
+                            showExtendedReactionEmojis = false
+                        },
+                        onDismiss: { showExtendedReactionEmojis = false }
+                    )
+                } else {
+                    Color.clear
+                        .onAppear { showExtendedReactionEmojis = false }
                 }
             }
         }
@@ -771,7 +855,9 @@ struct ChatDetailView: View {
             sendTypingForComposerChange(newValue)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background {
+            // Drop the socket as soon as the app leaves the foreground so the server clears `chat_<id>` presence
+            // and chat pushes are not suppressed (receiver must not appear "in room" while backgrounded or inactive).
+            if phase == .inactive || phase == .background {
                 webSocket?.disconnect()
                 webSocket = nil
                 typingResetTask?.cancel()
@@ -797,8 +883,8 @@ struct ChatDetailView: View {
             if !messages.isEmpty, displayedConversation.id != "0" {
                 cacheMessagesForConversation(messages, convId: displayedConversation.id)
             }
-            if let last = messages.last, displayedConversation.id != "0", let tc = tabCoordinator {
-                // Use same rules as inbox row so we never flash raw JSON (e.g. order_issue) before refetch.
+            if let last = lastPlainChatMessageForInboxPreview(), displayedConversation.id != "0", let tc = tabCoordinator {
+                // Match inbox: preview is the latest plain chat line, not offer/sale/issue bubbles.
                 let previewConv = Conversation(
                     id: displayedConversation.id,
                     recipient: displayedConversation.recipient,
@@ -918,8 +1004,9 @@ struct ChatDetailView: View {
                     }
                 }
                 if let m = fetchedMsgs {
-                    self.messages = m
-                    self.cacheMessagesForConversation(m, convId: convId)
+                    let merged = self.mergedThreadMessages(server: m, local: self.messages)
+                    self.messages = merged
+                    self.cacheMessagesForConversation(merged, convId: convId)
                 } else if self.messages.isEmpty {
                     // Network/decoding failure: avoid wiping the thread with [] (user sees "chat doesn't persist").
                     self.messages = []
@@ -1960,6 +2047,13 @@ struct ChatDetailView: View {
         ws.onNewMessage = { [self] msg, echoMessageUuid in
             if let pending = pendingMessageUUID, echoMessageUuid == pending,
                let idx = messages.firstIndex(where: { $0.id.uuidString == pending }) {
+                let oldKey = "u:\(pending)"
+                let newKey = ChatMessageReactionsStore.stableKey(for: msg)
+                ChatMessageReactionsStore.shared.migrateMessageKey(
+                    conversationId: displayedConversation.id,
+                    from: oldKey,
+                    to: newKey
+                )
                 messages[idx] = msg
                 pendingMessageUUID = nil
                 messages.sort { $0.timestamp < $1.timestamp }
@@ -1987,6 +2081,16 @@ struct ChatDetailView: View {
         ws.onOrderEvent = { [self] event in
             _ = event
         }
+        ws.onMessageReaction = { [self] event in
+            if isCurrentUser(username: event.username) { return }
+            let key = "b:\(event.messageId)"
+            ChatMessageReactionsStore.shared.applyRemoteReaction(
+                conversationId: displayedConversation.id,
+                messageKey: key,
+                username: event.username,
+                emoji: event.emoji
+            )
+        }
         ws.onTypingEvent = { [self] event in
             if let convId = event.conversationId, convId != displayedConversation.id { return }
             // Ignore our own typing echoes.
@@ -2002,6 +2106,17 @@ struct ChatDetailView: View {
             } else {
                 isOtherUserTyping = false
                 typingResetTask?.cancel()
+            }
+        }
+        let convIdForPushTrace = displayedConversation.id
+        ws.onConnectionStateChanged = { connected in
+            Task { @MainActor in
+                guard convIdForPushTrace != "0" else { return }
+                if connected {
+                    ChatPushTraceDebugState.shared.markSocketConnected(conversationId: convIdForPushTrace)
+                } else {
+                    ChatPushTraceDebugState.shared.markSocketDisconnected(conversationId: convIdForPushTrace, reason: "socket_closed")
+                }
             }
         }
         webSocket = ws
@@ -2045,8 +2160,9 @@ struct ChatDetailView: View {
                 let msgs = try await chatService.getMessages(conversationId: convId)
                 await MainActor.run {
                     guard displayedConversation.id == convId else { return }
-                    self.messages = msgs
-                    self.cacheMessagesForConversation(msgs, convId: convId)
+                    let merged = self.mergedThreadMessages(server: msgs, local: self.messages)
+                    self.messages = merged
+                    self.cacheMessagesForConversation(merged, convId: convId)
                     self.isLoading = false
                     self.mergeOffersFromMessages()
                     self.rebuildTimelineOrder()
@@ -2073,15 +2189,35 @@ struct ChatDetailView: View {
 
     private func deleteMessage(_ message: Message) {
         guard let backendId = message.backendId else { return }
+        let convId = displayedConversation.id
+        let rKey = ChatMessageReactionsStore.stableKey(for: message)
         Task {
             do {
                 try await chatService.deleteMessage(messageId: backendId)
                 await MainActor.run {
+                    ChatMessageReactionsStore.shared.removeReactions(for: convId, messageKey: rKey)
                     messages.removeAll { $0.id == message.id }
                 }
             } catch {
                 // Best-effort; could show an alert
             }
+        }
+    }
+
+    private func applyChatReaction(message: Message, emoji: String) {
+        guard let username = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty else { return }
+        let convId = displayedConversation.id
+        guard convId != "0" else { return }
+        let key = ChatMessageReactionsStore.stableKey(for: message)
+        ChatMessageReactionsStore.shared.applyReaction(
+            conversationId: convId,
+            messageKey: key,
+            username: username,
+            emoji: emoji
+        )
+        if let bid = message.backendId {
+            let mine = ChatMessageReactionsStore.shared.reactionsByUsername(conversationId: convId, messageKey: key)[username]
+            webSocket?.sendMessageReaction(messageId: bid, emoji: mine)
         }
     }
 
@@ -2966,6 +3102,12 @@ struct MessageBubbleView: View {
     var recipientUsername: String = ""
     /// Shown only for the **last** message you sent when the other participant has read it (single label for the thread).
     var showSeenLabel: Bool = false
+    /// Local reaction counts (username → emoji); same model as WhatsApp aggregates.
+    var reactionsByUsername: [String: String] = [:]
+    /// Long-press to open WhatsApp-style reaction tray; nil disables the gesture.
+    var onLongPress: (() -> Void)? = nil
+    /// Slight scale while the reaction overlay targets this bubble.
+    var isReactionTargeted: Bool = false
 
     private var bubbleMaxWidth: CGFloat { UIScreen.main.bounds.width * 0.78 }
     private var baseMessageFontSize: CGFloat { 17 }
@@ -3003,6 +3145,40 @@ struct MessageBubbleView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(Theme.Colors.secondaryText)
             )
+    }
+
+    @ViewBuilder
+    private var reactionStrip: some View {
+        let nonEmpty = reactionsByUsername.filter { !$0.value.isEmpty }
+        if nonEmpty.isEmpty {
+            EmptyView()
+        } else {
+            let byEmoji = Dictionary(grouping: nonEmpty.values, by: { $0 })
+            let sortedEmojis = byEmoji.keys.sorted()
+            HStack(spacing: 5) {
+                ForEach(sortedEmojis, id: \.self) { em in
+                    let count = byEmoji[em]?.count ?? 0
+                    HStack(spacing: 3) {
+                        Text(em)
+                            .font(.system(size: 15))
+                        if count > 1 {
+                            Text("\(count)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.Colors.secondaryText)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(Theme.Colors.secondaryBackground.opacity(0.96))
+                            .overlay(Capsule().stroke(Theme.Colors.glassBorder, lineWidth: 0.5))
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: isCurrentUser ? .trailing : .leading)
+            .padding(.leading, isCurrentUser ? 0 : (Self.messageAvatarSize + Theme.Spacing.xs))
+        }
     }
 
     var body: some View {
@@ -3055,6 +3231,7 @@ struct MessageBubbleView: View {
                 .frame(maxWidth: isEmojiOnlyStyle ? .infinity : bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
                 if !isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
             }
+            reactionStrip
             if showTimestamp {
                 HStack {
                     Spacer(minLength: 0)
@@ -3075,6 +3252,24 @@ struct MessageBubbleView: View {
             }
         }
         .padding(.vertical, 2)
+        .scaleEffect(isReactionTargeted ? 1.045 : 1.0)
+        .animation(.spring(response: 0.34, dampingFraction: 0.72), value: isReactionTargeted)
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: onLongPress == nil ? 999 : 0.45)
+                .onEnded { _ in
+                    guard let onLongPress else { return }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onLongPress()
+                }
+        )
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: ChatBubbleFramePreferenceKey.self,
+                    value: [message.id: geo.frame(in: .global)]
+                )
+            }
+        )
     }
 }
 

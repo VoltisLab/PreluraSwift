@@ -20,6 +20,14 @@ struct DebugMenuView: View {
                         Text("Push diagnostics")
                     }
                 }
+                NavigationLink(destination: MessageChatPushTraceDebugView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "bubble.left.and.text.bubble.right")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Message push trace")
+                    }
+                }
                 NavigationLink(destination: OrderChatMockDebugView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "bubble.left.and.bubble.right")

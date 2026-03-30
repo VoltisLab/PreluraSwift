@@ -421,37 +421,30 @@ struct ChatRowView: View {
         return a == b
     }
 
-    /// Human-readable preview for list. Use last message sender: if I sent the last message (offer), "You sent an offer"; else "Offer received". When there's an order, show order summary. Accepted offers use `updatedBy` / accepter for copy.
+    /// Inbox subtitle: show the latest **chat line** (`lastMessage` from API is the latest plain row). Legacy rows may still be JSON — map those to short labels.
     static func previewText(for raw: String?, conversation: Conversation, currentUsername: String?) -> String? {
-        if let offer = conversation.offer, offer.isAccepted, conversation.order == nil {
-            let accepter = offer.updatedByUsername?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let accepter, !accepter.isEmpty {
-                if usernamesMatch(accepter, currentUsername) {
-                    return "You accepted an offer"
-                }
-                return "\(accepter) accepted your offer"
-            }
-            return "Offer accepted"
-        }
-        /// True when the current user sent the latest offer (last message sender matches).
         let iSentLastOffer = usernamesMatch(conversation.lastMessageSenderUsername, currentUsername)
         guard let raw = raw, !raw.isEmpty else {
-            if conversation.offer != nil, iSentLastOffer {
-                return "You sent an offer"
-            }
-            if conversation.offer != nil {
-                return "Offer received"
-            }
             if let order = conversation.order {
                 return String(format: "Order • £%.2f", order.total)
             }
             return nil
         }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.contains("offer_id") || (trimmed.hasPrefix("{") && (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any])?["offer_id"] != nil) {
+        guard !trimmed.isEmpty else {
+            if let order = conversation.order {
+                return String(format: "Order • £%.2f", order.total)
+            }
+            return nil
+        }
+        // Normal case after backend `lastMessage` resolver: plain user text.
+        if !trimmed.hasPrefix("{") {
+            return trimmed.count > 60 ? String(trimmed.prefix(57)) + "..." : trimmed
+        }
+        if trimmed.contains("offer_id") || (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any])?["offer_id"] != nil {
             return iSentLastOffer ? "You sent an offer" : "Offer received"
         }
-        guard trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8),
+        guard let data = trimmed.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = json["type"] as? String else {
             return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
@@ -470,7 +463,6 @@ struct ChatRowView: View {
         case "account_report": return Message.humanReadableReportLine(json: json, reportType: type, maxLength: 56)
         case "product_report": return Message.humanReadableReportLine(json: json, reportType: type, maxLength: 56)
         case "sold_confirmation":
-            // Seller = person who listed the product (offer’s product seller). Buyer sees "Order confirmed".
             if usernamesMatch(conversation.offer?.products?.first?.seller?.username, currentUsername) {
                 return "You made a sale 🎉"
             }

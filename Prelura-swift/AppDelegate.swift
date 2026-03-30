@@ -43,6 +43,47 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         if let n = v as? NSNumber, n.intValue == 1 { return true }
         return false
     }
+
+    /// When FCM payload looks like a chat/DM notification, append a `chat_push` line for Debug → Message push trace.
+    private static func logChatPushPayloadIfRelevant(_ userInfo: [AnyHashable: Any], context: String) {
+        let isLocalFlag = userInfo[kPreluraLocalPushTestUserInfoKey]
+        if let i = isLocalFlag as? Int, i == 1 { return }
+        if let n = isLocalFlag as? NSNumber, n.intValue == 1 { return }
+
+        var parts: [String] = []
+        if let data = userInfo["data"] as? [String: Any] {
+            for (k, v) in data {
+                let kl = k.lowercased()
+                guard kl.contains("conversation") || kl.contains("chat") || kl == "model_group" else { continue }
+                let vs = String(describing: v)
+                parts.append("data.\(k)=\(vs.count > 72 ? String(vs.prefix(72)) + "…" : vs)")
+            }
+        }
+        for pair in userInfo {
+            let k = String(describing: pair.key).lowercased()
+            guard k != "aps", k != "data" else { continue }
+            if k.contains("conversation") || k.contains("chat") || k == "model_group" {
+                let vs = String(describing: pair.value)
+                parts.append("\(k)=\(vs.count > 72 ? String(vs.prefix(72)) + "…" : vs)")
+            }
+        }
+        let keysLower = userInfo.keys.map { String(describing: $0).lowercased() }.joined(separator: ",")
+        var modelGroupChat = false
+        for (key, val) in userInfo where String(describing: key).lowercased() == "model_group" {
+            modelGroupChat = String(describing: val).lowercased().contains("chat")
+            break
+        }
+        let looksChat = !parts.isEmpty || keysLower.contains("conversation") || modelGroupChat
+        guard looksChat else { return }
+        let summary = parts.isEmpty
+            ? "payload keys: \(String(keysLower.prefix(200)))"
+            : parts.joined(separator: " ")
+        NotificationDebugLog.append(
+            source: "chat_push",
+            message: "\(context): \(String(summary.prefix(320)))",
+            isError: false
+        )
+    }
     /// Payload to route after splash: cold-open from push (`launchOptions`) or tap received while splash is visible (root `onReceive` cannot present yet).
     static var pendingPostSplashNotificationUserInfo: [AnyHashable: Any]?
 
@@ -65,6 +106,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 message: "Cold start with remote-notification payload (gcm.message_id=\(mid))",
                 isError: false
             )
+            Self.logChatPushPayloadIfRelevant(remote, context: "Cold start remote")
         }
         requestNotificationPermissionAndRegister(application: application)
         return true
@@ -294,6 +336,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             message: "didReceiveRemoteNotification (background) gcm.message_id=\(mid)",
             isError: false
         )
+        Self.logChatPushPayloadIfRelevant(userInfo, context: "Background remote")
         completionHandler(.newData)
     }
 
@@ -337,6 +380,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             message: "User tapped notification (gcm.message_id=\(mid))",
             isError: false
         )
+        Self.logChatPushPayloadIfRelevant(userInfo, context: "Tapped notification")
         NotificationCenter.default.post(
             name: .preluraNotificationTapped,
             object: nil,
@@ -372,6 +416,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             message: "willPresent — remote FCM banner/sound (foreground) gcm.message_id=\(midStr)",
             isError: false
         )
+        Self.logChatPushPayloadIfRelevant(u, context: "Foreground willPresent")
         completionHandler([.banner, .badge, .sound])
     }
 }

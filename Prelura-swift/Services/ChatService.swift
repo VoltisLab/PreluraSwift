@@ -265,7 +265,7 @@ class ChatService: ObservableObject {
         return !x.isEmpty && !y.isEmpty && x == y
     }
     
-    func getMessages(conversationId: String, pageNumber: Int = 1, pageCount: Int = 50) async throws -> [Message] {
+    func getMessages(conversationId: String, pageNumber: Int = 1, pageCount: Int = 100) async throws -> [Message] {
         // Backend returns conversation(id:) as [MessageType] directly, not { id, messages }.
         let query = """
         query Conversation($id: ID!, $pageNumber: Int, $pageCount: Int) {

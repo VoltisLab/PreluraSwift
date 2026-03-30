@@ -237,6 +237,9 @@ struct LookbooksUploadView: View {
     @State private var taggedTags: [LookbookTagData] = []
     @State private var taggedProductItems: [Item] = []
     @State private var showSuccessBanner = false
+    /// Picker sheet is presented from this level so it is not nested under `.fullScreenCover` (nested sheets often fail to appear).
+    @State private var showLookbookTagProductPicker = false
+    @State private var lookbookTagPickedProduct: Item?
 
     private static let maxStylePills = 3
     private static let maxPhotosPerPost = 10
@@ -431,7 +434,13 @@ struct LookbooksUploadView: View {
                     imageURL: uploadedRecord.flatMap { lookbookImageURL($0.imagePath) },
                     imageId: tagSessionId,
                     initialTags: taggedTags,
-                    onDismiss: { showTagScreen = false },
+                    showProductPicker: $showLookbookTagProductPicker,
+                    pickedProduct: $lookbookTagPickedProduct,
+                    onDismiss: {
+                        showTagScreen = false
+                        showLookbookTagProductPicker = false
+                        lookbookTagPickedProduct = nil
+                    },
                     onConfirm: { newTags, resolved in
                         taggedTags = newTags
                         taggedProductItems = Array(resolved.values)
@@ -765,6 +774,8 @@ struct LookbookTagProductsView: View {
     var imageURL: URL?
     let imageId: String
     let initialTags: [LookbookTagData]
+    @Binding var showProductPicker: Bool
+    @Binding var pickedProduct: Item?
     let onDismiss: () -> Void
     /// Called when user taps Confirm; passes current tags and resolved items so the upload page can show them.
     var onConfirm: (([LookbookTagData], [String: Item]) -> Void)?
@@ -772,7 +783,6 @@ struct LookbookTagProductsView: View {
     @EnvironmentObject var authService: AuthService
     @State private var tags: [LookbookTagData] = []
     @State private var resolvedItems: [String: Item] = [:]
-    @State private var showProductSearch = false
     @State private var dotPosition: CGPoint = CGPoint(x: 0.5, y: 0.5)
     @State private var selectedItemForDetail: Item?
     @State private var imageFrame: CGRect = .zero
@@ -789,7 +799,7 @@ struct LookbookTagProductsView: View {
                         imageContent(geo: geo)
                             .frame(width: geo.size.width, height: geo.size.height)
                             .contentShape(Rectangle())
-                            .onTapGesture { showProductSearch = true }
+                            .onTapGesture { showProductPicker = true }
                             .coordinateSpace(name: "lookbookContainer")
                             .onPreferenceChange(ImageFramePreferenceKey.self) { imageFrame = $0 }
 
@@ -821,6 +831,20 @@ struct LookbookTagProductsView: View {
                     }
                     Spacer()
                     VStack(spacing: Theme.Spacing.sm) {
+                        Button(action: { showProductPicker = true }) {
+                            Text("Choose product")
+                                .font(Theme.Typography.body.weight(.semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.white.opacity(0.18))
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius, style: .continuous)
+                                        .strokeBorder(Color.white.opacity(0.35), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
                         PrimaryGlassButton(L10n.string("Confirm"), action: {
                             onConfirm?(tags, resolvedItems)
                             onDismiss()
@@ -836,24 +860,34 @@ struct LookbookTagProductsView: View {
                 ItemDetailView(item: item, authService: authService)
             }
         }
+        // Sheet must attach here (inside fullScreenCover), not on LookbooksUploadView — otherwise
+        // iOS never presents it above the tag UI and "Choose product" appears to do nothing.
+        .sheet(isPresented: $showProductPicker) {
+            ProductSearchSheet(
+                productService: productService,
+                authService: authService,
+                onSelect: { item in
+                    pickedProduct = item
+                    showProductPicker = false
+                },
+                onCancel: {
+                    showProductPicker = false
+                }
+            )
+            .environmentObject(authService)
+        }
         .onAppear {
             tags = initialTags
             persistTags()
             loadResolvedItems()
         }
         .onChange(of: tags) { _, _ in persistTags() }
-        .sheet(isPresented: $showProductSearch) {
-            ProductSearchSheet(
-                productService: productService,
-                authService: authService,
-                onSelect: { item in
-                    let tag = LookbookTagData(productId: item.productId ?? "", x: Double(dotPosition.x), y: Double(dotPosition.y))
-                    tags.append(tag)
-                    resolvedItems[item.productId ?? ""] = item
-                    showProductSearch = false
-                },
-                onCancel: { showProductSearch = false }
-            )
+        .onChange(of: pickedProduct) { _, new in
+            guard let item = new, let pid = item.productId, !pid.isEmpty else { return }
+            let tag = LookbookTagData(productId: pid, x: Double(dotPosition.x), y: Double(dotPosition.y))
+            tags.append(tag)
+            resolvedItems[pid] = item
+            pickedProduct = nil
         }
     }
 
@@ -959,10 +993,25 @@ struct LookbookTagProductsView: View {
                     onMove(clampedX, clampedY)
                 }
         )
+        .contextMenu {
+            Button(role: .destructive) {
+                removeTag(tag)
+            } label: {
+                Label("Remove tag", systemImage: "trash")
+            }
+        }
+    }
+
+    private func removeTag(_ tag: LookbookTagData) {
+        tags.removeAll { $0.id == tag.id }
+        if !tags.contains(where: { $0.productId == tag.productId }) {
+            resolvedItems.removeValue(forKey: tag.productId)
+        }
+        persistTags()
     }
 
     private func updateTagPosition(tag: LookbookTagData, newX: Double, newY: Double) {
-        guard let idx = tags.firstIndex(where: { $0.productId == tag.productId && $0.x == tag.x && $0.y == tag.y }) else { return }
+        guard let idx = tags.firstIndex(where: { $0.id == tag.id }) else { return }
         tags[idx] = LookbookTagData(productId: tag.productId, x: newX, y: newY)
     }
 
@@ -1042,46 +1091,47 @@ struct ProductSearchSheet: View {
                 if showEmptyState {
                     emptyStatePlaceholder
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if loadingMyProducts && !isSearchMode && displayedItems.isEmpty {
+                    VStack(spacing: Theme.Spacing.md) {
+                        ProgressView()
+                        Text("Loading your products…")
+                            .font(.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List {
-                        if loadingMyProducts && !isSearchMode {
-                            HStack {
-                                ProgressView()
-                                Text("Loading your products…")
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                            if searching {
+                                HStack(spacing: Theme.Spacing.sm) {
+                                    ProgressView()
+                                    Text("Searching…")
+                                        .font(.subheadline)
+                                        .foregroundColor(Theme.Colors.secondaryText)
+                                }
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.top, Theme.Spacing.sm)
                             }
-                        }
-                        if searching {
-                            HStack {
-                                ProgressView()
-                                Text("Searching…")
-                            }
-                        }
-                        ForEach(displayedItems) { item in
-                            Button(action: { onSelect(item) }) {
-                                HStack(spacing: Theme.Spacing.md) {
-                                    if let urlString = item.imageURLs.first, let url = URL(string: urlString) {
-                                        AsyncImage(url: url) { image in
-                                            image.resizable().aspectRatio(contentMode: .fill)
-                                        } placeholder: {
-                                            Rectangle().fill(Theme.Colors.secondaryBackground)
-                                        }
-                                        .frame(width: 50, height: 50)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                            LazyVGrid(
+                                columns: [
+                                    GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                                    GridItem(.flexible(), spacing: Theme.Spacing.sm)
+                                ],
+                                spacing: Theme.Spacing.md
+                            ) {
+                                ForEach(displayedItems) { item in
+                                    Button {
+                                        onSelect(item)
+                                    } label: {
+                                        WardrobeItemCard(item: item)
                                     }
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(item.title)
-                                            .font(.subheadline)
-                                            .foregroundColor(Theme.Colors.primaryText)
-                                        Text(item.formattedPrice)
-                                            .font(.caption)
-                                            .foregroundColor(Theme.Colors.secondaryText)
-                                    }
-                                    Spacer()
+                                    .buttonStyle(PlainTappableButtonStyle())
                                 }
                             }
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.md)
                         }
                     }
-                    .listStyle(.plain)
                 }
             }
             .navigationTitle("Tag product")
@@ -1103,6 +1153,8 @@ struct ProductSearchSheet: View {
                 }
             }
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     private var emptyStatePlaceholder: some View {

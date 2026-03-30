@@ -24,6 +24,14 @@ struct OrderSocketEvent {
     let conversationId: String?
 }
 
+/// Relayed chat message reaction from another participant (`message_reaction` on the socket).
+struct MessageReactionSocketEvent {
+    let messageId: Int
+    /// Nil or empty means reaction removed for that user.
+    let emoji: String?
+    let username: String
+}
+
 /// WebSocket client for chat: connect to backend ws, send messages, receive new messages and events.
 /// Uses same host as GraphQL (Constants.chatWebSocketBaseURL) so messages send/save to the same backend.
 final class ChatWebSocketService: NSObject, @unchecked Sendable {
@@ -43,6 +51,8 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
     var onOrderEvent: (@MainActor (OrderSocketEvent) -> Void)?
     /// Called when connection state changes (e.g. for UI indicator).
     var onConnectionStateChanged: (@MainActor (Bool) -> Void)?
+    /// Another participant updated a message reaction (server type `message_reaction`).
+    var onMessageReaction: (@MainActor (MessageReactionSocketEvent) -> Void)?
 
     init(conversationId: String, token: String) {
         self.conversationId = conversationId
@@ -106,6 +116,27 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         }
     }
 
+    /// Notify room of reaction change; server broadcasts `message_reaction` to all participants.
+    func sendMessageReaction(messageId: Int, emoji: String?) {
+        var payload: [String: Any] = [
+            "type": "message_reaction",
+            "message_id": messageId,
+            "conversation_id": conversationId,
+        ]
+        if let e = emoji, !e.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["emoji"] = e
+        } else {
+            payload["remove"] = true
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let string = String(data: data, encoding: .utf8) else { return }
+        task?.send(.string(string)) { error in
+            if let e = error {
+                print("ChatWebSocket reaction send error: \(e)")
+            }
+        }
+    }
+
     private func receiveLoop() async {
         guard let task = task else { return }
         while !Task.isCancelled {
@@ -130,6 +161,25 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         }
     }
 
+    /// JSON may use Bool, 0/1, or NSNumber from mixed encoders.
+    private static func coerceTypingFlag(_ value: Any?) -> Bool? {
+        switch value {
+        case let b as Bool:
+            return b
+        case let i as Int:
+            return i != 0
+        case let n as NSNumber:
+            return n.boolValue
+        case let s as String:
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if t == "true" || t == "1" || t == "yes" { return true }
+            if t == "false" || t == "0" || t == "no" { return false }
+            return nil
+        default:
+            return nil
+        }
+    }
+
     private func handleReceivedString(_ text: String) async {
         guard let json = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return }
         let type = json["type"] as? String
@@ -140,10 +190,29 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
             }
             return
         }
-        // Typing event variants: `is_typing`, `isTyping`, or `type == "typing"`.
-        if json["is_typing"] != nil || json["isTyping"] != nil || type == "typing" {
+        if type == "message_reaction" {
+            let mid = (json["message_id"] as? Int)
+                ?? (json["messageId"] as? Int)
+                ?? ((json["message_id"] as? String).flatMap { Int($0) })
+                ?? ((json["messageId"] as? String).flatMap { Int($0) })
+            let rawEmoji = (json["emoji"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let emoji = rawEmoji.isEmpty ? nil : rawEmoji
+            let username = ((json["username"] as? String) ?? (json["sender"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if let mid {
+                let ev = MessageReactionSocketEvent(messageId: mid, emoji: emoji, username: username)
+                await MainActor.run {
+                    onMessageReaction?(ev)
+                }
+            }
+            return
+        }
+        // Typing: server broadcasts `type: typing_status` + `sender`; clients may send `typing` / `typing_status` + is_typing / isTyping.
+        // Do not treat real chat frames (`chat_message`) as typing even if a stray key appears.
+        if type != "chat_message",
+           type == "typing_status" || type == "typing"
+           || json["is_typing"] != nil || json["isTyping"] != nil {
             let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
-            let isTyping = (json["is_typing"] as? Bool) ?? (json["isTyping"] as? Bool) ?? true
+            let isTyping = Self.coerceTypingFlag(json["is_typing"]) ?? Self.coerceTypingFlag(json["isTyping"]) ?? true
             let senderUsername = (json["senderUsername"] as? String)
                 ?? (json["sender_username"] as? String)
                 ?? (json["senderName"] as? String)

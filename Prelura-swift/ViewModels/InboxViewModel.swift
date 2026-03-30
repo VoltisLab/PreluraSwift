@@ -45,7 +45,8 @@ class InboxViewModel: ObservableObject {
             if let preview = preview, let idx = list.firstIndex(where: { $0.id == preview.id }) {
                 let c = list[idx]
                 let apiTime = c.lastMessageTime ?? .distantPast
-                if apiTime < preview.date {
+                // Prefer the newer of API vs local (leaving chat) so the row updates immediately and isn’t stuck on an older offer row.
+                if preview.date >= apiTime {
                     list[idx] = Conversation(
                         id: c.id,
                         recipient: c.recipient,
@@ -88,6 +89,7 @@ class InboxViewModel: ObservableObject {
             offer: c.offer,
             order: c.order
         )
+        conversations.sort { ($0.lastMessageTime ?? .distantPast) > ($1.lastMessageTime ?? .distantPast) }
     }
 
     /// Insert a conversation at the top (e.g. newly created before API returns it).
