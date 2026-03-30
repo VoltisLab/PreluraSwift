@@ -144,19 +144,19 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             DispatchQueue.main.async {
                 application.registerForRemoteNotifications()
                 guard Self.isFirebaseConfigured else { return }
-                // After Firebase/backend changes, FCM token can rotate; refresh and notify only if it changed
-                // so we re-run updateProfile(fcmToken:) without spamming identical tokens each foreground.
-                Messaging.messaging().token { token, error in
-                    if let error {
-                        pushBootstrapLog.error("Messaging.token() (foreground) error: \(error.localizedDescription, privacy: .public)")
-                        NotificationDebugLog.append(
-                            source: "fcm",
-                            message: "Messaging.token() foreground error: \(error.localizedDescription)",
-                            isError: true
-                        )
+                // Wait for APNs before token(); avoids "No APNS token specified" on cold start / simulator.
+                PreluraFCMRegistration.fetchRegistrationToken { result in
+                    guard case .success(let token) = result, !token.isEmpty else {
+                        if case .failure(let error) = result {
+                            pushBootstrapLog.error("FCM foreground refresh error: \(error.localizedDescription, privacy: .public)")
+                            NotificationDebugLog.append(
+                                source: "fcm",
+                                message: "Foreground FCM token (after APNs wait): \(error.localizedDescription)",
+                                isError: true
+                            )
+                        }
                         return
                     }
-                    guard let token, !token.isEmpty else { return }
                     let prev = UserDefaults.standard.string(forKey: kDeviceTokenKey)
                     if prev != token {
                         UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
@@ -181,17 +181,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                                 application.registerForRemoteNotifications()
                                 // Without an explicit token fetch here, FCM can lag until the next foreground cycle.
                                 guard Self.isFirebaseConfigured else { return }
-                                Messaging.messaging().token { token, error in
-                                    if let error {
-                                        pushBootstrapLog.error("Messaging.token() after permission: \(error.localizedDescription, privacy: .public)")
-                                        NotificationDebugLog.append(
-                                            source: "fcm",
-                                            message: "Messaging.token() after permission error: \(error.localizedDescription)",
-                                            isError: true
-                                        )
+                                PreluraFCMRegistration.fetchRegistrationToken { result in
+                                    guard case .success(let token) = result, !token.isEmpty else {
+                                        if case .failure(let error) = result {
+                                            pushBootstrapLog.error("FCM token after permission: \(error.localizedDescription, privacy: .public)")
+                                            NotificationDebugLog.append(
+                                                source: "fcm",
+                                                message: "FCM token after permission (APNs wait): \(error.localizedDescription)",
+                                                isError: true
+                                            )
+                                        }
                                         return
                                     }
-                                    guard let token, !token.isEmpty else { return }
                                     UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
                                     NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
                                 }
@@ -229,20 +230,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             isError: false
         )
         // Explicit fetch: delegate can lag; ensures UserDefaults + backend sync see a token.
-        Messaging.messaging().token { token, error in
-            if let token, !token.isEmpty {
+        PreluraFCMRegistration.fetchRegistrationToken { result in
+            switch result {
+            case .success(let token):
                 UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
                 NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
-            }
-            if let error {
-                pushBootstrapLog.error("Messaging.token() error: \(error.localizedDescription, privacy: .public)")
+            case .failure(let error):
+                pushBootstrapLog.error("FCM token after APNs registration: \(error.localizedDescription, privacy: .public)")
                 NotificationDebugLog.append(
                     source: "fcm",
-                    message: "Messaging.token() after APNs error: \(error.localizedDescription)",
+                    message: "FCM token after APNs registration: \(error.localizedDescription)",
                     isError: true
                 )
                 #if DEBUG
-                print("[Push] Messaging.token() error: \(error.localizedDescription)")
+                print("[Push] FCM token error after APNs: \(error.localizedDescription)")
                 #endif
             }
         }

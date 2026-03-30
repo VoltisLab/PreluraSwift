@@ -18,7 +18,7 @@ private let pushRegistrationLogger = Logger(subsystem: Bundle.main.bundleIdentif
 let kAppearanceMode = "appearance_mode"
 
 /// When the user is logged in, read the **current** FCM token from Firebase and send it via `updateProfile(fcmToken:)`.
-/// Always uses `Messaging.messaging().token` so we do not rely on UserDefaults being filled before login (race after `storeTokens`).
+/// Uses `PreluraFCMRegistration` so we wait for APNs before `token()` and do not rely on UserDefaults alone (race after `storeTokens`).
 private func registerPushTokenIfNeeded(authService: AuthService) {
     guard authService.isAuthenticated else {
         pushRegistrationLogger.debug("Skip FCM upload: not authenticated.")
@@ -31,28 +31,23 @@ private func registerPushTokenIfNeeded(authService: AuthService) {
         print("[Push] Skip FCM → backend: Firebase not configured.")
         return
     }
-    Messaging.messaging().token { token, error in
+    UIApplication.shared.registerForRemoteNotifications()
+    PreluraFCMRegistration.fetchRegistrationToken { result in
         Task { @MainActor in
             guard authService.isAuthenticated else { return }
-            if let error {
-                pushRegistrationLogger.error("Messaging.token() before upload: \(error.localizedDescription, privacy: .public)")
+            let token: String
+            switch result {
+            case .failure(let error):
+                pushRegistrationLogger.error("FCM registration token: \(error.localizedDescription, privacy: .public)")
                 NotificationDebugLog.append(
                     source: "fcm",
-                    message: "Messaging.token() before upload: \(error.localizedDescription)",
+                    message: "FCM token after waiting for APNs: \(error.localizedDescription)",
                     isError: true
                 )
-                print("[Push] Messaging.token() before upload failed: \(error.localizedDescription)")
+                print("[Push] FCM token fetch failed: \(error.localizedDescription)")
                 return
-            }
-            guard let token, !token.isEmpty else {
-                pushRegistrationLogger.debug("Skip FCM upload: empty token (notifications permission / APNs).")
-                NotificationDebugLog.append(
-                    source: "fcm",
-                    message: "Empty FCM token when uploading to API (check permission / APNs / simulator)",
-                    isError: true
-                )
-                print("[Push] Skip FCM → backend: empty FCM token (allow notifications + APNs registration).")
-                return
+            case .success(let t):
+                token = t
             }
             UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
             if let last = UserDefaults.standard.string(forKey: kLastFcmTokenSentToBackendKey), last == token {

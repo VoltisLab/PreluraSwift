@@ -2,7 +2,6 @@ import SwiftUI
 import UIKit
 import UserNotifications
 import FirebaseCore
-import FirebaseMessaging
 
 /// Menu → Debug — confirms Firebase, permission, local FCM token, and last `updateProfile(fcmToken:)` result.
 struct PushDiagnosticsView: View {
@@ -260,20 +259,21 @@ struct PushDiagnosticsView: View {
         }
 
         let token: String? = await withCheckedContinuation { cont in
-            Messaging.messaging().token { tok, err in
-                if let err {
+            PreluraFCMRegistration.fetchRegistrationToken { result in
+                switch result {
+                case .success(let t):
+                    cont.resume(returning: t)
+                case .failure(let err):
                     cont.resume(returning: nil)
                     DispatchQueue.main.async {
-                        self.refreshNote = "Messaging.token: \(err.localizedDescription)"
+                        self.refreshNote = "FCM token: \(err.localizedDescription)"
                     }
                     NotificationDebugLog.append(
                         source: "diagnostics",
-                        message: "Manual refresh Messaging.token error: \(err.localizedDescription)",
+                        message: "Manual refresh FCM error (after APNs wait): \(err.localizedDescription)",
                         isError: true
                     )
-                    return
                 }
-                cont.resume(returning: tok)
             }
         }
 
