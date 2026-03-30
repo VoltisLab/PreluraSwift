@@ -28,6 +28,18 @@ struct PushDiagnosticsView: View {
     var body: some View {
         List {
             Section {
+                Text(
+                    "If you see Authorized, an FCM token, and Last API upload: OK, the app and API did their job. No banner almost always means Firebase has not linked Apple Push to the iOS app com.prelura.preloved (Flutter uses com.prelura.app — that can work while Swift does not).\n\n"
+                        + "Next: (1) Run Send server test push below and background the app before it runs. (2) If the log says API OK but no alert appears, open Firebase → project prelura-app → Project settings → Your apps → iOS com.prelura.preloved → Cloud Messaging → upload the APNs .p8 key. (3) Or use Firebase Send test message with your copied token; if that fails, the fix is Apple/Firebase, not reinstalling Prelura."
+                )
+                .font(.caption)
+                .foregroundStyle(Theme.Colors.secondaryText)
+                .listRowBackground(Color.clear)
+            } header: {
+                Text("Read this if push never shows")
+            }
+
+            Section {
                 LabeledContent("Firebase in app") {
                     Text(firebaseOk ? "Configured" : "Missing / invalid plist")
                         .foregroundColor(firebaseOk ? Theme.Colors.primaryText : .red)
