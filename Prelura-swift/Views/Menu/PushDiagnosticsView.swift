@@ -3,6 +3,27 @@ import UIKit
 import UserNotifications
 import FirebaseCore
 
+private enum PushTestInstructionKind {
+    case localOnDevice
+    case serverFCM
+
+    var sheetTitle: String {
+        switch self {
+        case .localOnDevice: return "Local test (no server)"
+        case .serverFCM: return "Server test push"
+        }
+    }
+
+    var shortLabel: String {
+        switch self {
+        case .localOnDevice:
+            return "Only your iPhone schedules this alert — no Prelura API, no Firebase, no APNs. Use it to confirm notification permission and banners work."
+        case .serverFCM:
+            return "Prelura’s API asks Firebase to send APNs to this app. That only matches if Firebase has the Swift app (com.prelura.preloved) set up with the same keys as Flutter’s bundle."
+        }
+    }
+}
+
 /// Menu → Debug — confirms Firebase, permission, local FCM token, and last `updateProfile(fcmToken:)` result.
 struct PushDiagnosticsView: View {
     @EnvironmentObject private var authService: AuthService
@@ -18,19 +39,24 @@ struct PushDiagnosticsView: View {
     @State private var testPushCountdown: Int?
     @State private var testPushBusy = false
     @State private var traceEntries: [NotificationDebugLog.Entry] = []
+    @State private var showBackgroundSheet = false
+    @State private var backgroundSheetKind: PushTestInstructionKind = .localOnDevice
+
+    /// Seconds to wait so you can swipe home before a test fires (`UNLocalNotification` or server push).
+    private let pushTestLeadSeconds = 8
 
     var body: some View {
         List {
             Section {
                 Text(
-                    "If you see Authorized, an FCM token, and Last API upload: OK, the app and API did their job. No banner almost always means Firebase has not linked Apple Push to the iOS app com.prelura.preloved (Flutter uses com.prelura.app — that can work while Swift does not).\n\n"
-                        + "Next: (1) Run Send server test push below and background the app before it runs. (2) If the log says API OK but no alert appears, open Firebase → project prelura-app → Project settings → Your apps → iOS com.prelura.preloved → Cloud Messaging → upload the APNs .p8 key. (3) Or use Firebase Send test message with your copied token; if that fails, the fix is Apple/Firebase, not reinstalling Prelura."
+                    "Step 1 — Prove the OS: use **Local on-device test** below, background Prelura when the sheet says so, and see a banner. That needs no server.\n\n"
+                        + "Step 2 — Remote push: use **Server test push** (or Firebase console with your token). Flutter’s bundle (com.prelura.app) can work while Swift (com.prelura.preloved) does not until that app is registered in Firebase with the same APNs key."
                 )
                 .font(.caption)
                 .foregroundStyle(Theme.Colors.secondaryText)
                 .listRowBackground(Color.clear)
             } header: {
-                Text("Read this if push never shows")
+                Text("Why Swift might differ from Flutter")
             }
 
             Section {
@@ -92,41 +118,64 @@ struct PushDiagnosticsView: View {
                         .font(.caption)
                         .foregroundStyle(Theme.Colors.secondaryText)
                 }
+            } header: {
+                Text("Registration")
+            } footer: {
+                Text("If “No FCM token yet” persists on a real iPhone, check Settings → Prelura → Notifications and Xcode Signing → Push capability.")
+            }
+
+            Section {
+                Button {
+                    startLocalOnDeviceTest()
+                } label: {
+                    HStack {
+                        Text("Local on-device test (no server)")
+                        if testPushBusy, backgroundSheetKind == .localOnDevice, testPushCountdown != nil {
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(testPushBusy)
 
                 Button {
                     scheduleServerTestPushAfterDelay()
                 } label: {
                     HStack {
-                        if let c = testPushCountdown {
-                            Text("Test push in \(c)s…")
+                        if let c = testPushCountdown, backgroundSheetKind == .serverFCM {
+                            Text("Server test — \(c)s…")
                         } else {
-                            Text("Send server test push (waits 5s)")
+                            Text("Server test push (FCM)")
                         }
-                        if testPushBusy && testPushCountdown == nil { ProgressView() }
+                        if testPushBusy, backgroundSheetKind == .serverFCM, testPushCountdown == nil { ProgressView() }
                     }
                 }
                 .disabled(!authService.isAuthenticated || testPushBusy)
+
+                Text(
+                    "Both tests wait \(pushTestLeadSeconds) seconds. When the sheet appears, **leave Prelura** (swipe up / Home) so the alert can appear like a real push. Keeping the app open may still show a banner in some cases."
+                )
+                .font(.caption)
+                .foregroundStyle(Theme.Colors.secondaryText)
+            } header: {
+                Text("Push tests")
             } footer: {
-                Text("If “No FCM token yet” persists on a real iPhone, check Settings → Prelura → Notifications and Xcode Signing → Push capability. Deploy the latest API so GraphQL SendMessage schedules pushes.")
+                Text("Server test: wait at least 60 seconds between attempts if the API rate-limits. Local test can be repeated anytime.")
             }
 
             Section {
                 Text(
-                    "Your screen shows the hard part (device + API) is working. Alerts are delivered by Apple via Firebase.\n\n"
-                        + "1) Firebase Console → project prelura-app → Project settings → Your apps → select the iOS app with bundle ID com.prelura.preloved → Cloud Messaging → upload your APNs Authentication Key (.p8). Same .p8 as Flutter is fine; it must be attached to this app entry, not only com.prelura.app.\n\n"
-                        + "2) Firebase → Send test message → paste the token you copied; background the app first. If the test fails, fix Apple/Firebase — not the Prelura API.\n\n"
-                        + "3) In Prelura notification settings, ensure push is on. For chat, background the app — the server may skip FCM while that chat is open."
+                    "If local test works but server test never shows a banner, fix **Firebase → iOS app com.prelura.preloved → Cloud Messaging → APNs key** (same .p8 as Flutter is OK; it must be on this app entry)."
                 )
                 .font(.caption)
                 .foregroundStyle(Theme.Colors.secondaryText)
                 .listRowBackground(Color.clear)
             } header: {
-                Text("Upload OK but still no alerts?")
+                Text("Upload OK but no remote alerts?")
             }
 
             Section {
                 if traceEntries.isEmpty {
-                    Text("No events recorded yet. Use the app, grant notifications, and run a server test — lines appear here automatically.")
+                    Text("No events yet. Run a local or server test — lines appear here.")
                         .font(.caption)
                         .foregroundStyle(Theme.Colors.secondaryText)
                 } else {
@@ -149,13 +198,47 @@ struct PushDiagnosticsView: View {
             } header: {
                 Text("Notification event trace")
             } footer: {
-                Text("Shows what the app knows: Firebase setup, APNs/FCM errors, token uploads, when a remote message arrives (background), when a banner is shown (foreground), and tap events. If the server sends FCM but Apple never delivers, you may see no “remote” or “present” lines — fix Firebase APNs for com.prelura.preloved. Server-side FCM rejections only appear if the API returns an error (e.g. debug test push message).")
+                Text("“local” = on-device test only. “remote” / “present” / “tap” = FCM-style payloads. If local works but you never see remote lines, Apple is not delivering FCM to this bundle — fix Firebase APNs for com.prelura.preloved.")
             }
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
         .navigationTitle("Push diagnostics")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showBackgroundSheet) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text(backgroundSheetKind.sheetTitle)
+                        .font(.title2.weight(.semibold))
+                    Text(backgroundSheetKind.shortLabel)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("**Now background Prelura:** swipe up from the bottom edge, double-tap Home, or use the Home button — then stay out of the app until the time hits zero.")
+                        .font(.body)
+                    if let c = testPushCountdown {
+                        Text("Fires in \(c)s")
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Starting…")
+                            .font(.title)
+                            .frame(maxWidth: .infinity)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding()
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Dismiss") {
+                            showBackgroundSheet = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .onAppear {
             loadStaticState()
             reloadTrace()
@@ -201,45 +284,134 @@ struct PushDiagnosticsView: View {
         return "\(a)…\(b) (\(full.count) chars)"
     }
 
+    /// Proves alerts work using only `UserNotifications` (no API, no FCM, no APNs from Prelura).
+    private func startLocalOnDeviceTest() {
+        guard !testPushBusy else { return }
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let ok: Bool
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral: ok = true
+            default: ok = false
+            }
+            guard ok else {
+                DispatchQueue.main.async {
+                    NotificationDebugLog.append(
+                        source: "local",
+                        message: "Local test skipped — notification permission not granted (Settings → Prelura → Notifications)",
+                        isError: true
+                    )
+                    reloadTrace()
+                    loadStaticState()
+                }
+                return
+            }
+            DispatchQueue.main.async {
+                runCountdownThen(kind: .localOnDevice) {
+                    await scheduleLocalTestNotification()
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func scheduleLocalTestNotification() async {
+        let content = UNMutableNotificationContent()
+        content.title = "Prelura — on-device test"
+        content.body = "This alert did not use any server. If you see it, notifications work on this iPhone."
+        content.sound = .default
+        content.userInfo = [kPreluraLocalPushTestUserInfoKey: 1]
+
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [kPreluraLocalPushTestNotificationId])
+        center.removeDeliveredNotifications(withIdentifiers: [kPreluraLocalPushTestNotificationId])
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: kPreluraLocalPushTestNotificationId,
+            content: content,
+            trigger: trigger
+        )
+        do {
+            try await center.add(request)
+            NotificationDebugLog.append(
+                source: "local",
+                message: "Scheduled on-device notification (fires in ~1s — Lock Screen / banner)",
+                isError: false
+            )
+        } catch {
+            NotificationDebugLog.append(
+                source: "local",
+                message: "Failed to schedule local notification: \(error.localizedDescription)",
+                isError: true
+            )
+        }
+        reloadTrace()
+    }
+
     private func scheduleServerTestPushAfterDelay() {
         guard authService.isAuthenticated, let bearer = authService.authToken, !testPushBusy else { return }
+        runCountdownThen(kind: .serverFCM) {
+            await sendServerDebugPush(bearer: bearer)
+        }
+    }
+
+    @MainActor
+    private func sendServerDebugPush(bearer: String) async {
+        NotificationDebugLog.append(source: "diagnostics", message: "Calling sendDebugTestPush (GraphQL)…", isError: false)
+        let userService = UserService()
+        userService.updateAuthToken(bearer)
+        do {
+            let result = try await userService.sendDebugTestPush()
+            if result.success {
+                NotificationDebugLog.append(
+                    source: "diagnostics",
+                    message: "sendDebugTestPush OK — \(result.message ?? "sent")",
+                    isError: false
+                )
+            } else {
+                NotificationDebugLog.append(
+                    source: "diagnostics",
+                    message: "sendDebugTestPush: \(result.message ?? "failed")",
+                    isError: true
+                )
+            }
+        } catch {
+            NotificationDebugLog.append(
+                source: "diagnostics",
+                message: "sendDebugTestPush GraphQL error: \(error.localizedDescription)",
+                isError: true
+            )
+        }
+        reloadTrace()
+    }
+
+    /// Shows the background sheet, counts down, then runs `action` (local schedule or server mutation).
+    private func runCountdownThen(
+        kind: PushTestInstructionKind,
+        action: @escaping @MainActor () async -> Void
+    ) {
         testPushBusy = true
-        NotificationDebugLog.append(source: "diagnostics", message: "Scheduled server test push — 5s countdown…", isError: false)
+        backgroundSheetKind = kind
+        showBackgroundSheet = true
+        NotificationDebugLog.append(
+            source: "diagnostics",
+            message: "Push test (\(kind == .localOnDevice ? "local" : "server")) — \(pushTestLeadSeconds)s: leave the app (Home) for a real push-style banner",
+            isError: false
+        )
+        reloadTrace()
         Task { @MainActor in
             defer {
                 testPushBusy = false
                 testPushCountdown = nil
+                showBackgroundSheet = false
+                reloadTrace()
             }
-            for s in stride(from: 5, through: 1, by: -1) {
+            for s in stride(from: pushTestLeadSeconds, through: 1, by: -1) {
                 testPushCountdown = s
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
             testPushCountdown = nil
-            NotificationDebugLog.append(source: "diagnostics", message: "Calling sendDebugTestPush (GraphQL)…", isError: false)
-            let userService = UserService()
-            userService.updateAuthToken(bearer)
-            do {
-                let result = try await userService.sendDebugTestPush()
-                if result.success {
-                    NotificationDebugLog.append(
-                        source: "diagnostics",
-                        message: "sendDebugTestPush OK — \(result.message ?? "sent")",
-                        isError: false
-                    )
-                } else {
-                    NotificationDebugLog.append(
-                        source: "diagnostics",
-                        message: "sendDebugTestPush: \(result.message ?? "failed")",
-                        isError: true
-                    )
-                }
-            } catch {
-                NotificationDebugLog.append(
-                    source: "diagnostics",
-                    message: "sendDebugTestPush GraphQL error: \(error.localizedDescription)",
-                    isError: true
-                )
-            }
+            await action()
         }
     }
 

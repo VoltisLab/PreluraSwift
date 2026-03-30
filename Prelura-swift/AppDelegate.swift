@@ -14,6 +14,11 @@ let kDeviceTokenKey = "prelura_device_token"
 /// Last FCM token string successfully sent via `updateProfile`; cleared on logout so the next session always registers.
 let kLastFcmTokenSentToBackendKey = "prelura_last_fcm_token_sent_to_backend"
 
+/// Menu → Push diagnostics schedules this to prove alerts work without any server (UserNotifications only).
+let kPreluraLocalPushTestNotificationId = "prelura_debug_local_test"
+/// `userInfo` flag on that local request so delegates can log and ignore deep-link routing.
+let kPreluraLocalPushTestUserInfoKey = "prelura_local_test"
+
 extension Notification.Name {
     static let preluraNotificationTapped = Notification.Name("PreluraNotificationTapped")
     /// Posted when a new APNs device token is received so the app can register it with the backend.
@@ -302,6 +307,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
+        if userInfo[kPreluraLocalPushTestUserInfoKey] as? Int == 1
+            || response.notification.request.identifier == kPreluraLocalPushTestNotificationId {
+            NotificationDebugLog.append(
+                source: "local",
+                message: "Tapped local on-device test notification (no server)",
+                isError: false
+            )
+            completionHandler()
+            return
+        }
         let mid = userInfo["gcm.message_id"].map { String(describing: $0) } ?? "?"
         NotificationDebugLog.append(
             source: "tap",
@@ -323,6 +338,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         let u = notification.request.content.userInfo
+        let isLocalDebug =
+            u[kPreluraLocalPushTestUserInfoKey] as? Int == 1
+            || notification.request.identifier == kPreluraLocalPushTestNotificationId
+        if isLocalDebug {
+            NotificationDebugLog.append(
+                source: "local",
+                message: "willPresent — local test banner (app was foreground; for lock-screen test, background the app before it fires)",
+                isError: false
+            )
+            completionHandler([.banner, .badge, .sound])
+            return
+        }
         if let mid = u["gcm.message_id"] {
             pushBootstrapLog.info("willPresent remote notification gcm.message_id=\(String(describing: mid), privacy: .public)")
             print("[Push] Foreground notification (gcm.message_id=\(mid))")
@@ -330,7 +357,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         let midStr = u["gcm.message_id"].map { String(describing: $0) } ?? "?"
         NotificationDebugLog.append(
             source: "present",
-            message: "willPresent — showing banner/sound (foreground) gcm.message_id=\(midStr)",
+            message: "willPresent — remote FCM banner/sound (foreground) gcm.message_id=\(midStr)",
             isError: false
         )
         completionHandler([.banner, .badge, .sound])
