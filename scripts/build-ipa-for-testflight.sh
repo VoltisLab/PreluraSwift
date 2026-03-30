@@ -31,17 +31,19 @@ mkdir -p ./build/ipa
 # Step 1: Archive
 echo ""
 echo "Step 1: Creating archive..."
+# Never use CODE_SIGNING_ALLOWED=NO here: the archive must carry the target entitlements
+# (including aps-environment for Push). Export-time signing alone can ship an IPA with
+# no push entitlement — APNs will never call didRegisterForRemoteNotifications.
 xcodebuild archive \
     -project ${PROJECT_NAME}.xcodeproj \
     -scheme ${SCHEME} \
     -configuration Release \
     -archivePath ${ARCHIVE_PATH} \
+    -destination 'generic/platform=iOS' \
     -allowProvisioningUpdates \
     CODE_SIGN_STYLE=Automatic \
     DEVELOPMENT_TEAM=94QA2FVSW2 \
-    PRODUCT_BUNDLE_IDENTIFIER=com.prelura.preloved \
-    CODE_SIGNING_REQUIRED=NO \
-    CODE_SIGNING_ALLOWED=NO
+    PRODUCT_BUNDLE_IDENTIFIER=com.prelura.preloved
 
 if [ $? -ne 0 ]; then
     echo "❌ Archive failed."
@@ -72,6 +74,28 @@ else
     echo "❌ IPA file not found at ${EXPORT_PATH}/${PROJECT_NAME}.ipa"
     exit 1
 fi
+
+# Fail fast if Push entitlement never made it into the signed app (symptom: APNs token never arrives).
+ENT_TMP="$(mktemp -d)"
+unzip -q "${IPA_PATH}" -d "$ENT_TMP"
+APP_IN_IPA="$(find "$ENT_TMP/Payload" -maxdepth 1 -name "*.app" | head -1)"
+if [[ ! -d "$APP_IN_IPA" ]]; then
+    echo "❌ Could not locate .app inside IPA for entitlement check."
+    rm -rf "$ENT_TMP"
+    exit 1
+fi
+if ! codesign -d --entitlements - "$APP_IN_IPA" 2>/dev/null | grep -q "aps-environment"; then
+    rm -rf "$ENT_TMP"
+    echo ""
+    echo "❌ Exported IPA is missing the push entitlement (aps-environment)."
+    echo "   Xcode may show Push Notifications, but the *distribution* profile must include it."
+    echo "   Fix: developer.apple.com → Identifiers → com.prelura.preloved → Push Notifications ON,"
+    echo "   then Xcode → Target → Signing & Capabilities → select team → Download Manual Profiles"
+    echo "   (or toggle Automatic signing to refresh). Re-archive and export again."
+    exit 1
+fi
+rm -rf "$ENT_TMP"
+echo "✅ Entitlements check: aps-environment present (push enabled in signed binary)."
 
 # Step 3: Upload if requested
 if [ "$UPLOAD" = true ]; then
