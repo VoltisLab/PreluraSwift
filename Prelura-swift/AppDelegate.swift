@@ -35,6 +35,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     /// `FirebaseApp.configure()` aborts if the default plist is missing or invalid. Only true after a successful configure.
     private static var isFirebaseConfigured: Bool { FirebaseApp.app() != nil }
+
+    private static func isPreluraLocalPushTest(userInfo: [AnyHashable: Any], requestIdentifier: String) -> Bool {
+        if requestIdentifier == kPreluraLocalPushTestNotificationId { return true }
+        let v = userInfo[kPreluraLocalPushTestUserInfoKey]
+        if let i = v as? Int, i == 1 { return true }
+        if let n = v as? NSNumber, n.intValue == 1 { return true }
+        return false
+    }
     /// Payload to route after splash: cold-open from push (`launchOptions`) or tap received while splash is visible (root `onReceive` cannot present yet).
     static var pendingPostSplashNotificationUserInfo: [AnyHashable: Any]?
 
@@ -307,8 +315,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        if userInfo[kPreluraLocalPushTestUserInfoKey] as? Int == 1
-            || response.notification.request.identifier == kPreluraLocalPushTestNotificationId {
+        if Self.isPreluraLocalPushTest(userInfo: userInfo, requestIdentifier: response.notification.request.identifier) {
             NotificationDebugLog.append(
                 source: "local",
                 message: "Tapped local on-device test notification (no server)",
@@ -338,9 +345,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         let u = notification.request.content.userInfo
-        let isLocalDebug =
-            u[kPreluraLocalPushTestUserInfoKey] as? Int == 1
-            || notification.request.identifier == kPreluraLocalPushTestNotificationId
+        let isLocalDebug = Self.isPreluraLocalPushTest(userInfo: u, requestIdentifier: notification.request.identifier)
         if isLocalDebug {
             NotificationDebugLog.append(
                 source: "local",
