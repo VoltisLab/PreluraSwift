@@ -46,6 +46,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         UNUserNotificationCenter.current().delegate = self
         if let remote = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             Self.pendingPostSplashNotificationUserInfo = remote
+            let mid = remote["gcm.message_id"].map { String(describing: $0) } ?? "none"
+            NotificationDebugLog.append(
+                source: "launch",
+                message: "Cold start with remote-notification payload (gcm.message_id=\(mid))",
+                isError: false
+            )
         }
         requestNotificationPermissionAndRegister(application: application)
         return true
@@ -56,6 +62,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
               FileManager.default.fileExists(atPath: path) else {
             pushBootstrapLog.error("GoogleService-Info.plist missing from app bundle — Firebase push disabled. Add from Firebase Console (docs/FIREBASE_IOS_SETUP.md).")
+            NotificationDebugLog.append(source: "firebase", message: "GoogleService-Info.plist missing from app bundle", isError: true)
             #if DEBUG
             print("[Push] No GoogleService-Info.plist in bundle — add Prelura-swift/GoogleService-Info.plist for FCM.")
             #endif
@@ -63,12 +70,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
         guard let plist = NSDictionary(contentsOfFile: path) as? [String: Any] else {
             pushBootstrapLog.error("GoogleService-Info.plist could not be read — Firebase push disabled.")
+            NotificationDebugLog.append(source: "firebase", message: "GoogleService-Info.plist could not be read", isError: true)
             return
         }
         let apiKey = (plist["API_KEY"] as? String) ?? ""
         let googleAppId = (plist["GOOGLE_APP_ID"] as? String) ?? ""
         if apiKey.contains("REPLACE_ME") || googleAppId.contains("REPLACE_ME") {
             pushBootstrapLog.warning("GoogleService-Info.plist still has REPLACE_ME placeholders — Firebase not configured.")
+            NotificationDebugLog.append(source: "firebase", message: "GoogleService-Info.plist still has REPLACE_ME placeholders", isError: true)
             #if DEBUG
             print("[Push] Replace placeholders in GoogleService-Info.plist with values from Firebase Console.")
             #endif
@@ -76,6 +85,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
         guard let options = FirebaseOptions(contentsOfFile: path) else {
             pushBootstrapLog.error("FirebaseOptions could not load GoogleService-Info.plist — Firebase push disabled.")
+            NotificationDebugLog.append(source: "firebase", message: "FirebaseOptions could not load plist path", isError: true)
             return
         }
         // Use plist BUNDLE_ID as shipped from Firebase; avoid overriding (can confuse FCM ↔ APNs linkage).
@@ -85,6 +95,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             #if DEBUG
             print("[Push] Firebase PROJECT_ID=\(projectId)")
             #endif
+            NotificationDebugLog.append(
+                source: "firebase",
+                message: "Firebase configured (PROJECT_ID=\(projectId), BUNDLE_ID=\(plist["BUNDLE_ID"] as? String ?? "?"))",
+                isError: false
+            )
         }
         #if DEBUG
         diagnoseFirebasePlistVersusRuntime(plist: plist)
@@ -99,12 +114,22 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         if !plistBundle.isEmpty, !runtimeBundle.isEmpty, plistBundle != runtimeBundle {
             pushBootstrapLog.warning("GoogleService BUNDLE_ID (\(plistBundle, privacy: .public)) ≠ executable (\(runtimeBundle, privacy: .public)) — replace plist from Firebase for this target.")
             print("[Push] WARNING: plist BUNDLE_ID (\(plistBundle)) ≠ app bundle (\(runtimeBundle)).")
+            NotificationDebugLog.append(
+                source: "firebase",
+                message: "WARNING: plist BUNDLE_ID (\(plistBundle)) ≠ runtime (\(runtimeBundle))",
+                isError: false
+            )
         }
         // Prelura Flutter iOS app (com.prelura.app) uses this id in-repo; Swift must use a plist from a *separate* Firebase iOS app for com.prelura.preloved (different GOOGLE_APP_ID).
         let flutterIOSGoogleAppId = "1:756569142928:ios:f4f7f4a1af7989832d4a15"
         if runtimeBundle == "com.prelura.preloved", googleAppId == flutterIOSGoogleAppId {
             pushBootstrapLog.warning("This GOOGLE_APP_ID is the Flutter iOS client. FCM may issue a token, but APNs delivery for com.prelura.preloved often fails. Add an iOS app in Firebase for com.prelura.preloved and replace GoogleService-Info.plist (new GOOGLE_APP_ID).")
             print("[Push] WARNING: plist still uses Flutter’s GOOGLE_APP_ID. Download a new plist from Firebase → iOS app com.prelura.preloved (not com.prelura.app).")
+            NotificationDebugLog.append(
+                source: "firebase",
+                message: "WARNING: GOOGLE_APP_ID matches Flutter app — use Firebase iOS app for com.prelura.preloved",
+                isError: false
+            )
         }
     }
 
@@ -124,6 +149,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 Messaging.messaging().token { token, error in
                     if let error {
                         pushBootstrapLog.error("Messaging.token() (foreground) error: \(error.localizedDescription, privacy: .public)")
+                        NotificationDebugLog.append(
+                            source: "fcm",
+                            message: "Messaging.token() foreground error: \(error.localizedDescription)",
+                            isError: true
+                        )
                         return
                     }
                     guard let token, !token.isEmpty else { return }
@@ -154,6 +184,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                                 Messaging.messaging().token { token, error in
                                     if let error {
                                         pushBootstrapLog.error("Messaging.token() after permission: \(error.localizedDescription, privacy: .public)")
+                                        NotificationDebugLog.append(
+                                            source: "fcm",
+                                            message: "Messaging.token() after permission error: \(error.localizedDescription)",
+                                            isError: true
+                                        )
                                         return
                                     }
                                     guard let token, !token.isEmpty else { return }
@@ -162,11 +197,21 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                                 }
                             } else {
                                 pushBootstrapLog.warning("User declined notification permission — enable in Settings → Prelura → Notifications.")
+                                NotificationDebugLog.append(
+                                    source: "permission",
+                                    message: "User declined notification permission in system prompt",
+                                    isError: true
+                                )
                             }
                         }
                     }
                 case .denied:
                     pushBootstrapLog.warning("Notifications denied for Prelura — enable in Settings → Notifications.")
+                    NotificationDebugLog.append(
+                        source: "permission",
+                        message: "Notifications authorization denied (Settings → Prelura → Notifications)",
+                        isError: true
+                    )
                 @unknown default:
                     break
                 }
@@ -178,6 +223,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         guard Self.isFirebaseConfigured else { return }
         Messaging.messaging().apnsToken = deviceToken
+        NotificationDebugLog.append(
+            source: "apns",
+            message: "APNs device token received (\(deviceToken.count) bytes); fetching FCM token…",
+            isError: false
+        )
         // Explicit fetch: delegate can lag; ensures UserDefaults + backend sync see a token.
         Messaging.messaging().token { token, error in
             if let token, !token.isEmpty {
@@ -186,6 +236,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             }
             if let error {
                 pushBootstrapLog.error("Messaging.token() error: \(error.localizedDescription, privacy: .public)")
+                NotificationDebugLog.append(
+                    source: "fcm",
+                    message: "Messaging.token() after APNs error: \(error.localizedDescription)",
+                    isError: true
+                )
                 #if DEBUG
                 print("[Push] Messaging.token() error: \(error.localizedDescription)")
                 #endif
@@ -195,6 +250,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         pushBootstrapLog.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
+        NotificationDebugLog.append(
+            source: "apns",
+            message: "didFailToRegisterForRemoteNotifications: \(error.localizedDescription)",
+            isError: true
+        )
         print("[Push] APNs registration failed: \(error.localizedDescription)")
     }
 
@@ -207,6 +267,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         if Self.isFirebaseConfigured {
             _ = Messaging.messaging().appDidReceiveMessage(userInfo)
         }
+        let mid = userInfo["gcm.message_id"].map { String(describing: $0) } ?? "?"
+        NotificationDebugLog.append(
+            source: "remote",
+            message: "didReceiveRemoteNotification (background) gcm.message_id=\(mid)",
+            isError: false
+        )
         completionHandler(.newData)
     }
 
@@ -214,6 +280,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         guard let fcmToken, !fcmToken.isEmpty else { return }
         UserDefaults.standard.set(fcmToken, forKey: kDeviceTokenKey)
         NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
+        NotificationDebugLog.append(
+            source: "fcm",
+            message: "FCM registration token refreshed (\(fcmToken.count) chars)",
+            isError: false
+        )
         pushBootstrapLog.info("FCM token length=\(fcmToken.count, privacy: .public) — stored; upload runs when logged in.")
         // Log prefix in Release too so Console.app / TestFlight feedback helps without DEBUG.
         let prefix = fcmToken.prefix(16)
@@ -230,6 +301,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
+        let mid = userInfo["gcm.message_id"].map { String(describing: $0) } ?? "?"
+        NotificationDebugLog.append(
+            source: "tap",
+            message: "User tapped notification (gcm.message_id=\(mid))",
+            isError: false
+        )
         NotificationCenter.default.post(
             name: .preluraNotificationTapped,
             object: nil,
@@ -249,6 +326,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             pushBootstrapLog.info("willPresent remote notification gcm.message_id=\(String(describing: mid), privacy: .public)")
             print("[Push] Foreground notification (gcm.message_id=\(mid))")
         }
+        let midStr = u["gcm.message_id"].map { String(describing: $0) } ?? "?"
+        NotificationDebugLog.append(
+            source: "present",
+            message: "willPresent — showing banner/sound (foreground) gcm.message_id=\(midStr)",
+            isError: false
+        )
         completionHandler([.banner, .badge, .sound])
     }
 }

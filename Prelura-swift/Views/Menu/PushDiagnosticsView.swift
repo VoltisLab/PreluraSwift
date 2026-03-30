@@ -4,11 +4,6 @@ import UserNotifications
 import FirebaseCore
 import FirebaseMessaging
 
-private struct DiagnosticLogEntry: Identifiable {
-    let id = UUID()
-    let text: String
-}
-
 /// Menu → Debug — confirms Firebase, permission, local FCM token, and last `updateProfile(fcmToken:)` result.
 struct PushDiagnosticsView: View {
     @EnvironmentObject private var authService: AuthService
@@ -23,7 +18,7 @@ struct PushDiagnosticsView: View {
     @State private var refreshNote = ""
     @State private var testPushCountdown: Int?
     @State private var testPushBusy = false
-    @State private var eventLog: [DiagnosticLogEntry] = []
+    @State private var traceEntries: [NotificationDebugLog.Entry] = []
 
     var body: some View {
         List {
@@ -131,29 +126,48 @@ struct PushDiagnosticsView: View {
             }
 
             Section {
-                if eventLog.isEmpty {
-                    Text("No test events yet — use the button above to run a server test.")
+                if traceEntries.isEmpty {
+                    Text("No events recorded yet. Use the app, grant notifications, and run a server test — lines appear here automatically.")
                         .font(.caption)
                         .foregroundStyle(Theme.Colors.secondaryText)
                 } else {
-                    ForEach(eventLog) { entry in
-                        Text(entry.text)
-                            .font(.caption2)
-                            .foregroundStyle(Theme.Colors.secondaryText)
-                            .textSelection(.enabled)
+                    ForEach(traceEntries) { entry in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(entry.at)
+                                .font(.caption2)
+                                .foregroundStyle(Theme.Colors.secondaryText)
+                            Text("[\(entry.source)] \(entry.message)")
+                                .font(.caption)
+                                .foregroundStyle(entry.isError ? Color.red : Theme.Colors.primaryText)
+                                .textSelection(.enabled)
+                        }
                     }
                 }
+                Button("Clear event trace", role: .destructive) {
+                    NotificationDebugLog.clear()
+                    reloadTrace()
+                }
             } header: {
-                Text("Notification test log")
+                Text("Notification event trace")
             } footer: {
-                Text("The API allows one server test push every 60 seconds per account. Background the app before the countdown ends to see the banner clearly.")
+                Text("Shows what the app knows: Firebase setup, APNs/FCM errors, token uploads, when a remote message arrives (background), when a banner is shown (foreground), and tap events. If the server sends FCM but Apple never delivers, you may see no “remote” or “present” lines — fix Firebase APNs for com.prelura.preloved. Server-side FCM rejections only appear if the API returns an error (e.g. debug test push message).")
             }
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
         .navigationTitle("Push diagnostics")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { loadStaticState() }
+        .onAppear {
+            loadStaticState()
+            reloadTrace()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .preluraNotificationDebugLogDidChange)) { _ in
+            reloadTrace()
+        }
+    }
+
+    private func reloadTrace() {
+        traceEntries = NotificationDebugLog.entries()
     }
 
     private func loadStaticState() {
@@ -188,20 +202,10 @@ struct PushDiagnosticsView: View {
         return "\(a)…\(b) (\(full.count) chars)"
     }
 
-    private func logEvent(_ msg: String) {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm:ss"
-        let line = "\(f.string(from: Date()))  \(msg)"
-        eventLog.insert(DiagnosticLogEntry(text: line), at: 0)
-        if eventLog.count > 40 {
-            eventLog.removeLast()
-        }
-    }
-
     private func scheduleServerTestPushAfterDelay() {
         guard authService.isAuthenticated, let bearer = authService.authToken, !testPushBusy else { return }
         testPushBusy = true
-        logEvent("Scheduled server test push — 5s countdown…")
+        NotificationDebugLog.append(source: "diagnostics", message: "Scheduled server test push — 5s countdown…", isError: false)
         Task { @MainActor in
             defer {
                 testPushBusy = false
@@ -212,18 +216,30 @@ struct PushDiagnosticsView: View {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
             testPushCountdown = nil
-            logEvent("Calling sendDebugTestPush…")
+            NotificationDebugLog.append(source: "diagnostics", message: "Calling sendDebugTestPush (GraphQL)…", isError: false)
             let userService = UserService()
             userService.updateAuthToken(bearer)
             do {
                 let result = try await userService.sendDebugTestPush()
                 if result.success {
-                    logEvent("API OK — \(result.message ?? "sent")")
+                    NotificationDebugLog.append(
+                        source: "diagnostics",
+                        message: "sendDebugTestPush OK — \(result.message ?? "sent")",
+                        isError: false
+                    )
                 } else {
-                    logEvent("API: \(result.message ?? "failed")")
+                    NotificationDebugLog.append(
+                        source: "diagnostics",
+                        message: "sendDebugTestPush: \(result.message ?? "failed")",
+                        isError: true
+                    )
                 }
             } catch {
-                logEvent("API error: \(error.localizedDescription)")
+                NotificationDebugLog.append(
+                    source: "diagnostics",
+                    message: "sendDebugTestPush GraphQL error: \(error.localizedDescription)",
+                    isError: true
+                )
             }
         }
     }
@@ -238,6 +254,7 @@ struct PushDiagnosticsView: View {
 
         guard FirebaseApp.app() != nil else {
             refreshNote = "Firebase not configured."
+            NotificationDebugLog.append(source: "diagnostics", message: "Manual refresh: Firebase not configured", isError: true)
             loadStaticState()
             return
         }
@@ -249,6 +266,11 @@ struct PushDiagnosticsView: View {
                     DispatchQueue.main.async {
                         self.refreshNote = "Messaging.token: \(err.localizedDescription)"
                     }
+                    NotificationDebugLog.append(
+                        source: "diagnostics",
+                        message: "Manual refresh Messaging.token error: \(err.localizedDescription)",
+                        isError: true
+                    )
                     return
                 }
                 cont.resume(returning: tok)
@@ -257,6 +279,7 @@ struct PushDiagnosticsView: View {
 
         guard let token, !token.isEmpty else {
             refreshNote = "FCM returned no token (APNs may not be registered — common on simulator or if Push capability is off)."
+            NotificationDebugLog.append(source: "diagnostics", message: "Manual refresh: empty FCM token", isError: true)
             loadStaticState()
             return
         }
@@ -266,6 +289,7 @@ struct PushDiagnosticsView: View {
 
         guard authService.isAuthenticated, let bearer = authService.authToken else {
             refreshNote = "Token received; sign in to upload to API."
+            NotificationDebugLog.append(source: "diagnostics", message: "Manual refresh: FCM OK but not signed in", isError: false)
             loadStaticState()
             return
         }

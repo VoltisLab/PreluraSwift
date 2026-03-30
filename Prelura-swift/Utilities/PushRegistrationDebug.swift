@@ -11,6 +11,7 @@ enum PushRegistrationDebug {
         UserDefaults.standard.set("OK — token sent to API", forKey: uploadSummaryKey)
         UserDefaults.standard.set("", forKey: uploadDetailKey)
         UserDefaults.standard.set(df.string(from: Date()), forKey: uploadTimestampKey)
+        NotificationDebugLog.append(source: "backend", message: "updateProfile(fcmToken:) succeeded", isError: false)
     }
 
     static func recordUploadFailure(_ detail: String) {
@@ -18,7 +19,7 @@ enum PushRegistrationDebug {
         UserDefaults.standard.set("Failed — see detail", forKey: uploadSummaryKey)
         UserDefaults.standard.set(detail, forKey: uploadDetailKey)
         UserDefaults.standard.set(df.string(from: Date()), forKey: uploadTimestampKey)
-        // Always print so device logs help without opening Debug.
+        NotificationDebugLog.append(source: "backend", message: "updateProfile(fcmToken:) failed: \(detail)", isError: true)
         print("[Push] updateProfile(fcmToken:) failed — \(detail)")
     }
 }

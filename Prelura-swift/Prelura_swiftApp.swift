@@ -27,6 +27,7 @@ private func registerPushTokenIfNeeded(authService: AuthService) {
     }
     guard FirebaseApp.app() != nil else {
         pushRegistrationLogger.debug("Skip FCM upload: Firebase not configured.")
+        NotificationDebugLog.append(source: "backend", message: "Skip FCM upload: Firebase not configured in app", isError: true)
         print("[Push] Skip FCM → backend: Firebase not configured.")
         return
     }
@@ -35,11 +36,21 @@ private func registerPushTokenIfNeeded(authService: AuthService) {
             guard authService.isAuthenticated else { return }
             if let error {
                 pushRegistrationLogger.error("Messaging.token() before upload: \(error.localizedDescription, privacy: .public)")
+                NotificationDebugLog.append(
+                    source: "fcm",
+                    message: "Messaging.token() before upload: \(error.localizedDescription)",
+                    isError: true
+                )
                 print("[Push] Messaging.token() before upload failed: \(error.localizedDescription)")
                 return
             }
             guard let token, !token.isEmpty else {
                 pushRegistrationLogger.debug("Skip FCM upload: empty token (notifications permission / APNs).")
+                NotificationDebugLog.append(
+                    source: "fcm",
+                    message: "Empty FCM token when uploading to API (check permission / APNs / simulator)",
+                    isError: true
+                )
                 print("[Push] Skip FCM → backend: empty FCM token (allow notifications + APNs registration).")
                 return
             }
