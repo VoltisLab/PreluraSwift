@@ -159,7 +159,7 @@ struct PaymentView: View {
                             Text(L10n.string("Buyer protection fee"))
                                 .font(Theme.Typography.body)
                                 .foregroundColor(Theme.Colors.primaryText)
-                            Text(String(format: "£%.2f", buyerProtectionFee))
+                            Text(CurrencyFormatter.gbp(buyerProtectionFee))
                                 .font(Theme.Typography.body)
                                 .foregroundColor(Theme.Colors.secondaryText)
                         }
@@ -180,7 +180,7 @@ struct PaymentView: View {
                                     .lineLimit(2)
                                 Spacer()
                                 if let offerPrice = perItemOfferPrice {
-                                    Text(String(format: "£%.2f", offerPrice))
+                                    Text(CurrencyFormatter.gbp(offerPrice))
                                         .font(Theme.Typography.body)
                                         .foregroundColor(Theme.Colors.secondaryText)
                                 } else {
@@ -193,15 +193,15 @@ struct PaymentView: View {
                             .padding(.vertical, Theme.Spacing.sm)
                             .overlay(ContentDivider(), alignment: .bottom)
                         }
-                        infoRow(L10n.string("Price"), String(format: "£%.2f", orderSubtotal))
+                        infoRow(L10n.string("Price"), CurrencyFormatter.gbp(orderSubtotal))
                         if products.count > 1 && multiBuyDiscountPercent > 0 {
-                            infoRow(String(format: L10n.string("Multi-buy discount (%d%%)"), multiBuyDiscountPercent), String(format: "-£%.2f", multiBuyDiscountAmount), valueColor: Theme.primaryColor)
+                            infoRow(String(format: L10n.string("Multi-buy discount (%d%%)"), multiBuyDiscountPercent), CurrencyFormatter.gbp(-multiBuyDiscountAmount), valueColor: Theme.primaryColor)
                         }
                         postageSummaryRows
                         if buyerProtectionEnabled {
-                            infoRow(L10n.string("Buyer protection fee"), String(format: "£%.2f", buyerProtectionFee))
+                            infoRow(L10n.string("Buyer protection fee"), CurrencyFormatter.gbp(buyerProtectionFee))
                         }
-                        infoRow(L10n.string("Total"), String(format: "£%.2f", total), isBold: true)
+                        infoRow(L10n.string("Total"), CurrencyFormatter.gbp(total), isBold: true)
                     }
                     .background(Theme.Colors.background)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -353,11 +353,11 @@ struct PaymentView: View {
     @ViewBuilder
     private var postageSummaryRows: some View {
         if sellerGroups.count <= 1 {
-            infoRow(L10n.string("Postage"), String(format: "£%.2f", effectiveShippingFee))
+            infoRow(L10n.string("Postage"), CurrencyFormatter.gbp(effectiveShippingFee))
         } else {
             ForEach(sellerGroups, id: \.seller.id) { group in
                 let name = group.seller.username.isEmpty ? L10n.string("Seller") : group.seller.username
-                infoRow("\(L10n.string("Postage")) · \(name)", String(format: "£%.2f", postageFee(for: group.seller)))
+                infoRow("\(L10n.string("Postage")) · \(name)", CurrencyFormatter.gbp(postageFee(for: group.seller)))
             }
         }
     }
@@ -377,7 +377,7 @@ struct PaymentView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.primaryText)
                 }
-                Text(String(format: "£%.2f", option.shippingFee))
+                Text(CurrencyFormatter.gbp(option.shippingFee))
                     .font(Theme.Typography.caption)
                     .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.secondaryText)
             }
@@ -409,7 +409,7 @@ struct PaymentView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.primaryText)
                 }
-                Text(String(format: "£%.2f", option.shippingFee))
+                Text(CurrencyFormatter.gbp(option.shippingFee))
                     .font(Theme.Typography.caption)
                     .foregroundColor(isSelected ? Theme.primaryColor : Theme.Colors.secondaryText)
                 if let days = option.estimatedDays, days > 0 {

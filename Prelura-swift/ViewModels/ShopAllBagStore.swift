@@ -11,7 +11,7 @@ final class ShopAllBagStore: ObservableObject {
     }
 
     var formattedTotal: String {
-        String(format: "£%.2f", totalPrice)
+        CurrencyFormatter.gbp(totalPrice)
     }
 
     func add(_ item: Item) {

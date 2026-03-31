@@ -132,12 +132,14 @@ enum ChatItem: Hashable {
     case message(UUID)
     case offer(String)
     case sold(OrderInfo)
+    case soldBanner(Date)
 
     var id: String {
         switch self {
         case .message(let m): return "msg-\(m.uuidString)"
         case .offer(let o): return "offer-\(o)"
         case .sold(let o): return "sold-\(o.id)"
+        case .soldBanner(let d): return "sold-banner-\(Int(d.timeIntervalSince1970))"
         }
     }
 
@@ -147,6 +149,10 @@ enum ChatItem: Hashable {
     }
     var isSold: Bool {
         if case .sold = self { return true }
+        return false
+    }
+    var isSoldBanner: Bool {
+        if case .soldBanner = self { return true }
         return false
     }
 }
@@ -181,6 +187,8 @@ struct ChatDetailView: View {
     @State private var showItemSoldBanner = false
     @State private var offerModalSubmitting = false
     @State private var showReportUserSheet = false
+    @State private var reconnectTask: Task<Void, Never>?
+    @State private var reconnectAttempt = 0
     /// WhatsApp-style long-press reactions (local persistence per device).
     @ObservedObject private var messageReactionsStore = ChatMessageReactionsStore.shared
     @State private var reactionOverlayMessage: Message?
@@ -669,6 +677,11 @@ struct ChatDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, topPadding)
+        case .soldBanner:
+            let prevIsOfferOrSold = (timelineIndex > 0 && timelineIndex - 1 < timelineOrder.count) && (timelineOrder[timelineIndex - 1].isOffer || timelineOrder[timelineIndex - 1].isSold || timelineOrder[timelineIndex - 1].isSoldBanner)
+            let topPadding: CGFloat = timelineIndex == 0 ? 0 : (prevIsOfferOrSold ? 0 : Theme.Spacing.md)
+            itemSoldPersistentBanner
+                .padding(.top, topPadding)
         }
     }
 
@@ -681,12 +694,6 @@ struct ChatDetailView: View {
                     .frame(height: 0.5)
             } else if displayedConversation.offer != nil {
                 offerProductHeaderBar
-                Rectangle()
-                    .fill(Theme.Colors.glassBorder)
-                    .frame(height: 0.5)
-            }
-            if showItemSoldBanner, displayedConversation.offer != nil, displayedConversation.order == nil {
-                itemSoldPersistentBanner
                 Rectangle()
                     .fill(Theme.Colors.glassBorder)
                     .frame(height: 0.5)
@@ -915,6 +922,8 @@ struct ChatDetailView: View {
         .onChange(of: displayedConversation.id) { _, _ in
             webSocket?.disconnect()
             webSocket = nil
+            reconnectTask?.cancel()
+            reconnectTask = nil
             remoteTypingIndicator.clear()
             typingKeepaliveTask?.cancel()
             typingKeepaliveTask = nil
@@ -939,6 +948,8 @@ struct ChatDetailView: View {
             if phase == .inactive || phase == .background {
                 webSocket?.disconnect()
                 webSocket = nil
+                reconnectTask?.cancel()
+                reconnectTask = nil
                 remoteTypingIndicator.clear()
                 typingKeepaliveTask?.cancel()
                 typingKeepaliveTask = nil
@@ -983,6 +994,8 @@ struct ChatDetailView: View {
             }
             webSocket?.disconnect()
             webSocket = nil
+            reconnectTask?.cancel()
+            reconnectTask = nil
             remoteTypingIndicator.clear()
             typingKeepaliveTask?.cancel()
             typingKeepaliveTask = nil
@@ -1397,6 +1410,12 @@ struct ChatDetailView: View {
                 rolesConfirmed: parties.rolesConfirmed
             )
             entries.append((orderInfo.createdAt, .sold(orderInfo)))
+        } else if showItemSoldBanner, displayedConversation.offer != nil {
+            let soldBannerTime = messages.last(where: { $0.isSoldConfirmation })?.timestamp
+                ?? offerList.last?.createdAt
+                ?? msgs.last?.timestamp
+                ?? Date()
+            entries.append((soldBannerTime, .soldBanner(soldBannerTime)))
         }
         entries.sort { $0.0 < $1.0 }
         timelineOrder = entries.map(\.1)
@@ -1704,7 +1723,7 @@ struct ChatDetailView: View {
     private var orderHeaderBar: some View {
         guard let order = displayedConversation.order else { return AnyView(EmptyView()) }
         let headerPrice = latestAcceptedOfferPriceForHeader ?? order.total
-        let priceStr = String(format: "£%.2f", headerPrice)
+        let priceStr = CurrencyFormatter.gbp(headerPrice)
         let orderProductId = order.firstProductId.flatMap { Int($0) }
         let rawOrderImage = orderProductItem?.thumbnailURLForChrome
             ?? order.firstProductImageUrl.flatMap { ProductListImageURL.preferredString(from: $0) ?? $0 }
@@ -1801,7 +1820,7 @@ struct ChatDetailView: View {
 
     private var offerProductHeaderBar: some View {
         let offer = displayedConversation.offer!
-        let priceStr = String(format: "£%.2f", offer.offerPrice)
+        let priceStr = CurrencyFormatter.gbp(offer.offerPrice)
         let offerProductId = offer.products?.first?.id.flatMap { Int($0) }
         let rawOfferImage = offerProductItem?.thumbnailURLForChrome
             ?? offerProductId.flatMap { ChatHeaderProductImageURLStore.url(forProductId: $0) }
@@ -1811,18 +1830,35 @@ struct ChatDetailView: View {
             if let u = URL(string: t) { return (u, false) }
             return (nil, true)
         }()
+        let soldStyleActive = showItemSoldBanner && displayedConversation.order == nil
         let bar = HStack(spacing: Theme.Spacing.md) {
-            ChatHeaderProductThumbnail(imageURL: offerThumb.url, invalidURLFromAPI: offerThumb.invalidURL)
+            ChatHeaderProductThumbnail(
+                imageURL: offerThumb.url,
+                invalidURLFromAPI: offerThumb.invalidURL,
+                soldOverlayActive: soldStyleActive
+            )
             VStack(alignment: .leading, spacing: 2) {
                 Text(offerProductItem?.title ?? offer.products?.first?.name ?? "Product")
                     .font(Theme.Typography.subheadline)
                     .fontWeight(.medium)
                     .foregroundColor(Theme.Colors.primaryText)
                     .lineLimit(1)
-                Text(priceStr)
-                    .font(Theme.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundColor(Theme.primaryColor)
+                HStack(spacing: 8) {
+                    Text(priceStr)
+                        .font(Theme.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.primaryColor)
+                    if soldStyleActive {
+                        Text(L10n.string("Sold"))
+                            .font(Theme.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Theme.primaryColor)
+                            .cornerRadius(8)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "chevron.right")
@@ -1845,19 +1881,17 @@ struct ChatDetailView: View {
 
     /// Full-width strip under the offer header; matches other persistent chat affordances (saved in UserDefaults).
     private var itemSoldPersistentBanner: some View {
-        HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+        HStack(alignment: .center, spacing: Theme.Spacing.xs) {
             Image(systemName: "tag.slash.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(Theme.primaryColor)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.gray)
             Text(L10n.string("This item has been sold"))
-                .font(Theme.Typography.subheadline)
-                .fontWeight(.semibold)
-                .foregroundColor(Theme.Colors.primaryText)
+                .font(Theme.Typography.caption)
+                .foregroundColor(.gray)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.sm)
-        .background(Theme.Colors.secondaryBackground)
+        .padding(.horizontal, Theme.Spacing.sm)
+        .padding(.vertical, Theme.Spacing.xs)
         .accessibilityIdentifier("chat_item_sold_banner")
     }
 
@@ -2163,9 +2197,57 @@ struct ChatDetailView: View {
         tabCoordinator?.requestInboxListRefresh()
     }
 
+    private func publishInboxPreviewFromMessage(_ msg: Message) {
+        guard displayedConversation.id != "0",
+              let tc = tabCoordinator else { return }
+        let previewConversation = Conversation(
+            id: displayedConversation.id,
+            recipient: displayedConversation.recipient,
+            lastMessage: msg.content,
+            lastMessageSenderUsername: msg.senderUsername,
+            lastMessageTime: msg.timestamp,
+            unreadCount: displayedConversation.unreadCount,
+            offer: displayedConversation.offer,
+            order: displayedConversation.order,
+            offerHistory: displayedConversation.offerHistory
+        )
+        let previewText = ChatRowView.previewText(
+            for: msg.content,
+            conversation: previewConversation,
+            currentUsername: authService.username
+        ) ?? (msg.content.count > 60 ? String(msg.content.prefix(57)) + "..." : msg.content)
+        tc.lastMessagePreviewForConversation = (displayedConversation.id, previewText, msg.timestamp)
+    }
+
+    private func scheduleSocketReconnect(reason: String) {
+        guard scenePhase == .active,
+              displayedConversation.id != "0",
+              webSocket == nil else { return }
+        reconnectTask?.cancel()
+        reconnectAttempt += 1
+        let delaySeconds = min(8, 1 << min(reconnectAttempt, 3))
+        reconnectTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(delaySeconds) * 1_000_000_000)
+            await MainActor.run {
+                guard scenePhase == .active,
+                      displayedConversation.id != "0",
+                      webSocket == nil else { return }
+                ChatPushTraceDebugState.shared.markSocketTraffic(
+                    conversationId: displayedConversation.id,
+                    summary: "reconnect attempt \(reconnectAttempt) after \(reason)"
+                )
+                connectWebSocket()
+            }
+        }
+    }
+
     private func connectWebSocket() {
         guard displayedConversation.id != "0",
               let token = authService.authToken, !token.isEmpty else { return }
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        ChatPushTraceDebugState.shared.markSocketConnectAttempt(conversationId: displayedConversation.id)
+        let convIdForPushTrace = displayedConversation.id
         let ws = ChatWebSocketService(conversationId: displayedConversation.id, token: token)
         ws.onNewMessage = { [self] msg, echoMessageUuid in
             if let pending = pendingMessageUUID, echoMessageUuid == pending,
@@ -2186,6 +2268,8 @@ struct ChatDetailView: View {
                 } else if msg.isSoldConfirmation {
                     rebuildTimelineOrder()
                 }
+                ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "message_received_echo")
+                publishInboxPreviewFromMessage(msg)
                 notifyInboxListShouldRefresh()
                 return
             }
@@ -2198,6 +2282,8 @@ struct ChatDetailView: View {
             } else if msg.isSoldConfirmation {
                 rebuildTimelineOrder()
             }
+            ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "message_received")
+            publishInboxPreviewFromMessage(msg)
             notifyInboxListShouldRefresh()
         }
         ws.onOfferEvent = { [self] event in
@@ -2220,13 +2306,22 @@ struct ChatDetailView: View {
         let authForTyping = authService
         ws.onTypingEvent = { event in
             typingModel.handleSocketEvent(event, currentUsername: authForTyping.username)
+            if event.isTyping {
+                Task { @MainActor in
+                    ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "typing_from_peer")
+                }
+            }
         }
-        let convIdForPushTrace = displayedConversation.id
         ws.onConnectionStateChanged = { connected in
             Task { @MainActor in
                 guard convIdForPushTrace != "0" else { return }
                 if connected {
+                    reconnectAttempt = 0
+                    reconnectTask?.cancel()
+                    reconnectTask = nil
                     ChatPushTraceDebugState.shared.markSocketConnected(conversationId: convIdForPushTrace)
+                } else {
+                    scheduleSocketReconnect(reason: "state_disconnected")
                 }
             }
         }
@@ -2234,6 +2329,8 @@ struct ChatDetailView: View {
             Task { @MainActor in
                 guard convIdForPushTrace != "0" else { return }
                 ChatPushTraceDebugState.shared.markSocketDisconnected(conversationId: convIdForPushTrace, reason: reason)
+                webSocket = nil
+                scheduleSocketReconnect(reason: reason)
             }
         }
         webSocket = ws
@@ -2351,6 +2448,7 @@ struct ChatDetailView: View {
         messages.append(optimistic)
         timelineOrder.append(.message(optimistic.id))
         pendingMessageUUID = messageUUID
+        publishInboxPreviewFromMessage(optimistic)
         if let ws = webSocket, ws.send(message: text, messageUUID: messageUUID) {
             // WebSocket path persists on the server and triggers push; GraphQL SendMessage would duplicate the row.
         } else {
@@ -2390,7 +2488,7 @@ struct OfferCardView: View {
     var forceGreyedOut: Bool = false
 
     private var offerLine: String {
-        let priceStr = String(format: "£%.2f", offer.offerPrice)
+        let priceStr = CurrencyFormatter.gbp(offer.offerPrice)
         if offer.sentByCurrentUser {
             return "You offered \(priceStr)"
         }
@@ -2657,6 +2755,7 @@ private struct ChatHeaderProductThumbnail: View {
     var imageURL: URL?
     /// Non-empty image string from API that did not parse as a URL — show photo placeholder, not an endless spinner.
     var invalidURLFromAPI: Bool = false
+    var soldOverlayActive: Bool = false
 
     var body: some View {
         Group {
@@ -2679,6 +2778,13 @@ private struct ChatHeaderProductThumbnail: View {
         }
         .aspectRatio(1, contentMode: .fill)
         .frame(width: 56, height: 56)
+        .saturation(soldOverlayActive ? 0 : 1)
+        .overlay {
+            if soldOverlayActive {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.black.opacity(0.35))
+            }
+        }
         .clipped()
         .cornerRadius(8)
     }
@@ -2740,7 +2846,7 @@ struct OrderConfirmationCardView: View {
                     .foregroundColor(Theme.Colors.primaryText)
             }
             HStack {
-                Text(String(format: "£%.2f", order.total))
+                Text(CurrencyFormatter.gbp(order.total))
                     .font(Theme.Typography.body)
                     .fontWeight(.semibold)
                     .foregroundColor(Theme.primaryColor)
@@ -3346,7 +3452,7 @@ struct MessageBubbleView: View {
             reactionStrip
             if showTimestamp {
                 HStack {
-                    Spacer(minLength: 0)
+                    if isCurrentUser { Spacer(minLength: 0) }
                     Text(message.formattedTimestamp)
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)

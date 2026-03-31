@@ -257,10 +257,7 @@ struct ShopValueView: View {
     }
 
     private func formatCurrency(_ value: Double) -> String {
-        if value == floor(value) {
-            return "£\(Int(value))"
-        }
-        return String(format: "£%.2f", value)
+        CurrencyFormatter.gbp(value)
     }
 
     private func formatNumber(_ n: Int) -> String {

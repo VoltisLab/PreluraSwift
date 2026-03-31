@@ -441,7 +441,7 @@ struct ChatRowView: View {
         let iSentLastOffer = usernamesMatch(conversation.lastMessageSenderUsername, currentUsername)
         guard let raw = raw, !raw.isEmpty else {
             if let offer = conversation.offer {
-                let amount = String(format: "£%.2f", offer.offerPrice)
+                let amount = CurrencyFormatter.gbp(offer.offerPrice)
                 let buyerName = offer.buyer?.username?.trimmingCharacters(in: .whitespacesAndNewlines)
                 if let me = currentUsername?.trimmingCharacters(in: .whitespacesAndNewlines),
                    let buyerName,

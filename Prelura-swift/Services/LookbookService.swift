@@ -20,6 +20,13 @@ struct ServerLookbookPost: Decodable {
     var userLiked: Bool?
 }
 
+struct ServerLookbookComment: Decodable, Identifiable {
+    let id: String
+    let username: String
+    let text: String
+    let createdAt: String?
+}
+
 struct CreateLookbookResponse: Decodable {
     let createLookbook: CreateLookbookPayload?
 }
@@ -213,5 +220,94 @@ final class LookbookService {
             return edges.compactMap { $0.node }
         }
         return []
+    }
+
+    func toggleLike(postId: String) async throws -> (liked: Bool, likesCount: Int) {
+        let query = """
+        mutation ToggleLookbookLike($postId: UUID!) {
+          toggleLookbookLike(postId: $postId) {
+            success
+            liked
+            likesCount
+            message
+          }
+        }
+        """
+        let variables: [String: Any] = ["postId": postId]
+        struct Response: Decodable { let toggleLookbookLike: Payload? }
+        struct Payload: Decodable {
+            let success: Bool?
+            let liked: Bool?
+            let likesCount: Int?
+            let message: String?
+        }
+        let response: Response = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "ToggleLookbookLike",
+            responseType: Response.self
+        )
+        guard let payload = response.toggleLookbookLike, payload.success == true else {
+            throw NSError(domain: "LookbookService", code: -1, userInfo: [NSLocalizedDescriptionKey: response.toggleLookbookLike?.message ?? "Like failed"])
+        }
+        return (payload.liked ?? false, payload.likesCount ?? 0)
+    }
+
+    func fetchComments(postId: String) async throws -> [ServerLookbookComment] {
+        let query = """
+        query LookbookComments($postId: UUID!) {
+          lookbookComments(postId: $postId) {
+            id
+            username
+            text
+            createdAt
+          }
+        }
+        """
+        let variables: [String: Any] = ["postId": postId]
+        struct Response: Decodable { let lookbookComments: [ServerLookbookComment]? }
+        let response: Response = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "LookbookComments",
+            responseType: Response.self
+        )
+        return response.lookbookComments ?? []
+    }
+
+    func addComment(postId: String, text: String) async throws -> (comment: ServerLookbookComment, commentsCount: Int) {
+        let query = """
+        mutation AddLookbookComment($postId: UUID!, $text: String!) {
+          addLookbookComment(postId: $postId, text: $text) {
+            success
+            message
+            commentsCount
+            comment {
+              id
+              username
+              text
+              createdAt
+            }
+          }
+        }
+        """
+        let variables: [String: Any] = ["postId": postId, "text": text]
+        struct Response: Decodable { let addLookbookComment: Payload? }
+        struct Payload: Decodable {
+            let success: Bool?
+            let message: String?
+            let commentsCount: Int?
+            let comment: ServerLookbookComment?
+        }
+        let response: Response = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "AddLookbookComment",
+            responseType: Response.self
+        )
+        guard let payload = response.addLookbookComment, payload.success == true, let comment = payload.comment else {
+            throw NSError(domain: "LookbookService", code: -1, userInfo: [NSLocalizedDescriptionKey: response.addLookbookComment?.message ?? "Add comment failed"])
+        }
+        return (comment, payload.commentsCount ?? 0)
     }
 }

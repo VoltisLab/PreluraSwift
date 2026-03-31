@@ -21,6 +21,7 @@ struct LookbookEntry: Identifiable {
     /// First remote URL, if any.
     var imageUrl: String? { imageUrls.first }
     let posterUsername: String
+    let caption: String?
     var likesCount: Int
     var commentsCount: Int
     var isLiked: Bool
@@ -30,7 +31,7 @@ struct LookbookEntry: Identifiable {
     /// productId -> snapshot for thumbnails; from local store when available.
     let productSnapshots: [String: LookbookProductSnapshot]?
 
-    init(id: UUID? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, posterUsername: String, likesCount: Int, commentsCount: Int, isLiked: Bool, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
+    init(id: UUID? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, posterUsername: String, caption: String? = nil, likesCount: Int, commentsCount: Int, isLiked: Bool, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
         self.id = id ?? UUID()
         self.imageNames = imageNames
         self.documentImagePath = documentImagePath
@@ -40,6 +41,7 @@ struct LookbookEntry: Identifiable {
             self.imageUrls = []
         }
         self.posterUsername = posterUsername
+        self.caption = caption
         self.likesCount = likesCount
         self.commentsCount = commentsCount
         self.isLiked = isLiked
@@ -66,6 +68,7 @@ struct LookbookEntry: Identifiable {
             self.imageUrls = fromServer
         }
         self.posterUsername = serverPost.username
+        self.caption = serverPost.caption
         self.likesCount = serverPost.likesCount ?? 0
         self.commentsCount = serverPost.commentsCount ?? 0
         self.isLiked = serverPost.userLiked ?? false
@@ -137,6 +140,7 @@ struct LookbookView: View {
     @State private var showSearchSheet: Bool = false
     @State private var searchText: String = ""
     @State private var commentsEntry: LookbookEntry?
+    @State private var fullScreenEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
     private let productService = ProductService()
 
@@ -217,7 +221,16 @@ struct LookbookView: View {
             }
         }
         .sheet(item: $commentsEntry) { entry in
-            LookbookCommentsSheet(entry: entry)
+            LookbookCommentsSheet(entry: entry) { newCount in
+                if let idx = entries.firstIndex(where: { $0.id == entry.id }) {
+                    var updated = entries[idx]
+                    updated.commentsCount = newCount
+                    entries[idx] = updated
+                }
+            }
+        }
+        .fullScreenCover(item: $fullScreenEntry) { entry in
+            LookbookFullscreenViewer(entry: entry)
         }
         .sheet(isPresented: $showSearchSheet) {
             LookbookSearchSheet(searchText: $searchText, entries: filteredEntries)
@@ -306,6 +319,7 @@ struct LookbookView: View {
                     e.likesCount += e.isLiked ? 1 : -1
                     entries[i] = e
                 }
+                Task { await syncLookbookLike(postId: entryId.uuidString) }
             },
             onImageDoubleTap: { entry in
                 let entryId = entry.id
@@ -316,12 +330,40 @@ struct LookbookView: View {
                     e.likesCount += 1
                     entries[i] = e
                 }
+                Task { await syncLookbookLike(postId: entryId.uuidString) }
             },
             onCommentsTap: { entry in commentsEntry = entry },
+            onImageTap: { entry in fullScreenEntry = entry },
             onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) }
         )
         .id(model.id)
         .padding(.bottom, lookbookSpacing)
+    }
+
+    private func syncLookbookLike(postId: String) async {
+        do {
+            let client = GraphQLClient()
+            client.setAuthToken(authService.authToken)
+            let service = LookbookService(client: client)
+            let result = try await service.toggleLike(postId: postId)
+            await MainActor.run {
+                guard let uuid = UUID(uuidString: postId),
+                      let idx = entries.firstIndex(where: { $0.id == uuid }) else { return }
+                var entry = entries[idx]
+                entry.isLiked = result.liked
+                entry.likesCount = result.likesCount
+                entries[idx] = entry
+            }
+        } catch {
+            await MainActor.run {
+                guard let uuid = UUID(uuidString: postId),
+                      let idx = entries.firstIndex(where: { $0.id == uuid }) else { return }
+                var entry = entries[idx]
+                entry.isLiked.toggle()
+                entry.likesCount += entry.isLiked ? 1 : -1
+                entries[idx] = entry
+            }
+        }
     }
 }
 
@@ -335,10 +377,13 @@ private struct LookbookFeedImage: View {
     /// When false, tagged pins are hidden (e.g. secondary carousel slides).
     let showTagOverlay: Bool
     let onDoubleTapLike: () -> Void
+    let onTap: () -> Void
     let onProductTap: (String) -> Void
 
     @State private var scale: CGFloat = 1
     @State private var anchorScale: CGFloat = 1
+    @State private var dragOffset: CGSize = .zero
+    @State private var anchorDragOffset: CGSize = .zero
     @State private var showTaggedProducts = false
     @State private var bucket: LookbookCanonicalAspect = .square1080
     @State private var remoteImage: UIImage?
@@ -402,6 +447,7 @@ private struct LookbookFeedImage: View {
     var body: some View {
         filledImageLayer
             .scaleEffect(scale)
+            .offset(dragOffset)
             .frame(maxWidth: .infinity)
             .aspectRatio(bucket.rawValue, contentMode: .fit)
             .clipped()
@@ -438,12 +484,31 @@ private struct LookbookFeedImage: View {
             .contentShape(Rectangle())
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onTapGesture(count: 2, perform: onDoubleTapLike)
+            .onTapGesture(perform: onTap)
             .highPriorityGesture(
                 MagnificationGesture()
                     .onChanged { value in scale = anchorScale * value }
                     .onEnded { _ in
                         scale = min(max(scale, minScale), maxScale)
                         anchorScale = scale
+                        if scale <= 1.01 {
+                            dragOffset = .zero
+                            anchorDragOffset = .zero
+                        }
+                    }
+            )
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        guard scale > 1.01 else { return }
+                        dragOffset = CGSize(
+                            width: anchorDragOffset.width + value.translation.width,
+                            height: anchorDragOffset.height + value.translation.height
+                        )
+                    }
+                    .onEnded { _ in
+                        guard scale > 1.01 else { return }
+                        anchorDragOffset = dragOffset
                     }
             )
             .onAppear(perform: syncBucketFromLocalIfPossible)
@@ -589,6 +654,7 @@ private struct LookbookFeedRowView: View {
     let onHeartTap: (LookbookEntry) -> Void
     let onImageDoubleTap: (LookbookEntry) -> Void
     let onCommentsTap: (LookbookEntry) -> Void
+    let onImageTap: (LookbookEntry) -> Void
     let onProductTap: (String) -> Void
 
     @State private var carouselIndex: Int = 0
@@ -628,6 +694,7 @@ private struct LookbookFeedRowView: View {
                         productSnapshots: entry.productSnapshots,
                         showTagOverlay: idx == 0,
                         onDoubleTapLike: { onImageDoubleTap(entry) },
+                        onTap: { onImageTap(entry) },
                         onProductTap: onProductTap
                     )
                     .tag(idx)
@@ -643,6 +710,7 @@ private struct LookbookFeedRowView: View {
                 productSnapshots: entry.productSnapshots,
                 showTagOverlay: true,
                 onDoubleTapLike: { onImageDoubleTap(entry) },
+                onTap: { onImageTap(entry) },
                 onProductTap: onProductTap
             )
         }
@@ -671,6 +739,11 @@ private struct LookbookFeedRowView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(Theme.Colors.primaryText)
                 .padding(.horizontal, Theme.Spacing.md)
+
+            if let caption = entry.caption, !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                HashtagColoredText(text: caption)
+                    .padding(.horizontal, Theme.Spacing.md)
+            }
 
             mediaBlock
                 .frame(maxWidth: .infinity)
@@ -712,6 +785,7 @@ private struct LookbookFeedRowView: View {
                 Spacer()
             }
             .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.xs)
             .padding(.bottom, Theme.Spacing.sm)
 
             Rectangle()
@@ -756,43 +830,61 @@ private struct LookbookProductDetailLoader: View {
     }
 }
 
-// MARK: - Comments sheet (mock)
+// MARK: - Comments sheet
 struct LookbookCommentsSheet: View {
     let entry: LookbookEntry
+    var onCountChanged: ((Int) -> Void)? = nil
+    @EnvironmentObject private var authService: AuthService
     @Environment(\.dismiss) private var dismiss
-
-    private static let mockComments: [(author: String, text: String)] = [
-        ("stylefan", "Love this look!"),
-        ("thriftlover", "Where is the top from?"),
-        ("preloved_em", "So good 🔥"),
-    ]
+    @State private var comments: [ServerLookbookComment] = []
+    @State private var draft: String = ""
+    @State private var loading = false
+    @State private var sending = false
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    ForEach(Array(Self.mockComments.enumerated()), id: \.offset) { _, c in
-                        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                            Circle()
-                                .fill(Theme.Colors.secondaryBackground)
-                                .frame(width: 32, height: 32)
-                                .overlay(Text(String(c.author.prefix(1)).uppercased())
-                                    .font(.caption)
-                                    .foregroundColor(Theme.Colors.secondaryText))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(c.author)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                Text(c.text)
-                                    .font(Theme.Typography.subheadline)
-                                    .foregroundColor(Theme.Colors.primaryText)
-                            }
-                            Spacer()
-                        }
-                        .padding(.horizontal, Theme.Spacing.md)
-                    }
+            VStack(spacing: 0) {
+                if loading {
+                    ProgressView().padding(.top, Theme.Spacing.lg)
                 }
-                .padding(.vertical, Theme.Spacing.md)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                        ForEach(comments) { c in
+                            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                                Circle()
+                                    .fill(Theme.Colors.secondaryBackground)
+                                    .frame(width: 32, height: 32)
+                                    .overlay(Text(String(c.username.prefix(1)).uppercased())
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Colors.secondaryText))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(c.username)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(Theme.Colors.primaryText)
+                                    HashtagColoredText(text: c.text)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, Theme.Spacing.md)
+                        }
+                    }
+                    .padding(.vertical, Theme.Spacing.md)
+                }
+                HStack(spacing: Theme.Spacing.sm) {
+                    TextField("Add a comment", text: $draft, axis: .vertical)
+                        .lineLimit(1...4)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.sm)
+                        .background(Theme.Colors.secondaryBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                    Button(sending ? "..." : "Send") {
+                        sendComment()
+                    }
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
+                    .foregroundColor(Theme.primaryColor)
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm)
             }
             .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Comments"))
@@ -802,6 +894,41 @@ struct LookbookCommentsSheet: View {
                     Button(L10n.string("Done")) { dismiss() }
                         .foregroundColor(Theme.primaryColor)
                 }
+            }
+            .task { await loadComments() }
+        }
+    }
+
+    private func loadComments() async {
+        loading = true
+        defer { loading = false }
+        let client = GraphQLClient()
+        client.setAuthToken(authService.authToken)
+        let service = LookbookService(client: client)
+        if let loaded = try? await service.fetchComments(postId: entry.id.uuidString) {
+            comments = loaded
+            onCountChanged?(loaded.count)
+        }
+    }
+
+    private func sendComment() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        sending = true
+        let client = GraphQLClient()
+        client.setAuthToken(authService.authToken)
+        let service = LookbookService(client: client)
+        Task {
+            do {
+                let result = try await service.addComment(postId: entry.id.uuidString, text: text)
+                await MainActor.run {
+                    draft = ""
+                    comments.append(result.comment)
+                    onCountChanged?(result.commentsCount)
+                    sending = false
+                }
+            } catch {
+                await MainActor.run { sending = false }
             }
         }
     }
@@ -837,6 +964,148 @@ private struct LookbookEntryThumbnail: View {
                     .scaledToFit()
                     .foregroundStyle(Theme.Colors.secondaryText)
             }
+        }
+    }
+}
+
+private struct HashtagColoredText: View {
+    let text: String
+
+    private var attributed: AttributedString {
+        var result = AttributedString(text)
+        let pattern = "#\\w+"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return result }
+        let ns = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        for match in matches {
+            if let range = Range(match.range, in: result) {
+                result[range].foregroundColor = Theme.primaryColor
+                result[range].font = Theme.Typography.subheadline.weight(.semibold)
+            }
+        }
+        return result
+    }
+
+    var body: some View {
+        Text(attributed)
+            .font(Theme.Typography.subheadline)
+            .foregroundColor(Theme.Colors.primaryText)
+            .lineLimit(nil)
+    }
+}
+
+private struct LookbookFullscreenViewer: View {
+    let entry: LookbookEntry
+    @Environment(\.dismiss) private var dismiss
+    @State private var index: Int = 0
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            TabView(selection: $index) {
+                ForEach(Array(entry.imageUrls.enumerated()), id: \.offset) { idx, url in
+                    LookbookFullscreenImage(documentImagePath: idx == 0 ? entry.documentImagePath : nil, imageName: entry.imageNames.first ?? "", imageUrl: url)
+                        .tag(idx)
+                }
+                if entry.imageUrls.isEmpty {
+                    LookbookFullscreenImage(documentImagePath: entry.documentImagePath, imageName: entry.imageNames.first ?? "", imageUrl: nil)
+                        .tag(0)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .automatic))
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 30))
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
+            }
+            .padding(.top, 10)
+            .padding(.trailing, 12)
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+private struct LookbookFullscreenImage: View {
+    let documentImagePath: String?
+    let imageName: String
+    let imageUrl: String?
+
+    @State private var scale: CGFloat = 1
+    @State private var anchorScale: CGFloat = 1
+    @State private var dragOffset: CGSize = .zero
+    @State private var anchorDragOffset: CGSize = .zero
+
+    private var localUIImage: UIImage? {
+        if let path = documentImagePath,
+           let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appending(path: path),
+           let data = try? Data(contentsOf: url),
+           let ui = UIImage(data: data) { return ui }
+        if !imageName.isEmpty, let ui = UIImage(named: imageName) { return ui }
+        return nil
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            Group {
+                if let ui = localUIImage {
+                    Image(uiImage: ui).resizable().scaledToFit()
+                } else if let s = imageUrl, let url = URL(string: s) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image): image.resizable().scaledToFit()
+                        case .empty: ProgressView().tint(.white)
+                        default:
+                            Image(systemName: "photo")
+                                .resizable()
+                                .scaledToFit()
+                                .foregroundColor(.white.opacity(0.7))
+                                .padding(80)
+                        }
+                    }
+                } else {
+                    Image(systemName: "photo")
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(80)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .scaleEffect(scale)
+            .offset(dragOffset)
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                MagnificationGesture()
+                    .onChanged { value in
+                        scale = max(1, anchorScale * value)
+                    }
+                    .onEnded { _ in
+                        scale = min(max(scale, 1), 6)
+                        anchorScale = scale
+                        if scale <= 1.01 {
+                            dragOffset = .zero
+                            anchorDragOffset = .zero
+                        }
+                    }
+            )
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        guard scale > 1.01 else { return }
+                        dragOffset = CGSize(
+                            width: anchorDragOffset.width + value.translation.width,
+                            height: anchorDragOffset.height + value.translation.height
+                        )
+                    }
+                    .onEnded { _ in
+                        guard scale > 1.01 else { return }
+                        anchorDragOffset = dragOffset
+                    }
+            )
         }
     }
 }

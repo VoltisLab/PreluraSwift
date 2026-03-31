@@ -52,7 +52,7 @@ struct MultiBuyCartView: View {
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.secondaryText)
                     Spacer()
-                    Text(String(format: "£%.2f", subtotal))
+                    Text(CurrencyFormatter.gbp(subtotal))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.primaryText)
                 }
@@ -63,7 +63,7 @@ struct MultiBuyCartView: View {
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.primaryColor)
                         Spacer()
-                        Text(String(format: "-£%.2f", discountAmount))
+                        Text(CurrencyFormatter.gbp(-discountAmount))
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.primaryColor)
                     }
@@ -74,7 +74,7 @@ struct MultiBuyCartView: View {
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
                     Spacer()
-                    Text(String(format: "£%.2f", totalPrice))
+                    Text(CurrencyFormatter.gbp(totalPrice))
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
                 }

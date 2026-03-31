@@ -11,6 +11,10 @@ final class ChatPushTraceDebugState: ObservableObject {
     @Published private(set) var lastConnectAt: Date?
     @Published private(set) var lastDisconnectAt: Date?
     @Published private(set) var lastDisconnectReason: String?
+    @Published private(set) var lastConnectAttemptAt: Date?
+    @Published private(set) var lastConnectAttemptConversationId: String?
+    @Published private(set) var lastTrafficAt: Date?
+    @Published private(set) var lastTrafficSummary: String?
 
     private init() {
         activeConversationId = nil
@@ -18,6 +22,21 @@ final class ChatPushTraceDebugState: ObservableObject {
         lastConnectAt = nil
         lastDisconnectAt = nil
         lastDisconnectReason = nil
+        lastConnectAttemptAt = nil
+        lastConnectAttemptConversationId = nil
+        lastTrafficAt = nil
+        lastTrafficSummary = nil
+    }
+
+    func markSocketConnectAttempt(conversationId: String) {
+        guard conversationId != "0" else { return }
+        lastConnectAttemptAt = Date()
+        lastConnectAttemptConversationId = conversationId
+        NotificationDebugLog.append(
+            source: "chat_push",
+            message: "WebSocket CONNECTING conv=\(conversationId)",
+            isError: false
+        )
     }
 
     func markSocketConnected(conversationId: String) {
@@ -40,6 +59,16 @@ final class ChatPushTraceDebugState: ObservableObject {
         NotificationDebugLog.append(
             source: "chat_push",
             message: "WebSocket CLOSED conv=\(conversationId) — \(reason)",
+            isError: false
+        )
+    }
+
+    func markSocketTraffic(conversationId: String, summary: String) {
+        lastTrafficAt = Date()
+        lastTrafficSummary = summary
+        NotificationDebugLog.append(
+            source: "chat_push",
+            message: "WebSocket EVENT conv=\(conversationId) — \(summary)",
             isError: false
         )
     }

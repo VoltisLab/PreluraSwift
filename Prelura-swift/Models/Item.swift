@@ -114,10 +114,7 @@ struct Item: Identifiable, Hashable {
 
     /// Format price: whole numbers as "£14", decimals as "£6.80" or "£6.87"
     private static func formatPrice(_ value: Double) -> String {
-        if value == floor(value) {
-            return "£\(Int(value))"
-        }
-        return String(format: "£%.2f", value)
+        CurrencyFormatter.gbp(value)
     }
     
     var formattedPrice: String {

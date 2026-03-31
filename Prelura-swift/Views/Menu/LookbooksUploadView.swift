@@ -36,14 +36,14 @@ struct HashtagCaptionField: View {
                             .padding(.horizontal, Theme.Spacing.md)
                             .padding(.vertical, Theme.Spacing.md)
                     }
-                    HashtagTextEditorRepresentable(text: $text, primaryColor: UIColor(red: 171/255, green: 40/255, blue: 178/255, alpha: 1))
+                    HashtagTextEditorRepresentable(text: $text, primaryColor: UIColor(Theme.primaryColor))
                         .frame(minHeight: minLines > 1 ? CGFloat(minLines) * 24 : 44)
                         .padding(Theme.Spacing.sm)
                 }
                 .background(Theme.Colors.secondaryBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 30))
             } else {
-                HashtagTextFieldRepresentable(text: $text, placeholder: placeholder, primaryColor: UIColor(red: 171/255, green: 40/255, blue: 178/255, alpha: 1))
+                HashtagTextFieldRepresentable(text: $text, placeholder: placeholder, primaryColor: UIColor(Theme.primaryColor))
                     .frame(height: 44)
                     .padding(.horizontal, Theme.Spacing.md)
                     .background(Theme.Colors.secondaryBackground)
@@ -226,6 +226,7 @@ private let lookbookUploadStylePills: [String] = [
 
 struct LookbooksUploadView: View {
     @EnvironmentObject var authService: AuthService
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImages: [UIImage] = []
     @State private var caption: String = ""
@@ -591,7 +592,10 @@ struct LookbooksUploadView: View {
                     showSuccessBanner = true
                     Task {
                         try? await Task.sleep(nanoseconds: 2_500_000_000)
-                        await MainActor.run { showSuccessBanner = false }
+                        await MainActor.run {
+                            showSuccessBanner = false
+                            dismiss()
+                        }
                     }
                 }
             } catch {
@@ -981,8 +985,8 @@ struct LookbookTagProductsView: View {
         .frame(width: totalWidth, alignment: .leading)
         .contentShape(Rectangle())
         .highPriorityGesture(
-            DragGesture(minimumDistance: 10, coordinateSpace: .named("lookbookContainer"))
-                .onEnded { value in
+            DragGesture(minimumDistance: 0, coordinateSpace: .named("lookbookContainer"))
+                .onChanged { value in
                     let nx = (value.location.x - imageFrame.minX) / imageFrame.width
                     let ny = (value.location.y - imageFrame.minY) / imageFrame.height
                     let clampedX = min(1, max(0, nx))

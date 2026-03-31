@@ -50,6 +50,17 @@ struct MessageChatPushTraceDebugView: View {
                 LabeledContent("WebSocket (chat)") {
                     Text(traceState.socketConnected ? "Connected" : "Disconnected")
                 }
+                if let t = traceState.lastConnectAttemptAt {
+                    LabeledContent("Last connect attempt") {
+                        Text(t.formatted(date: .abbreviated, time: .standard))
+                            .font(.caption)
+                    }
+                }
+                if let id = traceState.lastConnectAttemptConversationId {
+                    LabeledContent("Attempted conv id") {
+                        Text(id).font(.caption).textSelection(.enabled)
+                    }
+                }
                 if let id = traceState.activeConversationId {
                     LabeledContent("Active conv id") {
                         Text(id).font(.caption).textSelection(.enabled)
@@ -72,10 +83,15 @@ struct MessageChatPushTraceDebugView: View {
                         .font(.caption2)
                         .foregroundStyle(Theme.Colors.secondaryText)
                 }
+                if let traffic = traceState.lastTrafficSummary, let t = traceState.lastTrafficAt {
+                    Text("Last traffic: \(traffic) at \(t.formatted(date: .omitted, time: .standard))")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                }
             } header: {
                 Text("Realtime chat socket")
             } footer: {
-                Text("Open **Push diagnostics** to refresh FCM, run local/server test pushes, and see the full trace.")
+                Text("Disconnected here while a thread is open indicates socket failure. Check latest connect attempt, close reason, and traffic rows to pinpoint if handshake or stream is failing.")
             }
 
             Section {

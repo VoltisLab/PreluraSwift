@@ -224,6 +224,8 @@ struct OrderChatMockDebugView: View {
             .padding(.top, topPadding)
         case .sold:
             EmptyView()
+        case .soldBanner:
+            EmptyView()
         }
     }
 
@@ -272,7 +274,7 @@ struct OrderChatMockDebugView: View {
 
     private var orderHeaderBarMock: some View {
         let order = Self.mockOrder
-        let priceStr = String(format: "£%.2f", order.total)
+        let priceStr = CurrencyFormatter.gbp(order.total)
         return HStack(spacing: Theme.Spacing.md) {
             Rectangle()
                 .fill(Theme.Colors.secondaryBackground)

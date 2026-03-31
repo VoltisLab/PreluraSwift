@@ -3,6 +3,8 @@ import FirebaseCore
 import FirebaseMessaging
 import Foundation
 import OSLog
+import UIKit
+import UserNotifications
 
 private let authSessionLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Prelura", category: "AuthSession")
 
@@ -225,20 +227,40 @@ class AuthService: ObservableObject {
             if let t = fcmForServer, !t.isEmpty {
                 variables["fcmToken"] = t
             }
-            do {
-                _ = try await client.execute(
-                    query: mutation,
-                    variables: variables,
-                    responseType: LogoutPayload.self
+            var didLogoutOnServer = false
+            for attempt in 1...3 {
+                do {
+                    _ = try await client.execute(
+                        query: mutation,
+                        variables: variables,
+                        responseType: LogoutPayload.self
+                    )
+                    didLogoutOnServer = true
+                    authSessionLogger.info("Server logout succeeded — FCM token removed from account when provided.")
+                    break
+                } catch {
+                    if attempt == 3 {
+                        authSessionLogger.warning("Server logout failed after retries (session still cleared locally): \(error.localizedDescription, privacy: .public)")
+                    } else {
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                    }
+                }
+            }
+            if !didLogoutOnServer {
+                NotificationDebugLog.append(
+                    source: "auth",
+                    message: "Logout could not unregister FCM token on server after retries",
+                    isError: true
                 )
-                authSessionLogger.info("Server logout succeeded — FCM token removed from account when provided.")
-            } catch {
-                authSessionLogger.warning("Server logout failed (session still cleared locally): \(error.localizedDescription, privacy: .public)")
             }
         }
 
         clearTokens()
         UserDefaults.standard.removeObject(forKey: kDeviceTokenKey)
+        UserDefaults.standard.removeObject(forKey: PushRegistrationDebug.uploadSummaryKey)
+        UserDefaults.standard.removeObject(forKey: PushRegistrationDebug.uploadDetailKey)
+        UserDefaults.standard.removeObject(forKey: PushRegistrationDebug.uploadTimestampKey)
+        clearLocalNotificationState()
 
         await revokeLocalFCMRegistration()
         objectWillChange.send()
@@ -265,6 +287,10 @@ class AuthService: ObservableObject {
         username = nil
         isGuestMode = true
         client.setAuthToken(nil)
+        UserDefaults.standard.removeObject(forKey: kDeviceTokenKey)
+        UserDefaults.standard.removeObject(forKey: kLastFcmTokenSentToBackendKey)
+        clearLocalNotificationState()
+        Task { await revokeLocalFCMRegistration() }
         objectWillChange.send()
     }
 
@@ -329,6 +355,12 @@ class AuthService: ObservableObject {
         username = nil
         isGuestMode = false
         client.setAuthToken(nil)
+    }
+
+    private func clearLocalNotificationState() {
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        UIApplication.shared.applicationIconBadgeNumber = 0
     }
     
     var isAuthenticated: Bool {
