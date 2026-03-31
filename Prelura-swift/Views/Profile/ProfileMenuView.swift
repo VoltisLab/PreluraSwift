@@ -14,7 +14,7 @@ struct ProfileMenuView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 if listingCount > 0 {
-                    MenuItemRow(title: L10n.string("Dashboard"), icon: "chart.bar.fill", action: { onDismiss(); onSelect(.shopValue) })
+                    MenuItemRow(title: L10n.string("Seller dashboard"), icon: "chart.bar.fill", action: { onDismiss(); onSelect(.shopValue) })
                     menuDivider
                 }
                 

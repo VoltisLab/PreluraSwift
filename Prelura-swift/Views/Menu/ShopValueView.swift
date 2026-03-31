@@ -81,7 +81,7 @@ struct ShopValueView: View {
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("Dashboard"))
+        .navigationTitle(L10n.string("Seller dashboard"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .refreshable { await loadEarnings() }

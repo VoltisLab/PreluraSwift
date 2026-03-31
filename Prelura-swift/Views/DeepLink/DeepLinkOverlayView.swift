@@ -16,6 +16,23 @@ struct DeepLinkOverlayView: View {
     private let userService = UserService()
     private let chatService = ChatService()
 
+    private var dismissBackButton: some View {
+        Button(action: onDismiss) {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                    .font(.headline)
+                Text(L10n.string("Back"))
+                    .font(Theme.Typography.subheadline)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Theme.Colors.background.opacity(0.85))
+            .clipShape(Capsule())
+        }
+        .padding()
+    }
+
     var body: some View {
         Group {
             if isLoading && !skipsAsyncResolve {
@@ -77,12 +94,7 @@ struct DeepLinkOverlayView: View {
             if let item = resolvedItem {
                 ItemDetailView(item: item, authService: authService)
                     .overlay(alignment: .topLeading) {
-                        Button(action: onDismiss) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding()
+                        dismissBackButton
                     }
             } else {
                 deepLinkErrorView(message: "Product not found")
@@ -91,12 +103,7 @@ struct DeepLinkOverlayView: View {
             if let user = resolvedUser {
                 UserProfileView(seller: user, authService: authService)
                     .overlay(alignment: .topLeading) {
-                        Button(action: onDismiss) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding()
+                        dismissBackButton
                     }
             } else {
                 deepLinkErrorView(message: "User not found")
@@ -107,12 +114,7 @@ struct DeepLinkOverlayView: View {
                     ChatDetailView(conversation: conv)
                 }
                 .overlay(alignment: .topLeading) {
-                    Button(action: onDismiss) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding()
+                    dismissBackButton
                 }
             } else {
                 deepLinkErrorView(message: "Conversation not found")
@@ -124,12 +126,7 @@ struct DeepLinkOverlayView: View {
             }
             .environmentObject(authService)
             .overlay(alignment: .topLeading) {
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                }
-                .padding()
+                dismissBackButton
             }
 
         case .orderIssueSupport(let conversationId, let orderId, _):
@@ -143,12 +140,7 @@ struct DeepLinkOverlayView: View {
             }
             .environmentObject(authService)
             .overlay(alignment: .topLeading) {
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                }
-                .padding()
+                dismissBackButton
             }
         }
     }

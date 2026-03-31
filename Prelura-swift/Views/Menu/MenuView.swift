@@ -46,7 +46,7 @@ struct MenuView: View {
                 }
             }
             NavigationLink(destination: ShopValueView(listingCount: listingCount)) {
-                menuRow(L10n.string("Dashboard"), icon: "chart.bar")
+                menuRow(L10n.string("Seller dashboard"), icon: "chart.bar")
             }
             NavigationLink(destination: MyOrdersView()) {
                 menuRow(L10n.string("Orders"), icon: "bag")

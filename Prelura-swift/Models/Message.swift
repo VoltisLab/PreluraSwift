@@ -178,6 +178,32 @@ struct Message: Identifiable {
         return t == "sold_confirmation"
     }
 
+    /// Backend `sold_confirmation` JSON (`order_offer_chat.add_sold_confirmation_message`): order_id, buyer_subtotal, etc.
+    var parsedSoldConfirmationPayload: (orderId: String, price: Double)? {
+        guard isSoldConfirmation else { return nil }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (json["type"] as? String) == "sold_confirmation" else { return nil }
+        guard let oidRaw = json["order_id"] else { return nil }
+        let orderId: String? = {
+            if let n = oidRaw as? Int { return String(n) }
+            if let s = oidRaw as? String, !s.isEmpty { return s }
+            return nil
+        }()
+        guard let orderId else { return nil }
+        let price: Double = {
+            if let s = json["buyer_subtotal"] as? String { return Double(s) ?? 0 }
+            if let n = json["buyer_subtotal"] as? Double { return n }
+            if let n = json["buyer_subtotal"] as? Int { return Double(n) }
+            if let s = json["product_price"] as? String { return Double(s) ?? 0 }
+            if let n = json["product_price"] as? Double { return n }
+            return 0
+        }()
+        return (orderId, price)
+    }
+
     var isOrderIssue: Bool {
         if type == "order_issue" { return true }
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)

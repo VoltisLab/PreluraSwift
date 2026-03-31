@@ -261,6 +261,10 @@ struct ChatDetailView: View {
     }
 
     private func refreshItemSoldBannerFromProductState() {
+        if displayedConversation.order != nil || messages.contains(where: { $0.isSoldConfirmation }) {
+            if showItemSoldBanner { setItemSoldBannerVisible(false) }
+            return
+        }
         if let it = item, it.status.uppercased() == "SOLD" {
             setItemSoldBannerVisible(true)
             return
@@ -453,15 +457,16 @@ struct ChatDetailView: View {
     }
 
     private var messageInputBar: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             if remoteTypingIndicator.isPeerTyping {
-                HStack(spacing: Theme.Spacing.xs) {
-                    TypingDotsView()
+                HStack(alignment: .center, spacing: Theme.Spacing.xs) {
                     Text("\(typingDisplayName) is typing")
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
+                    TypingDotsView()
                 }
                 .padding(.horizontal, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.xs)
                 .transition(.opacity)
             }
             HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
@@ -804,6 +809,7 @@ struct ChatDetailView: View {
                         .onAppear { showExtendedReactionEmojis = false }
                 }
             }
+            .preluraModalSheetBackground()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
@@ -866,6 +872,7 @@ struct ChatDetailView: View {
                     errorMessage: $offerError
                 )
             }
+            .preluraModalSheetBackground()
         }
         .fullScreenCover(item: $payNowPayload) { payload in
             NavigationView {
@@ -888,6 +895,7 @@ struct ChatDetailView: View {
                         }
                     }
             }
+            .preluraModalSheetBackground()
         }
         .onAppear {
             hasAutoScrolledToBottomForThisChat = false
@@ -956,7 +964,7 @@ struct ChatDetailView: View {
                 didSendTypingStart = false
             } else if phase == .active {
                 guard displayedConversation.id != "0",
-                      let t = authService.authToken, !t.isEmpty,
+                      let t = (authService.refreshToken ?? authService.authToken), !t.isEmpty,
                       webSocket == nil else { return }
                 connectWebSocket()
             }
@@ -1389,8 +1397,30 @@ struct ChatDetailView: View {
         return ("", "", false)
     }
 
+    /// When the API has not yet attached `Conversation.order` (or list fetch omitted it) but `sold_confirmation`
+    /// exists in the thread, build the same `OrderInfo` used for `SoldConfirmationCardView` from message JSON.
+    private func syntheticOrderInfoFromSoldConfirmation() -> OrderInfo? {
+        guard !isSupportConversation else { return nil }
+        let soldMsgs = messages.filter { $0.isSoldConfirmation }
+        guard let m = soldMsgs.max(by: { $0.timestamp < $1.timestamp }),
+              let payload = m.parsedSoldConfirmationPayload else { return nil }
+        let parties = inferPartiesForSoldBanner()
+        return OrderInfo(
+            id: "sold-\(payload.orderId)",
+            orderId: payload.orderId,
+            price: payload.price,
+            buyerUsername: parties.buyer,
+            sellerUsername: parties.seller,
+            createdAt: m.timestamp,
+            rolesConfirmed: parties.rolesConfirmed
+        )
+    }
+
     /// Build timeline order by merging offers, messages, and sold event; sort by date.
     private func rebuildTimelineOrder() {
+        if displayedConversation.order != nil || messages.contains(where: { $0.isSoldConfirmation }), showItemSoldBanner {
+            setItemSoldBannerVisible(false)
+        }
         // Keep full offer history after payment so the negotiation thread stays visible; cards are greyed via `forceGreyedOut` when sold (see `isSold`).
         let offerList = offers
         let msgs = displayedMessages
@@ -1410,6 +1440,8 @@ struct ChatDetailView: View {
                 rolesConfirmed: parties.rolesConfirmed
             )
             entries.append((orderInfo.createdAt, .sold(orderInfo)))
+        } else if let synthetic = syntheticOrderInfoFromSoldConfirmation() {
+            entries.append((synthetic.createdAt, .sold(synthetic)))
         } else if showItemSoldBanner, displayedConversation.offer != nil {
             let soldBannerTime = messages.last(where: { $0.isSoldConfirmation })?.timestamp
                 ?? offerList.last?.createdAt
@@ -1720,10 +1752,16 @@ struct ChatDetailView: View {
             .offerPrice
     }
 
+    /// Line-item price for the header: agreed offer or fetched product price. Nil until loaded — do not show `order.total` (often items + delivery) to avoid flashing wrong amount.
+    private var orderHeaderLinePriceForDisplay: Double? {
+        guard displayedConversation.order != nil else { return nil }
+        if let p = latestAcceptedOfferPriceForHeader { return p }
+        if let item = orderProductItem { return item.price }
+        return nil
+    }
+
     private var orderHeaderBar: some View {
         guard let order = displayedConversation.order else { return AnyView(EmptyView()) }
-        let headerPrice = latestAcceptedOfferPriceForHeader ?? order.total
-        let priceStr = CurrencyFormatter.gbp(headerPrice)
         let orderProductId = order.firstProductId.flatMap { Int($0) }
         let rawOrderImage = orderProductItem?.thumbnailURLForChrome
             ?? order.firstProductImageUrl.flatMap { ProductListImageURL.preferredString(from: $0) ?? $0 }
@@ -1742,10 +1780,18 @@ struct ChatDetailView: View {
                     .fontWeight(.medium)
                     .foregroundColor(Theme.Colors.primaryText)
                     .lineLimit(1)
-                Text(priceStr)
-                    .font(Theme.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundColor(Theme.primaryColor)
+                if let line = orderHeaderLinePriceForDisplay {
+                    Text(CurrencyFormatter.gbp(line))
+                        .font(Theme.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.primaryColor)
+                } else {
+                    ProgressView()
+                        .scaleEffect(0.9)
+                        .tint(Theme.primaryColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(minHeight: 22)
+                }
                 Text(orderHeaderStatusText(order: order))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
@@ -1775,7 +1821,7 @@ struct ChatDetailView: View {
             id: order.firstProductId ?? "0",
             name: order.firstProductName ?? "Order item",
             imageUrl: order.firstProductImageUrl,
-            price: String(format: "%.2f", order.total),
+            price: orderHeaderLinePriceForDisplay.map { String(format: "%.2f", $0) },
             condition: nil,
             colors: [],
             style: nil,
@@ -1835,7 +1881,7 @@ struct ChatDetailView: View {
             ChatHeaderProductThumbnail(
                 imageURL: offerThumb.url,
                 invalidURLFromAPI: offerThumb.invalidURL,
-                soldOverlayActive: soldStyleActive
+                soldOverlayActive: false
             )
             VStack(alignment: .leading, spacing: 2) {
                 Text(offerProductItem?.title ?? offer.products?.first?.name ?? "Product")
@@ -1879,19 +1925,26 @@ struct ChatDetailView: View {
         }
     }
 
-    /// Full-width strip under the offer header; matches other persistent chat affordances (saved in UserDefaults).
+    /// Inline “sold” notice: same card treatment as offer rows (secondary background + border).
     private var itemSoldPersistentBanner: some View {
-        HStack(alignment: .center, spacing: Theme.Spacing.xs) {
+        HStack(alignment: .center, spacing: Theme.Spacing.sm) {
             Image(systemName: "tag.slash.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.gray)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Theme.Colors.secondaryText)
             Text(L10n.string("This item has been sold"))
-                .font(Theme.Typography.caption)
-                .foregroundColor(.gray)
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, Theme.Spacing.sm)
-        .padding(.vertical, Theme.Spacing.xs)
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.secondaryBackground)
+        .cornerRadius(24)
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+        )
         .accessibilityIdentifier("chat_item_sold_banner")
     }
 
@@ -1916,7 +1969,9 @@ struct ChatDetailView: View {
                     if let u = product.thumbnailURLForChrome {
                         ChatHeaderProductImageURLStore.persist(productId: firstId, url: u)
                     }
-                    if product.status.uppercased() != "ACTIVE" {
+                    if product.status.uppercased() != "ACTIVE",
+                       displayedConversation.order == nil,
+                       !messages.contains(where: { $0.isSoldConfirmation }) {
                         setItemSoldBannerVisible(true)
                     }
                 }
@@ -2243,7 +2298,7 @@ struct ChatDetailView: View {
 
     private func connectWebSocket() {
         guard displayedConversation.id != "0",
-              let token = authService.authToken, !token.isEmpty else { return }
+              let token = (authService.refreshToken ?? authService.authToken), !token.isEmpty else { return }
         reconnectTask?.cancel()
         reconnectTask = nil
         ChatPushTraceDebugState.shared.markSocketConnectAttempt(conversationId: displayedConversation.id)
@@ -2264,10 +2319,8 @@ struct ChatDetailView: View {
                 messages.sort { $0.timestamp < $1.timestamp }
                 if msg.isOfferContent {
                     mergeOffersFromMessages()
-                    rebuildTimelineOrder()
-                } else if msg.isSoldConfirmation {
-                    rebuildTimelineOrder()
                 }
+                rebuildTimelineOrder()
                 ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "message_received_echo")
                 publishInboxPreviewFromMessage(msg)
                 notifyInboxListShouldRefresh()
@@ -2278,10 +2331,8 @@ struct ChatDetailView: View {
             messages.sort { $0.timestamp < $1.timestamp }
             if msg.isOfferContent {
                 mergeOffersFromMessages()
-                rebuildTimelineOrder()
-            } else if msg.isSoldConfirmation {
-                rebuildTimelineOrder()
             }
+            rebuildTimelineOrder()
             ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "message_received")
             publishInboxPreviewFromMessage(msg)
             notifyInboxListShouldRefresh()

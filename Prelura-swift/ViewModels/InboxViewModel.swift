@@ -58,7 +58,7 @@ class InboxViewModel: ObservableObject {
                     )
                 }
             }
-            list.sort { ($0.lastMessageTime ?? .distantPast) > ($1.lastMessageTime ?? .distantPast) }
+            Self.sortConversationsInPlace(&list)
             conversations = list
             errorMessage = nil
             isLoading = false
@@ -89,7 +89,7 @@ class InboxViewModel: ObservableObject {
             offer: c.offer,
             order: c.order
         )
-        conversations.sort { ($0.lastMessageTime ?? .distantPast) > ($1.lastMessageTime ?? .distantPast) }
+        Self.sortConversationsInPlace(&conversations)
     }
 
     /// Insert a conversation at the top (e.g. newly created before API returns it).
@@ -97,7 +97,7 @@ class InboxViewModel: ObservableObject {
         var list = conversations
         if list.contains(where: { $0.id == conv.id }) { return }
         list.insert(conv, at: 0)
-        list.sort { ($0.lastMessageTime ?? .distantPast) > ($1.lastMessageTime ?? .distantPast) }
+        Self.sortConversationsInPlace(&list)
         conversations = list
     }
 
@@ -130,10 +130,25 @@ class InboxViewModel: ObservableObject {
             let existing = byKey[k]
             let cTime = c.lastMessageTime ?? .distantPast
             let existingTime = existing?.lastMessageTime ?? .distantPast
-            if existing == nil || cTime > existingTime {
+            if existing == nil {
                 byKey[k] = c
+            } else if cTime > existingTime {
+                byKey[k] = c
+            } else if cTime == existingTime, let ex = existing {
+                // Same activity time: pick deterministically so list order doesn’t flip when API order changes.
+                if c.id < ex.id { byKey[k] = c }
             }
         }
         return Array(byKey.values)
+    }
+
+    /// Newest first; tie-break by `id` so rows with identical `lastMessageTime` (e.g. same minute) don’t reorder between refreshes.
+    private static func sortConversationsInPlace(_ list: inout [Conversation]) {
+        list.sort { a, b in
+            let ta = a.lastMessageTime ?? .distantPast
+            let tb = b.lastMessageTime ?? .distantPast
+            if ta != tb { return ta > tb }
+            return a.id < b.id
+        }
     }
 }

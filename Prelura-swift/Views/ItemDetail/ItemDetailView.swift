@@ -160,6 +160,7 @@ struct ItemDetailView: View {
                 SendOfferSheetContent(item: effectiveItem, onDismiss: { showSendOfferSheet = false })
                     .environmentObject(authService)
             }
+            .preluraModalSheetBackground()
         }
         .navigationDestination(isPresented: $showPaymentSheet) {
             PaymentView(products: [effectiveItem], totalPrice: effectiveItem.price)
@@ -167,6 +168,7 @@ struct ItemDetailView: View {
         }
         .sheet(isPresented: $showProductOptionsSheet) {
             productOptionsSheet
+                .preluraModalSheetBackground()
         }
         .sheet(isPresented: $showReportSheet) {
             NavigationStack {
@@ -183,9 +185,11 @@ struct ItemDetailView: View {
                 }
             }
             .environmentObject(authService)
+            .preluraModalSheetBackground()
         }
         .sheet(isPresented: $showEditListingSheet) {
             EditListingPlaceholderView(onDone: { showEditListingSheet = false })
+                .preluraModalSheetBackground()
         }
         .alert(L10n.string("Delete listing?"), isPresented: $showDeleteConfirm) {
             Button(L10n.string("Cancel"), role: .cancel) { showDeleteConfirm = false }

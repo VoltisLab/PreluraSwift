@@ -13,11 +13,6 @@ struct OrderDetailView: View {
     private let userService = UserService()
     private let productService = ProductService()
 
-    @State private var rateStars: Int = 0
-    @State private var rateComment: String = ""
-    @State private var isSubmittingRating = false
-    @State private var hasRated = false
-    @State private var ratingError: String?
     @State private var shippingLabelLoading = false
     @State private var shippingLabelError: String?
     @State private var showConfirmShippingSheet = false
@@ -98,9 +93,20 @@ struct OrderDetailView: View {
                         sectionLabel("Tracking details")
                         shippingSelectedCard
 
-                        if canShowRateSeller {
-                            sectionLabel(L10n.string("Rate seller"))
-                            rateSellerCard
+                        if canShowBuyerOrderHelp {
+                            NavigationLink(destination: OrderHelpView(orderId: effectiveOrder.id, conversationId: "")) {
+                                HStack {
+                                    Image(systemName: "exclamationmark.bubble")
+                                    Text(L10n.string("I have a problem"))
+                                }
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.primaryColor)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(Theme.Spacing.md)
+                                .background(Theme.Colors.secondaryBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                            }
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
 
                         if canShowCancelOrder {
@@ -156,6 +162,7 @@ struct OrderDetailView: View {
                         .navigationTitle("Tracking")
                         .navigationBarTitleDisplayMode(.inline)
                 }
+                .preluraModalSheetBackground()
             }
         }
     }
@@ -639,6 +646,13 @@ struct OrderDetailView: View {
         .cornerRadius(12)
     }
 
+    /// Buyer help entry (same destinations as chat order card): not for cancelled/refunded orders.
+    private var canShowBuyerOrderHelp: Bool {
+        guard isSeller == false else { return false }
+        let st = effectiveOrder.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return st != "CANCELLED" && st != "REFUNDED"
+    }
+
     /// Show "Cancel order" when: buyer view, order not yet delivered/cancelled/refunded.
     private var canShowCancelOrder: Bool {
         guard isSeller == false else { return false }
@@ -659,71 +673,6 @@ struct OrderDetailView: View {
         if effectiveOrder.status == "SHIPPED" { return true }
         let tracking = effectiveOrder.trackingNumber?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return !tracking.isEmpty
-    }
-
-    /// Show "Rate seller" when: buyer view (isSeller == false), order delivered, we have orderId and seller userId, and not yet rated.
-    private var canShowRateSeller: Bool {
-        guard isSeller == false,
-              effectiveOrder.status == "DELIVERED",
-              !hasRated,
-              Int(effectiveOrder.id) != nil,
-              let other = effectiveOrder.otherParty, other.userId != nil else { return false }
-        return true
-    }
-
-    private var rateSellerCard: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(spacing: 4) {
-                ForEach(1...5, id: \.self) { i in
-                    Button {
-                        rateStars = i
-                    } label: {
-                        Image(systemName: i <= rateStars ? "star.fill" : "star")
-                            .font(.system(size: 28))
-                            .foregroundColor(i <= rateStars ? Theme.primaryColor : Theme.Colors.tertiaryBackground)
-                    }
-                    .buttonStyle(PlainTappableButtonStyle())
-                }
-            }
-            TextField(L10n.string("Add a comment (optional)"), text: $rateComment, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(3...6)
-            if let err = ratingError {
-                Text(err)
-                    .font(Theme.Typography.caption)
-                    .foregroundColor(Theme.Colors.error)
-            }
-            Button {
-                Task { await submitRating() }
-            } label: {
-                if isSubmittingRating {
-                    ProgressView()
-                        .tint(Theme.Colors.primaryText)
-                } else {
-                    Text(L10n.string("Submit rating"))
-                }
-            }
-            .disabled(rateStars == 0 || isSubmittingRating)
-            .buttonStyle(.borderedProminent)
-            .tint(Theme.primaryColor)
-        }
-        .padding(Theme.Spacing.md)
-        .background(Theme.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
-    }
-
-    private func submitRating() async {
-        guard let orderId = Int(effectiveOrder.id), let userId = effectiveOrder.otherParty?.userId else { return }
-        ratingError = nil
-        isSubmittingRating = true
-        defer { isSubmittingRating = false }
-        userService.updateAuthToken(authService.authToken)
-        do {
-            try await userService.rateUser(comment: rateComment.isEmpty ? "No comment" : rateComment, orderId: orderId, rating: rateStars, userId: userId)
-            hasRated = true
-        } catch {
-            ratingError = error.localizedDescription
-        }
     }
 
     private var sellerShippingCard: some View {

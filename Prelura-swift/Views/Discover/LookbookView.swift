@@ -228,12 +228,14 @@ struct LookbookView: View {
                     entries[idx] = updated
                 }
             }
+            .preluraModalSheetBackground()
         }
         .fullScreenCover(item: $fullScreenEntry) { entry in
             LookbookFullscreenViewer(entry: entry)
         }
         .sheet(isPresented: $showSearchSheet) {
             LookbookSearchSheet(searchText: $searchText, entries: filteredEntries)
+                .preluraModalSheetBackground()
         }
         .navigationDestination(item: $selectedProductId) { nav in
             LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)

@@ -880,6 +880,7 @@ struct LookbookTagProductsView: View {
                 }
             )
             .environmentObject(authService)
+            .preluraModalSheetBackground()
         }
         .onAppear {
             tags = initialTags

@@ -9,9 +9,14 @@ struct Theme {
 
     // Adaptive Colors (UIKit semantic colors follow system; glass colors use effectiveColorScheme)
     struct Colors {
-        // Background colors (dark mode uses #0C0C0C for all pages)
+        // Background colors (dark mode uses #0C0C0C for normal screens)
         static var background: Color {
             effectiveColorScheme == .dark ? Color(hex: "0C0C0C") : Color(uiColor: UIColor.systemBackground)
+        }
+
+        /// Dedicated modal sheet surface in dark mode.
+        static var modalSheetBackground: Color {
+            effectiveColorScheme == .dark ? Color(hex: "1C1C1C") : Color(uiColor: UIColor.systemBackground)
         }
 
         static var secondaryBackground: Color {

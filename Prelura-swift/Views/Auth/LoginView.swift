@@ -129,7 +129,7 @@ struct LoginView: View {
                     loginVideoURL = AuthVideo.randomLoginVideoURL()
                 }
             }
-            .sheet(isPresented: $showSignup) {
+            .navigationDestination(isPresented: $showSignup) {
                 SignupView()
             }
             .sheet(isPresented: $showForgotPassword) {
@@ -138,6 +138,7 @@ struct LoginView: View {
                         .environmentObject(authService)
                 }
                 .scrollContentBackground(.hidden)
+                .preluraModalSheetBackground()
             }
             .fullScreenCover(isPresented: $showEmailVerificationCode) {
                 NavigationStack {

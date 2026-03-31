@@ -14,15 +14,13 @@ struct UserProfileView: View {
     @State private var filterCondition: String? = nil
     @State private var filterMinPrice: String = ""
     @State private var filterMaxPrice: String = ""
-    @State private var showSortSheet: Bool = false
-    @State private var showFilterSheet: Bool = false
+    @State private var activeListingsSheet: ProfileListingsSheet?
     @State private var topBrandsScrollId: String? = nil
     @State private var showProfilePhotoFullScreen: Bool = false
     @State private var showFullBioSheet: Bool = false
     @State private var filterMultiBuyOnly: Bool = false
     @State private var isMultiBuySelectionMode: Bool = false
     @State private var selectedMultiBuyItemIds: Set<String> = []
-    @State private var showShopSearchSheet: Bool = false
     @State private var shopSearchQuery: String = ""
 
     init(seller: User, authService: AuthService?) {
@@ -84,9 +82,7 @@ struct UserProfileView: View {
                 HStack(spacing: Theme.Spacing.sm) {
                     Button(action: {
                         HapticManager.selection()
-                        showSortSheet = false
-                        showFilterSheet = false
-                        showShopSearchSheet = true
+                        activeListingsSheet = .shopSearch
                     }) {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(Theme.Colors.primaryText)
@@ -531,9 +527,7 @@ struct UserProfileView: View {
             // Filter and Sort (grey pills, no shadow)
             HStack {
                 Button(action: {
-                    showSortSheet = false
-                    showShopSearchSheet = false
-                    showFilterSheet = true
+                    activeListingsSheet = .filter
                 }) {
                     HStack(spacing: Theme.Spacing.xs) {
                         Image(systemName: "line.3.horizontal.decrease")
@@ -552,9 +546,7 @@ struct UserProfileView: View {
                 .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                 Spacer()
                 Button(action: {
-                    showFilterSheet = false
-                    showShopSearchSheet = false
-                    showSortSheet = true
+                    activeListingsSheet = .sort
                 }) {
                     HStack(spacing: Theme.Spacing.xs) {
                         Text(L10n.string(profileSort.rawValue))
@@ -575,9 +567,18 @@ struct UserProfileView: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
         }
-        .sheet(isPresented: $showSortSheet) { userProfileSortSheet }
-        .sheet(isPresented: $showFilterSheet) { userProfileFilterSheet }
-        .sheet(isPresented: $showShopSearchSheet) { userProfileShopSearchSheetContent }
+        .sheet(item: $activeListingsSheet) { sheet in
+            Group {
+                switch sheet {
+                case .sort:
+                    userProfileSortSheet.preluraModalSheetBackground()
+                case .filter:
+                    userProfileFilterSheet.preluraModalSheetBackground()
+                case .shopSearch:
+                    userProfileShopSearchSheetContent.preluraModalSheetBackground()
+                }
+            }
+        }
     }
 
     private var optionDivider: some View {
@@ -588,13 +589,13 @@ struct UserProfileView: View {
     }
 
     private var userProfileSortSheet: some View {
-        OptionsSheet(title: L10n.string("Sort"), onDismiss: { showSortSheet = false }, detents: [.height(380)], useCustomCornerRadius: false) {
-            SortSheetContent(selectedSort: $profileSort, onApply: { showSortSheet = false })
+        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeListingsSheet = nil }, detents: [.height(380)], useCustomCornerRadius: false) {
+            SortSheetContent(selectedSort: $profileSort, onApply: { activeListingsSheet = nil })
         }
     }
 
     private var userProfileFilterSheet: some View {
-        OptionsSheet(title: L10n.string("Filter"), onDismiss: { showFilterSheet = false }, detents: [.height(580)], useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeListingsSheet = nil }, detents: [.height(580)], useCustomCornerRadius: false) {
             VStack(alignment: .leading, spacing: 0) {
                 Text(L10n.string("Condition"))
                     .font(Theme.Typography.caption)
@@ -646,7 +647,7 @@ struct UserProfileView: View {
                         filterMaxPrice = ""
                     }
                     PrimaryGlassButton(L10n.string("Apply")) {
-                        showFilterSheet = false
+                        activeListingsSheet = nil
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -721,7 +722,7 @@ struct UserProfileView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(action: {
-                        showShopSearchSheet = false
+                        activeListingsSheet = nil
                         shopSearchQuery = ""
                     }) {
                         Image(systemName: "xmark")

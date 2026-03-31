@@ -61,6 +61,7 @@ enum L10n {
         // Menu – profile drawer
         "Shop Value": "Αξία Καταστήματος",
         "Dashboard": "Πίνακας Ελέγχου",
+        "Seller dashboard": "Πίνακας πωλητή",
         "Shop Categories": "Κατηγορίες Καταστήματος",
         "Orders": "Παραγγελίες",
         "Order details": "Λεπτομέρειες παραγγελίας",

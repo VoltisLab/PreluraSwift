@@ -18,11 +18,10 @@ struct SignupView: View {
     @State private var successMessage: String?
     
     var body: some View {
-        NavigationView {
-            ZStack(alignment: .bottom) {
-                VideoBackgroundView(videoURL: signupVideoURL, overlayOpacity: 0.45)
-                ScrollView {
-                    VStack(spacing: Theme.Spacing.lg) {
+        ZStack {
+            VideoBackgroundView(videoURL: signupVideoURL, overlayOpacity: 0.45)
+            ScrollView {
+                VStack(spacing: Theme.Spacing.lg) {
                         VStack(spacing: Theme.Spacing.sm) {
                             Text(L10n.string("Create Account"))
                                 .font(Theme.Typography.title)
@@ -31,7 +30,7 @@ struct SignupView: View {
                                 .font(Theme.Typography.body)
                                 .foregroundColor(Theme.Colors.authOverVideoText)
                         }
-                        .padding(.top, Theme.Spacing.lg)
+                        .padding(.top, Theme.Spacing.sm)
 
                         VStack(spacing: Theme.Spacing.md) {
                             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -157,41 +156,35 @@ struct SignupView: View {
                                     .padding(.horizontal, Theme.Spacing.md)
                             }
                         }
-                        .padding(.horizontal, Theme.Spacing.lg)
-                        .padding(.bottom, 100)
-                    }
-                    .padding(.vertical, Theme.Spacing.lg)
+                    .padding(.horizontal, Theme.Spacing.lg)
                 }
-                .scrollContentBackground(.hidden)
-
-                PrimaryGlassButton(
-                    "Sign Up",
-                    isEnabled: isFormValid,
-                    isLoading: isLoading,
-                    action: handleSignup
-                )
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.sm)
-                .padding(.bottom, 24)
-                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Spacing.sm)
+                // Keep last fields reachable above the sticky CTA area.
+                .padding(.bottom, 110)
             }
-            .onAppear {
-                if signupVideoURL == nil {
-                    signupVideoURL = AuthVideo.signupVideoURL()
-                }
-                usernameIsValid = isUsernameFormatValid(username)
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .foregroundColor(Theme.primaryColor)
-                    .buttonStyle(HapticTapButtonStyle())
-                }
-            }
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
         }
+        .safeAreaInset(edge: .bottom) {
+            PrimaryGlassButton(
+                "Sign Up",
+                isEnabled: isFormValid,
+                isLoading: isLoading,
+                action: handleSignup
+            )
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.sm)
+            .padding(.bottom, 6)
+            .frame(maxWidth: .infinity)
+            .background(.ultraThinMaterial)
+        }
+        .onAppear {
+            if signupVideoURL == nil {
+                signupVideoURL = AuthVideo.signupVideoURL()
+            }
+            usernameIsValid = isUsernameFormatValid(username)
+        }
+        .navigationBarTitleDisplayMode(.inline)
     }
     
     /// Username format: at least 3 characters, alphanumeric + underscore only (matches common backend rules).

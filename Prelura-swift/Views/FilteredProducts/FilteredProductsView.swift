@@ -15,24 +15,30 @@ enum ProductFilterType: Equatable {
     case shopByStyle
 }
 
+/// One active modal (sort / filter / styles). Avoids stacking multiple `.sheet` presentations.
+enum FilteredProductsActiveSheet: Identifiable, Equatable {
+    case sort
+    case filter
+    case styles
+    var id: Self { self }
+}
+
 struct FilteredProductsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authService: AuthService
     @StateObject private var viewModel: FilteredProductsViewModel
-    @State private var showSortSheet = false
-    @State private var showFilterSheet = false
-    @State private var showStylesSheet = false
+    @State private var activeSheet: FilteredProductsActiveSheet?
     @State private var tryCartSearchTask: Task<Void, Never>?
     @EnvironmentObject private var shopAllBag: ShopAllBagStore
     @State private var showGuestSignInPrompt: Bool = false
-    /// Try Cart: when on, grid + detail use the shared bag (toolbar bag on Shop All).
-    @State private var shopAllBagToolbarActive = false
+    /// Try Cart: when on, grid + detail use the shared bag (toolbar bag on Shop All). Defaults on for Shop All so Add to bag is visible immediately.
+    @State private var shopAllBagToolbarActive: Bool
 
     let title: String
     let filterType: ProductFilterType
     /// When false, item detail shows only Buy now (no Send an offer). Used for Try Cart.
     let offersAllowed: Bool
-    /// When false, hide floating Shopping bag bar (e.g. Shop by style). When nil, use (filterType == .tryCartSearch). Grid cards never show Add to bag; item detail uses the toolbar bag toggle.
+    /// When false, hide floating Shopping bag bar (e.g. Shop by style). When nil, use (filterType == .tryCartSearch). Grid uses the same bag controls as Favourites when bag mode is on.
     var showAddToBag: Bool? = nil
 
     /// Try Cart (or explicit flag): floating bag + pass `shopAllBag` into item detail for optional toolbar cart mode.
@@ -46,6 +52,8 @@ struct FilteredProductsView: View {
         self.offersAllowed = offersAllowed
         self.showAddToBag = showAddToBag
         _viewModel = StateObject(wrappedValue: FilteredProductsViewModel(filterType: filterType, authService: authService))
+        let bagModeDefault = showAddToBag ?? (filterType == .tryCartSearch)
+        _shopAllBagToolbarActive = State(initialValue: bagModeDefault)
     }
 
     private func likeAction(for item: Item) -> () -> Void {
@@ -81,20 +89,28 @@ struct FilteredProductsView: View {
                     spacing: Theme.Spacing.md
                 ) {
                     ForEach(viewModel.filteredItems) { item in
+                        let bagMode = tryCartShoppingEnabled && shopAllBagToolbarActive
+                        let inBag = shopAllBag.items.contains(where: { $0.id == item.id })
                         NavigationLink(destination: ItemDetailView(
                             item: item,
                             authService: authService,
                             offersAllowed: offersAllowed,
-                            shopAllBag: (tryCartShoppingEnabled && shopAllBagToolbarActive) ? shopAllBag : nil,
-                            activateShopBagActionsInitially: tryCartShoppingEnabled && shopAllBagToolbarActive
+                            shopAllBag: bagMode ? shopAllBag : nil,
+                            activateShopBagActionsInitially: bagMode
                         )) {
                             HomeItemCard(
                                 item: item,
                                 onLikeTap: likeAction(for: item),
-                                showAddToBag: false,
-                                onAddToBag: nil,
-                                isInBag: false,
-                                onRemove: nil
+                                showAddToBag: bagMode,
+                                onAddToBag: bagMode
+                                    ? {
+                                        if !shopAllBag.items.contains(where: { $0.id == item.id }) {
+                                            shopAllBag.add(item)
+                                        }
+                                    }
+                                    : nil,
+                                isInBag: inBag,
+                                onRemove: bagMode ? { shopAllBag.remove(item) } : nil
                             )
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
@@ -117,6 +133,7 @@ struct FilteredProductsView: View {
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)
+                .padding(.bottom, (tryCartShoppingEnabled && shopAllBagToolbarActive) ? 88 : 0)
             }
             .refreshable {
                 await viewModel.refreshAsync()
@@ -264,25 +281,25 @@ struct FilteredProductsView: View {
                             title: L10n.string("Condition"),
                             isSelected: viewModel.filterCondition != nil,
                             accentWhenUnselected: true,
-                            action: { showFilterSheet = true }
+                            action: { activeSheet = .filter }
                         )
                         PillTag(
                             title: L10n.string("Style"),
                             isSelected: false,
                             accentWhenUnselected: true,
-                            action: { showFilterSheet = true }
+                            action: { activeSheet = .filter }
                         )
                         PillTag(
                             title: L10n.string("Colour"),
                             isSelected: false,
                             accentWhenUnselected: true,
-                            action: { showFilterSheet = true }
+                            action: { activeSheet = .filter }
                         )
                         PillTag(
                             title: L10n.string("Price"),
                             isSelected: !viewModel.filterMinPrice.isEmpty || !viewModel.filterMaxPrice.isEmpty,
                             accentWhenUnselected: true,
-                            action: { showFilterSheet = true }
+                            action: { activeSheet = .filter }
                         )
                     }
                     .padding(.horizontal, Theme.Spacing.md)
@@ -292,7 +309,7 @@ struct FilteredProductsView: View {
 
             // Filter / Sort row (grey pills, no shadow)
             HStack {
-                Button(action: { showFilterSheet = true }) {
+                Button(action: { activeSheet = .filter }) {
                     HStack(spacing: Theme.Spacing.xs) {
                         Image(systemName: "line.3.horizontal.decrease")
                             .font(.system(size: 14))
@@ -311,7 +328,7 @@ struct FilteredProductsView: View {
 
                 Spacer()
 
-                Button(action: { showSortSheet = true }) {
+                Button(action: { activeSheet = .sort }) {
                     HStack(spacing: Theme.Spacing.xs) {
                         Text(L10n.string(viewModel.sortOption.rawValue))
                             .font(Theme.Typography.subheadline)
@@ -388,7 +405,7 @@ struct FilteredProductsView: View {
             if case .shopByStyle = filterType {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(L10n.string("Styles")) {
-                        showStylesSheet = true
+                        activeSheet = .styles
                     }
                     .foregroundColor(Theme.Colors.primaryText)
                 }
@@ -422,9 +439,18 @@ struct FilteredProductsView: View {
                 shopAllFloatingBar
             }
         }
-        .sheet(isPresented: $showSortSheet) { filteredProductsSortSheet }
-        .sheet(isPresented: $showFilterSheet) { filteredProductsFilterSheet }
-        .sheet(isPresented: $showStylesSheet) { stylesSheetContent }
+        .sheet(item: $activeSheet) { sheet in
+            Group {
+                switch sheet {
+                case .sort:
+                    filteredProductsSortSheet.preluraModalSheetBackground()
+                case .filter:
+                    filteredProductsFilterSheet.preluraModalSheetBackground()
+                case .styles:
+                    stylesSheetContent.preluraModalSheetBackground()
+                }
+            }
+        }
         .fullScreenCover(isPresented: $showGuestSignInPrompt) { GuestSignInPromptView() }
     }
 
@@ -470,7 +496,7 @@ struct FilteredProductsView: View {
     }
 
     private var filteredProductsSortSheet: some View {
-        OptionsSheet(title: L10n.string("Sort"), onDismiss: { showSortSheet = false }, detents: [.height(380)], useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeSheet = nil }, detents: [.height(380)], useCustomCornerRadius: false) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(FilteredProductsSortOption.allCases.enumerated()), id: \.offset) { index, option in
                     Button(action: { viewModel.sortOption = option }) {
@@ -496,7 +522,7 @@ struct FilteredProductsView: View {
                         viewModel.sortOption = .relevance
                     }
                     PrimaryGlassButton(L10n.string("Apply")) {
-                        showSortSheet = false
+                        activeSheet = nil
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -526,7 +552,7 @@ struct FilteredProductsView: View {
     ]
 
     private var stylesSheetContent: some View {
-        OptionsSheet(title: L10n.string("Styles"), onDismiss: { showStylesSheet = false }, detents: [.height(500), .large], useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Styles"), onDismiss: { activeSheet = nil }, detents: [.height(500), .large], useCustomCornerRadius: false) {
             VStack(alignment: .leading, spacing: 0) {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -560,11 +586,11 @@ struct FilteredProductsView: View {
                     BorderGlassButton(L10n.string("Clear")) {
                         viewModel.selectedStyle = nil
                         viewModel.loadData()
-                        showStylesSheet = false
+                        activeSheet = nil
                     }
                     PrimaryGlassButton(L10n.string("Apply")) {
                         viewModel.loadData()
-                        showStylesSheet = false
+                        activeSheet = nil
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -580,7 +606,7 @@ struct FilteredProductsView: View {
     }
 
     private var filteredProductsFilterSheet: some View {
-        OptionsSheet(title: L10n.string("Filter"), onDismiss: { showFilterSheet = false }, detents: [.height(580)], useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeSheet = nil }, detents: [.height(580)], useCustomCornerRadius: false) {
             VStack(alignment: .leading, spacing: 0) {
                 Text(L10n.string("Condition"))
                     .font(Theme.Typography.caption)
@@ -644,7 +670,7 @@ struct FilteredProductsView: View {
                         viewModel.filterMaxPrice = ""
                     }
                     PrimaryGlassButton(L10n.string("Apply")) {
-                        showFilterSheet = false
+                        activeSheet = nil
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)

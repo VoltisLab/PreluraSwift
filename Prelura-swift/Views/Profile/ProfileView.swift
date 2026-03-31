@@ -19,6 +19,14 @@ let profileConditionOptions: [(raw: String, display: String)] = [
     ("HEAVILY_USED", "Heavily Used")
 ]
 
+/// One active modal for profile listings. Chaining multiple `.sheet(isPresented:)` on the same view stacks sheets when two bindings are true (e.g. sort + filter).
+enum ProfileListingsSheet: Identifiable, Equatable {
+    case sort
+    case filter
+    case shopSearch
+    var id: Self { self }
+}
+
 struct ProfileView: View {
     @EnvironmentObject var authService: AuthService
     @ObservedObject var tabCoordinator: TabCoordinator
@@ -35,13 +43,11 @@ struct ProfileView: View {
     @State private var filterCondition: String? = nil
     @State private var filterMinPrice: String = ""
     @State private var filterMaxPrice: String = ""
-    @State private var showSortSheet: Bool = false
-    @State private var showFilterSheet: Bool = false
+    @State private var activeListingsSheet: ProfileListingsSheet?
     /// Tracks horizontal scroll position in Top brands so it doesn't reset when selection changes.
     @State private var topBrandsScrollId: String? = nil
     @State private var showFullBioSheet: Bool = false
     @State private var filterMultiBuyOnly: Bool = false
-    @State private var showShopSearchSheet: Bool = false
     @State private var shopSearchQuery: String = ""
     /// When true, Multi-buy button has entered selection mode: show "Select" pill on each item; tapping toggles selection; floating button shows cart.
     @State private var isMultiBuySelectionMode: Bool = false
@@ -572,9 +578,7 @@ struct ProfileView: View {
                 HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                     Button(action: {
                         HapticManager.selection()
-                        showSortSheet = false
-                        showFilterSheet = false
-                        showShopSearchSheet = true
+                        activeListingsSheet = .shopSearch
                     }) {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 16))
@@ -583,9 +587,7 @@ struct ProfileView: View {
                     .buttonStyle(HapticTapButtonStyle())
                     Button(action: {
                         HapticManager.selection()
-                        showSortSheet = false
-                        showFilterSheet = false
-                        showShopSearchSheet = true
+                        activeListingsSheet = .shopSearch
                     }) {
                         Text(L10n.string("Top brands"))
                             .font(Theme.Typography.subheadline)
@@ -648,9 +650,7 @@ struct ProfileView: View {
             // Filter and Sort (matches Flutter FilterAndSort: bottom sheets + Clear)
             HStack {
                 Button(action: {
-                    showSortSheet = false
-                    showShopSearchSheet = false
-                    showFilterSheet = true
+                    activeListingsSheet = .filter
                 }) {
                     HStack(spacing: Theme.Spacing.xs) {
                         Image(systemName: "line.3.horizontal.decrease")
@@ -671,9 +671,7 @@ struct ProfileView: View {
                 Spacer()
                 
                 Button(action: {
-                    showFilterSheet = false
-                    showShopSearchSheet = false
-                    showSortSheet = true
+                    activeListingsSheet = .sort
                 }) {
                     HStack(spacing: Theme.Spacing.xs) {
                         Text(L10n.string(profileSort.rawValue))
@@ -694,10 +692,17 @@ struct ProfileView: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
         }
-        .sheet(isPresented: $showSortSheet) { profileSortSheet }
-        .sheet(isPresented: $showFilterSheet) { profileFilterSheet }
-        .sheet(isPresented: $showShopSearchSheet) {
-            shopSearchSheetContent
+        .sheet(item: $activeListingsSheet) { sheet in
+            Group {
+                switch sheet {
+                case .sort:
+                    profileSortSheet.preluraModalSheetBackground()
+                case .filter:
+                    profileFilterSheet.preluraModalSheetBackground()
+                case .shopSearch:
+                    shopSearchSheetContent.preluraModalSheetBackground()
+                }
+            }
         }
     }
     
@@ -710,14 +715,14 @@ struct ProfileView: View {
 
     // MARK: - Sort sheet (same presentation as product Options sheet)
     private var profileSortSheet: some View {
-        OptionsSheet(title: L10n.string("Sort"), onDismiss: { showSortSheet = false }, detents: [.height(380)], useCustomCornerRadius: false) {
-            SortSheetContent(selectedSort: $profileSort, onApply: { showSortSheet = false })
+        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeListingsSheet = nil }, detents: [.height(380)], useCustomCornerRadius: false) {
+            SortSheetContent(selectedSort: $profileSort, onApply: { activeListingsSheet = nil })
         }
     }
 
     // MARK: - Filter sheet (same presentation as product Options sheet)
     private var profileFilterSheet: some View {
-        OptionsSheet(title: L10n.string("Filter"), onDismiss: { showFilterSheet = false }, detents: [.height(580)], useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeListingsSheet = nil }, detents: [.height(580)], useCustomCornerRadius: false) {
             VStack(alignment: .leading, spacing: 0) {
                 Text(L10n.string("Condition"))
                     .font(Theme.Typography.caption)
@@ -771,7 +776,7 @@ struct ProfileView: View {
                         filterMaxPrice = ""
                     }
                     PrimaryGlassButton(L10n.string("Apply")) {
-                        showFilterSheet = false
+                        activeListingsSheet = nil
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -843,7 +848,7 @@ struct ProfileView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(action: {
-                        showShopSearchSheet = false
+                        activeListingsSheet = nil
                         shopSearchQuery = ""
                     }) {
                         Image(systemName: "xmark")

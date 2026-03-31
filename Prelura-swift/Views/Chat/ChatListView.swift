@@ -436,6 +436,22 @@ struct ChatRowView: View {
         return a == b
     }
 
+    /// Inbox line for order threads: `lastMessage` JSON often uses `type: "order"` (payment / try-cart) while `sold_confirmation` is a separate type — map **CONFIRMED** to "Order confirmed" instead of generic "Order update".
+    fileprivate static func orderPreviewLine(for conversation: Conversation) -> String {
+        guard let order = conversation.order else { return "Order update" }
+        let st = order.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if st.contains("HOLD") || st.contains("ISSUE") || st.contains("PAUSE") {
+            return "Order on hold"
+        }
+        switch st {
+        case "CONFIRMED": return "Order confirmed"
+        case "SHIPPED": return "Shipped"
+        case "DELIVERED": return "Completed"
+        case "CANCELLED", "REFUNDED": return "Cancelled"
+        default: return "Order update"
+        }
+    }
+
     /// Inbox subtitle: show the latest **chat line** (`lastMessage` from API is the latest plain row). Legacy rows may still be JSON — map those to short labels.
     static func previewText(for raw: String?, conversation: Conversation, currentUsername: String?) -> String? {
         let iSentLastOffer = usernamesMatch(conversation.lastMessageSenderUsername, currentUsername)
@@ -451,23 +467,15 @@ struct ChatRowView: View {
                 }
                 return (buyerName?.isEmpty == false) ? "\(buyerName!) offered \(amount)" : nil
             }
-            if let order = conversation.order {
-                let st = order.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-                if st.contains("HOLD") || st.contains("ISSUE") || st.contains("PAUSE") {
-                    return "Order on hold"
-                }
-                return "Order update"
+            if conversation.order != nil {
+                return orderPreviewLine(for: conversation)
             }
             return nil
         }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            if let order = conversation.order {
-                let st = order.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-                if st.contains("HOLD") || st.contains("ISSUE") || st.contains("PAUSE") {
-                    return "Order on hold"
-                }
-                return "Order update"
+            if conversation.order != nil {
+                return orderPreviewLine(for: conversation)
             }
             return nil
         }
@@ -492,7 +500,7 @@ struct ChatRowView: View {
                 return "\(sender) reported an issue"
             }
             return "Issue reported"
-        case "order": return "Order update"
+        case "order": return orderPreviewLine(for: conversation)
         case "offer": return iSentLastOffer ? "You sent an offer" : "Offer received"
         case "account_report": return Message.humanReadableReportLine(json: json, reportType: type, maxLength: 56)
         case "product_report": return Message.humanReadableReportLine(json: json, reportType: type, maxLength: 56)

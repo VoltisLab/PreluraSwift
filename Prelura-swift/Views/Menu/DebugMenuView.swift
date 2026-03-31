@@ -28,6 +28,14 @@ struct DebugMenuView: View {
                         Text("Message push trace")
                     }
                 }
+                NavigationLink(destination: WebSocketConnectionDebugView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "network")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("WebSocket test")
+                    }
+                }
                 NavigationLink(destination: MessageDeliveryDebugView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "paperplane")
