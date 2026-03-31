@@ -28,6 +28,22 @@ struct DebugMenuView: View {
                         Text("Message push trace")
                     }
                 }
+                NavigationLink(destination: MessageDeliveryDebugView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "paperplane")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Message delivery test")
+                    }
+                }
+                NavigationLink(destination: NotificationTypeMatrixDebugView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "list.bullet.rectangle.portrait")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Notification matrix")
+                    }
+                }
                 NavigationLink(destination: OrderChatMockDebugView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "bubble.left.and.bubble.right")

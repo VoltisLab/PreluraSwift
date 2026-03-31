@@ -30,6 +30,12 @@ final class TabCoordinator: ObservableObject {
     @Published var pendingOfferPrice: Double?
     /// When user leaves a chat, store last message preview so the list can show it immediately without waiting for refetch.
     @Published var lastMessagePreviewForConversation: (id: String, text: String, date: Date)?
+    /// Incremented from chat (offers/messages) so the inbox list refetches and re-sorts without waiting for `onDisappear`.
+    @Published private(set) var inboxListRefreshNonce: Int = 0
+
+    func requestInboxListRefresh() {
+        inboxListRefreshNonce += 1
+    }
     /// Per-tab: true when scroll view is at top. Used to decide: at top → refresh on tap; not at top → scroll first, refresh on second tap.
     private var atTop: [Int: Bool] = [:]
 

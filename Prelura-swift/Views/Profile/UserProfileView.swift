@@ -702,7 +702,10 @@ struct UserProfileView: View {
                     ) {
                         ForEach(filteredItems) { item in
                             NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
-                                WardrobeItemCard(item: item)
+                                WardrobeItemCard(
+                                    item: item,
+                                    onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") }
+                                )
                             }
                             .buttonStyle(PlainTappableButtonStyle())
                         }
@@ -774,6 +777,7 @@ struct UserProfileView: View {
                             }) {
                                 WardrobeItemCard(
                                     item: item,
+                                    onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") },
                                     multiBuySelectionMode: true,
                                     isSelectedForMultiBuy: selectedMultiBuyItemIds.contains(item.id.uuidString),
                                     onMultiBuySelectTap: {
@@ -790,7 +794,10 @@ struct UserProfileView: View {
                             .buttonStyle(PlainTappableButtonStyle())
                         } else {
                             NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
-                                WardrobeItemCard(item: item)
+                                WardrobeItemCard(
+                                    item: item,
+                                    onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") }
+                                )
                             }
                             .buttonStyle(PlainTappableButtonStyle())
                         }

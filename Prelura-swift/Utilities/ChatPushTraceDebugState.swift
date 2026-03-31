@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-/// Debug-only: tracks chat WebSocket presence. The server may skip FCM when your user id is in `chat_<conversationId>`.
+/// Debug-only: tracks chat WebSocket presence for DM troubleshooting.
 @MainActor
 final class ChatPushTraceDebugState: ObservableObject {
     static let shared = ChatPushTraceDebugState()
@@ -27,7 +27,7 @@ final class ChatPushTraceDebugState: ObservableObject {
         lastConnectAt = Date()
         NotificationDebugLog.append(
             source: "chat_push",
-            message: "WebSocket OPEN conv=\(conversationId) — server may treat you as in-room; incoming pushes for this thread are often suppressed until disconnect.",
+            message: "WebSocket OPEN conv=\(conversationId)",
             isError: false
         )
     }

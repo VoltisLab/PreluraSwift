@@ -1,4 +1,41 @@
 import SwiftUI
+import Combine
+
+/// Holds peer typing state updated from WebSocket callbacks. Using `ObservableObject` avoids mutating `@State` from
+/// closures that capture `ChatDetailView` by value, which can fail to refresh the typing row.
+@MainActor
+private final class ChatRemoteTypingIndicatorModel: ObservableObject {
+    @Published var isPeerTyping = false
+    @Published var peerUsername: String?
+    private var autoHideTask: Task<Void, Never>?
+
+    func handleSocketEvent(_ event: TypingSocketEvent, currentUsername: String?) {
+        let sender = event.senderUsername?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let me = currentUsername?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if !sender.isEmpty, !me.isEmpty, sender.lowercased() == me { return }
+
+        peerUsername = sender.isEmpty ? nil : sender
+        autoHideTask?.cancel()
+        if event.isTyping {
+            isPeerTyping = true
+            autoHideTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                await MainActor.run {
+                    self?.isPeerTyping = false
+                }
+            }
+        } else {
+            isPeerTyping = false
+        }
+    }
+
+    func clear() {
+        autoHideTask?.cancel()
+        autoHideTask = nil
+        isPeerTyping = false
+        peerUsername = nil
+    }
+}
 
 /// Persists the last-known product image URL for chat headers so thumbnails do not show an endless spinner after leaving the thread.
 fileprivate enum ChatHeaderProductImageURLStore {
@@ -130,12 +167,7 @@ struct ChatDetailView: View {
     @FocusState private var isMessageFieldFocused: Bool
     @State private var isLoading: Bool = false
     @State private var webSocket: ChatWebSocketService?
-    /// Whether the remote participant is currently typing.
-    @State private var isOtherUserTyping = false
-    /// Last username reported by typing event.
-    @State private var typingUsername: String?
-    /// Keep typing indicator alive briefly after last event.
-    @State private var typingResetTask: Task<Void, Never>?
+    @StateObject private var remoteTypingIndicator = ChatRemoteTypingIndicatorModel()
     /// Periodically re-sends typing while the composer is non-empty so the peer’s indicator does not expire mid-sentence.
     @State private var typingKeepaliveTask: Task<Void, Never>?
     @State private var didSendTypingStart = false
@@ -145,6 +177,8 @@ struct ChatDetailView: View {
     @State private var counterTargetOffer: OfferInfo?
     @State private var isRespondingToOffer = false
     @State private var offerError: String?
+    /// Persisted per thread (UserDefaults): listing is no longer actionable (sold / inactive).
+    @State private var showItemSoldBanner = false
     @State private var offerModalSubmitting = false
     @State private var showReportUserSheet = false
     /// WhatsApp-style long-press reactions (local persistence per device).
@@ -192,6 +226,40 @@ struct ChatDetailView: View {
     /// Cache key per conversation and current user so switching accounts doesn't show wrong sender.
     private func offerCacheKey(convId: String) -> String {
         "\(convId)_\(authService.username ?? "")"
+    }
+
+    private static let itemSoldBannerUserDefaultsPrefix = "chatItemSoldBanner_"
+
+    private func itemSoldBannerStorageKey() -> String {
+        Self.itemSoldBannerUserDefaultsPrefix + offerCacheKey(convId: displayedConversation.id)
+    }
+
+    private func loadItemSoldBannerFromPersist() {
+        showItemSoldBanner = UserDefaults.standard.bool(forKey: itemSoldBannerStorageKey())
+    }
+
+    private func setItemSoldBannerVisible(_ visible: Bool) {
+        showItemSoldBanner = visible
+        UserDefaults.standard.set(visible, forKey: itemSoldBannerStorageKey())
+    }
+
+    /// Backend: inactive products / sold listings when creating or countering an offer.
+    private func isOfferProductUnavailableMessage(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if t.contains("the following products are not available") { return true }
+        if t.contains("this product is not available") { return true }
+        if t.contains("not available") && t.contains("product") { return true }
+        return false
+    }
+
+    private func refreshItemSoldBannerFromProductState() {
+        if let it = item, it.status.uppercased() == "SOLD" {
+            setItemSoldBannerVisible(true)
+            return
+        }
+        if let p = offerProductItem, p.status.uppercased() != "ACTIVE" {
+            setItemSoldBannerVisible(true)
+        }
     }
 
     private static func persistOfferHistory(key: String, offers: [OfferInfo]) {
@@ -319,7 +387,8 @@ struct ChatDetailView: View {
     }
 
     private var typingDisplayName: String {
-        let raw = (typingUsername?.isEmpty == false ? typingUsername! : displayedConversation.recipient.username)
+        let trimmed = remoteTypingIndicator.peerUsername?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let raw = trimmed.isEmpty ? displayedConversation.recipient.username : trimmed
         return PreluraSupportBranding.displayTitle(forRecipientUsername: raw)
     }
 
@@ -377,7 +446,7 @@ struct ChatDetailView: View {
 
     private var messageInputBar: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            if isOtherUserTyping {
+            if remoteTypingIndicator.isPeerTyping {
                 HStack(spacing: Theme.Spacing.xs) {
                     TypingDotsView()
                     Text("\(typingDisplayName) is typing")
@@ -549,7 +618,7 @@ struct ChatDetailView: View {
                     currentUsername: authService.username,
                     isSeller: isSeller,
                     isResponding: isLatest ? isRespondingToOffer : false,
-                    errorMessage: isLatest ? offerError : nil,
+                    errorMessage: isLatest ? (showItemSoldBanner ? nil : offerError) : nil,
                     onAccept: { await handleRespondToOffer(action: "ACCEPT", targetOffer: offer) },
                     onDecline: { await handleRespondToOffer(action: "REJECT", targetOffer: offer) },
                     onSendNewOffer: { counterTargetOffer = offer; showCounterOfferSheet = true },
@@ -612,6 +681,12 @@ struct ChatDetailView: View {
                     .frame(height: 0.5)
             } else if displayedConversation.offer != nil {
                 offerProductHeaderBar
+                Rectangle()
+                    .fill(Theme.Colors.glassBorder)
+                    .frame(height: 0.5)
+            }
+            if showItemSoldBanner, displayedConversation.offer != nil, displayedConversation.order == nil {
+                itemSoldPersistentBanner
                 Rectangle()
                     .fill(Theme.Colors.glassBorder)
                     .frame(height: 0.5)
@@ -814,9 +889,11 @@ struct ChatDetailView: View {
             }
             refreshOfferHistoryLoadingFlagsForCurrentConversation()
             restoreCachedMessagesBeforeLoad()
+            loadItemSoldBannerFromPersist()
             if let it = item, let pid = it.productId.flatMap({ Int($0) }), let u = it.thumbnailURLForChrome {
                 ChatHeaderProductImageURLStore.persist(productId: pid, url: u)
             }
+            refreshItemSoldBannerFromProductState()
             connectWebSocket()
             fetchOfferProductIfNeeded()
             fetchOrderProductIfNeeded()
@@ -826,13 +903,19 @@ struct ChatDetailView: View {
         .onChange(of: displayedConversation.offer?.id) { _, _ in
             fetchOfferProductIfNeeded()
         }
+        .onChange(of: offerProductItem?.status) { _, _ in
+            refreshItemSoldBannerFromProductState()
+        }
+        .onChange(of: item?.status) { _, _ in
+            refreshItemSoldBannerFromProductState()
+        }
         .onChange(of: displayedConversation.order?.id) { _, _ in
             fetchOrderProductIfNeeded()
         }
         .onChange(of: displayedConversation.id) { _, _ in
             webSocket?.disconnect()
             webSocket = nil
-            typingResetTask?.cancel()
+            remoteTypingIndicator.clear()
             typingKeepaliveTask?.cancel()
             typingKeepaliveTask = nil
             didSendTypingStart = false
@@ -840,10 +923,9 @@ struct ChatDetailView: View {
             offers = []
             timelineOrder = []
             hasAutoScrolledToBottomForThisChat = false
-            isOtherUserTyping = false
-            typingUsername = nil
             refreshOfferHistoryLoadingFlagsForCurrentConversation()
             restoreCachedMessagesBeforeLoad()
+            loadItemSoldBannerFromPersist()
             loadOffers()
             loadConversationAndMessagesFromBackend()
             connectWebSocket()
@@ -857,12 +939,10 @@ struct ChatDetailView: View {
             if phase == .inactive || phase == .background {
                 webSocket?.disconnect()
                 webSocket = nil
-                typingResetTask?.cancel()
+                remoteTypingIndicator.clear()
                 typingKeepaliveTask?.cancel()
                 typingKeepaliveTask = nil
                 didSendTypingStart = false
-                isOtherUserTyping = false
-                typingUsername = nil
             } else if phase == .active {
                 guard displayedConversation.id != "0",
                       let t = authService.authToken, !t.isEmpty,
@@ -903,11 +983,9 @@ struct ChatDetailView: View {
             }
             webSocket?.disconnect()
             webSocket = nil
-            typingResetTask?.cancel()
+            remoteTypingIndicator.clear()
             typingKeepaliveTask?.cancel()
             typingKeepaliveTask = nil
-            isOtherUserTyping = false
-            typingUsername = nil
             didSendTypingStart = false
         }
     }
@@ -1403,7 +1481,13 @@ struct ChatDetailView: View {
                     rebuildTimelineOrder()
                 }
                 isRespondingToOffer = false
-                offerError = error.localizedDescription
+                let msg = error.localizedDescription
+                if isOfferProductUnavailableMessage(msg) {
+                    setItemSoldBannerVisible(true)
+                    offerError = nil
+                } else {
+                    offerError = msg
+                }
             }
         }
     }
@@ -1556,7 +1640,13 @@ struct ChatDetailView: View {
                     rebuildTimelineOrder()
                 }
                 isRespondingToOffer = false
-                offerError = error.localizedDescription
+                let msg = error.localizedDescription
+                if isOfferProductUnavailableMessage(msg) {
+                    setItemSoldBannerVisible(true)
+                    offerError = nil
+                } else {
+                    offerError = msg
+                }
             }
         }
     }
@@ -1588,7 +1678,15 @@ struct ChatDetailView: View {
                     payNowPayload = PayNowPayload(products: items, totalPrice: offerPrice)
                 }
             } catch {
-                await MainActor.run { offerError = error.localizedDescription }
+                await MainActor.run {
+                    let msg = error.localizedDescription
+                    if isOfferProductUnavailableMessage(msg) {
+                        setItemSoldBannerVisible(true)
+                        offerError = nil
+                    } else {
+                        offerError = msg
+                    }
+                }
             }
         }
     }
@@ -1745,6 +1843,24 @@ struct ChatDetailView: View {
         }
     }
 
+    /// Full-width strip under the offer header; matches other persistent chat affordances (saved in UserDefaults).
+    private var itemSoldPersistentBanner: some View {
+        HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+            Image(systemName: "tag.slash.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Theme.primaryColor)
+            Text(L10n.string("This item has been sold"))
+                .font(Theme.Typography.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(Theme.Colors.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
+        .background(Theme.Colors.secondaryBackground)
+        .accessibilityIdentifier("chat_item_sold_banner")
+    }
+
     private func fetchOfferProductIfNeeded() {
         guard let offer = displayedConversation.offer,
               let firstId = offer.products?.first?.id.flatMap({ Int($0) }) else {
@@ -1765,6 +1881,9 @@ struct ChatDetailView: View {
                     offerProductItem = product
                     if let u = product.thumbnailURLForChrome {
                         ChatHeaderProductImageURLStore.persist(productId: firstId, url: u)
+                    }
+                    if product.status.uppercased() != "ACTIVE" {
+                        setItemSoldBannerVisible(true)
                     }
                 }
             }
@@ -2037,6 +2156,11 @@ struct ChatDetailView: View {
         default:
             break
         }
+        notifyInboxListShouldRefresh()
+    }
+
+    private func notifyInboxListShouldRefresh() {
+        tabCoordinator?.requestInboxListRefresh()
     }
 
     private func connectWebSocket() {
@@ -2062,6 +2186,7 @@ struct ChatDetailView: View {
                 } else if msg.isSoldConfirmation {
                     rebuildTimelineOrder()
                 }
+                notifyInboxListShouldRefresh()
                 return
             }
             if messages.contains(where: { $0.id == msg.id }) { return }
@@ -2073,6 +2198,7 @@ struct ChatDetailView: View {
             } else if msg.isSoldConfirmation {
                 rebuildTimelineOrder()
             }
+            notifyInboxListShouldRefresh()
         }
         ws.onOfferEvent = { [self] event in
             handleOfferSocketEvent(event)
@@ -2090,22 +2216,10 @@ struct ChatDetailView: View {
                 emoji: event.emoji
             )
         }
-        ws.onTypingEvent = { [self] event in
-            if !typingEventMatchesCurrentChat(event.conversationId) { return }
-            // Ignore our own typing echoes.
-            if isCurrentUser(username: event.senderUsername) { return }
-            typingUsername = event.senderUsername
-            if event.isTyping {
-                isOtherUserTyping = true
-                typingResetTask?.cancel()
-                typingResetTask = Task {
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    await MainActor.run { isOtherUserTyping = false }
-                }
-            } else {
-                isOtherUserTyping = false
-                typingResetTask?.cancel()
-            }
+        let typingModel = remoteTypingIndicator
+        let authForTyping = authService
+        ws.onTypingEvent = { event in
+            typingModel.handleSocketEvent(event, currentUsername: authForTyping.username)
         }
         let convIdForPushTrace = displayedConversation.id
         ws.onConnectionStateChanged = { connected in
@@ -2113,9 +2227,13 @@ struct ChatDetailView: View {
                 guard convIdForPushTrace != "0" else { return }
                 if connected {
                     ChatPushTraceDebugState.shared.markSocketConnected(conversationId: convIdForPushTrace)
-                } else {
-                    ChatPushTraceDebugState.shared.markSocketDisconnected(conversationId: convIdForPushTrace, reason: "socket_closed")
                 }
+            }
+        }
+        ws.onDisconnectReason = { reason in
+            Task { @MainActor in
+                guard convIdForPushTrace != "0" else { return }
+                ChatPushTraceDebugState.shared.markSocketDisconnected(conversationId: convIdForPushTrace, reason: reason)
             }
         }
         webSocket = ws
@@ -2154,15 +2272,6 @@ struct ChatDetailView: View {
                 }
             }
         }
-    }
-
-    /// Treat missing server `conversation_id` as a match; normalize string vs numeric ids.
-    private func typingEventMatchesCurrentChat(_ eventConversationId: String?) -> Bool {
-        guard let raw = eventConversationId?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return true }
-        let displayed = displayedConversation.id.trimmingCharacters(in: .whitespacesAndNewlines)
-        if raw == displayed { return true }
-        if let a = Int(raw), let b = Int(displayed), a == b { return true }
-        return false
     }
 
     private func loadMessages() {
@@ -2242,9 +2351,8 @@ struct ChatDetailView: View {
         messages.append(optimistic)
         timelineOrder.append(.message(optimistic.id))
         pendingMessageUUID = messageUUID
-        if let ws = webSocket {
+        if let ws = webSocket, ws.send(message: text, messageUUID: messageUUID) {
             // WebSocket path persists on the server and triggers push; GraphQL SendMessage would duplicate the row.
-            ws.send(message: text, messageUUID: messageUUID)
         } else {
             Task {
                 do {
@@ -2261,6 +2369,7 @@ struct ChatDetailView: View {
                 }
             }
         }
+        notifyInboxListShouldRefresh()
     }
 }
 

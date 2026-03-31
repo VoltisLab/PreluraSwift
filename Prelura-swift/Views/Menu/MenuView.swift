@@ -132,7 +132,7 @@ struct MenuView: View {
             Button(L10n.string("Logout"), role: .destructive) {
                 HapticManager.destructive()
                 Task {
-                    try? await authService.logout()
+                    await authService.logout()
                 }
             }
         } message: {

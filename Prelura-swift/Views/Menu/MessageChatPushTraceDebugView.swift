@@ -15,7 +15,7 @@ struct MessageChatPushTraceDebugView: View {
             Section {
                 Text(
                     "Message pushes need: notification permission, FCM token uploaded to the API, **Messages** ON in notification settings, and the server must enqueue FCM. "
-                        + "If you have a chat **open** (WebSocket connected), the backend often **skips** push because it thinks you are already in that room — leave the thread or background the app to test."
+                        + "WebSocket status is for realtime chat only; seeing **Disconnected** on the inbox screen is normal when no thread is open."
                 )
                 .font(.caption)
                 .foregroundStyle(Theme.Colors.secondaryText)
@@ -73,7 +73,7 @@ struct MessageChatPushTraceDebugView: View {
                         .foregroundStyle(Theme.Colors.secondaryText)
                 }
             } header: {
-                Text("Presence (suppresses push)")
+                Text("Realtime chat socket")
             } footer: {
                 Text("Open **Push diagnostics** to refresh FCM, run local/server test pushes, and see the full trace.")
             }

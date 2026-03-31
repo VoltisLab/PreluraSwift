@@ -34,12 +34,15 @@ struct MessageReactionSocketEvent {
 
 /// WebSocket client for chat: connect to backend ws, send messages, receive new messages and events.
 /// Uses same host as GraphQL (Constants.chatWebSocketBaseURL) so messages send/save to the same backend.
-final class ChatWebSocketService: NSObject, @unchecked Sendable {
+final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSocketDelegate {
     private let conversationId: String
     private let token: String
     private var task: URLSessionWebSocketTask?
+    private var session: URLSession?
     private var receiveTask: Task<Void, Error>?
     private let baseURL = Constants.chatWebSocketBaseURL
+    private var didManualClose = false
+    private(set) var isConnected: Bool = false
 
     /// Called on main actor when a new chat message is received. If server echoes our send, messageUuid is the client UUID we sent.
     var onNewMessage: (@MainActor (Message, String?) -> Void)?
@@ -51,6 +54,8 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
     var onOrderEvent: (@MainActor (OrderSocketEvent) -> Void)?
     /// Called when connection state changes (e.g. for UI indicator).
     var onConnectionStateChanged: (@MainActor (Bool) -> Void)?
+    /// Human-readable reason when socket closes/fails.
+    var onDisconnectReason: (@MainActor (String) -> Void)?
     /// Another participant updated a message reaction (server type `message_reaction`).
     var onMessageReaction: (@MainActor (MessageReactionSocketEvent) -> Void)?
 
@@ -61,39 +66,50 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
 
     func connect() {
         guard let url = URL(string: baseURL + conversationId + "/") else { return }
+        didManualClose = false
+        isConnected = false
         var request = URLRequest(url: url)
         request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
-        let session = URLSession(configuration: .default, delegate: nil, delegateQueue: nil)
+        let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+        self.session = session
         task = session.webSocketTask(with: request)
         task?.resume()
         receiveTask = Task {
             await receiveLoop()
         }
-        Task { @MainActor in
-            onConnectionStateChanged?(true)
-        }
     }
 
     func disconnect() {
+        didManualClose = true
+        isConnected = false
         receiveTask?.cancel()
         receiveTask = nil
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
+        session?.invalidateAndCancel()
+        session = nil
         Task { @MainActor in
             onConnectionStateChanged?(false)
+            onDisconnectReason?("manual_disconnect")
         }
     }
 
     /// Send a text message. Payload: {"message": text, "message_uuid": uuid}
-    func send(message: String, messageUUID: String) {
+    @discardableResult
+    func send(message: String, messageUUID: String) -> Bool {
+        guard isConnected, task != nil else { return false }
         let payload: [String: Any] = ["message": message, "message_uuid": messageUUID]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
-              let string = String(data: data, encoding: .utf8) else { return }
+              let string = String(data: data, encoding: .utf8) else { return false }
         task?.send(.string(string)) { [weak self] error in
             if let e = error {
                 print("ChatWebSocket send error: \(e)")
+                Task { @MainActor in
+                    self?.onDisconnectReason?("send_error: \(e.localizedDescription)")
+                }
             }
         }
+        return true
     }
 
     /// Send typing state to backend, when supported by chat socket.
@@ -155,8 +171,40 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
             } catch {
                 if (error as NSError).code != NSURLErrorCancelled {
                     print("ChatWebSocket receive error: \(error)")
+                    await MainActor.run {
+                        if !didManualClose {
+                            isConnected = false
+                            onConnectionStateChanged?(false)
+                            onDisconnectReason?("receive_error: \(error.localizedDescription)")
+                        }
+                    }
                 }
                 break
+            }
+        }
+    }
+
+    // MARK: - URLSessionWebSocketDelegate
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        Task { @MainActor in
+            isConnected = true
+            onConnectionStateChanged?(true)
+        }
+    }
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        let reasonText: String = {
+            if let reason, let s = String(data: reason, encoding: .utf8), !s.isEmpty {
+                return "closed(\(closeCode.rawValue)): \(s)"
+            }
+            return "closed(\(closeCode.rawValue))"
+        }()
+        Task { @MainActor in
+            if !didManualClose {
+                isConnected = false
+                onConnectionStateChanged?(false)
+                onDisconnectReason?(reasonText)
             }
         }
     }
@@ -198,6 +246,7 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
     private func handleReceivedString(_ text: String) async {
         guard let json = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return }
         let type = json["type"] as? String
+        let typeNorm = type?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if type == "order_issue_created" || type == "order_status_event" {
             let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
             await MainActor.run {
@@ -223,18 +272,19 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable {
         }
         // Typing: server broadcasts `type: typing_status` + `sender`; clients may send `typing` / `typing_status` + is_typing / isTyping.
         // Do not treat real chat frames (`chat_message`) as typing even if a stray key appears.
-        if type != "chat_message",
-           type == "typing_status" || type == "typing"
+        if typeNorm != "chat_message",
+           typeNorm == "typing_status" || typeNorm == "typing"
            || json["is_typing"] != nil || json["isTyping"] != nil {
             let convId = Self.jsonString(json["conversationId"])
                 ?? Self.jsonString(json["conversation_id"])
             let isTyping = Self.coerceTypingFlag(json["is_typing"]) ?? Self.coerceTypingFlag(json["isTyping"]) ?? true
-            let senderUsername = (json["senderUsername"] as? String)
+            let rawSender = (json["senderUsername"] as? String)
                 ?? (json["sender_username"] as? String)
                 ?? (json["senderName"] as? String)
                 ?? (json["sender_name"] as? String)
                 ?? (json["sender"] as? String)
                 ?? (json["username"] as? String)
+            let senderUsername = rawSender?.trimmingCharacters(in: .whitespacesAndNewlines)
             await MainActor.run {
                 onTypingEvent?(TypingSocketEvent(conversationId: convId, isTyping: isTyping, senderUsername: senderUsername))
             }

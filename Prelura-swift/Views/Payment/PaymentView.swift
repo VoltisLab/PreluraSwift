@@ -121,9 +121,9 @@ struct PaymentView: View {
         return allSame ? first : nil
     }
 
-    /// More than one distinct backend seller user id (cart spans multiple sellers).
+    /// More than one seller group (must match `sellerGroups`, which keys on `seller.id`).
     private var isMultiSellerCheckout: Bool {
-        Set(products.compactMap { $0.seller.userId }).count > 1
+        sellerGroups.count > 1
     }
 
     private func formatAddress(_ addr: ShippingAddress?) -> String {

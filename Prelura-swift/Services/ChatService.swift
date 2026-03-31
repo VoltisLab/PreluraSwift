@@ -107,7 +107,11 @@ class ChatService: ObservableObject {
                     createdAt: parseGraphQLDateString(o.createdAt)
                 )
             }
-            let lastTime = parseGraphQLDateString(conv.lastMessage?.createdAt) ?? order?.createdAt
+            // Fall back to offer or order timestamps so threads sort correctly when the latest activity
+            // is an offer row but `lastMessage` is still empty or stale on the list query.
+            let lastTime = parseGraphQLDateString(conv.lastMessage?.createdAt)
+                ?? order?.createdAt
+                ?? offer?.createdAt
             return Conversation(
                 id: idString,
                 recipient: User(

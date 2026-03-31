@@ -63,7 +63,7 @@ struct PauseAccountView: View {
         }
         .alert("Account paused", isPresented: $showSuccess) {
             Button("OK") {
-                Task { try? await authService.logout() }
+                Task { await authService.logout() }
             }
         } message: {
             Text(L10n.string("Your account has been paused. You will be signed out."))

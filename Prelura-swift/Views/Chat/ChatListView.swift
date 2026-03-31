@@ -207,6 +207,10 @@ struct ChatListView: View {
         .onChange(of: authService.authToken) { _, newToken in
             inboxViewModel.updateAuthToken(newToken)
         }
+        .onChange(of: tabCoordinator.inboxListRefreshNonce) { _, _ in
+            guard !authService.isGuestMode else { return }
+            Task { await loadInboxConversations() }
+        }
     }
 
     private func deleteConversation(_ conversation: Conversation) {
@@ -331,19 +335,15 @@ struct ChatRowView: View {
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
 
-                    if let time = conversation.lastMessageTime {
-                        Text("• \(formatTime(time))")
-                            .font(Theme.Typography.caption)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                    }
+                    Text("• \(displayTimeText)")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
                 }
                 
-                if let preview = ChatRowView.previewText(for: conversation.lastMessage, conversation: conversation, currentUsername: currentUsername) {
-                    Text(preview)
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                        .lineLimit(1)
-                }
+                Text(displayPreviewText)
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .lineLimit(1)
             }
 
             Spacer(minLength: 0)
@@ -397,6 +397,21 @@ struct ChatRowView: View {
     private var productThumbWidth: CGFloat {
         Self.productThumbHeight * Self.productThumbWidthToHeightRatio
     }
+
+    /// Keep row layout stable: always show a time label.
+    private var displayTimeText: String {
+        guard let t = conversation.lastMessageTime else { return "—" }
+        return formatTime(t)
+    }
+
+    /// Keep row layout stable: always show a subtitle line.
+    private var displayPreviewText: String {
+        ChatRowView.previewText(
+            for: conversation.lastMessage,
+            conversation: conversation,
+            currentUsername: currentUsername
+        ) ?? "No messages yet"
+    }
     
     private func formatTime(_ date: Date) -> String {
         let now = Date()
@@ -425,15 +440,34 @@ struct ChatRowView: View {
     static func previewText(for raw: String?, conversation: Conversation, currentUsername: String?) -> String? {
         let iSentLastOffer = usernamesMatch(conversation.lastMessageSenderUsername, currentUsername)
         guard let raw = raw, !raw.isEmpty else {
+            if let offer = conversation.offer {
+                let amount = String(format: "£%.2f", offer.offerPrice)
+                let buyerName = offer.buyer?.username?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let me = currentUsername?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   let buyerName,
+                   !buyerName.isEmpty,
+                   buyerName.lowercased() == me.lowercased() {
+                    return "You offered \(amount)"
+                }
+                return (buyerName?.isEmpty == false) ? "\(buyerName!) offered \(amount)" : nil
+            }
             if let order = conversation.order {
-                return String(format: "Order • £%.2f", order.total)
+                let st = order.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                if st.contains("HOLD") || st.contains("ISSUE") || st.contains("PAUSE") {
+                    return "Order on hold"
+                }
+                return "Order update"
             }
             return nil
         }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             if let order = conversation.order {
-                return String(format: "Order • £%.2f", order.total)
+                let st = order.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                if st.contains("HOLD") || st.contains("ISSUE") || st.contains("PAUSE") {
+                    return "Order on hold"
+                }
+                return "Order update"
             }
             return nil
         }

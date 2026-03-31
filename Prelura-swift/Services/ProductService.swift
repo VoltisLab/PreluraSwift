@@ -150,6 +150,18 @@ class ProductService: ObservableObject {
                 sellerIdString = ""
                 sellerUserIdInt = nil
             }
+            let resolvedNumericSellerId: Int? = sellerUserIdInt ?? Int(sellerIdString.trimmingCharacters(in: .whitespacesAndNewlines))
+            let sellerUUID: UUID = {
+                if let n = resolvedNumericSellerId {
+                    return User.stableIdForSeller(backendUserId: n)
+                }
+                if let u = UUID(uuidString: sellerIdString) { return u }
+                let seed = (product.seller?.username ?? "") + "|" + sellerIdString
+                var h: UInt64 = 5381
+                for b in seed.utf8 { h = ((h << 5) &+ h) &+ UInt64(b) }
+                let narrowed = Int(truncatingIfNeeded: h & 0x7fff_fffe)
+                return User.stableIdForSeller(backendUserId: narrowed == 0 ? 1 : narrowed)
+            }()
             let originalPrice = product.price ?? 0.0
             let discountPercentage: Double? = {
                 guard let discountPriceStr = product.discountPrice,
@@ -178,8 +190,8 @@ class ProductService: ObservableObject {
                 category: Category.fromName(product.category?.name ?? ""),
                 categoryName: product.category?.name,
                 seller: User(
-                    id: UUID(uuidString: sellerIdString) ?? UUID(),
-                    userId: sellerUserIdInt,
+                    id: sellerUUID,
+                    userId: resolvedNumericSellerId,
                     username: product.seller?.username ?? "",
                     displayName: product.seller?.displayName ?? "",
                     avatarURL: product.seller?.profilePictureUrl,

@@ -1,4 +1,6 @@
 import Combine
+import FirebaseCore
+import FirebaseMessaging
 import Foundation
 import OSLog
 
@@ -198,9 +200,58 @@ class AuthService: ObservableObject {
         return registerData
     }
     
-    func logout() async throws {
-        // Call logout mutation if needed
+    /// Signs out locally and, when possible, tells the server to drop this device’s FCM token (same as Flutter `logout` + `FirebaseMessaging.getToken`).
+    func logout() async {
+        let refresh = refreshToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let fcmFromDevice = UserDefaults.standard.string(forKey: kDeviceTokenKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fcmLastUploaded = UserDefaults.standard.string(forKey: kLastFcmTokenSentToBackendKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fcmForServer = [fcmFromDevice, fcmLastUploaded].compactMap { $0 }.first { !$0.isEmpty }
+
+        if !refresh.isEmpty, authToken != nil {
+            let mutation = """
+            mutation Logout($refreshToken: String!, $fcmToken: String) {
+              logout(refreshToken: $refreshToken, fcmToken: $fcmToken) {
+                message
+              }
+            }
+            """
+            struct LogoutPayload: Decodable {
+                let logout: LogoutMessage?
+            }
+            struct LogoutMessage: Decodable {
+                let message: String?
+            }
+            var variables: [String: Any] = ["refreshToken": refresh]
+            if let t = fcmForServer, !t.isEmpty {
+                variables["fcmToken"] = t
+            }
+            do {
+                _ = try await client.execute(
+                    query: mutation,
+                    variables: variables,
+                    responseType: LogoutPayload.self
+                )
+                authSessionLogger.info("Server logout succeeded — FCM token removed from account when provided.")
+            } catch {
+                authSessionLogger.warning("Server logout failed (session still cleared locally): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
         clearTokens()
+        UserDefaults.standard.removeObject(forKey: kDeviceTokenKey)
+
+        await revokeLocalFCMRegistration()
+        objectWillChange.send()
+    }
+
+    /// Invalidates the FCM instance token so this install stops receiving pushes targeted at the old registration.
+    private func revokeLocalFCMRegistration() async {
+        guard FirebaseApp.app() != nil else { return }
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            Messaging.messaging().deleteToken { _ in
+                cont.resume()
+            }
+        }
     }
 
     /// Continue as guest: clear tokens and set flag so feed uses public (no-auth) API. Matches Flutter isGuestModeProvider + clearTokenForGuest.

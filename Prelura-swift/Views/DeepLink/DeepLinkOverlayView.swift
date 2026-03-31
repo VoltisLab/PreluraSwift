@@ -18,7 +18,7 @@ struct DeepLinkOverlayView: View {
 
     var body: some View {
         Group {
-            if isLoading {
+            if isLoading && !skipsAsyncResolve {
                 VStack(spacing: Theme.Spacing.md) {
                     ProgressView()
                     if let err = loadError {
@@ -42,6 +42,32 @@ struct DeepLinkOverlayView: View {
             }
             Task { await resolve() }
         }
+    }
+
+    /// Order / issue deep links render immediately with local placeholders; no GraphQL prefetch here.
+    private var skipsAsyncResolve: Bool {
+        switch destination {
+        case .orderDetail, .orderIssueSupport: return true
+        default: return false
+        }
+    }
+
+    private func stubOrderForDeepLink(orderId: Int) -> Order {
+        Order(
+            id: String(orderId),
+            publicId: "PR",
+            priceTotal: "0",
+            status: "",
+            createdAt: Date(),
+            otherParty: nil,
+            products: [],
+            shippingAddress: nil,
+            shipmentService: nil,
+            deliveryDate: nil,
+            trackingNumber: nil,
+            trackingUrl: nil,
+            buyerOrderCountWithSeller: nil
+        )
     }
 
     @ViewBuilder
@@ -77,17 +103,52 @@ struct DeepLinkOverlayView: View {
             }
         case .conversation(let conversationId, let username, _, _):
             if let conv = resolvedConversation {
-                ChatDetailView(conversation: conv)
-                    .overlay(alignment: .topLeading) {
-                        Button(action: onDismiss) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding()
+                NavigationStack {
+                    ChatDetailView(conversation: conv)
+                }
+                .overlay(alignment: .topLeading) {
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
                     }
+                    .padding()
+                }
             } else {
                 deepLinkErrorView(message: "Conversation not found")
+            }
+
+        case .orderDetail(let orderId):
+            NavigationStack {
+                OrderDetailView(order: stubOrderForDeepLink(orderId: orderId), isSeller: nil)
+            }
+            .environmentObject(authService)
+            .overlay(alignment: .topLeading) {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+            }
+
+        case .orderIssueSupport(let conversationId, let orderId, _):
+            NavigationStack {
+                HelpChatView(
+                    orderId: orderId,
+                    conversationId: conversationId,
+                    issueDraft: nil,
+                    hidesMessageComposer: false
+                )
+            }
+            .environmentObject(authService)
+            .overlay(alignment: .topLeading) {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
             }
         }
     }
@@ -106,6 +167,9 @@ struct DeepLinkOverlayView: View {
 
     private func resolve() async {
         switch destination {
+        case .orderDetail, .orderIssueSupport:
+            await MainActor.run { isLoading = false }
+
         case .product(let productId):
             do {
                 let item = try await productService.getProduct(id: productId)
@@ -134,6 +198,14 @@ struct DeepLinkOverlayView: View {
                 }
             }
         case .conversation(let conversationId, let username, _, _):
+            let me = authService.username
+            if let full = try? await chatService.getConversationById(conversationId: conversationId, currentUsername: me) {
+                await MainActor.run {
+                    resolvedConversation = full
+                    isLoading = false
+                }
+                return
+            }
             do {
                 let convs = try await chatService.getConversations()
                 let existing = convs.first { $0.id == conversationId }

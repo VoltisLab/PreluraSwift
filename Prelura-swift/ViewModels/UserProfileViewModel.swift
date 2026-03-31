@@ -14,6 +14,7 @@ class UserProfileViewModel: ObservableObject {
     @Published var isTogglingFollow: Bool = false
 
     private let userService: UserService
+    private let productService: ProductService
 
     var topBrands: [String] {
         let brandCounts = Dictionary(grouping: items.compactMap { $0.brand }, by: { $0 })
@@ -41,6 +42,7 @@ class UserProfileViewModel: ObservableObject {
             client.setAuthToken(token)
         }
         self.userService = UserService(client: client)
+        self.productService = ProductService(client: client)
     }
 
     func load() {
@@ -117,6 +119,26 @@ class UserProfileViewModel: ObservableObject {
             displayedFollowersCount += wasFollowing ? 1 : -1
             if displayedFollowersCount < 0 { displayedFollowersCount = 0 }
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Toggle like on a listing (same optimistic pattern as `ProfileViewModel`).
+    func toggleLike(productId: String) {
+        guard !productId.isEmpty, let item = items.first(where: { $0.productId == productId }) else { return }
+        let newLiked = !item.isLiked
+        let newCount = item.likeCount + (newLiked ? 1 : -1)
+        let optimistic = item.with(likeCount: max(0, newCount), isLiked: newLiked)
+        items = items.replacingItem(productId: productId, with: optimistic)
+        Task {
+            do {
+                let result = try await productService.toggleLike(productId: productId, isLiked: newLiked)
+                await MainActor.run {
+                    let count = result.likeCount ?? optimistic.likeCount
+                    items = items.replacingItem(productId: productId, with: item.with(likeCount: count, isLiked: result.isLiked))
+                }
+            } catch {
+                await MainActor.run { errorMessage = L10n.userFacingError(error) }
+            }
         }
     }
 }

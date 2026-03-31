@@ -75,7 +75,7 @@ struct DeleteAccountView: View {
         defer { isLoading = false }
         do {
             try await userService.deleteAccount(password: password)
-            try? await authService.logout()
+            await authService.logout()
         } catch {
             errorMessage = error.localizedDescription
         }
