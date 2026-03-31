@@ -100,6 +100,14 @@ struct DebugMenuView: View {
                         Text("Black screens")
                     }
                 }
+                NavigationLink(destination: DebugUnifiedModalSheetView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "rectangle.bottomthird.inset.filled")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Unified modal sheet")
+                    }
+                }
                 NavigationLink(destination: DashboardView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "chart.bar.doc.horizontal")
