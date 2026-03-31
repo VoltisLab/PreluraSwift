@@ -24,7 +24,8 @@ enum OrderCancellationReason: String, CaseIterable {
 /// Cancel order flow: reason, notes, submit. Matches Flutter cancel_an_order (cancelOrder API).
 struct CancelOrderView: View {
     let order: Order
-    var onCancelled: (() -> Void)?
+    var isSellerRequest: Bool = false
+    var onCancelled: (() -> Void)? = nil
 
     @EnvironmentObject var authService: AuthService
     @Environment(\.dismiss) private var dismiss
@@ -94,7 +95,7 @@ struct CancelOrderView: View {
                         ProgressView()
                             .tint(Theme.Colors.primaryText)
                     } else {
-                        Text(L10n.string("Cancel order"))
+                        Text(isSellerRequest ? L10n.string("Send request") : L10n.string("Cancel order"))
                     }
                 }
                 .disabled(selectedReason == nil || notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSubmitting)
@@ -104,7 +105,7 @@ struct CancelOrderView: View {
             .padding(Theme.Spacing.md)
         }
         .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("Cancel Order"))
+        .navigationTitle(isSellerRequest ? L10n.string("Request cancellation") : L10n.string("Cancel Order"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }
@@ -116,7 +117,12 @@ struct CancelOrderView: View {
         defer { isSubmitting = false }
         userService.updateAuthToken(authService.authToken)
         do {
-            try await userService.cancelOrder(orderId: orderId, reason: reason.rawValue, notes: notes.trimmingCharacters(in: .whitespacesAndNewlines), imagesUrl: [])
+            let notesTrimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            if isSellerRequest {
+                try await userService.sellerRequestOrderCancellation(orderId: orderId, reason: reason.rawValue, notes: notesTrimmed, imagesUrl: [])
+            } else {
+                try await userService.cancelOrder(orderId: orderId, reason: reason.rawValue, notes: notesTrimmed, imagesUrl: [])
+            }
             await MainActor.run {
                 onCancelled?()
                 dismiss()

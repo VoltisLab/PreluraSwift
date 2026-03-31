@@ -220,6 +220,7 @@ struct ChatDetailView: View {
     private static let chatBottomAnchorId = "chat_bottom_anchor"
 
     private let productService = ProductService()
+    private let orderCancellationUserService = UserService()
 
     /// Cache for re-open: restore offers when returning to chat (API only returns latest).
     private static var offerHistoryCache: [String: [OfferInfo]] = [:]
@@ -322,16 +323,24 @@ struct ChatDetailView: View {
     }
 
     /// Merge API messages with any local-only rows (typically optimistic sends without `backendId`) so a refetch cannot wipe text that the server has not returned yet.
+    /// Also keep WebSocket-delivered rows that already have a `backendId` but are missing from this server snapshot (GET can lag behind the room broadcast).
     private func mergedThreadMessages(server: [Message], local: [Message]) -> [Message] {
         if server.isEmpty {
             return local.sorted { $0.timestamp < $1.timestamp }
         }
         var result = server
         let serverIds = Set(server.map(\.id))
+        let serverBackendIds = Set(server.compactMap(\.backendId))
         for localMsg in local {
-            guard localMsg.backendId == nil else { continue }
+            if let bid = localMsg.backendId {
+                if !serverBackendIds.contains(bid), !serverIds.contains(localMsg.id) {
+                    result.append(localMsg)
+                }
+                continue
+            }
             guard isCurrentUser(username: localMsg.senderUsername) else { continue }
-            if localMsg.isOfferContent || localMsg.isSoldConfirmation || localMsg.isOrderIssue { continue }
+            if localMsg.isOfferContent || localMsg.isSoldConfirmation || localMsg.isOrderIssue
+                || localMsg.isOrderCancellationRequest || localMsg.isOrderCancellationOutcome { continue }
             let trimmed = localMsg.content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
             if serverIds.contains(localMsg.id) { continue }
@@ -348,7 +357,8 @@ struct ChatDetailView: View {
     /// Latest row suitable for inbox subtitle (skip offer / sold / issue payloads at the tail of the thread).
     private func lastPlainChatMessageForInboxPreview() -> Message? {
         for m in messages.reversed() {
-            if m.isOfferContent || m.isSoldConfirmation || m.isOrderIssue { continue }
+            if m.isOfferContent || m.isSoldConfirmation || m.isOrderIssue
+                || m.isOrderCancellationRequest || m.isOrderCancellationOutcome { continue }
             if m.type == "item" || m.type == "sold_confirmation" { continue }
             return m
         }
@@ -568,7 +578,25 @@ struct ChatDetailView: View {
                index < displayedMessages.count {
                 let message = displayedMessages[index]
                 let topPadding: CGFloat = timelineIndex == 0 ? 0 : (isSameGroupAsPrevious(timelineIndex: timelineIndex, message: message) ? Theme.Spacing.xs : Theme.Spacing.md)
-                if message.isOrderIssue {
+                if message.isOrderCancellationRequest, let cancelPayload = message.parsedOrderCancellationRequestPayload {
+                    let cancelCard = OrderCancellationRequestChatCardView(
+                        message: message,
+                        payload: cancelPayload,
+                        isSellerRole: isSeller,
+                        onFinished: { loadConversationAndMessagesFromBackend() }
+                    )
+                    .environmentObject(authService)
+                    .id(message.id)
+                    let topPadCancel: CGFloat = timelineIndex == 0 ? 0 : (isSameGroupAsPrevious(timelineIndex: timelineIndex, message: message) ? Theme.Spacing.xs : Theme.Spacing.md)
+                    cancelCard
+                        .padding(.top, topPadCancel)
+                } else if message.isOrderCancellationOutcome {
+                    let outcomeCard = OrderCancellationOutcomeChatCardView(message: message)
+                        .id(message.id)
+                    let topPadOut: CGFloat = timelineIndex == 0 ? 0 : (isSameGroupAsPrevious(timelineIndex: timelineIndex, message: message) ? Theme.Spacing.xs : Theme.Spacing.md)
+                    outcomeCard
+                        .padding(.top, topPadOut)
+                } else if message.isOrderIssue {
                     let issueCard = OrderIssueChatCardView(
                         message: message,
                         currentUsername: authService.username
@@ -1842,7 +1870,8 @@ struct ChatDetailView: View {
             deliveryDate: nil,
             trackingNumber: nil,
             trackingUrl: nil,
-            buyerOrderCountWithSeller: nil
+            buyerOrderCountWithSeller: nil,
+            cancellation: nil
         )
     }
 
@@ -2314,9 +2343,11 @@ struct ChatDetailView: View {
                     from: oldKey,
                     to: newKey
                 )
-                messages[idx] = msg
+                var next = messages
+                next[idx] = msg
+                next.sort { $0.timestamp < $1.timestamp }
+                messages = next
                 pendingMessageUUID = nil
-                messages.sort { $0.timestamp < $1.timestamp }
                 if msg.isOfferContent {
                     mergeOffersFromMessages()
                 }
@@ -2326,9 +2357,22 @@ struct ChatDetailView: View {
                 notifyInboxListShouldRefresh()
                 return
             }
+            if let bid = msg.backendId, let idx = messages.firstIndex(where: { $0.backendId == bid }) {
+                var next = messages
+                next[idx] = msg
+                next.sort { $0.timestamp < $1.timestamp }
+                messages = next
+                if msg.isOfferContent {
+                    mergeOffersFromMessages()
+                }
+                rebuildTimelineOrder()
+                ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "message_received_merge")
+                publishInboxPreviewFromMessage(msg)
+                notifyInboxListShouldRefresh()
+                return
+            }
             if messages.contains(where: { $0.id == msg.id }) { return }
-            messages.append(msg)
-            messages.sort { $0.timestamp < $1.timestamp }
+            messages = (messages + [msg]).sorted { $0.timestamp < $1.timestamp }
             if msg.isOfferContent {
                 mergeOffersFromMessages()
             }
@@ -2341,7 +2385,8 @@ struct ChatDetailView: View {
             handleOfferSocketEvent(event)
         }
         ws.onOrderEvent = { [self] event in
-            _ = event
+            guard event.type == "order_cancellation_event" else { return }
+            loadConversationAndMessagesFromBackend()
         }
         ws.onMessageReaction = { [self] event in
             if isCurrentUser(username: event.username) { return }
@@ -2496,9 +2541,9 @@ struct ChatDetailView: View {
             content: text,
             type: "text"
         )
-        messages.append(optimistic)
-        timelineOrder.append(.message(optimistic.id))
+        messages = (messages + [optimistic]).sorted { $0.timestamp < $1.timestamp }
         pendingMessageUUID = messageUUID
+        rebuildTimelineOrder()
         publishInboxPreviewFromMessage(optimistic)
         if let ws = webSocket, ws.send(message: text, messageUUID: messageUUID) {
             // WebSocket path persists on the server and triggers push; GraphQL SendMessage would duplicate the row.
@@ -2512,8 +2557,9 @@ struct ChatDetailView: View {
                     }
                 } catch {
                     await MainActor.run {
-                        messages.removeAll { $0.id.uuidString == messageUUID }
+                        messages = messages.filter { $0.id.uuidString != messageUUID }
                         pendingMessageUUID = nil
+                        rebuildTimelineOrder()
                     }
                 }
             }
@@ -3156,6 +3202,132 @@ struct SoldConfirmationCardView: View {
     }
 }
 
+// MARK: - Order cancellation chat cards (buyer/seller request + outcome)
+
+private struct OrderCancellationRequestChatCardView: View {
+    let message: Message
+    let payload: (orderId: Int, requestedBySeller: Bool, status: String)
+    let isSellerRole: Bool
+    var onFinished: () -> Void
+
+    @EnvironmentObject var authService: AuthService
+    @State private var busy = false
+    @State private var err: String?
+    private let userService = UserService()
+
+    private var canRespond: Bool {
+        guard payload.status.uppercased() == "PENDING" else { return false }
+        if payload.requestedBySeller { return !isSellerRole }
+        return isSellerRole
+    }
+
+    private var title: String {
+        if payload.requestedBySeller {
+            return isSellerRole ? "You asked to cancel this order" : "The seller asked to cancel this order"
+        }
+        return isSellerRole ? "The buyer asked to cancel this order" : "You asked to cancel this order"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text(title)
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.primaryText)
+            if canRespond {
+                HStack(spacing: Theme.Spacing.md) {
+                    Button {
+                        Task { await respond(approve: false) }
+                    } label: {
+                        Text("Decline")
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, Theme.Spacing.sm)
+                            .background(Theme.Colors.tertiaryBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                    }
+                    .buttonStyle(PlainTappableButtonStyle())
+                    Button {
+                        Task { await respond(approve: true) }
+                    } label: {
+                        Text("Approve")
+                            .font(Theme.Typography.body)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, Theme.Spacing.sm)
+                            .background(Theme.primaryColor)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                    }
+                    .buttonStyle(PlainTappableButtonStyle())
+                }
+                .disabled(busy)
+            } else if payload.status.uppercased() == "PENDING" {
+                Text("Waiting for the other party.")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+            if busy {
+                ProgressView()
+            }
+            if let err, !err.isEmpty {
+                Text(err)
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.error)
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .background(Theme.Colors.secondaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+    }
+
+    private func respond(approve: Bool) async {
+        await MainActor.run {
+            busy = true
+            err = nil
+        }
+        userService.updateAuthToken(authService.authToken)
+        do {
+            if approve {
+                try await userService.approveOrderCancellation(orderId: payload.orderId)
+            } else {
+                try await userService.rejectOrderCancellation(orderId: payload.orderId)
+            }
+            await MainActor.run {
+                busy = false
+                onFinished()
+            }
+        } catch {
+            await MainActor.run {
+                busy = false
+                err = error.localizedDescription
+            }
+        }
+    }
+}
+
+private struct OrderCancellationOutcomeChatCardView: View {
+    let message: Message
+
+    private var approved: Bool {
+        let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (json["type"] as? String) == "order_cancellation_outcome" else { return false }
+        return (json["approved"] as? Bool) ?? false
+    }
+
+    var body: some View {
+        Text(approved ? "Order cancellation was approved." : "Order cancellation was declined.")
+            .font(Theme.Typography.caption)
+            .foregroundColor(Theme.Colors.secondaryText)
+            .padding(Theme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.Colors.secondaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+    }
+}
+
 /// Seller-side problem actions from sold confirmation banner.
 private struct SellerOrderProblemOptionsView: View {
     let orderId: String
@@ -3218,7 +3390,7 @@ private struct SellerOrderProblemOptionsView: View {
         await MainActor.run { isCancelling = true; errorMessage = nil }
         userService.updateAuthToken(authService.authToken)
         do {
-            try await userService.cancelOrder(
+            try await userService.sellerRequestOrderCancellation(
                 orderId: oid,
                 reason: "CHANGED_MY_MIND",
                 notes: "Seller requested cancellation from chat sold banner.",

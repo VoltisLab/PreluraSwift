@@ -18,10 +18,11 @@ struct TypingSocketEvent {
     let senderUsername: String?
 }
 
-/// Order-related event pushed by backend (e.g. order_status_event, sold confirmation linkage).
+/// Order-related event pushed by backend (e.g. order_status_event, order_cancellation_event).
 struct OrderSocketEvent {
     let type: String
     let conversationId: String?
+    let orderId: Int?
 }
 
 /// Relayed chat message reaction from another participant (`message_reaction` on the socket).
@@ -247,10 +248,14 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
         guard let json = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return }
         let type = json["type"] as? String
         let typeNorm = type?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if type == "order_issue_created" || type == "order_status_event" {
+        if type == "order_issue_created" || type == "order_status_event" || type == "order_cancellation_event" {
             let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
+            let oid = (json["order_id"] as? Int)
+                ?? (json["orderId"] as? Int)
+                ?? ((json["order_id"] as? String).flatMap { Int($0) })
+                ?? ((json["orderId"] as? String).flatMap { Int($0) })
             await MainActor.run {
-                onOrderEvent?(OrderSocketEvent(type: type ?? "", conversationId: convId))
+                onOrderEvent?(OrderSocketEvent(type: type ?? "", conversationId: convId, orderId: oid))
             }
             return
         }
@@ -342,10 +347,17 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
 
     /// Parse server message JSON to Message (Flutter MessageModel.fromSocket: id, text, senderName/sender_name, createdAt, isItem, itemId).
     private func parseWebSocketMessage(_ json: [String: Any]) -> Message? {
-        guard let text = json["text"] as? String else { return nil }
+        let text = (json["text"] as? String) ?? (json["message"] as? String) ?? ""
+        guard !text.isEmpty || json["id"] != nil else { return nil }
         let senderName = (json["senderName"] as? String) ?? (json["sender_name"] as? String) ?? ""
-        let idStr = (json["id"] as? Int).map { String($0) } ?? (json["id"] as? String) ?? UUID().uuidString
-        let uuid = UUID(uuidString: idStr) ?? UUID()
+        let backendInt = (json["id"] as? Int)
+            ?? (json["id"] as? NSNumber).map { $0.intValue }
+            ?? (json["id"] as? String).flatMap { Int($0) }
+        let uuid: UUID = {
+            if let b = backendInt { return Message.stableUUID(forBackendId: b) }
+            let idStr = (json["id"] as? String) ?? UUID().uuidString
+            return UUID(uuidString: idStr) ?? UUID()
+        }()
         let createdAt: Date = {
             let s = (json["createdAt"] as? String) ?? (json["created_at"] as? String)
             guard let s = s else { return Date() }
@@ -362,7 +374,7 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
         let read = (json["read"] as? Bool) ?? false
         return Message(
             id: uuid,
-            backendId: (json["id"] as? Int) ?? (json["id"] as? String).flatMap { Int($0) },
+            backendId: backendInt,
             senderUsername: senderName,
             content: text,
             timestamp: createdAt,

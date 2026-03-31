@@ -339,7 +339,7 @@ class ChatService: ObservableObject {
             let messageType: String = (msg.itemType?.isEmpty == false) ? msg.itemType! : (msg.isItem == true ? "item" : "text")
             
             return Message(
-                id: UUID(uuidString: idString) ?? UUID(),
+                id: backendIdInt.map { Message.stableUUID(forBackendId: $0) } ?? (UUID(uuidString: idString) ?? UUID()),
                 backendId: backendIdInt,
                 senderUsername: senderUsername,
                 content: text,

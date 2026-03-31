@@ -92,6 +92,14 @@ struct DebugMenuView: View {
                         Text("Animated screen")
                     }
                 }
+                NavigationLink(destination: DebugModalSheetPrototypeView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "rectangle.bottomthird.inset.filled")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Modal sheet prototype")
+                    }
+                }
                 NavigationLink(destination: BlackScreensMenuView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "square.fill")

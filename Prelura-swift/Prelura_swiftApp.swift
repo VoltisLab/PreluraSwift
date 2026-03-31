@@ -112,6 +112,13 @@ struct Prelura_swiftApp: App {
                     appRouter.handle(url: url)
                 }
             }
+            .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                if let url = activity.webpageURL {
+                    Task { @MainActor in
+                        appRouter.handle(url: url)
+                    }
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 registerPushTokenIfNeeded(authService: authService)
             }

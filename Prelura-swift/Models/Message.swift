@@ -37,6 +37,14 @@ struct Message: Identifiable {
         self.read = read
     }
 
+    /// Same `id` for a server row whether the message came from GraphQL or the chat WebSocket (numeric PK is not a valid UUID string).
+    static func stableUUID(forBackendId backendId: Int) -> UUID {
+        let u = UInt64(bitPattern: Int64(backendId))
+        let hex = String(format: "%032llx", u)
+        let uuid = "\(hex.prefix(8))-\(hex.dropFirst(8).prefix(4))-\(hex.dropFirst(12).prefix(4))-\(hex.dropFirst(16).prefix(4))-\(hex.dropFirst(20).prefix(12))"
+        return UUID(uuidString: String(uuid)) ?? UUID()
+    }
+
     /// Plain-text / emoji-only messages: scale for 1–4 emoji (5×…2×); 5+ emoji use 1×. Nil if not emoji-only (e.g. JSON or mixed text).
     var emojiOnlyScaleMultiplier: Double? {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -68,6 +76,8 @@ struct Message: Identifiable {
             case "order": return "Order update"
             case "offer": return "Offer"
             case "sold_confirmation": return "Order confirmed"
+            case "order_cancellation_request": return "Cancellation requested"
+            case "order_cancellation_outcome": return "Cancellation update"
             case "account_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             case "product_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             default: break
@@ -151,6 +161,8 @@ struct Message: Identifiable {
             case "order": return "Order update"
             case "offer": return isFromCurrentUser ? "Offer sent" : "New offer"
             case "sold_confirmation": return "Order confirmed"
+            case "order_cancellation_request": return isFromCurrentUser ? "You requested cancellation" : "Cancellation requested"
+            case "order_cancellation_outcome": return "Cancellation update"
             case "account_report": return Self.humanReadableReportLine(json: json, reportType: type, maxLength: 280)
             case "product_report": return Self.humanReadableReportLine(json: json, reportType: type, maxLength: 280)
             default: break
@@ -271,6 +283,47 @@ struct Message: Identifiable {
             }
         }()
         return (orderId, issueId, publicId, issueType, description, imageUrls)
+    }
+
+    var isOrderCancellationRequest: Bool {
+        if type == "order_cancellation_request" { return true }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let t = json["type"] as? String else { return false }
+        return t == "order_cancellation_request"
+    }
+
+    /// Backend `order_cancellation_request` JSON from order_offer_chat.
+    var parsedOrderCancellationRequestPayload: (orderId: Int, requestedBySeller: Bool, status: String)? {
+        guard isOrderCancellationRequest else { return nil }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (json["type"] as? String) == "order_cancellation_request" else { return nil }
+        let oid: Int? = {
+            if let n = json["order_id"] as? Int { return n }
+            if let s = json["order_id"] as? String { return Int(s) }
+            if let n = json["orderId"] as? Int { return n }
+            if let s = json["orderId"] as? String { return Int(s) }
+            return nil
+        }()
+        guard let orderId = oid else { return nil }
+        let requested = (json["requested_by_seller"] as? Bool) ?? (json["requestedBySeller"] as? Bool) ?? false
+        let st = (json["status"] as? String) ?? "PENDING"
+        return (orderId, requested, st)
+    }
+
+    var isOrderCancellationOutcome: Bool {
+        if type == "order_cancellation_outcome" { return true }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let t = json["type"] as? String else { return false }
+        return t == "order_cancellation_outcome"
     }
 }
 

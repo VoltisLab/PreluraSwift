@@ -184,6 +184,9 @@ extension Order {
     var firstProductName: String? { products.first?.name }
     var firstProductImageUrl: String? { products.first?.imageUrl }
     var statusDisplay: String {
+        if let c = cancellation, c.status.uppercased() == "PENDING" {
+            return "Cancellation pending"
+        }
         switch status {
         case "CONFIRMED": return "Confirmed"
         case "SHIPPED": return "Shipped"

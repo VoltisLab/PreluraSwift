@@ -822,6 +822,63 @@ class UserService: ObservableObject {
         }
     }
 
+    /// Seller requests cancellation; buyer must approve (confirmed orders only).
+    func sellerRequestOrderCancellation(orderId: Int, reason: String, notes: String, imagesUrl: [String] = []) async throws {
+        let mutation = """
+        mutation SellerRequestOrderCancellation($orderId: Int!, $reason: OrderCancellationReasonEnum!, $notes: String!, $imagesUrl: [String]!) {
+          sellerRequestOrderCancellation(orderId: $orderId, reason: $reason, notes: $notes, imagesUrl: $imagesUrl) {
+            success
+          }
+        }
+        """
+        struct Payload: Decodable { let sellerRequestOrderCancellation: SellerCancelReqPayload? }
+        struct SellerCancelReqPayload: Decodable { let success: Bool? }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["orderId": orderId, "reason": reason, "notes": notes, "imagesUrl": imagesUrl],
+            responseType: Payload.self
+        )
+        if response.sellerRequestOrderCancellation?.success != true {
+            throw NSError(domain: "SellerRequestOrderCancellation", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to request cancellation"])
+        }
+    }
+
+    func approveOrderCancellation(orderId: Int) async throws {
+        let mutation = """
+        mutation ApproveOrderCancellation($orderId: Int!) {
+          approveOrderCancellation(orderId: $orderId) { success }
+        }
+        """
+        struct Payload: Decodable { let approveOrderCancellation: ApproveCancelPayload? }
+        struct ApproveCancelPayload: Decodable { let success: Bool? }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["orderId": orderId],
+            responseType: Payload.self
+        )
+        if response.approveOrderCancellation?.success != true {
+            throw NSError(domain: "ApproveOrderCancellation", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to approve cancellation"])
+        }
+    }
+
+    func rejectOrderCancellation(orderId: Int) async throws {
+        let mutation = """
+        mutation RejectOrderCancellation($orderId: Int!) {
+          rejectOrderCancellation(orderId: $orderId) { success }
+        }
+        """
+        struct Payload: Decodable { let rejectOrderCancellation: RejectCancelPayload? }
+        struct RejectCancelPayload: Decodable { let success: Bool? }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["orderId": orderId],
+            responseType: Payload.self
+        )
+        if response.rejectOrderCancellation?.success != true {
+            throw NSError(domain: "RejectOrderCancellation", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to decline cancellation"])
+        }
+    }
+
     /// Create a fresh order case and emit an order_issue chat event for buyer/seller conversation.
     func raiseOrderIssue(
         orderId: Int,
@@ -1314,6 +1371,7 @@ class UserService: ObservableObject {
             trackingNumber
             trackingUrl
             buyerOrderCountWithSeller
+            cancelledOrder { status requestedBySeller }
             user { id username displayName profilePictureUrl }
             products {
               id
@@ -1355,8 +1413,13 @@ class UserService: ObservableObject {
             let trackingNumber: String?
             let trackingUrl: String?
             let buyerOrderCountWithSeller: Int?
+            let cancelledOrder: CancelledOrderRow?
             let user: OrderUserRow?
             let products: [OrderProductRow]?
+        }
+        struct CancelledOrderRow: Decodable {
+            let status: String?
+            let requestedBySeller: Bool?
         }
         struct OrderUserRow: Decodable {
             let id: AnyCodable?
@@ -1475,6 +1538,10 @@ class UserService: ObservableObject {
             }
             let createdAt = row.createdAt?.date ?? Self.parseCreatedAt(nil) ?? Date()
             let priceStr = row.priceTotal?.stringValue ?? "0"
+            let cancellation: OrderCancellationSummary? = {
+                guard let co = row.cancelledOrder, let st = co.status?.trimmingCharacters(in: .whitespacesAndNewlines), !st.isEmpty else { return nil }
+                return OrderCancellationSummary(status: st.uppercased(), requestedBySeller: co.requestedBySeller ?? false)
+            }()
             return Order(
                 id: idStr,
                 publicId: row.publicId,
@@ -1488,7 +1555,8 @@ class UserService: ObservableObject {
                 deliveryDate: row.shipmentEstimatedDelivery?.date,
                 trackingNumber: row.trackingNumber,
                 trackingUrl: row.trackingUrl,
-                buyerOrderCountWithSeller: row.buyerOrderCountWithSeller
+                buyerOrderCountWithSeller: row.buyerOrderCountWithSeller,
+                cancellation: cancellation
             )
         }
         let total = response.userOrdersTotalNumber?.intValue ?? 0
@@ -2262,6 +2330,12 @@ struct OrderIssueDetails: Decodable, Identifiable {
     }
 }
 
+/// Pending / resolved cancellation from GraphQL `cancelledOrder` on an order.
+struct OrderCancellationSummary: Equatable, Sendable {
+    let status: String
+    let requestedBySeller: Bool
+}
+
 /// Order from userOrders query. Used in My Orders list and detail.
 struct Order: Identifiable {
     let id: String
@@ -2277,6 +2351,8 @@ struct Order: Identifiable {
     let trackingNumber: String?
     let trackingUrl: String?
     let buyerOrderCountWithSeller: Int?
+    /// When present, buyer/seller cancellation request flow (PENDING needs counterparty action).
+    let cancellation: OrderCancellationSummary?
 
     /// Order ID for display: always starts with "PR" (e.g. PR23DG2DF3 or PR225 for legacy numeric).
     var displayOrderId: String {

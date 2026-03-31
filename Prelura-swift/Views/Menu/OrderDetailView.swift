@@ -31,6 +31,8 @@ struct OrderDetailView: View {
     @State private var isInitialPageLoading = true
     @State private var hasLoadedOnce = false
     @State private var showTrackingCopiedToast = false
+    @State private var cancellationBusy = false
+    @State private var cancellationActionError: String?
 
     init(order: Order, isSeller: Bool? = nil) {
         self.order = order
@@ -109,8 +111,87 @@ struct OrderDetailView: View {
                             .buttonStyle(PlainTappableButtonStyle())
                         }
 
+                        if hasPendingCancellation, isPendingCancellationInitiator {
+                            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                                Image(systemName: "clock")
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                Text(L10n.string("You requested to cancel this order. The other party must approve before it is cancelled."))
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(Theme.Spacing.md)
+                            .background(Theme.Colors.secondaryBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                        }
+
+                        if canShowRespondToCancellation {
+                            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                                Text(L10n.string("The other party asked to cancel this order."))
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                HStack(spacing: Theme.Spacing.md) {
+                                    Button {
+                                        Task { await respondToCancellationRequest(approve: false) }
+                                    } label: {
+                                        Text(L10n.string("Decline"))
+                                            .font(Theme.Typography.body)
+                                            .foregroundColor(Theme.Colors.primaryText)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, Theme.Spacing.sm)
+                                            .background(Theme.Colors.tertiaryBackground)
+                                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                                    }
+                                    .buttonStyle(PlainTappableButtonStyle())
+                                    .disabled(cancellationBusy)
+
+                                    Button {
+                                        Task { await respondToCancellationRequest(approve: true) }
+                                    } label: {
+                                        Text(L10n.string("Approve"))
+                                            .font(Theme.Typography.body)
+                                            .foregroundColor(.white)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, Theme.Spacing.sm)
+                                            .background(Theme.primaryColor)
+                                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                                    }
+                                    .buttonStyle(PlainTappableButtonStyle())
+                                    .disabled(cancellationBusy)
+                                }
+                                if cancellationBusy {
+                                    ProgressView()
+                                        .frame(maxWidth: .infinity)
+                                }
+                                if let err = cancellationActionError, !err.isEmpty {
+                                    Text(err)
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(Theme.Colors.error)
+                                }
+                            }
+                            .padding(Theme.Spacing.md)
+                            .background(Theme.Colors.secondaryBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                        }
+
                         if canShowCancelOrder {
                             NavigationLink(destination: CancelOrderView(order: effectiveOrder)) {
+                                HStack {
+                                    Image(systemName: "xmark.circle")
+                                    Text(L10n.string("Cancel order"))
+                                }
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.error)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(Theme.Spacing.md)
+                                .background(Theme.Colors.secondaryBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                            }
+                            .buttonStyle(PlainTappableButtonStyle())
+                        }
+
+                        if canShowSellerCancelOrder {
+                            NavigationLink(destination: CancelOrderView(order: effectiveOrder, isSellerRequest: true)) {
                                 HStack {
                                     Image(systemName: "xmark.circle")
                                     Text(L10n.string("Cancel order"))
@@ -653,9 +734,39 @@ struct OrderDetailView: View {
         return st != "CANCELLED" && st != "REFUNDED"
     }
 
-    /// Show "Cancel order" when: buyer view, order not yet delivered/cancelled/refunded.
+    private var hasPendingCancellation: Bool {
+        (effectiveOrder.cancellation?.status.uppercased() == "PENDING")
+    }
+
+    /// Buyer has submitted a request and is waiting on the seller.
+    private var isPendingCancellationInitiator: Bool {
+        guard let c = effectiveOrder.cancellation, c.status.uppercased() == "PENDING" else { return false }
+        if c.requestedBySeller { return isSeller == true }
+        return isSeller == false
+    }
+
+    /// Counterparty can approve or decline a pending request.
+    private var canShowRespondToCancellation: Bool {
+        guard let c = effectiveOrder.cancellation, c.status.uppercased() == "PENDING" else { return false }
+        guard let sellerView = isSeller else { return false }
+        if c.requestedBySeller { return sellerView == false }
+        return sellerView == true
+    }
+
+    /// Show "Cancel order" when: buyer view, order not yet delivered/cancelled/refunded, no open cancellation request.
     private var canShowCancelOrder: Bool {
         guard isSeller == false else { return false }
+        guard !hasPendingCancellation else { return false }
+        let tracking = effectiveOrder.trackingNumber?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !tracking.isEmpty { return false }
+        let terminal = ["SHIPPED", "IN_TRANSIT", "READY_FOR_PICKUP", "DELIVERED", "CANCELLED", "REFUNDED"]
+        return !terminal.contains(effectiveOrder.status)
+    }
+
+    /// Seller-initiated cancellation request (confirmed, pre-tracking), when no pending request exists.
+    private var canShowSellerCancelOrder: Bool {
+        guard isSeller == true else { return false }
+        guard !hasPendingCancellation else { return false }
         let tracking = effectiveOrder.trackingNumber?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !tracking.isEmpty { return false }
         let terminal = ["SHIPPED", "IN_TRANSIT", "READY_FOR_PICKUP", "DELIVERED", "CANCELLED", "REFUNDED"]
@@ -833,6 +944,29 @@ struct OrderDetailView: View {
         } catch {
             confirmShippingError = error.localizedDescription
         }
+    }
+
+    private func respondToCancellationRequest(approve: Bool) async {
+        guard let orderId = Int(effectiveOrder.id) else { return }
+        await MainActor.run {
+            cancellationBusy = true
+            cancellationActionError = nil
+        }
+        userService.updateAuthToken(authService.authToken)
+        do {
+            if approve {
+                try await userService.approveOrderCancellation(orderId: orderId)
+            } else {
+                try await userService.rejectOrderCancellation(orderId: orderId)
+            }
+            await hydrateOrderIfNeeded(force: true)
+            await refreshTrackingDetailsIfNeeded()
+        } catch {
+            await MainActor.run {
+                cancellationActionError = error.localizedDescription
+            }
+        }
+        await MainActor.run { cancellationBusy = false }
     }
 
     private func hydrateOrderIfNeeded(force: Bool = false) async {

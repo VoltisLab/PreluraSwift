@@ -23,33 +23,45 @@ struct DeepLinkDestinationItem: Identifiable {
 final class AppRouter: ObservableObject {
     @Published var pendingItem: DeepLinkDestinationItem?
 
-    /// Handle URL (e.g. prelura://product/123, prelura://user/john, prelura://chat/456?username=john&is_offer=true).
+    /// Handle URL (e.g. prelura://product/123, https://prelura.com/item/123, prelura://user/john).
     func handle(url: URL) {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let host = components.host else {
-            return
-        }
-        let pathComponents = components.path.split(separator: "/").map(String.init)
         var dest: DeepLinkDestination?
-        switch host.lowercased() {
-        case "product":
-            if let idStr = pathComponents.first, let id = Int(idStr) {
+        let scheme = (url.scheme ?? "").lowercased()
+
+        if scheme == "http" || scheme == "https" {
+            let host = (url.host ?? "").lowercased()
+            guard host == "prelura.com" || host == "www.prelura.com" else { return }
+            let parts = url.path.split(separator: "/").map(String.init).filter { !$0.isEmpty }
+            if parts.count >= 2, parts[0].lowercased() == "item", let id = Int(parts[1]) {
                 dest = .product(productId: id)
             }
-        case "user", "profile":
-            if let username = pathComponents.first, !username.isEmpty {
-                dest = .user(username: username)
+        } else {
+            guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                  let host = components.host else {
+                return
             }
-        case "chat", "conversation":
-            if let id = pathComponents.first {
-                let username = components.queryItems?.first(where: { $0.name == "username" })?.value ?? ""
-                let isOffer = (components.queryItems?.first(where: { $0.name == "is_offer" })?.value ?? "false").lowercased() == "true"
-                let isOrder = (components.queryItems?.first(where: { $0.name == "is_order" })?.value ?? "false").lowercased() == "true"
-                dest = .conversation(conversationId: String(id), username: username, isOffer: isOffer, isOrder: isOrder)
+            let pathComponents = components.path.split(separator: "/").map(String.init)
+            switch host.lowercased() {
+            case "product":
+                if let idStr = pathComponents.first, let id = Int(idStr) {
+                    dest = .product(productId: id)
+                }
+            case "user", "profile":
+                if let username = pathComponents.first, !username.isEmpty {
+                    dest = .user(username: username)
+                }
+            case "chat", "conversation":
+                if let id = pathComponents.first {
+                    let username = components.queryItems?.first(where: { $0.name == "username" })?.value ?? ""
+                    let isOffer = (components.queryItems?.first(where: { $0.name == "is_offer" })?.value ?? "false").lowercased() == "true"
+                    let isOrder = (components.queryItems?.first(where: { $0.name == "is_order" })?.value ?? "false").lowercased() == "true"
+                    dest = .conversation(conversationId: String(id), username: username, isOffer: isOffer, isOrder: isOrder)
+                }
+            default:
+                break
             }
-        default:
-            break
         }
+
         if let d = dest {
             Task { @MainActor in
                 self.pendingItem = DeepLinkDestinationItem(destination: d)

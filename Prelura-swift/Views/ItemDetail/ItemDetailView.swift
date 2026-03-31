@@ -168,7 +168,6 @@ struct ItemDetailView: View {
         }
         .sheet(isPresented: $showProductOptionsSheet) {
             productOptionsSheet
-                .preluraModalSheetBackground()
         }
         .sheet(isPresented: $showReportSheet) {
             NavigationStack {
@@ -972,10 +971,6 @@ struct ProductOptionsSheet: View {
             }
             .padding(.vertical, Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                    .fill(Theme.Colors.background)
-            )
         }
     }
 }

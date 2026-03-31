@@ -83,7 +83,8 @@ struct DeepLinkOverlayView: View {
             deliveryDate: nil,
             trackingNumber: nil,
             trackingUrl: nil,
-            buyerOrderCountWithSeller: nil
+            buyerOrderCountWithSeller: nil,
+            cancellation: nil
         )
     }
 
