@@ -241,6 +241,7 @@ struct ChatDetailView: View {
     @State private var hasAutoScrolledToBottomForThisChat = false
     /// Stable id at end of scroll content so `scrollTo` works with `LazyVStack` (last message id may not be laid out yet).
     private static let chatBottomAnchorId = "chat_bottom_anchor"
+    private static let chatPeerTypingScrollId = "chat_peer_typing_inline"
 
     private let productService = ProductService()
     private let orderCancellationUserService = UserService()
@@ -490,19 +491,22 @@ struct ChatDetailView: View {
         return isSeller
     }
 
+    /// Shown inside the message `ScrollView` above the bottom anchor so it scrolls with the thread and never sits on top of bubbles (typing in `safeAreaInset` overlapped the last rows).
+    private var peerTypingRowInScrollContent: some View {
+        HStack(alignment: .center, spacing: Theme.Spacing.xs) {
+            Text("\(typingDisplayName) is typing")
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+            TypingDotsView()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, Theme.Spacing.xs)
+        .padding(.bottom, Theme.Spacing.sm)
+        .transition(.opacity)
+    }
+
     private var messageInputBar: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            if remoteTypingIndicator.isPeerTyping {
-                HStack(alignment: .center, spacing: Theme.Spacing.xs) {
-                    Text("\(typingDisplayName) is typing")
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    TypingDotsView()
-                }
-                .padding(.horizontal, ChatThreadLayout.horizontalGutter)
-                .padding(.bottom, Theme.Spacing.xs)
-                .transition(.opacity)
-            }
             HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
                 TextField("Type a message...", text: $newMessage, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -569,8 +573,6 @@ struct ChatDetailView: View {
     }
 
     private static let chatAvatarSize: CGFloat = 32
-    /// Extra scroll content inset when the peer typing row is visible so timestamps / last bubble stay above the inset (safeAreaInset grows upward).
-    private static let chatTypingScrollBottomReserve: CGFloat = 44
 
     private var isSold: Bool {
         timelineOrder.contains { $0.isSold }
@@ -815,16 +817,16 @@ struct ChatDetailView: View {
                                 timelineRow(timelineIndex: timelineIndex, entry: entry)
                             }
                         }
+                        if remoteTypingIndicator.isPeerTyping {
+                            peerTypingRowInScrollContent
+                                .id(Self.chatPeerTypingScrollId)
+                        }
                         Color.clear
                             .frame(height: 1)
                             .id(Self.chatBottomAnchorId)
                     }
                     .padding(.horizontal, ChatThreadLayout.horizontalGutter)
-                    .padding(.top, Theme.Spacing.sm)
-                    .padding(
-                        .bottom,
-                        Theme.Spacing.sm + (remoteTypingIndicator.isPeerTyping ? Self.chatTypingScrollBottomReserve : 0)
-                    )
+                    .padding(.vertical, Theme.Spacing.sm)
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .onAppear {
@@ -2529,6 +2531,10 @@ struct ChatDetailView: View {
             Task { @MainActor in
                 guard convIdForPushTrace != "0" else { return }
                 ChatPushTraceDebugState.shared.markSocketDisconnected(conversationId: convIdForPushTrace, reason: reason)
+                // Transient URLSessionWebSocket send failures must not nil the client — that dropped the room and looked like "WS never pushes".
+                if reason.hasPrefix("send_error:") {
+                    return
+                }
                 webSocket = nil
                 scheduleSocketReconnect(reason: reason)
             }

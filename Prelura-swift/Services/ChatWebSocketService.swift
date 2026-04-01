@@ -100,16 +100,14 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
     /// Send a text message. Payload: {"message": text, "message_uuid": uuid}
     @discardableResult
     func send(message: String, messageUUID: String) -> Bool {
-        guard isConnected, task != nil else { return false }
+        guard let task = task else { return false }
         let payload: [String: Any] = ["message": message, "message_uuid": messageUUID]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let string = String(data: data, encoding: .utf8) else { return false }
-        task?.send(.string(string)) { [weak self] error in
+        // Do not require `isConnected`: the handshake can still be in flight; the task queues outbound frames.
+        task.send(.string(string)) { error in
             if let e = error {
                 print("ChatWebSocket send error: \(e)")
-                Task { @MainActor in
-                    self?.onDisconnectReason?("send_error: \(e.localizedDescription)")
-                }
             }
         }
         return true
@@ -118,6 +116,7 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
     /// Send typing state to backend, when supported by chat socket.
     /// Payload follows existing backend convention: {"is_typing": true/false}
     func sendTyping(isTyping: Bool) {
+        guard task != nil else { return }
         // Send multiple commonly-used keys so backend variants can understand typing updates.
         let payload: [String: Any] = [
             "type": "typing",
@@ -435,6 +434,32 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
         return ""
     }
 
+    /// Parses `createdAt` / `created_at` from GraphQL ISO-8601 or Django `str(datetime)` (`"yyyy-MM-dd HH:mm:ss+00:00"`, optional fractional seconds).
+    private static func parseSocketTimestamp(_ json: [String: Any]) -> Date {
+        let raw = (json["createdAt"] as? String) ?? (json["created_at"] as? String)
+        let s = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !s.isEmpty else { return Date() }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = iso.date(from: s) { return d }
+        iso.formatOptions = [.withInternetDateTime]
+        if let d = iso.date(from: s) { return d }
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(secondsFromGMT: 0)
+        for pattern in [
+            "yyyy-MM-dd HH:mm:ss.SSSSSSXXX",
+            "yyyy-MM-dd HH:mm:ss.SSSXXX",
+            "yyyy-MM-dd HH:mm:ssXXX",
+            "yyyy-MM-dd HH:mm:ss.SSSSSSZ",
+            "yyyy-MM-dd HH:mm:ssZ",
+        ] {
+            df.dateFormat = pattern
+            if let d = df.date(from: s) { return d }
+        }
+        return Date()
+    }
+
     /// Parse server message JSON to Message (Flutter `MessageModel.fromSocket`: id, text, senderName/sender_name, createdAt, isItem, itemId, sender map).
     private func parseWebSocketMessage(_ json: [String: Any]) -> Message? {
         let text = Self.coerceSocketText(json)
@@ -449,15 +474,7 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
             let idStr = (json["id"] as? String) ?? UUID().uuidString
             return UUID(uuidString: idStr) ?? UUID()
         }()
-        let createdAt: Date = {
-            let s = (json["createdAt"] as? String) ?? (json["created_at"] as? String)
-            guard let s = s else { return Date() }
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let d = formatter.date(from: s) { return d }
-            formatter.formatOptions = [.withInternetDateTime]
-            return formatter.date(from: s) ?? Date()
-        }()
+        let createdAt = Self.parseSocketTimestamp(json)
         let isItem = (json["isItem"] as? Bool) ?? (json["is_item"] as? Bool) ?? false
         let itemType = (json["itemType"] as? String) ?? (json["item_type"] as? String)
         let itemId = (json["itemId"] as? Int).map { String($0) } ?? (json["item_id"] as? Int).map { String($0) }
