@@ -5,6 +5,8 @@ import SwiftUI
 struct PrimaryGlassButton: View {
     let title: String
     var icon: String? = nil
+    /// Asset catalog name; when set, shown instead of SF Symbol `icon`.
+    var assetIcon: String? = nil
     var isEnabled: Bool = true
     var isLoading: Bool = false
     let action: () -> Void
@@ -12,12 +14,14 @@ struct PrimaryGlassButton: View {
     init(
         _ title: String,
         icon: String? = nil,
+        assetIcon: String? = nil,
         isEnabled: Bool = true,
         isLoading: Bool = false,
         action: @escaping () -> Void
     ) {
         self.title = title
         self.icon = icon
+        self.assetIcon = assetIcon
         self.isEnabled = isEnabled
         self.isLoading = isLoading
         self.action = action
@@ -33,7 +37,12 @@ struct PrimaryGlassButton: View {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                 } else {
-                    if let icon = icon {
+                    if let assetIcon {
+                        Image(assetIcon)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 22, height: 22)
+                    } else if let icon {
                         Image(systemName: icon)
                             .font(.system(size: 16, weight: .semibold))
                     }

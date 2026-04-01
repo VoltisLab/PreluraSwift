@@ -135,12 +135,17 @@ struct DiscoverView: View {
             brandFiltersSection
             tryCartBanner
             VStack(alignment: .leading, spacing: 0) {
-                Text(L10n.string("Shop Categories"))
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.top, 14)
-                    .padding(.bottom, Theme.Spacing.sm)
+                HStack(spacing: Theme.Spacing.sm) {
+                    Image(systemName: "square.grid.2x2.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.primaryColor)
+                    Text(L10n.string("Shop Categories"))
+                        .font(Theme.Typography.headline)
+                        .foregroundStyle(Theme.primaryColor)
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, 14)
+                .padding(.bottom, Theme.Spacing.sm)
                 ContentDivider()
                 categoryCirclesSection
                 shopByStyleAndLookbooksBanners

@@ -298,6 +298,8 @@ enum L10n {
         "Use Try Cart from Shop All and favourites. Mix brands freely, review your bag anytime, then check out when you are ready—on your terms.": "Χρησιμοποιήστε το Δοκιμαστικό καλάθι από το Shop All και τα αγαπημένα. Αναμείξτε μάρκες ελεύθερα, δείτε το καλάθι σας όποτε θέλετε και ολοκληρώστε όταν είστε έτοιμοι—με τους δικούς σας όρους.",
         "Next": "Επόμενο",
         "Start shopping": "Ξεκινήστε τις αγορές",
+        "Skip": "Παράλειψη",
+        "Shop All": "Όλα τα προϊόντα",
         "Enter brand name": "Εισάγετε όνομα μάρκας",
         "Tip: similar price range is recommended based on similar items sold on Prelura.": "Συμβουλή: συνιστάται παρόμοιο εύρος τιμών με βάση παρόμοια αντικείμενα που πωλήθηκαν στο Prelura.",
         "Similar sold items": "Παρόμοια πωλημένα αντικείμενα",

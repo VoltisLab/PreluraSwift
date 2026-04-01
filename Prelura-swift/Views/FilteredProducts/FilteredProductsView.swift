@@ -31,6 +31,9 @@ struct FilteredProductsView: View {
     @State private var tryCartSearchTask: Task<Void, Never>?
     @EnvironmentObject private var shopAllBag: ShopAllBagStore
     @State private var showGuestSignInPrompt: Bool = false
+    @State private var showTryCartOnboarding: Bool = false
+    /// Avoid re-presenting Try Cart intro when `onAppear` runs again (e.g. back from item detail).
+    @State private var didScheduleTryCartOnboardingThisVisit: Bool = false
     /// Try Cart: when on, grid + detail use the shared bag (toolbar bag on Shop All). Defaults on for Shop All so Add to bag is visible immediately.
     @State private var shopAllBagToolbarActive: Bool
 
@@ -363,6 +366,7 @@ struct FilteredProductsView: View {
                 viewModel.updateAuthToken(authService.authToken)
             }
             viewModel.loadData()
+            scheduleTryCartOnboardingIfNeeded()
         }
         .onChange(of: viewModel.searchText) { _, _ in
             if case .tryCartSearch = filterType {
@@ -450,6 +454,36 @@ struct FilteredProductsView: View {
             }
         }
         .fullScreenCover(isPresented: $showGuestSignInPrompt) { GuestSignInPromptView() }
+        .overlay {
+            if showTryCartOnboarding {
+                TryCartOnboardingPopupOverlay(onComplete: finishTryCartOnboarding)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .zIndex(900)
+            }
+        }
+    }
+
+    private func scheduleTryCartOnboardingIfNeeded() {
+        guard case .tryCartSearch = filterType else { return }
+        guard !didScheduleTryCartOnboardingThisVisit else { return }
+        guard AppBannerPolicy.shouldPresent(.tryCartShopAllIntro) else { return }
+        didScheduleTryCartOnboardingThisVisit = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 420_000_000)
+            withAnimation(.easeOut(duration: 0.22)) {
+                showTryCartOnboarding = true
+            }
+        }
+    }
+
+    private func finishTryCartOnboarding() {
+        if !AppBannerPolicy.forceShowTryCartShopAllIntroEveryTime {
+            AppBannerPolicy.markSeen(.tryCartShopAllIntro)
+        }
+        withAnimation(.easeOut(duration: 0.2)) {
+            showTryCartOnboarding = false
+        }
     }
 
     /// Multi-buy style: floating primary-colour glassy pill (bag icon + "Shopping bag" + total).
