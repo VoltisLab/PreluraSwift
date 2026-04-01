@@ -252,6 +252,36 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
         }
     }
 
+    /// True when `is_typing` / `isTyping` exists and is not JSON null (`dict[key] != nil` is true for NSNull, which must not count as typing).
+    private static func jsonHasNonNullTypingFlag(_ json: [String: Any]) -> Bool {
+        if let v = json["is_typing"], !(v is NSNull) { return true }
+        if let v = json["isTyping"], !(v is NSNull) { return true }
+        return false
+    }
+
+    private func deliverParsedChatMessage(json: [String: Any], convId: String) async {
+        guard let msg = parseWebSocketMessage(json) else {
+            let summary = Self.jsonKeySummary(json)
+            Self.diagLog.error("chat_frame_dropped conv=\(convId, privacy: .public) \(summary, privacy: .public)")
+            print("[ChatWS] chat_frame_dropped conv=\(convId) \(summary)")
+            await MainActor.run {
+                ChatPushTraceDebugState.shared.markSocketDiagnostic(
+                    conversationId: convId,
+                    summary: "chat_frame_dropped \(summary)",
+                    isError: true
+                )
+            }
+            return
+        }
+        let echoUuid = (json["message_uuid"] as? String) ?? (json["messageUuid"] as? String)
+        let bid = msg.backendId.map { String($0) } ?? "nil"
+        Self.diagLog.info("chat_message_parsed conv=\(convId, privacy: .public) backendId=\(bid, privacy: .public) sender=\(msg.senderUsername, privacy: .public) type=\(msg.type, privacy: .public) textLen=\(msg.content.count)")
+        print("[ChatWS] chat_message_parsed conv=\(convId) backendId=\(bid) sender=\(msg.senderUsername) type=\(msg.type) textLen=\(msg.content.count)")
+        await MainActor.run {
+            onNewMessage?(msg, echoUuid)
+        }
+    }
+
     private func handleReceivedString(_ text: String) async {
         let convId = conversationId
         guard let data = text.data(using: .utf8),
@@ -297,15 +327,19 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
             }
             return
         }
+        // Pebble/Flutter: treat `type: chat_message` as a row payload first (never as typing), same as messages_provider.dart.
+        if typeNorm == "chat_message" {
+            await deliverParsedChatMessage(json: json, convId: convId)
+            return
+        }
         // Typing: server sends `type: typing_status`; clients may send `type: typing` + is_typing / isTyping.
-        // Persisted chat rows are broadcast without top-level `type` (server pops `chat_message`) but always carry numeric `id`.
-        // Never route those as typing just because `is_typing` / `isTyping` keys exist (or are null) — that swallowed peer text bubbles.
+        // Persisted chat rows may omit `type`; never route those as typing because JSON null still leaves keys present as NSNull.
         let explicitTyping = typeNorm == "typing_status" || typeNorm == "typing"
         let legacyTypingPayload =
             !explicitTyping
             && (typeNorm == nil || typeNorm != "chat_message")
             && !Self.hasPersistedMessageId(json)
-            && (json["is_typing"] != nil || json["isTyping"] != nil)
+            && Self.jsonHasNonNullTypingFlag(json)
         if explicitTyping || legacyTypingPayload {
             let convId = Self.jsonString(json["conversationId"])
                 ?? Self.jsonString(json["conversation_id"])
@@ -365,26 +399,7 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
             return
         }
         // New message: parse and notify on main actor (messageUuid when server confirms our send).
-        guard let msg = parseWebSocketMessage(json) else {
-            let summary = Self.jsonKeySummary(json)
-            Self.diagLog.error("chat_frame_dropped conv=\(convId, privacy: .public) \(summary, privacy: .public)")
-            print("[ChatWS] chat_frame_dropped conv=\(convId) \(summary)")
-            await MainActor.run {
-                ChatPushTraceDebugState.shared.markSocketDiagnostic(
-                    conversationId: convId,
-                    summary: "chat_frame_dropped \(summary)",
-                    isError: true
-                )
-            }
-            return
-        }
-        let echoUuid = (json["message_uuid"] as? String) ?? (json["messageUuid"] as? String)
-        let bid = msg.backendId.map { String($0) } ?? "nil"
-        Self.diagLog.info("chat_message_parsed conv=\(convId, privacy: .public) backendId=\(bid, privacy: .public) sender=\(msg.senderUsername, privacy: .public) type=\(msg.type, privacy: .public) textLen=\(msg.content.count)")
-        print("[ChatWS] chat_message_parsed conv=\(convId) backendId=\(bid) sender=\(msg.senderUsername) type=\(msg.type) textLen=\(msg.content.count)")
-        await MainActor.run {
-            onNewMessage?(msg, echoUuid)  // echoUuid = message_uuid when server confirms our send
-        }
+        await deliverParsedChatMessage(json: json, convId: convId)
     }
 
     private static func redactForLog(_ s: String, maxLen: Int) -> String {
@@ -397,15 +412,34 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
     private static func jsonKeySummary(_ json: [String: Any]) -> String {
         let keys = json.keys.sorted().joined(separator: ",")
         let hasId = json["id"] != nil
-        let rawText = (json["text"] as? String) ?? (json["message"] as? String) ?? ""
+        let rawText = coerceSocketText(json)
         return "keys=[\(keys)] hasId=\(hasId) textLen=\(rawText.count)"
     }
 
-    /// Parse server message JSON to Message (Flutter MessageModel.fromSocket: id, text, senderName/sender_name, createdAt, isItem, itemId).
+    private static func coerceSocketText(_ json: [String: Any]) -> String {
+        if let s = json["text"] as? String { return s }
+        if let s = json["message"] as? String { return s }
+        if let n = json["text"] as? NSNumber { return n.stringValue }
+        if let n = json["message"] as? NSNumber { return n.stringValue }
+        return ""
+    }
+
+    private static func coerceSocketSenderUsername(_ json: [String: Any]) -> String {
+        let top = (json["senderName"] as? String) ?? (json["sender_name"] as? String)
+        let trimmedTop = top?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmedTop.isEmpty { return trimmedTop }
+        if let sender = json["sender"] as? [String: Any],
+           let u = sender["username"] as? String {
+            return u.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return ""
+    }
+
+    /// Parse server message JSON to Message (Flutter `MessageModel.fromSocket`: id, text, senderName/sender_name, createdAt, isItem, itemId, sender map).
     private func parseWebSocketMessage(_ json: [String: Any]) -> Message? {
-        let text = (json["text"] as? String) ?? (json["message"] as? String) ?? ""
+        let text = Self.coerceSocketText(json)
         guard !text.isEmpty || json["id"] != nil else { return nil }
-        let senderName = (json["senderName"] as? String) ?? (json["sender_name"] as? String) ?? ""
+        let senderName = Self.coerceSocketSenderUsername(json)
         let backendInt = (json["id"] as? Int)
             ?? (json["id"] as? NSNumber).map { $0.intValue }
             ?? (json["id"] as? Double).map { Int($0) }

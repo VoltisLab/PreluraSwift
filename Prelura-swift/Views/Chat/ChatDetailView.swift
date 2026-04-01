@@ -128,6 +128,23 @@ struct ChatWithSellerView: View {
 }
 
 /// One item in the chat timeline: message, offer card, or sold event. Sorted by time.
+private struct ChatFolderActionError: Identifiable {
+    let id: UUID
+    let title: String
+    let message: String
+
+    init(title: String, message: String) {
+        self.id = UUID()
+        self.title = title
+        self.message = message
+    }
+}
+
+/// Tighter horizontal inset for the chat thread, headers, composer, and product card (half of former `md` padding).
+fileprivate enum ChatThreadLayout {
+    static let horizontalGutter: CGFloat = Theme.Spacing.md / 2
+}
+
 enum ChatItem: Hashable {
     case message(UUID)
     case offer(String)
@@ -161,6 +178,9 @@ struct ChatDetailView: View {
     let conversation: Conversation
     /// When non-nil, show this product at the top of the chat (Flutter: productId → ProductCard at top).
     var item: Item? = nil
+    /// When true, the thread was opened from the archived inbox list (⋯ menu shows Restore instead of Archive).
+    var isOpenedFromArchive: Bool = false
+
     @EnvironmentObject var authService: AuthService
     @Environment(\.optionalTabCoordinator) private var tabCoordinator
     @Environment(\.dismiss) private var dismiss
@@ -187,7 +207,7 @@ struct ChatDetailView: View {
     @State private var showItemSoldBanner = false
     @State private var offerModalSubmitting = false
     @State private var showReportUserSheet = false
-    @State private var archiveFailureMessage: String?
+    @State private var folderActionError: ChatFolderActionError?
     @State private var reconnectTask: Task<Void, Never>?
     @State private var reconnectAttempt = 0
     /// WhatsApp-style long-press reactions (local persistence per device).
@@ -390,9 +410,10 @@ struct ChatDetailView: View {
             && !hasLocalOfferHistoryCache(convId: convId)
     }
 
-    init(conversation: Conversation, item: Item? = nil) {
+    init(conversation: Conversation, item: Item? = nil, isOpenedFromArchive: Bool = false) {
         self.conversation = conversation
         self.item = item
+        self.isOpenedFromArchive = isOpenedFromArchive
         _displayedConversation = State(initialValue: conversation)
         // Hydrate from in-memory product cache immediately so the header URL exists on first layout (onAppear ran too late → spinner).
         if let pid = conversation.offer?.products?.first?.id.flatMap({ Int($0) }) {
@@ -478,7 +499,7 @@ struct ChatDetailView: View {
                         .foregroundColor(Theme.Colors.secondaryText)
                     TypingDotsView()
                 }
-                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.horizontal, ChatThreadLayout.horizontalGutter)
                 .padding(.bottom, Theme.Spacing.xs)
                 .transition(.opacity)
             }
@@ -488,7 +509,7 @@ struct ChatDetailView: View {
                     .focused($isMessageFieldFocused)
                     .lineLimit(1...10)
                     .multilineTextAlignment(.leading)
-                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.horizontal, ChatThreadLayout.horizontalGutter)
                     .padding(.vertical, 10)
                     .frame(minHeight: 44, alignment: .leading)
                     .background(Theme.Colors.secondaryBackground)
@@ -506,7 +527,7 @@ struct ChatDetailView: View {
                 .disabled(newMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
             }
         }
-        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.horizontal, ChatThreadLayout.horizontalGutter)
         .padding(.vertical, Theme.Spacing.sm)
         .background(Theme.Colors.background)
     }
@@ -548,6 +569,8 @@ struct ChatDetailView: View {
     }
 
     private static let chatAvatarSize: CGFloat = 32
+    /// Extra scroll content inset when the peer typing row is visible so timestamps / last bubble stay above the inset (safeAreaInset grows upward).
+    private static let chatTypingScrollBottomReserve: CGFloat = 44
 
     private var isSold: Bool {
         timelineOrder.contains { $0.isSold }
@@ -751,7 +774,7 @@ struct ChatDetailView: View {
             }
             if let item = item {
                 ChatProductCardView(item: item)
-                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.horizontal, ChatThreadLayout.horizontalGutter)
                     .padding(.vertical, Theme.Spacing.sm)
                     .background(Theme.Colors.background)
                 if !offers.isEmpty {
@@ -796,8 +819,12 @@ struct ChatDetailView: View {
                             .frame(height: 1)
                             .id(Self.chatBottomAnchorId)
                     }
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.sm)
+                    .padding(.horizontal, ChatThreadLayout.horizontalGutter)
+                    .padding(.top, Theme.Spacing.sm)
+                    .padding(
+                        .bottom,
+                        Theme.Spacing.sm + (remoteTypingIndicator.isPeerTyping ? Self.chatTypingScrollBottomReserve : 0)
+                    )
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .onAppear {
@@ -809,6 +836,10 @@ struct ChatDetailView: View {
                 }
                 .onChange(of: timelineOrder.count) { _, newCount in
                     guard newCount > 0 else { return }
+                    scrollToLatest(with: proxy, animated: true)
+                }
+                .onChange(of: remoteTypingIndicator.isPeerTyping) { _, isTyping in
+                    guard isTyping else { return }
                     scrollToLatest(with: proxy, animated: true)
                 }
                 .onChange(of: hasFinishedInitialConversationFetch) { _, done in
@@ -878,7 +909,11 @@ struct ChatDetailView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
-                    Button(L10n.string("Archive")) { archiveDisplayedConversation() }
+                    if isOpenedFromArchive {
+                        Button(L10n.string("Restore")) { restoreDisplayedConversation() }
+                    } else {
+                        Button(L10n.string("Archive")) { archiveDisplayedConversation() }
+                    }
                     Button("Report", role: .destructive) {
                         showReportUserSheet = true
                     }
@@ -941,15 +976,12 @@ struct ChatDetailView: View {
                     }
             }
         }
-        .alert(L10n.string("Archive"), isPresented: Binding(
-            get: { archiveFailureMessage != nil },
-            set: { if !$0 { archiveFailureMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { archiveFailureMessage = nil }
-        } message: {
-            if let archiveFailureMessage {
-                Text(archiveFailureMessage)
-            }
+        .alert(item: $folderActionError) { err in
+            Alert(
+                title: Text(err.title),
+                message: Text(err.message),
+                dismissButton: .default(Text("OK")) { folderActionError = nil }
+            )
         }
         .onAppear {
             hasAutoScrolledToBottomForThisChat = false
@@ -1082,7 +1114,30 @@ struct ChatDetailView: View {
                 }
             } catch {
                 await MainActor.run {
-                    archiveFailureMessage = error.localizedDescription
+                    folderActionError = ChatFolderActionError(
+                        title: L10n.string("Archive"),
+                        message: error.localizedDescription
+                    )
+                }
+            }
+        }
+    }
+
+    private func restoreDisplayedConversation() {
+        guard let cid = Int(displayedConversation.id), cid > 0 else { return }
+        Task {
+            do {
+                try await chatService.unarchiveConversation(conversationId: cid)
+                await MainActor.run {
+                    tabCoordinator?.requestInboxListRefresh()
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    folderActionError = ChatFolderActionError(
+                        title: L10n.string("Restore"),
+                        message: error.localizedDescription
+                    )
                 }
             }
         }
@@ -1878,7 +1933,7 @@ struct ChatDetailView: View {
                 .font(.system(size: 14))
                 .foregroundColor(Theme.Colors.secondaryText)
         }
-        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.horizontal, ChatThreadLayout.horizontalGutter)
         .padding(.vertical, Theme.Spacing.sm)
         .background(Theme.Colors.background)
         .contentShape(Rectangle())
@@ -1989,7 +2044,7 @@ struct ChatDetailView: View {
                 .font(.system(size: 14))
                 .foregroundColor(Theme.Colors.secondaryText)
         }
-        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.horizontal, ChatThreadLayout.horizontalGutter)
         .padding(.vertical, Theme.Spacing.sm)
         .background(Theme.Colors.background)
         .contentShape(Rectangle())
@@ -2916,7 +2971,7 @@ struct ChatProductCardView: View {
                     .font(.system(size: 14))
                     .foregroundColor(Theme.Colors.secondaryText)
             }
-            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.horizontal, ChatThreadLayout.horizontalGutter)
             .padding(.vertical, Theme.Spacing.sm)
         }
         .buttonStyle(PlainTappableButtonStyle())
@@ -3667,6 +3722,8 @@ struct MessageBubbleView: View {
     private var bubbleMaxWidth: CGFloat { UIScreen.main.bounds.width * 0.78 }
     private var baseMessageFontSize: CGFloat { 17 }
     private static let messageAvatarSize: CGFloat = 28
+    /// Half of former `lg` so sent/received rows sit closer to screen edges (matches tighter `ChatThreadLayout.horizontalGutter`).
+    private static let bubbleSideSpacerMin: CGFloat = Theme.Spacing.lg / 2
     /// Vertical offset so the avatar is centered with a single-line bubble. This position is kept for multi-line bubbles (avatar does not re-center).
     private static let avatarTopOffsetForSingleLineCenter: CGFloat = 4
 
@@ -3867,7 +3924,7 @@ struct MessageBubbleView: View {
 
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .top, spacing: Theme.Spacing.xs) {
-                if isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
+                if isCurrentUser { Spacer(minLength: Self.bubbleSideSpacerMin) }
                 if !isCurrentUser {
                     Group {
                         if showAvatar {
@@ -3881,7 +3938,7 @@ struct MessageBubbleView: View {
                 }
                 bubbleWithCornerReactions(emojiMult: emojiMult, bubbleText: bubbleText)
                     .padding(.top, hasAnyReaction ? 12 : 0)
-                if !isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
+                if !isCurrentUser { Spacer(minLength: Self.bubbleSideSpacerMin) }
             }
             if showTimestamp {
                 HStack {
