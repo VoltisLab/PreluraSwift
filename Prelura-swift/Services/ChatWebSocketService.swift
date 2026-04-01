@@ -227,6 +227,12 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
         }
     }
 
+    /// True when JSON has a non-null message primary key. Chat broadcasts include this even after the server strips `type: chat_message`.
+    private static func hasPersistedMessageId(_ json: [String: Any]) -> Bool {
+        guard let raw = json["id"] else { return false }
+        return !(raw is NSNull)
+    }
+
     /// JSON may use Bool, 0/1, or NSNumber from mixed encoders.
     private static func coerceTypingFlag(_ value: Any?) -> Bool? {
         switch value {
@@ -291,11 +297,16 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
             }
             return
         }
-        // Typing: server broadcasts `type: typing_status` + `sender`; clients may send `typing` / `typing_status` + is_typing / isTyping.
-        // Do not treat real chat frames (`chat_message`) as typing even if a stray key appears.
-        if typeNorm != "chat_message",
-           typeNorm == "typing_status" || typeNorm == "typing"
-           || json["is_typing"] != nil || json["isTyping"] != nil {
+        // Typing: server sends `type: typing_status`; clients may send `type: typing` + is_typing / isTyping.
+        // Persisted chat rows are broadcast without top-level `type` (server pops `chat_message`) but always carry numeric `id`.
+        // Never route those as typing just because `is_typing` / `isTyping` keys exist (or are null) — that swallowed peer text bubbles.
+        let explicitTyping = typeNorm == "typing_status" || typeNorm == "typing"
+        let legacyTypingPayload =
+            !explicitTyping
+            && (typeNorm == nil || typeNorm != "chat_message")
+            && !Self.hasPersistedMessageId(json)
+            && (json["is_typing"] != nil || json["isTyping"] != nil)
+        if explicitTyping || legacyTypingPayload {
             let convId = Self.jsonString(json["conversationId"])
                 ?? Self.jsonString(json["conversation_id"])
             let isTyping = Self.coerceTypingFlag(json["is_typing"]) ?? Self.coerceTypingFlag(json["isTyping"]) ?? true
@@ -397,6 +408,7 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
         let senderName = (json["senderName"] as? String) ?? (json["sender_name"] as? String) ?? ""
         let backendInt = (json["id"] as? Int)
             ?? (json["id"] as? NSNumber).map { $0.intValue }
+            ?? (json["id"] as? Double).map { Int($0) }
             ?? (json["id"] as? String).flatMap { Int($0) }
         let uuid: UUID = {
             if let b = backendInt { return Message.stableUUID(forBackendId: b) }

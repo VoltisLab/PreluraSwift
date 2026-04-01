@@ -122,9 +122,10 @@ struct Message: Identifiable {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             if json["type"] as? String == "offer" { return true }
-            if json["offer_id"] != nil { return true }
+            if json["offer_id"] != nil || json["offerId"] != nil { return true }
         }
-        if trimmed.contains("offer_id") { return true }
+        // Avoid `contains("offer_id")`: normal URLs (e.g. ?offer_id=) hid peer text in offer threads via `displayedMessages`.
+        if trimmed.contains("\"offer_id\"") || trimmed.contains("'offer_id'") { return true }
         return false
     }
 

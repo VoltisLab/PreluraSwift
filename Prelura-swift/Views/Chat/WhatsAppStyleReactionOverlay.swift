@@ -28,6 +28,8 @@ enum WhatsAppQuickReactions {
 /// Full-screen dim + reaction capsule above the bubble (reactions only — no message delete).
 struct WhatsAppStyleReactionOverlay: View {
     let bubbleFrame: CGRect
+    /// Ordered quick reactions (frequently used first; see `ChatReactionEmojiUsageStore`).
+    let quickEmojis: [String]
     let onPickEmoji: (String) -> Void
     let onDismiss: () -> Void
     @Binding var showMoreEmojis: Bool
@@ -54,17 +56,17 @@ struct WhatsAppStyleReactionOverlay: View {
                     .ignoresSafeArea()
                     .onTapGesture { onDismiss() }
 
-                reactionCapsule(maxWidth: maxTrayWidth)
+                reactionCapsule(maxWidth: maxTrayWidth, emojis: quickEmojis)
                     .frame(maxWidth: maxTrayWidth)
                     .position(x: barX, y: barY)
             }
         }
     }
 
-    private func reactionCapsule(maxWidth: CGFloat) -> some View {
+    private func reactionCapsule(maxWidth: CGFloat, emojis: [String]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(WhatsAppQuickReactions.primary, id: \.self) { emoji in
+                ForEach(emojis, id: \.self) { emoji in
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         onPickEmoji(emoji)
