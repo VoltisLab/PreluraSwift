@@ -156,7 +156,7 @@ struct ItemDetailView: View {
             GuestSignInPromptView()
         }
         .sheet(isPresented: $showSendOfferSheet) {
-            OptionsSheet(title: L10n.string("Send an offer"), onDismiss: { showSendOfferSheet = false }, detents: [.height(480)], useCustomCornerRadius: false) {
+            OptionsSheet(title: L10n.string("Send an offer"), onDismiss: { showSendOfferSheet = false }, useCustomCornerRadius: false) {
                 SendOfferSheetContent(item: effectiveItem, onDismiss: { showSendOfferSheet = false })
                     .environmentObject(authService)
             }
@@ -954,7 +954,7 @@ struct ProductOptionsSheet: View {
     }
 
     var body: some View {
-        OptionsSheet(title: L10n.string("Options"), onDismiss: onDismiss, detents: [.height(380)], useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Options"), onDismiss: onDismiss, useCustomCornerRadius: false) {
             VStack(alignment: .leading, spacing: 0) {
                 if isCurrentUser {
                     MenuItemRow(title: L10n.string("Edit listing"), icon: "square.and.pencil", action: { onEdit() }, iconAndSubtitleColor: Theme.Colors.secondaryText)

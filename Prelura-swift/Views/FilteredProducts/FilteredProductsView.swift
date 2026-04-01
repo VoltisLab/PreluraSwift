@@ -494,7 +494,7 @@ struct FilteredProductsView: View {
     }
 
     private var filteredProductsSortSheet: some View {
-        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeSheet = nil }, detents: [.height(380)], useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeSheet = nil }, useCustomCornerRadius: false) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(FilteredProductsSortOption.allCases.enumerated()), id: \.offset) { index, option in
                     Button(action: { viewModel.sortOption = option }) {
@@ -546,7 +546,7 @@ struct FilteredProductsView: View {
     ]
 
     private var stylesSheetContent: some View {
-        OptionsSheet(title: L10n.string("Styles"), onDismiss: { activeSheet = nil }, detents: [.height(500), .large], useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Styles"), onDismiss: { activeSheet = nil }, useCustomCornerRadius: false) {
             VStack(alignment: .leading, spacing: 0) {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -596,8 +596,9 @@ struct FilteredProductsView: View {
     }
 
     private var filteredProductsFilterSheet: some View {
-        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeSheet = nil }, detents: [.height(580)], useCustomCornerRadius: false) {
-            VStack(alignment: .leading, spacing: 0) {
+        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeSheet = nil }, useCustomCornerRadius: false) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
                 Text(L10n.string("Condition"))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
@@ -666,9 +667,10 @@ struct FilteredProductsView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.md)
+                }
+                .padding(.vertical, Theme.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.vertical, Theme.Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

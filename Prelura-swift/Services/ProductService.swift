@@ -322,7 +322,13 @@ class ProductService: ObservableObject {
         return itemsFromProductData(response.favoriteBrandProducts ?? [])
     }
 
-    /// Fetch every brand name for the sell-flow picker (paginates until the API reports no more rows).
+    /// One page for the sell-flow brand picker (infinite scroll). `totalCount` is rows matching `search` (or all brands if `search` is nil).
+    func getBrandsPage(search: String?, pageNumber: Int, pageCount: Int = 80) async throws -> (names: [String], totalCount: Int?) {
+        let (names, totalNumber) = try await fetchBrandsPage(search: search, pageNumber: pageNumber, pageCount: pageCount)
+        return (names: names, totalCount: totalNumber)
+    }
+
+    /// Fetches the full brand list (many sequential requests). Prefer `getBrandsPage` + infinite scroll in UI.
     func getBrandNames() async throws -> [String] {
         let pageCount = 250
         var page = 1

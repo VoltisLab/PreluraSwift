@@ -706,15 +706,16 @@ struct ProfileView: View {
 
     // MARK: - Sort sheet (same presentation as product Options sheet)
     private var profileSortSheet: some View {
-        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeListingsSheet = nil }, detents: [.height(380)], useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false) {
             SortSheetContent(selectedSort: $profileSort, onApply: { activeListingsSheet = nil })
         }
     }
 
     // MARK: - Filter sheet (same presentation as product Options sheet)
     private var profileFilterSheet: some View {
-        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeListingsSheet = nil }, detents: [.height(580)], useCustomCornerRadius: false) {
-            VStack(alignment: .leading, spacing: 0) {
+        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
                 Text(L10n.string("Condition"))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
@@ -773,9 +774,10 @@ struct ProfileView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.md)
+                }
+                .padding(.vertical, Theme.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.vertical, Theme.Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
     

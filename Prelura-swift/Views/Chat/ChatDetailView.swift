@@ -887,7 +887,6 @@ struct ChatDetailView: View {
             OptionsSheet(
                 title: L10n.string("Send a new offer"),
                 onDismiss: { showCounterOfferSheet = false; counterTargetOffer = nil },
-                detents: item != nil ? [.height(480)] : [.height(340)],
                 useCustomCornerRadius: false
             ) {
                 OfferModalContent(

@@ -6,12 +6,30 @@ import SwiftUI
 struct OptionsSheet<Content: View>: View {
     let title: String
     let onDismiss: () -> Void
-    var detents: [PresentationDetent] = [.height(300)]
+    var detents: [PresentationDetent]
     /// When false, uses system default sheet corner radius (e.g. product Options modal).
     var useCustomCornerRadius: Bool = true
     @ViewBuilder let content: () -> Content
 
+    @State private var selectedDetent: PresentationDetent
+
     private var sheetBackground: Color { Theme.Colors.modalSheetBackground }
+
+    init(
+        title: String,
+        onDismiss: @escaping () -> Void,
+        /// Slightly above half-height so header + list are not cramped; user can still drag to `.large`.
+        detents: [PresentationDetent] = [.fraction(0.58), .large],
+        useCustomCornerRadius: Bool = true,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.onDismiss = onDismiss
+        self.detents = detents
+        self.useCustomCornerRadius = useCustomCornerRadius
+        self.content = content
+        _selectedDetent = State(initialValue: detents.first ?? .fraction(0.58))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,8 +38,8 @@ struct OptionsSheet<Content: View>: View {
             Capsule()
                 .fill(Theme.Colors.secondaryText.opacity(0.35))
                 .frame(width: 36, height: 5)
-                .padding(.top, Theme.Spacing.sm)
-                .padding(.bottom, Theme.Spacing.xs)
+                .padding(.top, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.sm)
 
             HStack {
                 Spacer()
@@ -31,23 +49,28 @@ struct OptionsSheet<Content: View>: View {
                 Spacer()
             }
             .overlay(alignment: .trailing) {
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .frame(width: 36, height: 36)
-                        .background(Theme.Colors.secondaryBackground.opacity(0.35))
-                        .clipShape(Circle())
-                }
+                GlassIconButton(
+                    icon: "xmark",
+                    size: 36,
+                    iconColor: Theme.Colors.primaryText,
+                    iconSize: 15,
+                    action: onDismiss
+                )
                 .padding(.trailing, Theme.Spacing.md)
             }
+            .padding(.top, Theme.Spacing.xs)
             .padding(.bottom, Theme.Spacing.md)
+            .layoutPriority(1)
 
             content()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .layoutPriority(0)
+
+            Spacer(minLength: 0)
         }
+        .padding(.top, Theme.Spacing.sm)
         .background(sheetBackground)
-        .presentationDetents(Set(detents))
+        .presentationDetents(Set(detents), selection: $selectedDetent)
         .presentationDragIndicator(.hidden)
         .presentationBackground(sheetBackground)
         .modifier(SheetCornerRadiusModifier(apply: useCustomCornerRadius))

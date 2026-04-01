@@ -200,7 +200,7 @@ struct AppearanceRootView: View {
                 set: { if !$0 { authService.markOnboardingCompleted() } }
             )
         ) {
-            OnboardingView(onComplete: {
+            OnboardingFlowView(onComplete: {
                 withAnimation(.easeInOut(duration: 0.35)) {
                     authService.markOnboardingCompleted()
                 }

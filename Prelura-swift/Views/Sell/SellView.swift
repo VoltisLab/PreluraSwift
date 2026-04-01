@@ -2364,10 +2364,16 @@ struct BrandInputView: View {
     @EnvironmentObject var authService: AuthService
     @State private var brandText: String = ""
     @State private var fetchedBrands: [String] = []
-    @State private var isLoadingBrands: Bool = false
+    @State private var brandsTotalCount: Int?
+    @State private var nextPage: Int = 1
+    @State private var hasMore: Bool = true
+    @State private var isLoadingInitial: Bool = false
+    @State private var isLoadingMore: Bool = false
     @FocusState private var isFocused: Bool
 
     private let productService = ProductService()
+    private let pageSize = 80
+    @State private var debouncedReloadTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -2380,7 +2386,7 @@ struct BrandInputView: View {
             .padding(.trailing, Theme.Spacing.sm)
             .onAppear { isFocused = true }
 
-            if isLoadingBrands && fetchedBrands.isEmpty {
+            if isLoadingInitial && fetchedBrands.isEmpty {
                 HStack {
                     ProgressView()
                         .tint(Theme.primaryColor)
@@ -2392,37 +2398,64 @@ struct BrandInputView: View {
                 .padding(.top, Theme.Spacing.md)
             }
 
-            if !fetchedBrands.isEmpty {
+            if !isLoadingInitial || !fetchedBrands.isEmpty {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(filteredBrands, id: \.self) { brand in
-                            Button {
-                                brandText = brand
-                                selectedBrand = brand
-                                presentationMode.wrappedValue.dismiss()
-                            } label: {
-                                HStack {
-                                    Text(brand)
-                                        .font(Theme.Typography.body)
-                                        .foregroundColor(Theme.Colors.primaryText)
-                                    Spacer(minLength: 0)
-                                    if selectedBrand == brand {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(Theme.primaryColor)
+                        ForEach(Array(fetchedBrands.enumerated()), id: \.offset) { index, brand in
+                            Group {
+                                Button {
+                                    brandText = brand
+                                    selectedBrand = brand
+                                    presentationMode.wrappedValue.dismiss()
+                                } label: {
+                                    HStack {
+                                        Text(brand)
+                                            .font(Theme.Typography.body)
+                                            .foregroundColor(Theme.Colors.primaryText)
+                                        Spacer(minLength: 0)
+                                        if selectedBrand == brand {
+                                            Image(systemName: "checkmark")
+                                                .foregroundColor(Theme.primaryColor)
+                                        }
                                     }
+                                    .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.vertical, Theme.Spacing.md)
+                                    .contentShape(Rectangle())
                                 }
-                                .padding(.horizontal, Theme.Spacing.md)
-                                .padding(.vertical, Theme.Spacing.md)
-                                .contentShape(Rectangle())
+                                .buttonStyle(PlainTappableButtonStyle())
+                                if index < fetchedBrands.count - 1 {
+                                    ContentDivider()
+                                }
                             }
-                            .buttonStyle(PlainTappableButtonStyle())
-                            if brand != filteredBrands.last {
-                                ContentDivider()
+                            .onAppear {
+                                if index == fetchedBrands.count - 1 {
+                                    Task { await loadBrandsPage(reset: false) }
+                                }
                             }
+                        }
+                        if isLoadingMore {
+                            HStack {
+                                ProgressView()
+                                    .tint(Theme.primaryColor)
+                                Text(L10n.string("Loading more..."))
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, Theme.Spacing.md)
                         }
                     }
                     .padding(.top, Theme.Spacing.md)
                 }
+            }
+
+            if !isLoadingInitial, fetchedBrands.isEmpty, normalizedSearchPrefix() != nil {
+                Text(L10n.string("No brands match your search."))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Theme.Spacing.lg)
+                    .padding(.horizontal, Theme.Spacing.md)
             }
 
             Spacer(minLength: 0)
@@ -2435,7 +2468,17 @@ struct BrandInputView: View {
         .tint(Theme.primaryColor)
         .onAppear {
             brandText = selectedBrand ?? ""
-            Task { await loadBrands() }
+            Task { await loadBrandsPage(reset: true) }
+        }
+        .onChange(of: brandText) { _, _ in
+            debouncedReloadTask?.cancel()
+            debouncedReloadTask = Task {
+                try? await Task.sleep(nanoseconds: 320_000_000)
+                guard !Task.isCancelled else { return }
+                let stillBusy = await MainActor.run { isLoadingInitial }
+                if stillBusy { return }
+                await loadBrandsPage(reset: true)
+            }
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -2449,25 +2492,69 @@ struct BrandInputView: View {
         }
     }
 
-    private var filteredBrands: [String] {
-        let q = brandText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if q.isEmpty { return fetchedBrands }
-        return fetchedBrands.filter { $0.lowercased().contains(q) }
+    private func normalizedSearchPrefix() -> String? {
+        let t = brandText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
     }
 
-    private func loadBrands() async {
-        await MainActor.run { isLoadingBrands = true }
+    private func loadBrandsPage(reset: Bool) async {
+        if reset {
+            await MainActor.run {
+                isLoadingInitial = true
+                isLoadingMore = false
+                fetchedBrands = []
+                brandsTotalCount = nil
+                nextPage = 1
+                hasMore = true
+            }
+        } else {
+            let canProceed = await MainActor.run { () -> Bool in
+                guard hasMore, !isLoadingMore, !isLoadingInitial else { return false }
+                isLoadingMore = true
+                return true
+            }
+            guard canProceed else { return }
+        }
+
+        let search = await MainActor.run { normalizedSearchPrefix() }
+        let page = await MainActor.run { reset ? 1 : nextPage }
+
         productService.updateAuthToken(authService.authToken)
         do {
-            let brands = try await productService.getBrandNames()
+            let (names, total) = try await productService.getBrandsPage(search: search, pageNumber: page, pageCount: pageSize)
             await MainActor.run {
-                fetchedBrands = brands
-                isLoadingBrands = false
+                if reset {
+                    fetchedBrands = names.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                    brandsTotalCount = total
+                    nextPage = 2
+                    isLoadingInitial = false
+                } else {
+                    isLoadingMore = false
+                    var seen = Set(fetchedBrands.map { $0.lowercased() })
+                    for n in names {
+                        let t = n.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !t.isEmpty, seen.insert(t.lowercased()).inserted else { continue }
+                        fetchedBrands.append(t)
+                    }
+                    nextPage = page + 1
+                }
+                if let t = total {
+                    hasMore = fetchedBrands.count < t
+                } else {
+                    hasMore = names.count >= pageSize
+                }
+                if !reset, names.isEmpty {
+                    hasMore = false
+                }
             }
         } catch {
             await MainActor.run {
-                fetchedBrands = []
-                isLoadingBrands = false
+                isLoadingInitial = false
+                isLoadingMore = false
+                if reset {
+                    fetchedBrands = []
+                }
+                hasMore = false
             }
         }
     }
