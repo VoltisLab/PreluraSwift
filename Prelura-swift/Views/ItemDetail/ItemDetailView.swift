@@ -160,7 +160,6 @@ struct ItemDetailView: View {
                 SendOfferSheetContent(item: effectiveItem, onDismiss: { showSendOfferSheet = false })
                     .environmentObject(authService)
             }
-            .preluraModalSheetBackground()
         }
         .navigationDestination(isPresented: $showPaymentSheet) {
             PaymentView(products: [effectiveItem], totalPrice: effectiveItem.price)
@@ -184,11 +183,9 @@ struct ItemDetailView: View {
                 }
             }
             .environmentObject(authService)
-            .preluraModalSheetBackground()
         }
         .sheet(isPresented: $showEditListingSheet) {
             EditListingPlaceholderView(onDone: { showEditListingSheet = false })
-                .preluraModalSheetBackground()
         }
         .alert(L10n.string("Delete listing?"), isPresented: $showDeleteConfirm) {
             Button(L10n.string("Cancel"), role: .cancel) { showDeleteConfirm = false }
@@ -257,6 +254,11 @@ struct ItemDetailView: View {
             onShare: { shareProduct(); showProductOptionsSheet = false },
             onReport: { showProductOptionsSheet = false; showReportSheet = true },
             onEdit: { showProductOptionsSheet = false; showEditListingSheet = true },
+            onCopyToNewListing: {
+                showProductOptionsSheet = false
+                tabCoordinator?.pendingSellPrefill = SellFormPrefill.from(item: effectiveItem)
+                tabCoordinator?.selectTab(2)
+            },
             onDelete: { showProductOptionsSheet = false; showDeleteConfirm = true },
             onMarkAsSold: { showProductOptionsSheet = false; showMarkSoldConfirm = true },
             onCopyLink: { copyProductLink(); showProductOptionsSheet = false }
@@ -939,6 +941,7 @@ struct ProductOptionsSheet: View {
     var onShare: () -> Void = {}
     var onReport: () -> Void = {}
     var onEdit: () -> Void = {}
+    var onCopyToNewListing: () -> Void = {}
     var onDelete: () -> Void = {}
     var onMarkAsSold: () -> Void = {}
     var onCopyLink: () -> Void = {}
@@ -951,10 +954,12 @@ struct ProductOptionsSheet: View {
     }
 
     var body: some View {
-        OptionsSheet(title: L10n.string("Options"), onDismiss: onDismiss, detents: [.height(300)], useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Options"), onDismiss: onDismiss, detents: [.height(380)], useCustomCornerRadius: false) {
             VStack(alignment: .leading, spacing: 0) {
                 if isCurrentUser {
                     MenuItemRow(title: L10n.string("Edit listing"), icon: "square.and.pencil", action: { onEdit() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                    optionDivider
+                    MenuItemRow(title: L10n.string("Copy to a new listing"), icon: "doc.on.doc", action: { onCopyToNewListing() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
                     optionDivider
                     MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
                     optionDivider

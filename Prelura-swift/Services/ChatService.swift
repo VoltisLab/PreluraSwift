@@ -58,6 +58,7 @@ class ChatService: ObservableObject {
             }
             order {
               id
+              publicId
               status
               priceTotal
               createdAt
@@ -97,8 +98,10 @@ class ChatService: ObservableObject {
                 let total = o.priceTotalDouble
                 let first = o.products?.first
                 let firstProductIdStr = first.flatMap { Conversation.idString(from: $0.id) }
+                let pub = (o.publicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 return ConversationOrder(
                     id: orderIdStr,
+                    publicId: pub.isEmpty ? nil : pub,
                     status: o.status ?? "CONFIRMED",
                     total: total,
                     firstProductName: first?.name,
@@ -174,6 +177,7 @@ class ChatService: ObservableObject {
             }
             order {
               id
+              publicId
               status
               priceTotal
               createdAt
@@ -209,8 +213,10 @@ class ChatService: ObservableObject {
             let total = o.priceTotalDouble
             let first = o.products?.first
             let firstProductIdStr = first.flatMap { Conversation.idString(from: $0.id) }
+            let pub = (o.publicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             return ConversationOrder(
                 id: orderIdStr,
+                publicId: pub.isEmpty ? nil : pub,
                 status: o.status ?? "CONFIRMED",
                 total: total,
                 firstProductName: first?.name,
@@ -545,6 +551,8 @@ class ChatService: ObservableObject {
 /// Minimal order info for a conversation (sale confirmation).
 struct ConversationOrder: Hashable {
     let id: String
+    /// Human-readable order ref when the API provides it (same as `Order.publicId`).
+    let publicId: String?
     let status: String
     let total: Double
     let firstProductName: String?
@@ -661,6 +669,7 @@ struct ConversationData: Decodable {
 /// Order summary on a conversation (from conversations query).
 struct ConversationOrderData: Decodable {
     let id: AnyCodable?
+    let publicId: String?
     let status: String?
     let createdAt: String?
     let products: [ConversationOrderProductData]?
@@ -669,6 +678,7 @@ struct ConversationOrderData: Decodable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = (try? c.decodeIfPresent(AnyCodable.self, forKey: .id)).flatMap { $0 }
+        publicId = try? c.decodeIfPresent(String.self, forKey: .publicId)
         status = (try? c.decodeIfPresent(String.self, forKey: .status)).flatMap { $0 }
         createdAt = try? c.decodeIfPresent(String.self, forKey: .createdAt)
         priceTotalValue = (try? c.decode(PriceTotalCodable.self, forKey: .priceTotal))?.value
@@ -681,7 +691,7 @@ struct ConversationOrderData: Decodable {
             }
         products = try? c.decode([ConversationOrderProductData].self, forKey: .products)
     }
-    private enum CodingKeys: String, CodingKey { case id, status, priceTotal, createdAt, products }
+    private enum CodingKeys: String, CodingKey { case id, publicId, status, priceTotal, createdAt, products }
     struct ConversationOrderProductData: Decodable {
         let id: AnyCodable?
         let name: String?

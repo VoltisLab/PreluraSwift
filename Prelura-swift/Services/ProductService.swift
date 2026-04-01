@@ -206,7 +206,9 @@ class ProductService: ObservableObject {
                 views: product.views ?? 0,
                 createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),
                 isLiked: product.userLiked ?? false,
-                status: product.status ?? "ACTIVE"
+                status: product.status ?? "ACTIVE",
+                sellCategoryBackendId: Self.graphQLStringId(product.category?.id),
+                sellSizeBackendId: Self.graphQLIntId(product.size?.id)
             )
         }
     }
@@ -320,10 +322,29 @@ class ProductService: ObservableObject {
         return itemsFromProductData(response.favoriteBrandProducts ?? [])
     }
 
-    /// Fetch brand names for the sell-flow brand picker. Uses the same GraphQL query as Flutter. Loads first page only for fast display; user can search for other brands.
+    /// Fetch every brand name for the sell-flow picker (paginates until the API reports no more rows).
     func getBrandNames() async throws -> [String] {
-        let (names, _) = try await fetchBrandsPage(search: nil, pageNumber: 1, pageCount: 100)
-        return names.sorted()
+        let pageCount = 250
+        var page = 1
+        var collected: [String] = []
+        var reportedTotal: Int?
+        while true {
+            let (pageNames, totalOpt) = try await fetchBrandsPage(search: nil, pageNumber: page, pageCount: pageCount)
+            if let t = totalOpt { reportedTotal = t }
+            collected.append(contentsOf: pageNames)
+            if pageNames.count < pageCount { break }
+            if let t = reportedTotal, collected.count >= t { break }
+            page += 1
+            if page > 200 { break }
+        }
+        var seen = Set<String>()
+        var unique: [String] = []
+        for n in collected {
+            let t = n.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty, seen.insert(t.lowercased()).inserted else { continue }
+            unique.append(t)
+        }
+        return unique.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     /// Fetch a single page of brands (for search). Matches Flutter getBrands(search: query).
@@ -1259,7 +1280,9 @@ extension ProductService {
                 views: product.views ?? 0,
                 createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),
                 isLiked: product.userLiked ?? false,
-                status: product.status ?? "ACTIVE"
+                status: product.status ?? "ACTIVE",
+                sellCategoryBackendId: Self.graphQLStringId(product.category?.id),
+                sellSizeBackendId: Self.graphQLIntId(product.size?.id)
             )
         }
     }
@@ -1403,6 +1426,20 @@ extension ProductService {
             return ToggleLikeResult(isLiked: isLiked, likeCount: nil)
         }
     }
+
+    private static func graphQLStringId(_ codable: AnyCodable?) -> String? {
+        guard let v = codable?.value else { return nil }
+        if let i = v as? Int { return String(i) }
+        if let s = v as? String, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return s }
+        return nil
+    }
+
+    private static func graphQLIntId(_ codable: AnyCodable?) -> Int? {
+        guard let v = codable?.value else { return nil }
+        if let i = v as? Int { return i }
+        if let s = v as? String { return Int(s.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        return nil
+    }
     
     private func mapProductToItem(product: ProductData) -> Item? {
         // Extract product id
@@ -1499,7 +1536,9 @@ extension ProductService {
             views: product.views ?? 0,
             createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),
             isLiked: product.userLiked ?? false,
-            status: product.status ?? "ACTIVE"
+            status: product.status ?? "ACTIVE",
+            sellCategoryBackendId: Self.graphQLStringId(product.category?.id),
+            sellSizeBackendId: Self.graphQLIntId(product.size?.id)
         )
     }
 }

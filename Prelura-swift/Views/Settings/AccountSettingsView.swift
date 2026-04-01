@@ -100,8 +100,8 @@ struct AccountSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .onAppear(perform: loadUser)
-        .sheet(isPresented: $showDatePicker) { datePickerSheet.preluraModalSheetBackground() }
-        .sheet(isPresented: $showGenderPicker) { genderPickerSheet.preluraModalSheetBackground() }
+        .sheet(isPresented: $showDatePicker) { datePickerSheet }
+        .sheet(isPresented: $showGenderPicker) { genderPickerSheet }
         .sheet(item: $pendingEmailVerification) { wrapper in
             EmailChangeVerificationView(
                 newEmail: wrapper.email,
@@ -113,11 +113,9 @@ struct AccountSettingsView: View {
                 }
             )
             .environmentObject(authService)
-            .preluraModalSheetBackground()
         }
         .sheet(item: $pendingPhoneVerification) { wrapper in
             phoneVerificationSheet(for: wrapper)
-                .preluraModalSheetBackground()
         }
         .alert(L10n.string("Saved"), isPresented: $showSuccess) {
             Button("OK", role: .cancel) { }

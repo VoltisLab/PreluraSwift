@@ -509,6 +509,15 @@ struct ChatRowView: View {
                 return "You made a sale 🎉"
             }
             return "Order confirmed"
+        case "order_cancellation_request":
+            let bySeller = (json["requested_by_seller"] as? Bool) ?? (json["requestedBySeller"] as? Bool) ?? false
+            if usernamesMatch(conversation.lastMessageSenderUsername, currentUsername) {
+                return "You requested cancellation"
+            }
+            return bySeller ? "Seller asked to cancel order" : "Buyer asked to cancel order"
+        case "order_cancellation_outcome":
+            let approved = (json["approved"] as? Bool) ?? false
+            return approved ? "Order cancellation was approved" : "Order cancellation was declined"
         default: return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
         }
     }

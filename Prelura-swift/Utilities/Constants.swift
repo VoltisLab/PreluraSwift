@@ -12,6 +12,8 @@ struct Constants {
     static let graphQLUploadURL = "https://prelura.voltislabs.uk/graphql/uploads/"
     /// WebSocket for chat (same host as GraphQL so messages send/save to the same backend).
     static let chatWebSocketBaseURL = "wss://prelura.voltislabs.uk/ws/chat/"
+    /// Django `ConversationsConsumer`: inbox list sync + typing for threads the user is in (not per-room chat).
+    static let conversationsWebSocketURL = "wss://prelura.voltislabs.uk/ws/conversations/"
     
     // Legal & info URLs (same domain as API)
     static let termsAndConditionsURL = "https://prelura.voltislabs.uk/terms/"

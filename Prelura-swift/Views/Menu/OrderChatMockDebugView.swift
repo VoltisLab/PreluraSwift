@@ -10,6 +10,7 @@ struct OrderChatMockDebugView: View {
 
     private static let mockOrder = ConversationOrder(
         id: "mock-order-1",
+        publicId: "PRMOCK1",
         status: "CONFIRMED",
         total: 42.50,
         firstProductName: "Vintage Jacket",

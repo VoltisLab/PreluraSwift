@@ -52,6 +52,7 @@ enum L10n {
         "Mark as sold": "Σημείωση ως πωλημένο",
         "Sold": "Πωλήθηκε",
         "Delete listing": "Διαγραφή αγγελίας",
+        "Copy to a new listing": "Αντιγραφή σε νέα αγγελία",
         "Report listing": "Αναφορά αγγελίας",
         "Copy link": "Αντιγραφή συνδέσμου",
         "Error": "Σφάλμα",
@@ -281,6 +282,10 @@ enum L10n {
         "Amount off": "Ποσό έκπτωσης",
         "Optional. Enter the discounted price; the discount % is calculated from the main price.": "Προαιρετικό. Εισάγετε την εκπτωτική τιμή· το % έκπτωσης υπολογίζεται από την κύρια τιμή.",
         "Enter the amount to take off the price (e.g. 13 for £13 off).": "Εισάγετε το ποσό που αφαιρείται από την τιμή (π.χ. 13 για 13 £ έκπτωση).",
+        "Listed price": "Τιμή καταλόγου",
+        "Final price": "Τελική τιμή",
+        "Discount (%)": "Έκπτωση (%)",
+        "Edit discount % or sale price; both stay in sync.": "Επεξεργαστείτε % έκπτωσης ή τιμή πώλησης· συγχρονίζονται μεταξύ τους.",
         "Loading brands...": "Φόρτωση μαρκών...",
         "Enter brand name": "Εισάγετε όνομα μάρκας",
         "Tip: similar price range is recommended based on similar items sold on Prelura.": "Συμβουλή: συνιστάται παρόμοιο εύρος τιμών με βάση παρόμοια αντικείμενα που πωλήθηκαν στο Prelura.",
@@ -487,6 +492,10 @@ enum L10n {
         "Here are some options for you.": "Ορίστε μερικές επιλογές για εσάς.",
         "These might match what you're looking for.": "Αυτά μπορεί να ταιριάζουν με αυτό που ψάχνετε.",
         "Here are some picks based on your search.": "Ορίστε μερικές επιλογές βάσει της αναζήτησής σας.",
+        // Chat reactions
+        "Reactions": "Αντιδράσεις",
+        "Search emojis": "Αναζήτηση emoji",
+        "No matching emojis": "Δεν βρέθηκαν emoji",
     ]
 }
 

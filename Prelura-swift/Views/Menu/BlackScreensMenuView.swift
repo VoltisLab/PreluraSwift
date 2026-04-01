@@ -97,7 +97,6 @@ struct BlackScreensMenuView: View {
                 BlackScreenModalSheetsPreview(hex: hex)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
-                    .preluraModalSheetBackground()
             }
         }
     }

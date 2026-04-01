@@ -72,4 +72,16 @@ final class ChatPushTraceDebugState: ObservableObject {
             isError: false
         )
     }
+
+    /// Parse / transport issues (JSON, dropped chat frames). Shown in notification debug + OSLog on device.
+    func markSocketDiagnostic(conversationId: String, summary: String, isError: Bool) {
+        guard conversationId != "0" else { return }
+        lastTrafficAt = Date()
+        lastTrafficSummary = summary
+        NotificationDebugLog.append(
+            source: "chat_ws_diag",
+            message: "conv=\(conversationId) — \(summary)",
+            isError: isError
+        )
+    }
 }

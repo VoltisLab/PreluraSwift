@@ -32,6 +32,8 @@ final class TabCoordinator: ObservableObject {
     @Published var lastMessagePreviewForConversation: (id: String, text: String, date: Date)?
     /// Incremented from chat (offers/messages) so the inbox list refetches and re-sorts without waiting for `onDisappear`.
     @Published private(set) var inboxListRefreshNonce: Int = 0
+    /// Set from product options ("Copy to a new listing"); Sell tab consumes once then clears.
+    @Published var pendingSellPrefill: SellFormPrefill?
 
     func requestInboxListRefresh() {
         inboxListRefreshNonce += 1

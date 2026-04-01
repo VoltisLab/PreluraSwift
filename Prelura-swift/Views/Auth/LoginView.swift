@@ -138,7 +138,6 @@ struct LoginView: View {
                         .environmentObject(authService)
                 }
                 .scrollContentBackground(.hidden)
-                .preluraModalSheetBackground()
             }
             .fullScreenCover(isPresented: $showEmailVerificationCode) {
                 NavigationStack {

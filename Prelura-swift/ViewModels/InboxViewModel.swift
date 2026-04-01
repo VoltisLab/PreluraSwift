@@ -9,11 +9,41 @@ class InboxViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let chatService = ChatService()
+    private var authToken: String?
+    private var conversationsSocket: ConversationsWebSocketService?
+    private var socketRefreshTask: Task<Void, Never>?
 
     init() {}
 
     func updateAuthToken(_ token: String?) {
+        authToken = token
         chatService.updateAuthToken(token)
+        reconnectConversationsSocket()
+    }
+
+    /// Global `ws/conversations/` — refreshes inbox when server pushes `update_conversation` (new messages, offers, etc.).
+    private func reconnectConversationsSocket() {
+        conversationsSocket?.disconnect()
+        conversationsSocket = nil
+        socketRefreshTask?.cancel()
+        socketRefreshTask = nil
+        guard let token = authToken, !token.isEmpty else { return }
+        let socket = ConversationsWebSocketService(token: token)
+        socket.onShouldRefreshConversationsList = { [weak self] in
+            self?.scheduleDebouncedConversationsRefresh()
+        }
+        socket.connect()
+        conversationsSocket = socket
+    }
+
+    /// Coalesce bursts (e.g. several `update_conversation` in one second) into one GraphQL fetch.
+    private func scheduleDebouncedConversationsRefresh() {
+        socketRefreshTask?.cancel()
+        socketRefreshTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            await loadConversationsAsync(preview: nil)
+        }
     }
 
     /// Prefetch conversations in the background (e.g. from MainTabView.onAppear). Safe to call when already loading.
@@ -31,8 +61,10 @@ class InboxViewModel: ObservableObject {
     func loadConversationsAsync(preview: (id: String, text: String, date: Date)?) async {
         let hadConversations = !conversations.isEmpty
         let existingToMerge = conversations
-        isLoading = true
-        if !hadConversations { conversations = [] }
+        if !hadConversations {
+            isLoading = true
+            conversations = []
+        }
         do {
             let convs = try await chatService.getConversations()
             var list = convs

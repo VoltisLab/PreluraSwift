@@ -9,6 +9,7 @@ struct SellView: View {
 
     @Binding var selectedTab: Int
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.optionalTabCoordinator) private var tabCoordinator
     @EnvironmentObject private var authService: AuthService
     @StateObject private var viewModel = SellViewModel()
     @State private var selectedImages: [UIImage] = []
@@ -198,6 +199,11 @@ struct SellView: View {
             }
             .onAppear {
                 draftCount = SellDraftStore.draftCount(username: authService.username)
+                consumePendingSellPrefillIfNeeded()
+            }
+            .onChange(of: tabCoordinator?.pendingSellPrefill) { _, new in
+                guard new != nil else { return }
+                consumePendingSellPrefillIfNeeded()
             }
             .sheet(isPresented: $showDraftsSheet) {
                 SellDraftsListSheet(
@@ -252,6 +258,28 @@ struct SellView: View {
         } catch {
             // Silent or show error
         }
+    }
+
+    /// Fills the form from product "Copy to a new listing" (no images).
+    private func consumePendingSellPrefillIfNeeded() {
+        guard let coord = tabCoordinator, let p = coord.pendingSellPrefill else { return }
+        coord.pendingSellPrefill = nil
+        selectedImages = []
+        selectedPhotos = []
+        title = p.title
+        description = p.description
+        category = p.category
+        brand = p.brand
+        condition = p.condition
+        colours = p.colours
+        sizeId = p.sizeId
+        sizeName = p.sizeName
+        measurements = p.measurements
+        material = p.material
+        styles = p.styles
+        price = p.price
+        discountPrice = p.discountPrice
+        parcelSize = p.parcelSize
     }
 
     private func loadDraft(id: String) {
@@ -2030,93 +2058,200 @@ private struct PriceSimilarItemCard: View {
     }
 }
 
-// MARK: - Discount Price Input View (Sale price or Amount off)
-enum DiscountInputMode: String, CaseIterable {
-    case salePrice = "Sale price"
-    case amountOff = "Amount off"
-}
-
+// MARK: - Discount Price Input View (% and sale price, kept in sync; binding is final sale price for API)
 struct DiscountPriceInputView: View {
     @Binding var price: Double?
     @Binding var discountPrice: Double?
     @Environment(\.presentationMode) var presentationMode
-    @State private var discountPriceText: String = ""
-    @State private var inputMode: DiscountInputMode = .salePrice
-    @FocusState private var isFocused: Bool
+    @State private var percentText: String = ""
+    @State private var salePriceText: String = ""
+    @State private var syncingFromPercent = false
+    @State private var syncingFromSale = false
+    @FocusState private var focusedField: DiscountPriceField?
 
-    /// Parsed number from the text field.
-    private var parsedValue: Double? {
-        guard !discountPriceText.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-        return Double(discountPriceText.replacingOccurrences(of: ",", with: "."))
+    private enum DiscountPriceField: Hashable {
+        case percent, sale
     }
 
-    /// Live discount % while editing: from sale price (mode salePrice) or from amount off (mode amountOff).
-    private var liveDiscountPercent: Int? {
-        guard let p = price, p > 0, let val = parsedValue, val > 0 else { return nil }
-        switch inputMode {
-        case .salePrice:
-            guard val < p else { return nil }
-            return Int(((p - val) / p) * 100)
-        case .amountOff:
-            guard val < p else { return nil }
-            return Int((val / p) * 100)
+    private var basePrice: Double? {
+        guard let p = price, p > 0 else { return nil }
+        return p
+    }
+
+    /// Buyer-facing price from current fields (list price if no discount).
+    private var displayedFinalPrice: String {
+        guard let p = basePrice else { return "—" }
+        let fin = resolvedSalePrice(forListPrice: p) ?? p
+        return CurrencyFormatter.gbp(fin)
+    }
+
+    private func resolvedSalePrice(forListPrice p: Double) -> Double? {
+        let saleTrim = salePriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !saleTrim.isEmpty, let s = Double(saleTrim.replacingOccurrences(of: ",", with: ".")), s > 0, s < p {
+            return (s * 100).rounded() / 100
         }
+        let pctTrim = percentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !pctTrim.isEmpty, let pct = Double(pctTrim.replacingOccurrences(of: ",", with: ".")), pct > 0, pct < 100 {
+            let s = p * (1 - pct / 100)
+            return (s * 100).rounded() / 100
+        }
+        return nil
+    }
+
+    private func formatSaleAmount(_ v: Double) -> String {
+        let r = (v * 100).rounded() / 100
+        if abs(r - r.rounded()) < 0.001 { return String(format: "%.0f", r) }
+        return String(format: "%.2f", r)
+    }
+
+    private func formatPercent(_ v: Double) -> String {
+        let r = (v * 10).rounded() / 10
+        if abs(r - r.rounded()) < 0.05 { return String(format: "%.0f", r.rounded()) }
+        return String(format: "%.1f", r)
+    }
+
+    private func syncSaleFromPercent() {
+        guard !syncingFromSale, let p = basePrice else { return }
+        syncingFromPercent = true
+        defer { syncingFromPercent = false }
+        let t = percentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty {
+            salePriceText = ""
+            return
+        }
+        guard let pct = Double(t.replacingOccurrences(of: ",", with: ".")), pct >= 0 else { return }
+        let eff = min(max(pct, 0), 99.99)
+        let sale = p * (1 - eff / 100)
+        salePriceText = formatSaleAmount(sale)
+    }
+
+    private func syncPercentFromSale() {
+        guard !syncingFromPercent, let p = basePrice else { return }
+        syncingFromSale = true
+        defer { syncingFromSale = false }
+        let t = salePriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty {
+            percentText = ""
+            return
+        }
+        guard let s = Double(t.replacingOccurrences(of: ",", with: ".")), s >= 0 else { return }
+        if s >= p {
+            percentText = "0"
+            salePriceText = formatSaleAmount(p)
+            return
+        }
+        if s <= 0 {
+            percentText = ""
+            salePriceText = ""
+            return
+        }
+        let pct = (p - s) / p * 100
+        percentText = formatPercent(pct)
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                // Mode: Sale price vs Amount off
-                Picker("", selection: $inputMode) {
-                    ForEach(DiscountInputMode.allCases, id: \.self) { mode in
-                        Text(L10n.string(mode.rawValue)).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.sm)
-
-                // Amount field — same styling as Price screen
-                HStack(spacing: Theme.Spacing.sm) {
-                    Text("£")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.primaryText)
-                    TextField(L10n.string("0"), text: $discountPriceText)
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .keyboardType(.decimalPad)
-                        .focused($isFocused)
-                        .onChange(of: discountPriceText) { _, newValue in
-                            let sanitized = PriceFieldFilter.sanitizePriceInput(newValue)
-                            if sanitized != newValue { discountPriceText = sanitized }
-                        }
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
-                .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(30)
-                .padding(.horizontal, Theme.Spacing.md)
-
-                // Tip / live discount %
-                if let p = price, p > 0 {
-                    if let percent = liveDiscountPercent, percent > 0 {
-                        Text(String(format: L10n.string("Discount: %d%%"), percent))
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.primaryColor)
-                            .padding(.horizontal, Theme.Spacing.md)
-                    } else {
-                        Text(inputMode == .salePrice
-                             ? L10n.string("Optional. Enter the discounted price; the discount % is calculated from the main price.")
-                             : L10n.string("Enter the amount to take off the price (e.g. 13 for £13 off)."))
+                if let p = basePrice {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.string("Listed price"))
                             .font(Theme.Typography.caption)
                             .foregroundColor(Theme.Colors.secondaryText)
-                            .padding(.horizontal, Theme.Spacing.md)
+                        Text(CurrencyFormatter.gbp(p))
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.primaryText)
                     }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.sm)
+
+                    // Final price — outside the editable rows
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        Text(L10n.string("Final price"))
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        Text(displayedFinalPrice)
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundColor(Theme.primaryColor)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.md)
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+                    .padding(.horizontal, Theme.Spacing.md)
+
+                    Text(L10n.string("Discount (%)"))
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .padding(.horizontal, Theme.Spacing.md)
+
+                    // Discount %
+                    HStack(spacing: Theme.Spacing.sm) {
+                        TextField(L10n.string("0"), text: $percentText)
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .keyboardType(.decimalPad)
+                            .focused($focusedField, equals: .percent)
+                            .onChange(of: percentText) { _, newValue in
+                                let sanitized = PriceFieldFilter.sanitizePriceInput(newValue)
+                                if sanitized != newValue {
+                                    percentText = sanitized
+                                    return
+                                }
+                                guard !syncingFromSale else { return }
+                                syncSaleFromPercent()
+                            }
+                        Text("%")
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.md)
+                    .background(Theme.Colors.secondaryBackground)
+                    .cornerRadius(30)
+                    .padding(.horizontal, Theme.Spacing.md)
+
+                    Text(L10n.string("Sale price"))
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .padding(.horizontal, Theme.Spacing.md)
+
+                    // Sale price (same meaning as before: discounted £ buyers pay)
+                    HStack(spacing: Theme.Spacing.sm) {
+                        Text("£")
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.primaryText)
+                        TextField(L10n.string("0"), text: $salePriceText)
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .keyboardType(.decimalPad)
+                            .focused($focusedField, equals: .sale)
+                            .onChange(of: salePriceText) { _, newValue in
+                                let sanitized = PriceFieldFilter.sanitizePriceInput(newValue)
+                                if sanitized != newValue {
+                                    salePriceText = sanitized
+                                    return
+                                }
+                                guard !syncingFromPercent else { return }
+                                syncPercentFromSale()
+                            }
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.md)
+                    .background(Theme.Colors.secondaryBackground)
+                    .cornerRadius(30)
+                    .padding(.horizontal, Theme.Spacing.md)
+
+                    Text(L10n.string("Edit discount % or sale price; both stay in sync."))
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .padding(.horizontal, Theme.Spacing.md)
                 } else {
                     Text(L10n.string("Please set the price first"))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.top, Theme.Spacing.sm)
                 }
             }
             .padding(.bottom, Theme.Spacing.xxl)
@@ -2135,36 +2270,32 @@ struct DiscountPriceInputView: View {
             }
         }
         .onAppear {
-            if let d = discountPrice, d > 0, let p = price, p > 0 {
-                discountPriceText = String(format: "%.0f", d)
-                inputMode = .salePrice
+            guard let p = price, p > 0 else { return }
+            syncingFromPercent = true
+            syncingFromSale = true
+            if let d = discountPrice, d > 0, d < p {
+                salePriceText = formatSaleAmount(d)
+                percentText = formatPercent((p - d) / p * 100)
+            } else {
+                salePriceText = ""
+                percentText = ""
             }
-            if price != nil && (price ?? 0) > 0 {
-                isFocused = true
-            }
+            syncingFromPercent = false
+            syncingFromSale = false
+            focusedField = .percent
         }
     }
 
     private func applyAndDismiss() {
-        guard let p = price, p > 0, let val = parsedValue, val > 0 else {
+        guard let p = price, p > 0 else {
             discountPrice = nil
             presentationMode.wrappedValue.dismiss()
             return
         }
-        switch inputMode {
-        case .salePrice:
-            if val < p {
-                discountPrice = val
-            } else {
-                discountPrice = nil
-            }
-        case .amountOff:
-            let salePrice = p - val
-            if salePrice > 0 && salePrice < p {
-                discountPrice = salePrice
-            } else {
-                discountPrice = nil
-            }
+        if let fin = resolvedSalePrice(forListPrice: p), fin > 0, fin < p {
+            discountPrice = fin
+        } else {
+            discountPrice = nil
         }
         presentationMode.wrappedValue.dismiss()
     }
@@ -2344,5 +2475,6 @@ struct BrandInputView: View {
 
 #Preview {
     SellView(selectedTab: .constant(0))
+        .environment(\.optionalTabCoordinator, TabCoordinator())
         .preferredColorScheme(.dark)
 }

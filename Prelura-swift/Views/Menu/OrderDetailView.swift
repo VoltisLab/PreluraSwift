@@ -243,7 +243,6 @@ struct OrderDetailView: View {
                         .navigationTitle("Tracking")
                         .navigationBarTitleDisplayMode(.inline)
                 }
-                .preluraModalSheetBackground()
             }
         }
     }

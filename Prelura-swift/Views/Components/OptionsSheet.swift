@@ -15,6 +15,14 @@ struct OptionsSheet<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Custom handle: avoids overlap with a centered title when using the system drag indicator
+            // (fixed detents + `presentationBackground` often crowd the stock indicator into the header row).
+            Capsule()
+                .fill(Theme.Colors.secondaryText.opacity(0.35))
+                .frame(width: 36, height: 5)
+                .padding(.top, Theme.Spacing.sm)
+                .padding(.bottom, Theme.Spacing.xs)
+
             HStack {
                 Spacer()
                 Text(title)
@@ -33,14 +41,14 @@ struct OptionsSheet<Content: View>: View {
                 }
                 .padding(.trailing, Theme.Spacing.md)
             }
-            .padding(.vertical, Theme.Spacing.md)
+            .padding(.bottom, Theme.Spacing.md)
 
             content()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(sheetBackground)
         .presentationDetents(Set(detents))
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
         .presentationBackground(sheetBackground)
         .modifier(SheetCornerRadiusModifier(apply: useCustomCornerRadius))
     }

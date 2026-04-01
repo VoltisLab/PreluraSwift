@@ -77,7 +77,9 @@ struct Message: Identifiable {
             case "offer": return "Offer"
             case "sold_confirmation": return "Order confirmed"
             case "order_cancellation_request": return "Cancellation requested"
-            case "order_cancellation_outcome": return "Cancellation update"
+            case "order_cancellation_outcome":
+                let approved = (json["approved"] as? Bool) ?? false
+                return approved ? "Order cancellation was approved" : "Order cancellation was declined"
             case "account_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             case "product_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             default: break
@@ -162,7 +164,9 @@ struct Message: Identifiable {
             case "offer": return isFromCurrentUser ? "Offer sent" : "New offer"
             case "sold_confirmation": return "Order confirmed"
             case "order_cancellation_request": return isFromCurrentUser ? "You requested cancellation" : "Cancellation requested"
-            case "order_cancellation_outcome": return "Cancellation update"
+            case "order_cancellation_outcome":
+                let approved = (json["approved"] as? Bool) ?? false
+                return approved ? "Order cancellation was approved" : "Order cancellation was declined"
             case "account_report": return Self.humanReadableReportLine(json: json, reportType: type, maxLength: 280)
             case "product_report": return Self.humanReadableReportLine(json: json, reportType: type, maxLength: 280)
             default: break
@@ -201,6 +205,7 @@ struct Message: Identifiable {
         guard let oidRaw = json["order_id"] else { return nil }
         let orderId: String? = {
             if let n = oidRaw as? Int { return String(n) }
+            if let n = oidRaw as? NSNumber { return n.stringValue }
             if let s = oidRaw as? String, !s.isEmpty { return s }
             return nil
         }()
@@ -314,6 +319,26 @@ struct Message: Identifiable {
         let requested = (json["requested_by_seller"] as? Bool) ?? (json["requestedBySeller"] as? Bool) ?? false
         let st = (json["status"] as? String) ?? "PENDING"
         return (orderId, requested, st)
+    }
+
+    /// Follow-up row when counterparty approves or rejects (`order_cancellation_outcome` JSON).
+    var parsedOrderCancellationOutcomePayload: (orderId: Int, approved: Bool)? {
+        guard isOrderCancellationOutcome else { return nil }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (json["type"] as? String) == "order_cancellation_outcome" else { return nil }
+        let oid: Int? = {
+            if let n = json["order_id"] as? Int { return n }
+            if let s = json["order_id"] as? String { return Int(s) }
+            if let n = json["orderId"] as? Int { return n }
+            if let s = json["orderId"] as? String { return Int(s) }
+            return nil
+        }()
+        guard let orderId = oid else { return nil }
+        let approved = (json["approved"] as? Bool) ?? false
+        return (orderId, approved)
     }
 
     var isOrderCancellationOutcome: Bool {

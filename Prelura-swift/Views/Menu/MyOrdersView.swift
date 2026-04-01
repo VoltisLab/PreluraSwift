@@ -146,7 +146,7 @@ private struct OrderRowView: View {
                     Spacer()
                     Text(order.statusDisplay)
                         .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.secondaryText)
+                        .foregroundColor(Theme.primaryColor)
                 }
             }
             Image(systemName: "chevron.right")

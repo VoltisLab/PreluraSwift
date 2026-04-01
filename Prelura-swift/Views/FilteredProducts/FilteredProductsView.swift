@@ -440,15 +440,13 @@ struct FilteredProductsView: View {
             }
         }
         .sheet(item: $activeSheet) { sheet in
-            Group {
-                switch sheet {
-                case .sort:
-                    filteredProductsSortSheet.preluraModalSheetBackground()
-                case .filter:
-                    filteredProductsFilterSheet.preluraModalSheetBackground()
-                case .styles:
-                    stylesSheetContent.preluraModalSheetBackground()
-                }
+            switch sheet {
+            case .sort:
+                filteredProductsSortSheet
+            case .filter:
+                filteredProductsFilterSheet
+            case .styles:
+                stylesSheetContent
             }
         }
         .fullScreenCover(isPresented: $showGuestSignInPrompt) { GuestSignInPromptView() }
@@ -531,10 +529,6 @@ struct FilteredProductsView: View {
             }
             .padding(.vertical, Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                    .fill(Theme.Colors.background)
-            )
         }
     }
 
@@ -598,10 +592,6 @@ struct FilteredProductsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.vertical, Theme.Spacing.md)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                    .fill(Theme.Colors.background)
-            )
         }
     }
 
@@ -679,10 +669,6 @@ struct FilteredProductsView: View {
             }
             .padding(.vertical, Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                    .fill(Theme.Colors.background)
-            )
         }
     }
 }

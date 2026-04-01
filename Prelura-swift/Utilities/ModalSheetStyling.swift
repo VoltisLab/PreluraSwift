@@ -1,11 +1,11 @@
 import SwiftUI
 
 extension View {
-    /// Apply Prelura standard modal-sheet surface color.
+    /// Frosted / liquid-glass style sheet (matches toolbar glass materials).
     @ViewBuilder
-    func preluraModalSheetBackground() -> some View {
+    func preluraGlassModalSheetBackground() -> some View {
         if #available(iOS 16.4, *) {
-            self.presentationBackground(Theme.Colors.modalSheetBackground)
+            self.presentationBackground(.regularMaterial)
         } else {
             self
         }

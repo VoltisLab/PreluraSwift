@@ -266,6 +266,8 @@ struct MainTabView: View {
                 get: { tabCoordinator.selectedTab },
                 set: { tabCoordinator.selectTab($0) }
             ))
+            .environmentObject(tabCoordinator)
+            .environment(\.optionalTabCoordinator, tabCoordinator)
             .tabItem { Label(L10n.string("Sell"), systemImage: "plus") }
             .tag(2)
 

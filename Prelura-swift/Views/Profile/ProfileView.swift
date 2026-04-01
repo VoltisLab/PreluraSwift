@@ -417,7 +417,7 @@ struct ProfileView: View {
         let limit = 100
         let truncated = bio.count > limit
         let displayText = truncated ? String(bio.prefix(limit)) + "..." : bio
-        return Group {
+        return         Group {
             if truncated {
                 Button(action: { showFullBioSheet = true }) {
                     Text(displayText)
@@ -440,7 +440,7 @@ struct ProfileView: View {
             }
         }
         .sheet(isPresented: $showFullBioSheet) {
-            NavigationStack {
+            OptionsSheet(title: L10n.string("Bio"), onDismiss: { showFullBioSheet = false }, detents: [.medium, .large], useCustomCornerRadius: false) {
                 ScrollView {
                     Text(bio)
                         .font(Theme.Typography.body)
@@ -448,14 +448,7 @@ struct ProfileView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(Theme.Spacing.md)
                 }
-                .navigationTitle(L10n.string("Bio"))
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(L10n.string("Done")) { showFullBioSheet = false }
-                            .foregroundColor(Theme.primaryColor)
-                    }
-                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
     }
@@ -693,15 +686,13 @@ struct ProfileView: View {
             .padding(.vertical, Theme.Spacing.sm)
         }
         .sheet(item: $activeListingsSheet) { sheet in
-            Group {
-                switch sheet {
-                case .sort:
-                    profileSortSheet.preluraModalSheetBackground()
-                case .filter:
-                    profileFilterSheet.preluraModalSheetBackground()
-                case .shopSearch:
-                    shopSearchSheetContent.preluraModalSheetBackground()
-                }
+            switch sheet {
+            case .sort:
+                profileSortSheet
+            case .filter:
+                profileFilterSheet
+            case .shopSearch:
+                shopSearchSheetContent
             }
         }
     }
@@ -785,10 +776,6 @@ struct ProfileView: View {
             }
             .padding(.vertical, Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                    .fill(Theme.Colors.background)
-            )
         }
     }
     
@@ -804,7 +791,15 @@ struct ProfileView: View {
                 || item.category.name.lowercased().contains(query)
                 || item.description.lowercased().contains(query)
             }
-        return NavigationStack {
+        return OptionsSheet(
+            title: L10n.string("Search"),
+            onDismiss: {
+                activeListingsSheet = nil
+                shopSearchQuery = ""
+            },
+            detents: [.large],
+            useCustomCornerRadius: false
+        ) {
             VStack(spacing: 0) {
                 HStack(spacing: Theme.Spacing.sm) {
                     Image(systemName: "magnifyingglass")
@@ -821,45 +816,41 @@ struct ProfileView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.sm)
                 .padding(.bottom, Theme.Spacing.xs)
-                
-                ScrollView {
-                    LazyVGrid(
-                        columns: [
-                            GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                            GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                        ],
-                        spacing: Theme.Spacing.md
-                    ) {
-                        ForEach(filteredItems) { item in
-                            NavigationLink(value: AppRoute.itemDetail(item)) {
-                                WardrobeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+
+                NavigationStack {
+                    ScrollView {
+                        LazyVGrid(
+                            columns: [
+                                GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                                GridItem(.flexible(), spacing: Theme.Spacing.sm)
+                            ],
+                            spacing: Theme.Spacing.md
+                        ) {
+                            ForEach(filteredItems) { item in
+                                NavigationLink(value: AppRoute.itemDetail(item)) {
+                                    WardrobeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
+                                }
+                                .buttonStyle(PlainTappableButtonStyle())
                             }
-                            .buttonStyle(PlainTappableButtonStyle())
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.md)
+                    }
+                    .navigationDestination(for: AppRoute.self) { route in
+                        switch route {
+                        case .itemDetail(let item):
+                            ItemDetailView(item: item, authService: authService)
+                        case .conversation, .menu:
+                            EmptyView()
+                        case .reviews(let username, let rating):
+                            ReviewsView(username: username, rating: rating)
                         }
                     }
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.md)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.Colors.background)
-            .navigationTitle(L10n.string("Search"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(action: {
-                        activeListingsSheet = nil
-                        shopSearchQuery = ""
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                }
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
     }
     
     // MARK: - Items Grid Section

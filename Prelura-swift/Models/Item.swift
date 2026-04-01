@@ -24,6 +24,10 @@ struct Item: Identifiable, Hashable {
     let isLiked: Bool
     /// Product status from API (e.g. "ACTIVE", "SOLD"). Used to hide Buy/Offer for sold items and filter marketplace.
     let status: String
+    /// GraphQL category id when available (sell prefill).
+    let sellCategoryBackendId: String?
+    /// GraphQL product size id when available (sell prefill).
+    let sellSizeBackendId: Int?
     
     init(
         id: UUID = UUID(),
@@ -45,7 +49,9 @@ struct Item: Identifiable, Hashable {
         views: Int = 0,
         createdAt: Date = Date(),
         isLiked: Bool = false,
-        status: String = "ACTIVE"
+        status: String = "ACTIVE",
+        sellCategoryBackendId: String? = nil,
+        sellSizeBackendId: Int? = nil
     ) {
         self.id = id
         self.productId = productId
@@ -67,6 +73,8 @@ struct Item: Identifiable, Hashable {
         self.createdAt = createdAt
         self.isLiked = isLiked
         self.status = status
+        self.sellCategoryBackendId = sellCategoryBackendId
+        self.sellSizeBackendId = sellSizeBackendId
     }
     
     // Hashable conformance
@@ -108,7 +116,9 @@ struct Item: Identifiable, Hashable {
             views: views,
             createdAt: createdAt,
             isLiked: isLiked ?? self.isLiked,
-            status: status ?? self.status
+            status: status ?? self.status,
+            sellCategoryBackendId: sellCategoryBackendId,
+            sellSizeBackendId: sellSizeBackendId
         )
     }
 

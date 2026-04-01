@@ -1758,9 +1758,25 @@ class UserService: ObservableObject {
                 views: product.views ?? 0,
                 createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),
                 isLiked: product.userLiked ?? false,
-                status: product.status ?? "ACTIVE"
+                status: product.status ?? "ACTIVE",
+                sellCategoryBackendId: Self.graphQLStringId(product.category?.id),
+                sellSizeBackendId: Self.graphQLIntId(product.size?.id)
             )
         }
+    }
+
+    private static func graphQLStringId(_ codable: AnyCodable?) -> String? {
+        guard let v = codable?.value else { return nil }
+        if let i = v as? Int { return String(i) }
+        if let s = v as? String, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return s }
+        return nil
+    }
+
+    private static func graphQLIntId(_ codable: AnyCodable?) -> Int? {
+        guard let v = codable?.value else { return nil }
+        if let i = v as? Int { return i }
+        if let s = v as? String { return Int(s.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        return nil
     }
     
     private static func parseCreatedAt(_ iso8601: String?) -> Date? {
@@ -2354,13 +2370,12 @@ struct Order: Identifiable {
     /// When present, buyer/seller cancellation request flow (PENDING needs counterparty action).
     let cancellation: OrderCancellationSummary?
 
-    /// Order ID for display: always starts with "PR" (e.g. PR23DG2DF3 or PR225 for legacy numeric).
+    /// Order ID for display: prefers backend `publicId` (e.g. PR23DG2DF3). Falls back when navigating from chat before hydration.
     var displayOrderId: String {
-        guard let publicId, !publicId.isEmpty else {
-            assertionFailure("Order \(id) is missing publicId. Backend data integrity issue.")
-            return ""
-        }
-        return publicId
+        let trimmed = publicId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmed.isEmpty { return trimmed }
+        let nid = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        return nid.isEmpty ? "—" : "#\(nid)"
     }
 }
 

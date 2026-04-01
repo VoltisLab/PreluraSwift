@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// Event pushed when backend creates/updates an offer (Django Channels). When backend sends NEW_OFFER / UPDATE_OFFER, use this to update UI without refetch.
 struct OfferSocketEvent {
@@ -36,6 +37,7 @@ struct MessageReactionSocketEvent {
 /// WebSocket client for chat: connect to backend ws, send messages, receive new messages and events.
 /// Uses same host as GraphQL (Constants.chatWebSocketBaseURL) so messages send/save to the same backend.
 final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSocketDelegate {
+    private static let diagLog = Logger(subsystem: "com.prelura.preloved", category: "ChatWS")
     private let conversationId: String
     private let token: String
     private var task: URLSessionWebSocketTask?
@@ -245,7 +247,21 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
     }
 
     private func handleReceivedString(_ text: String) async {
-        guard let json = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return }
+        let convId = conversationId
+        guard let data = text.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            let preview = Self.redactForLog(text, maxLen: 200)
+            Self.diagLog.error("json_parse_failed conv=\(convId, privacy: .public) len=\(text.count) preview=\(preview, privacy: .public)")
+            print("[ChatWS] json_parse_failed conv=\(convId) len=\(text.count) preview=\(preview)")
+            await MainActor.run {
+                ChatPushTraceDebugState.shared.markSocketDiagnostic(
+                    conversationId: convId,
+                    summary: "json_parse_failed len=\(text.count)",
+                    isError: true
+                )
+            }
+            return
+        }
         let type = json["type"] as? String
         let typeNorm = type?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if type == "order_issue_created" || type == "order_status_event" || type == "order_cancellation_event" {
@@ -338,11 +354,40 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
             return
         }
         // New message: parse and notify on main actor (messageUuid when server confirms our send).
-        guard let msg = parseWebSocketMessage(json) else { return }
+        guard let msg = parseWebSocketMessage(json) else {
+            let summary = Self.jsonKeySummary(json)
+            Self.diagLog.error("chat_frame_dropped conv=\(convId, privacy: .public) \(summary, privacy: .public)")
+            print("[ChatWS] chat_frame_dropped conv=\(convId) \(summary)")
+            await MainActor.run {
+                ChatPushTraceDebugState.shared.markSocketDiagnostic(
+                    conversationId: convId,
+                    summary: "chat_frame_dropped \(summary)",
+                    isError: true
+                )
+            }
+            return
+        }
         let echoUuid = (json["message_uuid"] as? String) ?? (json["messageUuid"] as? String)
+        let bid = msg.backendId.map { String($0) } ?? "nil"
+        Self.diagLog.info("chat_message_parsed conv=\(convId, privacy: .public) backendId=\(bid, privacy: .public) sender=\(msg.senderUsername, privacy: .public) type=\(msg.type, privacy: .public) textLen=\(msg.content.count)")
+        print("[ChatWS] chat_message_parsed conv=\(convId) backendId=\(bid) sender=\(msg.senderUsername) type=\(msg.type) textLen=\(msg.content.count)")
         await MainActor.run {
             onNewMessage?(msg, echoUuid)  // echoUuid = message_uuid when server confirms our send
         }
+    }
+
+    private static func redactForLog(_ s: String, maxLen: Int) -> String {
+        let t = s.replacingOccurrences(of: "\n", with: "\\n")
+        if t.count <= maxLen { return t }
+        return String(t.prefix(maxLen)) + "…"
+    }
+
+    /// Short summary when a dict is not a parseable chat message (missing id + empty text).
+    private static func jsonKeySummary(_ json: [String: Any]) -> String {
+        let keys = json.keys.sorted().joined(separator: ",")
+        let hasId = json["id"] != nil
+        let rawText = (json["text"] as? String) ?? (json["message"] as? String) ?? ""
+        return "keys=[\(keys)] hasId=\(hasId) textLen=\(rawText.count)"
     }
 
     /// Parse server message JSON to Message (Flutter MessageModel.fromSocket: id, text, senderName/sender_name, createdAt, isItem, itemId).

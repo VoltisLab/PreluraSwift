@@ -579,10 +579,16 @@ struct ChatDetailView: View {
                 let message = displayedMessages[index]
                 let topPadding: CGFloat = timelineIndex == 0 ? 0 : (isSameGroupAsPrevious(timelineIndex: timelineIndex, message: message) ? Theme.Spacing.xs : Theme.Spacing.md)
                 if message.isOrderCancellationRequest, let cancelPayload = message.parsedOrderCancellationRequestPayload {
+                    let outcomeLater = displayedMessages.dropFirst(index + 1).contains { later in
+                        guard let o = later.parsedOrderCancellationOutcomePayload else { return false }
+                        return o.orderId == cancelPayload.orderId
+                    }
                     let cancelCard = OrderCancellationRequestChatCardView(
                         message: message,
                         payload: cancelPayload,
-                        isSellerRole: isSeller,
+                        resolvedByLaterOutcome: outcomeLater,
+                        currentUsername: authService.username,
+                        isSellerRoleFallback: isSeller,
                         onFinished: { loadConversationAndMessagesFromBackend() }
                     )
                     .environmentObject(authService)
@@ -642,6 +648,10 @@ struct ChatDetailView: View {
                                 reactionOverlayMessage = message
                             }
                             : nil,
+                        onTapMyReactionChip: displayedConversation.id != "0"
+                            ? { removeChatReactionIfMine(message: message, emoji: $0) }
+                            : nil,
+                        currentUsernameForReactions: authService.username,
                         isReactionTargeted: reactionOverlayMessage?.id == message.id
                     )
                     .id(message.id)
@@ -837,7 +847,7 @@ struct ChatDetailView: View {
                         .onAppear { showExtendedReactionEmojis = false }
                 }
             }
-            .preluraModalSheetBackground()
+            .preluraGlassModalSheetBackground()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
@@ -900,7 +910,6 @@ struct ChatDetailView: View {
                     errorMessage: $offerError
                 )
             }
-            .preluraModalSheetBackground()
         }
         .fullScreenCover(item: $payNowPayload) { payload in
             NavigationView {
@@ -923,7 +932,6 @@ struct ChatDetailView: View {
                         }
                     }
             }
-            .preluraModalSheetBackground()
         }
         .onAppear {
             hasAutoScrolledToBottomForThisChat = false
@@ -1822,7 +1830,7 @@ struct ChatDetailView: View {
                 }
                 Text(orderHeaderStatusText(order: order))
                     .font(Theme.Typography.caption)
-                    .foregroundColor(Theme.Colors.secondaryText)
+                    .foregroundColor(Theme.primaryColor)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "chevron.right")
@@ -1859,7 +1867,7 @@ struct ChatDetailView: View {
         )
         return Order(
             id: order.id,
-            publicId: nil,
+            publicId: order.publicId,
             priceTotal: String(format: "%.2f", order.total),
             status: order.status,
             createdAt: order.createdAt ?? Date(),
@@ -2522,6 +2530,28 @@ struct ChatDetailView: View {
         )
         if let bid = message.backendId {
             let mine = ChatMessageReactionsStore.shared.reactionsByUsername(conversationId: convId, messageKey: key)[username]
+            webSocket?.sendMessageReaction(messageId: bid, emoji: mine)
+        }
+    }
+
+    /// Tap reaction chip on bubble: remove only if it is the current user’s emoji (same toggle rules as `applyReaction`).
+    private func removeChatReactionIfMine(message: Message, emoji: String) {
+        guard let username = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty else { return }
+        let convId = displayedConversation.id
+        guard convId != "0" else { return }
+        let key = ChatMessageReactionsStore.stableKey(for: message)
+        let map = ChatMessageReactionsStore.shared.reactionsByUsername(conversationId: convId, messageKey: key)
+        guard let storedUser = map.keys.first(where: {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == username.lowercased()
+        }), map[storedUser] == emoji else { return }
+        ChatMessageReactionsStore.shared.applyReaction(
+            conversationId: convId,
+            messageKey: key,
+            username: storedUser,
+            emoji: emoji
+        )
+        if let bid = message.backendId {
+            let mine = ChatMessageReactionsStore.shared.reactionsByUsername(conversationId: convId, messageKey: key)[storedUser]
             webSocket?.sendMessageReaction(messageId: bid, emoji: mine)
         }
     }
@@ -3207,7 +3237,12 @@ struct SoldConfirmationCardView: View {
 private struct OrderCancellationRequestChatCardView: View {
     let message: Message
     let payload: (orderId: Int, requestedBySeller: Bool, status: String)
-    let isSellerRole: Bool
+    /// Backend keeps request JSON as PENDING and appends a separate outcome message; hide actions once that exists.
+    let resolvedByLaterOutcome: Bool
+    /// Used with `message.senderUsername`: backend sets message sender to whoever initiated the cancellation.
+    let currentUsername: String?
+    /// If `senderUsername` is missing, infer initiator from offer seller vs buyer the old way.
+    let isSellerRoleFallback: Bool
     var onFinished: () -> Void
 
     @EnvironmentObject var authService: AuthService
@@ -3215,24 +3250,51 @@ private struct OrderCancellationRequestChatCardView: View {
     @State private var err: String?
     private let userService = UserService()
 
+    private var initiatorIsCurrentUser: Bool {
+        let a = message.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let b = (currentUsername ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !a.isEmpty, !b.isEmpty { return a == b }
+        if payload.requestedBySeller { return isSellerRoleFallback }
+        return !isSellerRoleFallback
+    }
+
+    private var statusAllowsAction: Bool {
+        let s = payload.status.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        return s.isEmpty || s == "PENDING"
+    }
+
     private var canRespond: Bool {
-        guard payload.status.uppercased() == "PENDING" else { return false }
-        if payload.requestedBySeller { return !isSellerRole }
-        return isSellerRole
+        guard !resolvedByLaterOutcome, statusAllowsAction else { return false }
+        return !initiatorIsCurrentUser
     }
 
     private var title: String {
-        if payload.requestedBySeller {
-            return isSellerRole ? "You asked to cancel this order" : "The seller asked to cancel this order"
+        if initiatorIsCurrentUser {
+            return "You asked to cancel this order"
         }
-        return isSellerRole ? "The buyer asked to cancel this order" : "You asked to cancel this order"
+        if payload.requestedBySeller {
+            return "The seller asked to cancel this order"
+        }
+        return "The buyer asked to cancel this order"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text(title)
-                .font(Theme.Typography.body)
-                .foregroundColor(Theme.Colors.primaryText)
+            // Title on its own row (full width); time on the next row, trailing — avoids wrapping around a top-right timestamp.
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text(title)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Spacer(minLength: 0)
+                    Text(message.formattedTimestamp)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+            }
             if canRespond {
                 HStack(spacing: Theme.Spacing.md) {
                     Button {
@@ -3261,7 +3323,7 @@ private struct OrderCancellationRequestChatCardView: View {
                     .buttonStyle(PlainTappableButtonStyle())
                 }
                 .disabled(busy)
-            } else if payload.status.uppercased() == "PENDING" {
+            } else if statusAllowsAction, !resolvedByLaterOutcome, initiatorIsCurrentUser {
                 Text("Waiting for the other party.")
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
@@ -3547,6 +3609,10 @@ struct MessageBubbleView: View {
     var reactionsByUsername: [String: String] = [:]
     /// Long-press to open WhatsApp-style reaction tray; nil disables the gesture.
     var onLongPress: (() -> Void)? = nil
+    /// Tap the chip that matches the current user’s reaction to remove it (nil = not interactive).
+    var onTapMyReactionChip: ((String) -> Void)? = nil
+    /// Matched case-insensitively to `reactionsByUsername` keys for tap-to-remove.
+    var currentUsernameForReactions: String? = nil
     /// Slight scale while the reaction overlay targets this bubble.
     var isReactionTargeted: Bool = false
 
@@ -3588,6 +3654,15 @@ struct MessageBubbleView: View {
             )
     }
 
+    private var myReactionEmojiInStrip: String? {
+        guard let me = currentUsernameForReactions?.trimmingCharacters(in: .whitespacesAndNewlines), !me.isEmpty else { return nil }
+        let lower = me.lowercased()
+        for (u, e) in reactionsByUsername where !e.isEmpty {
+            if u.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == lower { return e }
+        }
+        return nil
+    }
+
     @ViewBuilder
     private var reactionStrip: some View {
         let nonEmpty = reactionsByUsername.filter { !$0.value.isEmpty }
@@ -3599,26 +3674,50 @@ struct MessageBubbleView: View {
             HStack(spacing: 5) {
                 ForEach(sortedEmojis, id: \.self) { em in
                     let count = byEmoji[em]?.count ?? 0
-                    HStack(spacing: 3) {
-                        Text(em)
-                            .font(.system(size: 15))
-                        if count > 1 {
-                            Text("\(count)")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Theme.Colors.secondaryText)
-                        }
+                    let canTapRemoveMine = onTapMyReactionChip != nil && myReactionEmojiInStrip == em
+                    reactionChip(emoji: em, count: count, showRemoveHint: canTapRemoveMine) {
+                        guard canTapRemoveMine else { return }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onTapMyReactionChip?(em)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(Theme.Colors.secondaryBackground.opacity(0.96))
-                            .overlay(Capsule().stroke(Theme.Colors.glassBorder, lineWidth: 0.5))
-                    )
                 }
             }
             .frame(maxWidth: .infinity, alignment: isCurrentUser ? .trailing : .leading)
             .padding(.leading, isCurrentUser ? 0 : (Self.messageAvatarSize + Theme.Spacing.xs))
+        }
+    }
+
+    @ViewBuilder
+    private func reactionChip(emoji: String, count: Int, showRemoveHint: Bool, action: @escaping () -> Void) -> some View {
+        let label = HStack(spacing: 3) {
+            Text(emoji)
+                .font(.system(size: 15))
+            if count > 1 {
+                Text("\(count)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.secondaryText)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(Theme.Colors.secondaryBackground.opacity(0.96))
+                .overlay(
+                    Capsule().stroke(
+                        showRemoveHint ? Theme.primaryColor.opacity(0.85) : Theme.Colors.glassBorder,
+                        lineWidth: showRemoveHint ? 1.5 : 0.5
+                    )
+                )
+        )
+        if showRemoveHint {
+            Button(action: action) {
+                label
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.string("Remove reaction"))
+        } else {
+            label
         }
     }
 
