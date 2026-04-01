@@ -187,10 +187,13 @@ struct ChatDetailView: View {
     @State private var showItemSoldBanner = false
     @State private var offerModalSubmitting = false
     @State private var showReportUserSheet = false
+    @State private var archiveFailureMessage: String?
     @State private var reconnectTask: Task<Void, Never>?
     @State private var reconnectAttempt = 0
     /// WhatsApp-style long-press reactions (local persistence per device).
     @ObservedObject private var messageReactionsStore = ChatMessageReactionsStore.shared
+    /// Learns which reaction emojis you use so the long-press bar surfaces them first.
+    @ObservedObject private var chatReactionEmojiUsageStore = ChatReactionEmojiUsageStore.shared
     @State private var reactionOverlayMessage: Message?
     @State private var reactionBubbleFrames: [UUID: CGRect] = [:]
     @State private var showExtendedReactionEmojis = false
@@ -648,6 +651,11 @@ struct ChatDetailView: View {
                                 reactionOverlayMessage = message
                             }
                             : nil,
+                        onDoubleTapHeart: displayedConversation.id != "0"
+                            ? {
+                                applyChatReaction(message: message, emoji: ChatReactionEmojiUsageStore.doubleTapHeartEmoji)
+                            }
+                            : nil,
                         onTapMyReactionChip: displayedConversation.id != "0"
                             ? { removeChatReactionIfMine(message: message, emoji: $0) }
                             : nil,
@@ -817,6 +825,7 @@ struct ChatDetailView: View {
             if let msg = reactionOverlayMessage {
                 WhatsAppStyleReactionOverlay(
                     bubbleFrame: reactionBubbleFrames[msg.id] ?? .zero,
+                    quickEmojis: chatReactionEmojiUsageStore.orderedQuickReactions(defaults: WhatsAppQuickReactions.primary),
                     onPickEmoji: { emoji in
                         applyChatReaction(message: msg, emoji: emoji)
                     },
@@ -869,7 +878,7 @@ struct ChatDetailView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
-                    Button("Archive") { }
+                    Button(L10n.string("Archive")) { archiveDisplayedConversation() }
                     Button("Report", role: .destructive) {
                         showReportUserSheet = true
                     }
@@ -932,6 +941,16 @@ struct ChatDetailView: View {
                     }
             }
         }
+        .alert(L10n.string("Archive"), isPresented: Binding(
+            get: { archiveFailureMessage != nil },
+            set: { if !$0 { archiveFailureMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { archiveFailureMessage = nil }
+        } message: {
+            if let archiveFailureMessage {
+                Text(archiveFailureMessage)
+            }
+        }
         .onAppear {
             hasAutoScrolledToBottomForThisChat = false
             if let token = authService.authToken {
@@ -985,7 +1004,7 @@ struct ChatDetailView: View {
         .onChange(of: newMessage) { _, newValue in
             sendTypingForComposerChange(newValue)
         }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase) { oldPhase, phase in
             // Drop the socket as soon as the app leaves the foreground so the server clears `chat_<id>` presence
             // and chat pushes are not suppressed (receiver must not appear "in room" while backgrounded or inactive).
             if phase == .inactive || phase == .background {
@@ -999,9 +1018,15 @@ struct ChatDetailView: View {
                 didSendTypingStart = false
             } else if phase == .active {
                 guard displayedConversation.id != "0",
-                      let t = (authService.refreshToken ?? authService.authToken), !t.isEmpty,
-                      webSocket == nil else { return }
-                connectWebSocket()
+                      let token = authService.refreshToken ?? authService.authToken,
+                      !token.isEmpty else { return }
+                // Pebble chat_screen: refetch on resume — WS is disconnected while backgrounded, so pull missed rows from GraphQL.
+                if oldPhase != .active {
+                    loadConversationAndMessagesFromBackend()
+                }
+                if webSocket == nil {
+                    connectWebSocket()
+                }
             }
         }
         .onDisappear {
@@ -1043,6 +1068,23 @@ struct ChatDetailView: View {
             typingKeepaliveTask?.cancel()
             typingKeepaliveTask = nil
             didSendTypingStart = false
+        }
+    }
+
+    private func archiveDisplayedConversation() {
+        guard let cid = Int(displayedConversation.id), cid > 0 else { return }
+        Task {
+            do {
+                try await chatService.archiveConversation(conversationId: cid)
+                await MainActor.run {
+                    tabCoordinator?.requestInboxListRefresh()
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    archiveFailureMessage = error.localizedDescription
+                }
+            }
         }
     }
 
@@ -2521,12 +2563,17 @@ struct ChatDetailView: View {
         let convId = displayedConversation.id
         guard convId != "0" else { return }
         let key = ChatMessageReactionsStore.stableKey(for: message)
+        let beforeMine = messageReactionsStore.reactionsByUsername(conversationId: convId, messageKey: key)[username]
+        let removingSameEmoji = beforeMine == emoji
         ChatMessageReactionsStore.shared.applyReaction(
             conversationId: convId,
             messageKey: key,
             username: username,
             emoji: emoji
         )
+        if !removingSameEmoji {
+            chatReactionEmojiUsageStore.recordUse(emoji)
+        }
         if let bid = message.backendId {
             let mine = ChatMessageReactionsStore.shared.reactionsByUsername(conversationId: convId, messageKey: key)[username]
             webSocket?.sendMessageReaction(messageId: bid, emoji: mine)
@@ -3608,6 +3655,8 @@ struct MessageBubbleView: View {
     var reactionsByUsername: [String: String] = [:]
     /// Long-press to open WhatsApp-style reaction tray; nil disables the gesture.
     var onLongPress: (() -> Void)? = nil
+    /// Double-tap the bubble to toggle ❤️ (nil disables).
+    var onDoubleTapHeart: (() -> Void)? = nil
     /// Tap the chip that matches the current user’s reaction to remove it (nil = not interactive).
     var onTapMyReactionChip: ((String) -> Void)? = nil
     /// Matched case-insensitively to `reactionsByUsername` keys for tap-to-remove.
@@ -3653,27 +3702,44 @@ struct MessageBubbleView: View {
             )
     }
 
-    private var myReactionEmojiInStrip: String? {
-        guard let me = currentUsernameForReactions?.trimmingCharacters(in: .whitespacesAndNewlines), !me.isEmpty else { return nil }
-        let lower = me.lowercased()
-        for (u, e) in reactionsByUsername where !e.isEmpty {
-            if u.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == lower { return e }
+    /// Reactions from the signed-in user vs everyone else (for corner placement on the bubble).
+    private var reactionsPartitioned: (mine: [String: String], others: [String: String]) {
+        guard let me = currentUsernameForReactions?.trimmingCharacters(in: .whitespacesAndNewlines), !me.isEmpty else {
+            return ([:], reactionsByUsername.filter { !$0.value.isEmpty })
         }
-        return nil
+        let lower = me.lowercased()
+        var mine: [String: String] = [:]
+        var others: [String: String] = [:]
+        for (u, e) in reactionsByUsername where !e.isEmpty {
+            if u.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == lower {
+                mine[u] = e
+            } else {
+                others[u] = e
+            }
+        }
+        return (mine, others)
     }
 
+    private var hasAnyReaction: Bool {
+        reactionsByUsername.values.contains { !$0.isEmpty }
+    }
+
+    private static let reactionOverlayOffsetX: CGFloat = 6
+    private static let reactionOverlayOffsetY: CGFloat = 10
+
     @ViewBuilder
-    private var reactionStrip: some View {
-        let nonEmpty = reactionsByUsername.filter { !$0.value.isEmpty }
+    private func reactionClusterRow(for map: [String: String]) -> some View {
+        let nonEmpty = map.filter { !$0.value.isEmpty }
         if nonEmpty.isEmpty {
             EmptyView()
         } else {
             let byEmoji = Dictionary(grouping: nonEmpty.values, by: { $0 })
             let sortedEmojis = byEmoji.keys.sorted()
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 ForEach(sortedEmojis, id: \.self) { em in
                     let count = byEmoji[em]?.count ?? 0
-                    let canTapRemoveMine = onTapMyReactionChip != nil && myReactionEmojiInStrip == em
+                    let myEm = myReactionEmoji(in: map)
+                    let canTapRemoveMine = onTapMyReactionChip != nil && myEm == em
                     reactionChip(emoji: em, count: count, showRemoveHint: canTapRemoveMine) {
                         guard canTapRemoveMine else { return }
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -3681,9 +3747,16 @@ struct MessageBubbleView: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: isCurrentUser ? .trailing : .leading)
-            .padding(.leading, isCurrentUser ? 0 : (Self.messageAvatarSize + Theme.Spacing.xs))
         }
+    }
+
+    private func myReactionEmoji(in map: [String: String]) -> String? {
+        guard let me = currentUsernameForReactions?.trimmingCharacters(in: .whitespacesAndNewlines), !me.isEmpty else { return nil }
+        let lower = me.lowercased()
+        for (u, e) in map where !e.isEmpty {
+            if u.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == lower { return e }
+        }
+        return nil
     }
 
     @ViewBuilder
@@ -3702,12 +3775,6 @@ struct MessageBubbleView: View {
         .background(
             Capsule()
                 .fill(Theme.Colors.secondaryBackground.opacity(0.96))
-                .overlay(
-                    Capsule().stroke(
-                        showRemoveHint ? Theme.primaryColor.opacity(0.85) : Theme.Colors.glassBorder,
-                        lineWidth: showRemoveHint ? 1.5 : 0.5
-                    )
-                )
         )
         if showRemoveHint {
             Button(action: action) {
@@ -3720,9 +3787,82 @@ struct MessageBubbleView: View {
         }
     }
 
+    /// Text bubble + rounded background (non–emoji-only).
+    @ViewBuilder
+    private func standardBubbleLabel(_ bubbleText: String) -> some View {
+        Text(bubbleText)
+            .font(Theme.Typography.body)
+            .foregroundColor(isCurrentUser ? .white : Theme.Colors.primaryText)
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
+            .background(
+                isCurrentUser
+                    ? LinearGradient(
+                        colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    : LinearGradient(
+                        colors: [Theme.Colors.secondaryBackground, Theme.Colors.secondaryBackground],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+            )
+            .cornerRadius(18)
+    }
+
+    /// Bubble content with reactions on top corners: others → top-leading, yours → top-trailing.
+    @ViewBuilder
+    private func bubbleWithCornerReactions(
+        emojiMult: Double?,
+        bubbleText: String
+    ) -> some View {
+        let parts = reactionsPartitioned
+        let hasOthers = !parts.others.isEmpty
+        let hasMine = !parts.mine.isEmpty
+
+        ZStack(alignment: .topLeading) {
+            Group {
+                if let mult = emojiMult {
+                    Text(message.content.trimmingCharacters(in: .whitespacesAndNewlines))
+                        .font(.system(size: baseMessageFontSize * CGFloat(mult)))
+                        .foregroundColor(isCurrentUser ? Theme.primaryColor : Theme.Colors.primaryText)
+                        .multilineTextAlignment(isCurrentUser ? .trailing : .leading)
+                } else {
+                    standardBubbleLabel(bubbleText)
+                }
+            }
+            if hasOthers {
+                reactionClusterRow(for: parts.others)
+                    .offset(x: -Self.reactionOverlayOffsetX, y: -Self.reactionOverlayOffsetY)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if hasMine {
+                reactionClusterRow(for: parts.mine)
+                    .offset(x: Self.reactionOverlayOffsetX, y: -Self.reactionOverlayOffsetY)
+            }
+        }
+        .frame(maxWidth: emojiMult != nil ? .infinity : bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                guard onDoubleTapHeart != nil else { return }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onDoubleTapHeart?()
+            }
+        )
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: ChatBubbleFramePreferenceKey.self,
+                    value: [message.id: geo.frame(in: .global)]
+                )
+            }
+        )
+    }
+
     var body: some View {
         let emojiMult = message.emojiOnlyScaleMultiplier
-        let isEmojiOnlyStyle = emojiMult != nil
         let bubbleText = message.displayContentForBubble(isFromCurrentUser: isCurrentUser)
 
         VStack(alignment: .leading, spacing: 2) {
@@ -3739,38 +3879,10 @@ struct MessageBubbleView: View {
                         }
                     }
                 }
-                VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 4) {
-                    if isEmojiOnlyStyle, let mult = emojiMult {
-                        Text(message.content.trimmingCharacters(in: .whitespacesAndNewlines))
-                            .font(.system(size: baseMessageFontSize * CGFloat(mult)))
-                            .foregroundColor(isCurrentUser ? Theme.primaryColor : Theme.Colors.primaryText)
-                            .multilineTextAlignment(isCurrentUser ? .trailing : .leading)
-                    } else {
-                        Text(bubbleText)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(isCurrentUser ? .white : Theme.Colors.primaryText)
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .padding(.vertical, Theme.Spacing.sm)
-                            .background(
-                                isCurrentUser
-                                    ? LinearGradient(
-                                        colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.85)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                    : LinearGradient(
-                                        colors: [Theme.Colors.secondaryBackground, Theme.Colors.secondaryBackground],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                            )
-                            .cornerRadius(18)
-                    }
-                }
-                .frame(maxWidth: isEmojiOnlyStyle ? .infinity : bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
+                bubbleWithCornerReactions(emojiMult: emojiMult, bubbleText: bubbleText)
+                    .padding(.top, hasAnyReaction ? 12 : 0)
                 if !isCurrentUser { Spacer(minLength: Theme.Spacing.lg) }
             }
-            reactionStrip
             if showTimestamp {
                 HStack {
                     if isCurrentUser { Spacer(minLength: 0) }
@@ -3800,14 +3912,6 @@ struct MessageBubbleView: View {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     onLongPress()
                 }
-        )
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(
-                    key: ChatBubbleFramePreferenceKey.self,
-                    value: [message.id: geo.frame(in: .global)]
-                )
-            }
         )
     }
 }

@@ -5,6 +5,8 @@ import Combine
 @MainActor
 class InboxViewModel: ObservableObject {
     @Published var conversations: [Conversation] = []
+    /// Threads archived by the current user (from `archivedConversations` query).
+    @Published var archivedConversations: [Conversation] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
 
@@ -48,7 +50,7 @@ class InboxViewModel: ObservableObject {
 
     /// Prefetch conversations in the background (e.g. from MainTabView.onAppear). Safe to call when already loading.
     func prefetch() {
-        guard !isLoading, conversations.isEmpty else { return }
+        guard !isLoading, conversations.isEmpty, archivedConversations.isEmpty else { return }
         Task { await loadConversationsAsync(preview: nil) }
     }
 
@@ -59,15 +61,18 @@ class InboxViewModel: ObservableObject {
 
     /// Load conversations from API. Merges in existing conversations not in API response; applies optional preview for one conversation.
     func loadConversationsAsync(preview: (id: String, text: String, date: Date)?) async {
-        let hadConversations = !conversations.isEmpty
+        let hadConversations = !conversations.isEmpty || !archivedConversations.isEmpty
         let existingToMerge = conversations
         if !hadConversations {
             isLoading = true
             conversations = []
+            archivedConversations = []
         }
         do {
-            let convs = try await chatService.getConversations()
-            var list = convs
+            async let mainTask = chatService.getConversations()
+            async let archivedTask = chatService.getArchivedConversations()
+            let (fetched, archivedFetched) = try await (mainTask, archivedTask)
+            var list = fetched
             let apiIds = Set(list.map(\.id))
             for existing in existingToMerge where !apiIds.contains(existing.id) {
                 list.append(existing)
@@ -83,15 +88,20 @@ class InboxViewModel: ObservableObject {
                         id: c.id,
                         recipient: c.recipient,
                         lastMessage: preview.text,
+                        lastMessageSenderUsername: c.lastMessageSenderUsername,
                         lastMessageTime: preview.date,
                         unreadCount: c.unreadCount,
                         offer: c.offer,
-                        order: c.order
+                        order: c.order,
+                        offerHistory: c.offerHistory
                     )
                 }
             }
             Self.sortConversationsInPlace(&list)
             conversations = list
+            var archivedList = Self.deduplicateConversations(archivedFetched)
+            Self.sortConversationsInPlace(&archivedList)
+            archivedConversations = archivedList
             errorMessage = nil
             isLoading = false
         } catch {
@@ -100,10 +110,10 @@ class InboxViewModel: ObservableObject {
             isLoading = false
             if isCancelled {
                 if hadConversations { errorMessage = nil }
-                else { errorMessage = nil; conversations = [] }
+                else { errorMessage = nil; conversations = []; archivedConversations = [] }
             } else {
                 errorMessage = error.localizedDescription
-                if hadConversations { } else { conversations = [] }
+                if hadConversations { } else { conversations = []; archivedConversations = [] }
             }
         }
     }
@@ -116,10 +126,12 @@ class InboxViewModel: ObservableObject {
             id: c.id,
             recipient: c.recipient,
             lastMessage: text,
+            lastMessageSenderUsername: c.lastMessageSenderUsername,
             lastMessageTime: date,
             unreadCount: c.unreadCount,
             offer: c.offer,
-            order: c.order
+            order: c.order,
+            offerHistory: c.offerHistory
         )
         Self.sortConversationsInPlace(&conversations)
     }
@@ -143,6 +155,51 @@ class InboxViewModel: ObservableObject {
         do {
             try await chatService.deleteConversation(conversationId: conversationId)
             removeConversation(id: String(conversationId))
+            archivedConversations.removeAll { $0.id == String(conversationId) }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Archive on server; remove from main inbox and show under Archive filter.
+    func archiveConversation(conversationId: Int) async {
+        let idStr = String(conversationId)
+        do {
+            try await chatService.archiveConversation(conversationId: conversationId)
+            guard let conv = conversations.first(where: { $0.id == idStr }) else {
+                await loadConversationsAsync(preview: nil)
+                return
+            }
+            conversations.removeAll { $0.id == idStr }
+            var arch = archivedConversations
+            if !arch.contains(where: { $0.id == idStr }) {
+                arch.append(conv)
+            }
+            archivedConversations = Self.deduplicateConversations(arch)
+            Self.sortConversationsInPlace(&archivedConversations)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Unarchive on server; return thread to main inbox list.
+    func unarchiveConversation(conversationId: Int) async {
+        let idStr = String(conversationId)
+        do {
+            try await chatService.unarchiveConversation(conversationId: conversationId)
+            guard let conv = archivedConversations.first(where: { $0.id == idStr }) else {
+                await loadConversationsAsync(preview: nil)
+                return
+            }
+            archivedConversations.removeAll { $0.id == idStr }
+            var list = conversations
+            if !list.contains(where: { $0.id == idStr }) {
+                list.append(conv)
+            }
+            conversations = Self.deduplicateConversations(list)
+            Self.sortConversationsInPlace(&conversations)
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -6,6 +6,15 @@ private enum InboxFilter: String, CaseIterable {
     case unread = "Unread"
     case read = "Read"
     case archived = "Archive"
+
+    var localizedTitle: String {
+        switch self {
+        case .all: return L10n.string("All")
+        case .unread: return L10n.string("Unread")
+        case .read: return L10n.string("Read")
+        case .archived: return L10n.string("Archive")
+        }
+    }
 }
 
 struct ChatListView: View {
@@ -19,8 +28,11 @@ struct ChatListView: View {
     @State private var inboxFilter: InboxFilter = .all
 
     private var conversations: [Conversation] { inboxViewModel.conversations }
+    private var archivedConversations: [Conversation] { inboxViewModel.archivedConversations }
     private var isLoading: Bool { inboxViewModel.isLoading }
     private var errorMessage: String? { inboxViewModel.errorMessage }
+    /// No rows from either inbox query (used for first-load shimmer and empty state).
+    private var hasNoInboxData: Bool { conversations.isEmpty && archivedConversations.isEmpty }
 
     init(tabCoordinator: TabCoordinator, path: Binding<[AppRoute]>, inboxViewModel: InboxViewModel) {
         self.tabCoordinator = tabCoordinator
@@ -35,10 +47,10 @@ struct ChatListView: View {
                     .navigationTitle(L10n.string("Messages"))
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbarBackground(Theme.Colors.background, for: .navigationBar)
-            } else if isLoading && conversations.isEmpty {
+            } else if isLoading && hasNoInboxData {
                 InboxShimmerView()
                     .navigationBarHidden(true)
-            } else if conversations.isEmpty && !isLoading {
+            } else if !isLoading && filteredConversations.isEmpty && (errorMessage != nil || hasNoInboxData) {
                 ZStack(alignment: .bottom) {
                     VStack(spacing: Theme.Spacing.lg) {
                         Image(systemName: errorMessage != nil ? "exclamationmark.triangle" : "message")
@@ -94,8 +106,20 @@ struct ChatListView: View {
                                 .listRowBackground(Theme.Colors.background)
                                 .listRowInsets(EdgeInsets(top: 8, leading: Theme.Spacing.md, bottom: 8, trailing: Theme.Spacing.md))
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive, action: { deleteConversation(conversation) }) {
-                                        Label("Delete", systemImage: "trash")
+                                    if inboxFilter == .archived {
+                                        Button {
+                                            unarchiveConversation(conversation)
+                                        } label: {
+                                            Label(L10n.string("Unarchive"), systemImage: "tray.and.arrow.up")
+                                        }
+                                        .tint(Theme.primaryColor)
+                                    } else {
+                                        Button {
+                                            archiveConversation(conversation)
+                                        } label: {
+                                            Label(L10n.string("Archive"), systemImage: "archivebox")
+                                        }
+                                        .tint(.orange)
                                     }
                                 }
                             }
@@ -123,10 +147,19 @@ struct ChatListView: View {
                     .toolbar {
                         ToolbarItem(placement: .navigationBarTrailing) {
                             Menu {
-                                Button(L10n.string("All")) { inboxFilter = .all }
-                                Button(L10n.string("Archive")) { inboxFilter = .archived }
-                                Button(L10n.string("Unread")) { inboxFilter = .unread }
-                                Button(L10n.string("Read")) { inboxFilter = .read }
+                                ForEach(InboxFilter.allCases, id: \.self) { filter in
+                                    Button {
+                                        inboxFilter = filter
+                                    } label: {
+                                        HStack {
+                                            Text(filter.localizedTitle)
+                                            Spacer(minLength: Theme.Spacing.md)
+                                            if inboxFilter == filter {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
                             } label: {
                                 Image(systemName: "ellipsis")
                                     .font(.system(size: 17, weight: .regular))
@@ -170,7 +203,7 @@ struct ChatListView: View {
             }
             guard !authService.isGuestMode else { return }
             inboxViewModel.updateAuthToken(authService.authToken)
-            if conversations.isEmpty && !isLoading {
+            if hasNoInboxData && !isLoading {
                 inboxViewModel.refresh()
             }
         }
@@ -213,9 +246,14 @@ struct ChatListView: View {
         }
     }
 
-    private func deleteConversation(_ conversation: Conversation) {
-        guard let convId = Int(conversation.id) else { return }
-        Task { await inboxViewModel.deleteConversation(conversationId: convId) }
+    private func archiveConversation(_ conversation: Conversation) {
+        guard let convId = Int(conversation.id), convId > 0 else { return }
+        Task { await inboxViewModel.archiveConversation(conversationId: convId) }
+    }
+
+    private func unarchiveConversation(_ conversation: Conversation) {
+        guard let convId = Int(conversation.id), convId > 0 else { return }
+        Task { await inboxViewModel.unarchiveConversation(conversationId: convId) }
     }
 
     /// Load conversations (with optional preview from tabCoordinator) and clear preview after.
@@ -227,12 +265,17 @@ struct ChatListView: View {
     }
     
     private var filteredConversations: [Conversation] {
-        var list = conversations
+        var list: [Conversation]
         switch inboxFilter {
-        case .all: break
+        case .archived:
+            list = archivedConversations
+        default:
+            list = conversations
+        }
+        switch inboxFilter {
+        case .all, .archived: break
         case .unread: list = list.filter { $0.unreadCount > 0 }
         case .read: list = list.filter { $0.unreadCount == 0 }
-        case .archived: list = [] // No backend archive yet; show empty
         }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return list }

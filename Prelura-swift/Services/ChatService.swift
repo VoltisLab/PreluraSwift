@@ -27,11 +27,8 @@ class ChatService: ObservableObject {
         client.setAuthToken(token)
     }
     
-    /// Conversations list. Includes offer when present (for offer card in chat).
-    func getConversations() async throws -> [Conversation] {
-        let query = """
-        query Conversations {
-          conversations {
+    /// Shared selection for inbox + archived inbox rows.
+    private static let conversationListFields = """
             id
             recipient {
               id
@@ -64,10 +61,18 @@ class ChatService: ObservableObject {
               createdAt
               products { id name imagesUrl }
             }
+    """
+
+    /// Conversations list. Includes offer when present (for offer card in chat).
+    func getConversations() async throws -> [Conversation] {
+        let query = """
+        query Conversations {
+          conversations {
+        \(Self.conversationListFields)
           }
         }
         """
-        
+
         let response: ConversationsResponse
         do {
             response = try await client.execute(
@@ -81,8 +86,37 @@ class ChatService: ObservableObject {
         } catch {
             throw error
         }
-        
-        return response.conversations?.compactMap { conv in
+
+        return Self.mapConversationDataRows(response.conversations)
+    }
+
+    /// Threads the user archived (same row shape as `conversations`).
+    func getArchivedConversations() async throws -> [Conversation] {
+        let query = """
+        query ArchivedConversations {
+          archivedConversations {
+        \(Self.conversationListFields)
+          }
+        }
+        """
+        let response: ArchivedConversationsResponse
+        do {
+            response = try await client.execute(
+                query: query,
+                operationName: "ArchivedConversations",
+                responseType: ArchivedConversationsResponse.self
+            )
+        } catch let err as GraphQLError {
+            if case .decodingError = err { return [] }
+            throw err
+        } catch {
+            throw error
+        }
+        return Self.mapConversationDataRows(response.archivedConversations)
+    }
+
+    private static func mapConversationDataRows(_ rows: [ConversationData]?) -> [Conversation] {
+        rows?.compactMap { conv in
             guard let idString = Conversation.idString(from: conv.id) else { return nil }
             let recipientIdString: String
             if let recipientId = conv.recipient?.id {
@@ -110,8 +144,6 @@ class ChatService: ObservableObject {
                     createdAt: parseGraphQLDateString(o.createdAt)
                 )
             }
-            // Fall back to offer or order timestamps so threads sort correctly when the latest activity
-            // is an offer row but `lastMessage` is still empty or stale on the list query.
             let lastTime = parseGraphQLDateString(conv.lastMessage?.createdAt)
                 ?? order?.createdAt
                 ?? offer?.createdAt
@@ -505,7 +537,7 @@ class ChatService: ObservableObject {
         _ = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
     }
     
-    /// Delete a conversation. Matches Flutter deleteConversation(conversationId).
+    /// Delete a conversation permanently.
     func deleteConversation(conversationId: Int) async throws {
         let mutation = """
         mutation DeleteConversation($conversationId: Int!) {
@@ -516,6 +548,34 @@ class ChatService: ObservableObject {
         """
         let variables: [String: Any] = ["conversationId": conversationId]
         struct Payload: Decodable { let deleteConversation: Result?; struct Result: Decodable { let message: String? } }
+        _ = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+    }
+
+    /// Archive for the current user (thread hidden from main inbox).
+    func archiveConversation(conversationId: Int) async throws {
+        let mutation = """
+        mutation ArchiveConversation($conversationId: Int!) {
+          archiveConversation(conversationId: $conversationId) {
+            message
+          }
+        }
+        """
+        let variables: [String: Any] = ["conversationId": conversationId]
+        struct Payload: Decodable { let archiveConversation: Result?; struct Result: Decodable { let message: String? } }
+        _ = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
+    }
+
+    /// Remove from archive (show again in main inbox).
+    func unarchiveConversation(conversationId: Int) async throws {
+        let mutation = """
+        mutation UnarchiveConversation($conversationId: Int!) {
+          unarchiveConversation(conversationId: $conversationId) {
+            message
+          }
+        }
+        """
+        let variables: [String: Any] = ["conversationId": conversationId]
+        struct Payload: Decodable { let unarchiveConversation: Result?; struct Result: Decodable { let message: String? } }
         _ = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
     }
     
@@ -643,6 +703,10 @@ struct Conversation: Hashable {
 
 struct ConversationsResponse: Decodable {
     let conversations: [ConversationData]?
+}
+
+struct ArchivedConversationsResponse: Decodable {
+    let archivedConversations: [ConversationData]?
 }
 
 struct ConversationData: Decodable {
