@@ -155,6 +155,12 @@ enum L10n {
         // Discover
         "Search members": "Αναζήτηση μελών",
         "Search conversations": "Αναζήτηση συνομιλιών",
+        "Shop by style": "Επίλεξε στυλ",
+        "Explore by style": "Εξερεύνηση ανά στυλ",
+        "Feed": "Ροή",
+        "Explore communities": "Εξερεύνησε κοινότητες",
+        "See all": "Όλα",
+        "Get inspired": "Εμπνεύσου",
 
         // Browse
         "Browse": "Περιήγηση",

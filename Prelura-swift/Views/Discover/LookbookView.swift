@@ -136,7 +136,6 @@ struct LookbookView: View {
     @State private var feedLoading = false
     @State private var feedError: String?
     @State private var scrollPosition: String? = lookbookTopId
-    @State private var selectedStylePills: Set<String> = []
     @State private var showSearchSheet: Bool = false
     @State private var searchText: String = ""
     @State private var commentsEntry: LookbookEntry?
@@ -144,57 +143,72 @@ struct LookbookView: View {
     @State private var selectedProductId: ProductIdNavigator?
     private let productService = ProductService()
 
-    private var filteredEntries: [LookbookEntry] {
-        if selectedStylePills.isEmpty { return entries }
-        return entries.filter { entry in
-            !Set(entry.styles).isDisjoint(with: selectedStylePills)
-        }
-    }
-
-    private var stylePillsRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Spacing.sm) {
-                ForEach(lookbookStylePillValues, id: \.self) { raw in
-                    PillTag(
-                        title: StyleSelectionView.displayName(for: raw),
-                        isSelected: selectedStylePills.contains(raw)
-                    ) {
-                        if selectedStylePills.contains(raw) {
-                            selectedStylePills.remove(raw)
-                        } else {
-                            selectedStylePills.insert(raw)
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-        }
-        .background(Theme.Colors.background)
-    }
-
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    Color.clear.frame(height: 1).id(lookbookTopId)
-                    stylePillsRow
-                if feedLoading && entries.isEmpty {
-                    LookbookShimmerView()
-                } else if filteredEntries.isEmpty {
-                    emptyPlaceholder(minHeight: geometry.size.height - 120)
-                } else {
-                        ForEach(buildLookbookFeedRows(from: filteredEntries)) { row in
-                            lookbookFeedRow(model: row)
+        ZStack {
+            GeometryReader { geometry in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        Color.clear.frame(height: 1).id(lookbookTopId)
+
+                        LookbookTopBanner()
+
+                        LookbookStyleThumbnailStrip()
+
+                        LookbookHorizontalPortraitSection(
+                            title: L10n.string("Explore communities"),
+                            showSeeAll: true,
+                            cards: LookbookFeedAssets.exploreCommunityCards,
+                            visibleThumbCount: 2.8,
+                            containerWidth: geometry.size.width
+                        )
+
+                        LookbookHorizontalPortraitSection(
+                            title: L10n.string("Get inspired"),
+                            showSeeAll: false,
+                            cards: LookbookFeedAssets.getInspiredCards,
+                            visibleThumbCount: 2,
+                            containerWidth: geometry.size.width
+                        )
+
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                            Text(L10n.string("Feed"))
+                                .font(Theme.Typography.headline)
+                                .foregroundColor(Theme.Colors.primaryText)
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.top, Theme.Spacing.sm)
+                        }
+
+                        if feedLoading && entries.isEmpty {
+                            LookbookShimmerView()
+                        } else if entries.isEmpty {
+                            emptyPlaceholder(minHeight: geometry.size.height - 120)
+                        } else {
+                            ForEach(buildLookbookFeedRows(from: entries)) { row in
+                                lookbookFeedRow(model: row)
+                            }
                         }
                     }
+                    .padding(.bottom, Theme.Spacing.xl)
                 }
-                .padding(.bottom, Theme.Spacing.xl)
+            }
+            .scrollPosition(id: $scrollPosition, anchor: .top)
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
+
+            if let entry = fullScreenEntry {
+                LookbookTransparentFullscreenOverlay(entry: entry) {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                        fullScreenEntry = nil
+                    }
+                }
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.94, anchor: .center)),
+                    removal: .opacity
+                ))
+                .zIndex(2)
             }
         }
-        .scrollPosition(id: $scrollPosition, anchor: .top)
-        .scrollContentBackground(.hidden)
-        .background(Theme.Colors.background)
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: fullScreenEntry?.id)
         .navigationTitle(L10n.string("Lookbooks"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -229,11 +243,8 @@ struct LookbookView: View {
                 }
             }
         }
-        .fullScreenCover(item: $fullScreenEntry) { entry in
-            LookbookFullscreenViewer(entry: entry)
-        }
         .sheet(isPresented: $showSearchSheet) {
-            LookbookSearchSheet(searchText: $searchText, entries: filteredEntries)
+            LookbookSearchSheet(searchText: $searchText, entries: entries)
         }
         .navigationDestination(item: $selectedProductId) { nav in
             LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
@@ -333,7 +344,11 @@ struct LookbookView: View {
                 Task { await syncLookbookLike(postId: entryId.uuidString) }
             },
             onCommentsTap: { entry in commentsEntry = entry },
-            onImageTap: { entry in fullScreenEntry = entry },
+            onImageTap: { entry in
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                    fullScreenEntry = entry
+                }
+            },
             onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) }
         )
         .id(model.id)
@@ -362,6 +377,504 @@ struct LookbookView: View {
                 entry.isLiked.toggle()
                 entry.likesCount += entry.isLiked ? 1 : -1
                 entries[idx] = entry
+            }
+        }
+    }
+}
+
+// MARK: - Topic / style lookbook feed (pushed from thumbnails)
+
+private struct LookbookTopicFeedView: View {
+    @EnvironmentObject private var authService: AuthService
+    let screenTitle: String
+    let styleFilter: Set<String>
+
+    @State private var entries: [LookbookEntry] = []
+    @State private var feedLoading = false
+    @State private var feedError: String?
+    @State private var commentsEntry: LookbookEntry?
+    @State private var fullScreenEntry: LookbookEntry?
+    @State private var selectedProductId: ProductIdNavigator?
+    private let productService = ProductService()
+
+    private var filteredEntries: [LookbookEntry] {
+        if styleFilter.isEmpty { return entries }
+        return entries.filter { entry in
+            !Set(entry.styles).isDisjoint(with: styleFilter)
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            Theme.Colors.background.ignoresSafeArea()
+
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    if feedLoading && entries.isEmpty {
+                        LookbookShimmerView()
+                    } else if entries.isEmpty {
+                        topicEmptyPlaceholder(allLoadedEmpty: true)
+                    } else if filteredEntries.isEmpty {
+                        topicEmptyPlaceholder(allLoadedEmpty: false)
+                    } else {
+                        ForEach(buildLookbookFeedRows(from: filteredEntries)) { row in
+                            topicFeedRow(model: row)
+                        }
+                    }
+                }
+                .padding(.bottom, Theme.Spacing.xl)
+            }
+            .scrollContentBackground(.hidden)
+
+            if let entry = fullScreenEntry {
+                LookbookTransparentFullscreenOverlay(entry: entry) {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                        fullScreenEntry = nil
+                    }
+                }
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.94, anchor: .center)),
+                    removal: .opacity
+                ))
+                .zIndex(2)
+            }
+        }
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: fullScreenEntry?.id)
+        .navigationTitle(screenTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(.visible, for: .navigationBar)
+        .sheet(item: $commentsEntry) { entry in
+            LookbookCommentsSheet(entry: entry) { newCount in
+                if let idx = entries.firstIndex(where: { $0.id == entry.id }) {
+                    var updated = entries[idx]
+                    updated.commentsCount = newCount
+                    entries[idx] = updated
+                }
+            }
+        }
+        .navigationDestination(item: $selectedProductId) { nav in
+            LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
+        }
+        .onAppear { loadFeedFromServer() }
+        .refreshable { await loadFeedFromServerAsync() }
+    }
+
+    private func topicEmptyPlaceholder(allLoadedEmpty: Bool) -> some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 48))
+                .foregroundColor(Theme.Colors.secondaryText)
+            if allLoadedEmpty {
+                Text("No lookbooks yet")
+                    .font(Theme.Typography.title3)
+                    .foregroundColor(Theme.Colors.primaryText)
+                Text("Upload from the menu to add your first look.")
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Theme.Spacing.xl)
+            } else {
+                Text("No lookbooks here yet")
+                    .font(Theme.Typography.title3)
+                    .foregroundColor(Theme.Colors.primaryText)
+                Text("Nothing matches this topic right now. Check back soon.")
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Theme.Spacing.xl)
+            }
+            if let err = feedError, !err.isEmpty {
+                Text(err)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Theme.Spacing.xl)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, Theme.Spacing.xl)
+    }
+
+    private func topicFeedRow(model: LookbookFeedRowModel) -> some View {
+        LookbookFeedRowView(
+            entry: model.entry,
+            onHeartTap: { entry in
+                let entryId = entry.id
+                guard let i = entries.firstIndex(where: { $0.id == entryId }) else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    var e = entries[i]
+                    e.isLiked.toggle()
+                    e.likesCount += e.isLiked ? 1 : -1
+                    entries[i] = e
+                }
+                Task { await syncLookbookLike(postId: entryId.uuidString) }
+            },
+            onImageDoubleTap: { entry in
+                let entryId = entry.id
+                guard let i = entries.firstIndex(where: { $0.id == entryId }), !entries[i].isLiked else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    var e = entries[i]
+                    e.isLiked = true
+                    e.likesCount += 1
+                    entries[i] = e
+                }
+                Task { await syncLookbookLike(postId: entryId.uuidString) }
+            },
+            onCommentsTap: { entry in commentsEntry = entry },
+            onImageTap: { entry in
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                    fullScreenEntry = entry
+                }
+            },
+            onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) }
+        )
+        .id(model.id)
+        .padding(.bottom, lookbookSpacing)
+    }
+
+    private func loadFeedFromServer() {
+        Task { await loadFeedFromServerAsync() }
+    }
+
+    private func loadFeedFromServerAsync() async {
+        guard authService.isAuthenticated else {
+            await MainActor.run {
+                entries = []
+                feedLoading = false
+                feedError = nil
+            }
+            return
+        }
+        await MainActor.run { feedLoading = true; feedError = nil }
+        let client = GraphQLClient()
+        client.setAuthToken(authService.authToken)
+        let service = LookbookService(client: client)
+        service.setAuthToken(authService.authToken)
+        do {
+            let posts = try await service.fetchLookbooks()
+            let localRecords = LookbookFeedStore.load()
+            await MainActor.run {
+                entries = posts.map { post in
+                    LookbookEntry(from: post, localRecord: localRecords.first { r in r.id == post.id || r.imagePath == post.imageUrl })
+                }
+                feedLoading = false
+                feedError = nil
+            }
+        } catch {
+            await MainActor.run {
+                feedLoading = false
+                let isCancelled = (error as? CancellationError) != nil
+                    || (error as? URLError)?.code == .cancelled
+                    || error.localizedDescription.lowercased().contains("cancelled")
+                feedError = isCancelled ? nil : error.localizedDescription
+            }
+        }
+    }
+
+    private func syncLookbookLike(postId: String) async {
+        do {
+            let client = GraphQLClient()
+            client.setAuthToken(authService.authToken)
+            let service = LookbookService(client: client)
+            let result = try await service.toggleLike(postId: postId)
+            await MainActor.run {
+                guard let uuid = UUID(uuidString: postId),
+                      let idx = entries.firstIndex(where: { $0.id == uuid }) else { return }
+                var entry = entries[idx]
+                entry.isLiked = result.liked
+                entry.likesCount = result.likesCount
+                entries[idx] = entry
+            }
+        } catch {
+            await MainActor.run {
+                guard let uuid = UUID(uuidString: postId),
+                      let idx = entries.firstIndex(where: { $0.id == uuid }) else { return }
+                var entry = entries[idx]
+                entry.isLiked.toggle()
+                entry.likesCount += entry.isLiked ? 1 : -1
+                entries[idx] = entry
+            }
+        }
+    }
+}
+
+// MARK: - Lookbooks header & discovery rows (bundled `LookbookFeed` assets)
+
+private struct LookbookBundledPortraitTile: View {
+    let resourceName: String
+    let width: CGFloat
+    var cornerRadius: CGFloat = 12
+
+    private var tileHeight: CGFloat {
+        width / LookbookCanonicalAspect.portrait1080x1350.rawValue
+    }
+
+    var body: some View {
+        Group {
+            if let ui = LookbookFeedAssets.uiImage(named: resourceName) {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Theme.Colors.secondaryBackground
+                    .overlay {
+                        Image(systemName: "photo")
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
+            }
+        }
+        .frame(width: width, height: tileHeight)
+        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+}
+
+/// Discover-style portrait tile: image + dim overlay + title on top (same stacking as `DiscoverView` banners).
+private struct LookbookHorizontalPortraitTile: View {
+    let card: LookbookHorizontalCard
+    let width: CGFloat
+
+    private var tileHeight: CGFloat {
+        width / LookbookCanonicalAspect.portrait1080x1350.rawValue
+    }
+
+    var body: some View {
+        ZStack {
+            Group {
+                if let ui = LookbookFeedAssets.uiImage(named: card.resourceName) {
+                    Image(uiImage: ui)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Theme.Colors.secondaryBackground
+                }
+            }
+            .frame(width: width, height: tileHeight)
+            .clipped()
+
+            Color.black.opacity(0.45)
+                .frame(width: width, height: tileHeight)
+
+            Text(card.overlayTitle)
+                .font(Theme.Typography.title3)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.75)
+                .lineLimit(2)
+                .padding(Theme.Spacing.sm)
+        }
+        .frame(width: width, height: tileHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct LookbookTopBanner: View {
+    private let bannerHeight: CGFloat = 196
+
+    var body: some View {
+        Group {
+            if let ui = LookbookFeedAssets.uiImage(named: LookbookFeedAssets.bannerResourceName) {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                LinearGradient(
+                    colors: [
+                        Theme.primaryColor.opacity(0.55),
+                        Theme.Colors.secondaryBackground
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        }
+        .frame(height: bannerHeight)
+        .frame(maxWidth: .infinity)
+        .clipped()
+        .clipShape(
+            UnevenRoundedRectangle(
+                cornerRadii: RectangleCornerRadii(
+                    topLeading: 0,
+                    bottomLeading: 22,
+                    bottomTrailing: 22,
+                    topTrailing: 0
+                ),
+                style: .continuous
+            )
+        )
+        .padding(.bottom, Theme.Spacing.sm)
+        .ignoresSafeArea(edges: .top)
+    }
+}
+
+private struct LookbookStyleThumbnailStrip: View {
+    private let thumbWidth: CGFloat = 76
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text(L10n.string("Explore by style"))
+                .font(Theme.Typography.headline)
+                .foregroundColor(Theme.Colors.primaryText)
+                .padding(.horizontal, Theme.Spacing.md)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    ForEach(Array(lookbookStylePillValues.enumerated()), id: \.offset) { index, raw in
+                        let resource = LookbookFeedAssets.styleThumbnailResource(styleIndex: index)
+                        NavigationLink {
+                            LookbookTopicFeedView(
+                                screenTitle: StyleSelectionView.displayName(for: raw),
+                                styleFilter: [raw]
+                            )
+                        } label: {
+                            VStack(spacing: Theme.Spacing.sm) {
+                                LookbookBundledPortraitTile(resourceName: resource, width: thumbWidth, cornerRadius: 10)
+                                Text(StyleSelectionView.displayName(for: raw))
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.center)
+                                    .minimumScaleFactor(0.85)
+                                    .frame(width: thumbWidth)
+                            }
+                            .padding(Theme.Spacing.sm)
+                            .background(Theme.Colors.secondaryBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Theme.Colors.glassBorder.opacity(0.4), lineWidth: 0.5)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.xs)
+            }
+        }
+        .padding(.top, Theme.Spacing.sm)
+        .background(Theme.Colors.background)
+    }
+}
+
+private struct LookbookHorizontalPortraitSection: View {
+    let title: String
+    var showSeeAll: Bool = false
+    var onSeeAll: (() -> Void)?
+    let cards: [LookbookHorizontalCard]
+    /// Visible thumbnails across the content width (e.g. 2.8 shows two full + a peek of the third).
+    let visibleThumbCount: CGFloat
+    let containerWidth: CGFloat
+
+    private var contentWidth: CGFloat {
+        containerWidth - Theme.Spacing.md * 2
+    }
+
+    private var thumbWidth: CGFloat {
+        let gap = Theme.Spacing.sm
+        if visibleThumbCount <= 2.01 {
+            return (contentWidth - gap) / visibleThumbCount
+        }
+        let fullGaps = 2
+        return (contentWidth - CGFloat(fullGaps) * gap) / visibleThumbCount
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.primaryText)
+                Spacer(minLength: Theme.Spacing.sm)
+                if showSeeAll {
+                    Button {
+                        onSeeAll?()
+                    } label: {
+                        Text(L10n.string("See all"))
+                            .font(Theme.Typography.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Theme.primaryColor)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    ForEach(cards) { card in
+                        NavigationLink {
+                            LookbookTopicFeedView(screenTitle: card.overlayTitle, styleFilter: card.styleFilter)
+                        } label: {
+                            LookbookHorizontalPortraitTile(card: card, width: thumbWidth)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+            }
+        }
+        .padding(.bottom, Theme.Spacing.md)
+    }
+}
+
+/// Full-bleed dimmed overlay so the feed stays visible; image scales in with a light spring.
+private struct LookbookTransparentFullscreenOverlay: View {
+    let entry: LookbookEntry
+    var onDismiss: () -> Void
+
+    @State private var index: Int = 0
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.48)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { onDismiss() }
+
+            VStack(spacing: 0) {
+                TabView(selection: $index) {
+                    ForEach(Array(entry.imageUrls.enumerated()), id: \.offset) { idx, url in
+                        LookbookFullscreenImage(
+                            documentImagePath: idx == 0 ? entry.documentImagePath : nil,
+                            imageName: entry.imageNames.first ?? "",
+                            imageUrl: url
+                        )
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .tag(idx)
+                    }
+                    if entry.imageUrls.isEmpty {
+                        LookbookFullscreenImage(
+                            documentImagePath: entry.documentImagePath,
+                            imageName: entry.imageNames.first ?? "",
+                            imageUrl: nil
+                        )
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .tag(0)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: entry.imageUrls.count > 1 ? .automatic : .never))
+                .frame(maxHeight: UIScreen.main.bounds.height * 0.78)
+            }
+            .allowsHitTesting(true)
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 30))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+                    .padding(.trailing, 14)
+                }
+                Spacer()
             }
         }
     }
@@ -397,6 +910,33 @@ private struct LookbookFeedImage: View {
     private var hasTaggedProducts: Bool {
         guard showTagOverlay, let tags = tags, let snapshots = productSnapshots, !tags.isEmpty else { return false }
         return tags.contains { snapshots[$0.productId] != nil }
+    }
+
+    private var pinchZoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in scale = anchorScale * value }
+            .onEnded { _ in
+                scale = min(max(scale, minScale), maxScale)
+                anchorScale = scale
+                if scale <= 1.01 {
+                    dragOffset = .zero
+                    anchorDragOffset = .zero
+                }
+            }
+    }
+
+    /// Only attached when zoomed — a `DragGesture(minimumDistance: 0)` on the feed image otherwise steals scroll drags from the parent `ScrollView`.
+    private var panWhenZoomedGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                dragOffset = CGSize(
+                    width: anchorDragOffset.width + value.translation.width,
+                    height: anchorDragOffset.height + value.translation.height
+                )
+            }
+            .onEnded { _ in
+                anchorDragOffset = dragOffset
+            }
     }
 
     private var localUIImage: UIImage? {
@@ -445,7 +985,7 @@ private struct LookbookFeedImage: View {
     }
 
     var body: some View {
-        filledImageLayer
+        let core = filledImageLayer
             .scaleEffect(scale)
             .offset(dragOffset)
             .frame(maxWidth: .infinity)
@@ -485,34 +1025,18 @@ private struct LookbookFeedImage: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onTapGesture(count: 2, perform: onDoubleTapLike)
             .onTapGesture(perform: onTap)
-            .highPriorityGesture(
-                MagnificationGesture()
-                    .onChanged { value in scale = anchorScale * value }
-                    .onEnded { _ in
-                        scale = min(max(scale, minScale), maxScale)
-                        anchorScale = scale
-                        if scale <= 1.01 {
-                            dragOffset = .zero
-                            anchorDragOffset = .zero
-                        }
-                    }
-            )
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        guard scale > 1.01 else { return }
-                        dragOffset = CGSize(
-                            width: anchorDragOffset.width + value.translation.width,
-                            height: anchorDragOffset.height + value.translation.height
-                        )
-                    }
-                    .onEnded { _ in
-                        guard scale > 1.01 else { return }
-                        anchorDragOffset = dragOffset
-                    }
-            )
-            .onAppear(perform: syncBucketFromLocalIfPossible)
-            .task(id: imageUrl) { await loadRemoteIfNeeded() }
+            // `highPriorityGesture` steals drags from the parent ScrollView; pinch still works with `simultaneousGesture`.
+            .simultaneousGesture(pinchZoomGesture)
+
+        Group {
+            if scale > 1.01 {
+                core.simultaneousGesture(panWhenZoomedGesture)
+            } else {
+                core
+            }
+        }
+        .onAppear(perform: syncBucketFromLocalIfPossible)
+        .task(id: imageUrl) { await loadRemoteIfNeeded() }
     }
 
     private func syncBucketFromLocalIfPossible() {
@@ -991,41 +1515,6 @@ private struct HashtagColoredText: View {
             .font(Theme.Typography.subheadline)
             .foregroundColor(Theme.Colors.primaryText)
             .lineLimit(nil)
-    }
-}
-
-private struct LookbookFullscreenViewer: View {
-    let entry: LookbookEntry
-    @Environment(\.dismiss) private var dismiss
-    @State private var index: Int = 0
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
-            TabView(selection: $index) {
-                ForEach(Array(entry.imageUrls.enumerated()), id: \.offset) { idx, url in
-                    LookbookFullscreenImage(documentImagePath: idx == 0 ? entry.documentImagePath : nil, imageName: entry.imageNames.first ?? "", imageUrl: url)
-                        .tag(idx)
-                }
-                if entry.imageUrls.isEmpty {
-                    LookbookFullscreenImage(documentImagePath: entry.documentImagePath, imageName: entry.imageNames.first ?? "", imageUrl: nil)
-                        .tag(0)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .automatic))
-
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 30))
-                    .foregroundColor(.white)
-                    .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
-            }
-            .padding(.top, 10)
-            .padding(.trailing, 12)
-            .buttonStyle(.plain)
-        }
     }
 }
 

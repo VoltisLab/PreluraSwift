@@ -8,6 +8,8 @@ struct OrderDetailView: View {
     let order: Order
     /// When viewing from My Orders: true = sold (so other party is Buyer), false = bought (so other party is Seller). When nil (e.g. from chat), section shows "Other party".
     var isSeller: Bool? = nil
+    /// Hides buyer “I have a problem” / multibuy picker and all cancel-order entry points (e.g. when opened from Order Help → Order status to avoid loops).
+    var suppressBuyerHelpAndCancelActions: Bool = false
 
     @EnvironmentObject var authService: AuthService
     private let userService = UserService()
@@ -36,9 +38,10 @@ struct OrderDetailView: View {
     @State private var showMultibuyProblemProductPicker = false
     @State private var orderHelpProductContext: OrderProductSummary?
 
-    init(order: Order, isSeller: Bool? = nil) {
+    init(order: Order, isSeller: Bool? = nil, suppressBuyerHelpAndCancelActions: Bool = false) {
         self.order = order
         self.isSeller = isSeller
+        self.suppressBuyerHelpAndCancelActions = suppressBuyerHelpAndCancelActions
         let cached = Self.orderSnapshotCache[order.id]
         _hydratedOrder = State(initialValue: cached)
         _isInitialPageLoading = State(initialValue: cached == nil)
@@ -97,7 +100,7 @@ struct OrderDetailView: View {
                         sectionLabel("Tracking details")
                         shippingSelectedCard
 
-                        if canShowBuyerOrderHelp {
+                        if canShowBuyerOrderHelp, !suppressBuyerHelpAndCancelActions {
                             if shouldPickProductBeforeOrderHelp {
                                 Button {
                                     showMultibuyProblemProductPicker = true
@@ -194,7 +197,7 @@ struct OrderDetailView: View {
                             .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
                         }
 
-                        if canShowCancelOrder {
+                        if canShowCancelOrder, !suppressBuyerHelpAndCancelActions {
                             NavigationLink(destination: CancelOrderView(order: effectiveOrder)) {
                                 HStack {
                                     Image(systemName: "xmark.circle")
@@ -210,7 +213,7 @@ struct OrderDetailView: View {
                             .buttonStyle(PlainTappableButtonStyle())
                         }
 
-                        if canShowSellerCancelOrder {
+                        if canShowSellerCancelOrder, !suppressBuyerHelpAndCancelActions {
                             NavigationLink(destination: CancelOrderView(order: effectiveOrder, isSellerRequest: true)) {
                                 HStack {
                                     Image(systemName: "xmark.circle")
@@ -1131,59 +1134,77 @@ private struct MultibuyOrderProblemProductPickerSheet: View {
     @State private var selectedId: String?
 
     var body: some View {
+        let detentHeight = Self.clampedDetentHeight(productCount: products.count)
         NavigationStack {
-            List {
-                Section {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     Text(L10n.string("Which item is your issue about? Choose one to continue."))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
-                        .listRowBackground(Theme.Colors.background)
-                }
-                ForEach(products) { product in
-                    Button {
-                        selectedId = product.id
-                    } label: {
-                        HStack(spacing: Theme.Spacing.md) {
-                            Group {
-                                if let urlString = product.imageUrl, let url = URL(string: urlString) {
-                                    AsyncImage(url: url) { phase in
-                                        switch phase {
-                                        case .success(let img): img.resizable().scaledToFill()
-                                        default: ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.top, Theme.Spacing.xs)
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(products.enumerated()), id: \.element.id) { index, product in
+                            if index > 0 {
+                                Divider()
+                                    .padding(.leading, 56 + Theme.Spacing.md * 2)
+                            }
+                            Button {
+                                selectedId = product.id
+                            } label: {
+                                HStack(spacing: Theme.Spacing.md) {
+                                    Group {
+                                        if let urlString = product.imageUrl, let url = URL(string: urlString) {
+                                            AsyncImage(url: url) { phase in
+                                                switch phase {
+                                                case .success(let img): img.resizable().scaledToFill()
+                                                default: ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                                                }
+                                            }
+                                        } else {
+                                            ImageShimmerPlaceholderFilled(cornerRadius: 8)
                                         }
                                     }
-                                } else {
-                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
-                                }
-                            }
-                            .frame(width: 56, height: 56)
-                            .clipped()
-                            .cornerRadius(8)
+                                    .frame(width: 56, height: 56)
+                                    .clipped()
+                                    .cornerRadius(8)
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(product.name)
-                                    .font(Theme.Typography.body)
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                    .multilineTextAlignment(.leading)
-                                if let price = product.price, !price.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Text(price)
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(product.name)
+                                            .font(Theme.Typography.body)
+                                            .foregroundColor(Theme.Colors.primaryText)
+                                            .multilineTextAlignment(.leading)
+                                        if let line = Self.formattedPriceLine(from: product.price) {
+                                            Text(line)
+                                                .font(Theme.Typography.caption)
+                                                .foregroundColor(Theme.Colors.secondaryText)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                            if selectedId == product.id {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(Theme.primaryColor)
-                                    .font(.system(size: 22))
+                                    if selectedId == product.id {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(Theme.primaryColor)
+                                            .font(.system(size: 22))
+                                    }
+                                }
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.vertical, Theme.Spacing.sm)
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
                     }
-                    .buttonStyle(PlainTappableButtonStyle())
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                    .padding(.horizontal, Theme.Spacing.md)
                 }
+                .padding(.bottom, Theme.Spacing.xs)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .listStyle(.insetGrouped)
+            .scrollBounceBehavior(.basedOnSize)
             .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Select item"))
             .navigationBarTitleDisplayMode(.inline)
@@ -1202,6 +1223,37 @@ private struct MultibuyOrderProblemProductPickerSheet: View {
                 }
             }
         }
+        .presentationDetents([.height(detentHeight)])
+        .presentationDragIndicator(.visible)
+    }
+
+    /// Inline nav + instruction + rows + tight bottom inset (sheet safe area adds home indicator).
+    private static func preferredDetentHeight(productCount: Int) -> CGFloat {
+        let navChrome: CGFloat = 108
+        let instructionBlock: CGFloat = 92
+        let rowWithDivider: CGFloat = 78
+        let bottomContentPadding: CGFloat = Theme.Spacing.xs + 12
+        let n = max(productCount, 1)
+        return navChrome + instructionBlock + CGFloat(n) * rowWithDivider + bottomContentPadding
+    }
+
+    private static func clampedDetentHeight(productCount: Int) -> CGFloat {
+        let screen = UIScreen.main.bounds.height
+        let raw = preferredDetentHeight(productCount: productCount)
+        return min(screen * 0.92, max(raw, 300))
+    }
+
+    /// API may return `"50"`, `"50.00"`, or `"£50"`; always show GBP like the rest of the app.
+    private static func formattedPriceLine(from raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        let cleaned = raw
+            .replacingOccurrences(of: "£", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let v = Double(cleaned) {
+            return CurrencyFormatter.gbp(v)
+        }
+        return raw
     }
 }
 
