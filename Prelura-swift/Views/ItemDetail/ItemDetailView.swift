@@ -281,7 +281,7 @@ struct ItemDetailView: View {
     }
 
     private func shareProduct() {
-        guard let url = URL(string: "https://prelura.com/item/\(item.productId ?? "")") else { return }
+        guard let url = URL(string: "\(Constants.publicWebItemLinkBaseURL)/item/\(item.productId ?? "")") else { return }
         let av = UIActivityViewController(activityItems: [effectiveItem.title, url], applicationActivities: nil)
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let root = windowScene.windows.first?.rootViewController else { return }
@@ -291,7 +291,7 @@ struct ItemDetailView: View {
     }
 
     private func copyProductLink() {
-        let urlString = "https://prelura.com/item/\(item.productId ?? "")"
+        let urlString = "\(Constants.publicWebItemLinkBaseURL)/item/\(item.productId ?? "")"
         UIPasteboard.general.string = urlString
     }
 

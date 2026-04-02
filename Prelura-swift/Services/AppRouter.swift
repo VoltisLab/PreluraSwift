@@ -19,18 +19,43 @@ struct DeepLinkDestinationItem: Identifiable {
     let destination: DeepLinkDestination
 }
 
+/// Chat / order-thread push: open the existing inbox stack instead of a full-screen overlay (native back = Messages list).
+struct PendingInboxChatNavigation: Equatable {
+    let conversationId: String
+    let username: String
+}
+
 /// Handles deep links (URL scheme / universal links) and push notification tap payloads; holds pending destination for the UI to present.
 final class AppRouter: ObservableObject {
     @Published var pendingItem: DeepLinkDestinationItem?
+    /// When set, `MainTabView` switches to Inbox and pushes this thread on the tab’s `NavigationStack` (same UX as opening from the list).
+    @Published var pendingInboxChat: PendingInboxChatNavigation?
 
-    /// Handle URL (e.g. prelura://product/123, https://prelura.com/item/123, prelura://user/john).
+    /// Hosts that serve `/item/{id}` universal links for this app. Keep in sync with entitlements **Associated Domains** and the site’s `apple-app-site-association`.
+    private static func isPreluraItemUniversalLinkHost(_ host: String) -> Bool {
+        switch host.lowercased() {
+        case "prelura.uk", "www.prelura.uk", "prelura.com", "www.prelura.com":
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Pops the pending inbox navigation if present (call from main thread / `MainActor`).
+    func consumePendingInboxChat() -> PendingInboxChatNavigation? {
+        let r = pendingInboxChat
+        pendingInboxChat = nil
+        return r
+    }
+
+    /// Handle URL (e.g. prelura://product/123, https://prelura.uk/item/123, prelura://user/john).
     func handle(url: URL) {
         var dest: DeepLinkDestination?
         let scheme = (url.scheme ?? "").lowercased()
 
         if scheme == "http" || scheme == "https" {
             let host = (url.host ?? "").lowercased()
-            guard host == "prelura.com" || host == "www.prelura.com" else { return }
+            guard Self.isPreluraItemUniversalLinkHost(host) else { return }
             let parts = url.path.split(separator: "/").map(String.init).filter { !$0.isEmpty }
             if parts.count >= 2, parts[0].lowercased() == "item", let id = Int(parts[1]) {
                 dest = .product(productId: id)
@@ -148,6 +173,13 @@ final class AppRouter: ObservableObject {
         return Dictionary(uniqueKeysWithValues: out.map { (AnyHashable($0.key), $0.value) })
     }
 
+    /// Opens the thread on the Inbox tab’s navigation stack (same as tapping the row in Messages).
+    private func enqueueInboxChatOpen(conversationId: String, username: String) {
+        Task { @MainActor in
+            self.pendingInboxChat = PendingInboxChatNavigation(conversationId: conversationId, username: username)
+        }
+    }
+
     /// Handle push notification payload (same keys as Flutter: page, object_id, conversation_id, title, is_offer, is_order).
     /// Also accepts `username` / `sender_username` for chat; `title` may come from aps.alert.
     func handle(notificationPayload: [AnyHashable: Any]) {
@@ -197,9 +229,7 @@ final class AppRouter: ObservableObject {
                     if let s = Self.pushString(p, "sender_username"), !s.isEmpty { return s }
                     return "Chat"
                 }()
-                let isOffer = Self.pushTruthy(p, "is_offer")
-                let isOrder = true
-                dest = .conversation(conversationId: cid, username: peerName, isOffer: isOffer, isOrder: isOrder)
+                enqueueInboxChatOpen(conversationId: cid, username: peerName)
             } else if let oid = Self.pushString(p, "order_id").flatMap({ Int($0) })
                 ?? Self.pushString(p, "object_id").flatMap({ Int($0) }) {
                 dest = .orderDetail(orderId: oid)
@@ -218,9 +248,7 @@ final class AppRouter: ObservableObject {
                 }
                 return "Chat"
             }()
-            let isOffer = Self.pushTruthy(p, "is_offer") || pageUpper == "OFFER"
-            let isOrder = Self.pushTruthy(p, "is_order") || pageUpper == "ORDER"
-            dest = .conversation(conversationId: convId, username: peerName, isOffer: isOffer, isOrder: isOrder)
+            enqueueInboxChatOpen(conversationId: convId, username: peerName)
 
         default:
             break

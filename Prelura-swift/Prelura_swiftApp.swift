@@ -229,6 +229,7 @@ struct ContentView: View {
 // Root tab controller: TabView at root with custom tab bar for tap-to-refresh. Each tab has its own NavigationStack.
 struct MainTabView: View {
     @EnvironmentObject private var authService: AuthService
+    @EnvironmentObject private var appRouter: AppRouter
     @StateObject private var tabCoordinator = TabCoordinator()
     @StateObject private var discoverViewModel = DiscoverViewModel(authService: nil)
     @StateObject private var inboxViewModel = InboxViewModel()
@@ -302,6 +303,32 @@ struct MainTabView: View {
             if authService.isAuthenticated {
                 if discoverViewModel.discoverItems.isEmpty { discoverViewModel.refresh() }
                 inboxViewModel.prefetch()
+            }
+        }
+        .onAppear { openInboxChatFromPendingRouterIfNeeded() }
+        .onChange(of: appRouter.pendingInboxChat) { _, _ in openInboxChatFromPendingRouterIfNeeded() }
+        .onChange(of: authService.isAuthenticated) { _, authed in
+            if authed { openInboxChatFromPendingRouterIfNeeded() }
+        }
+    }
+
+    /// Push notification tapped: open the real Messages stack thread (not the deep-link overlay).
+    private func openInboxChatFromPendingRouterIfNeeded() {
+        guard let request = appRouter.consumePendingInboxChat() else { return }
+        tabCoordinator.selectTab(3)
+        guard authService.isAuthenticated, !authService.isGuestMode else { return }
+        let chatService = ChatService()
+        if let token = authService.authToken {
+            chatService.updateAuthToken(token)
+        }
+        Task {
+            let conv = await chatService.resolveConversationForOpening(
+                conversationId: request.conversationId,
+                fallbackUsername: request.username,
+                currentUsername: authService.username
+            )
+            await MainActor.run {
+                tabCoordinator.pendingOpenConversation = conv
             }
         }
     }

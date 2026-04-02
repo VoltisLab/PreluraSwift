@@ -192,58 +192,14 @@ struct DeepLinkOverlayView: View {
                 }
             }
         case .conversation(let conversationId, let username, _, _):
-            let me = authService.username
-            if let full = try? await chatService.getConversationById(conversationId: conversationId, currentUsername: me) {
-                await MainActor.run {
-                    resolvedConversation = full
-                    isLoading = false
-                }
-                return
-            }
-            do {
-                let convs = try await chatService.getConversations()
-                let existing = convs.first { $0.id == conversationId }
-                if let conv = existing {
-                    await MainActor.run {
-                        resolvedConversation = conv
-                        isLoading = false
-                    }
-                } else {
-                    let placeholderUser = User(
-                        id: UUID(),
-                        username: username,
-                        displayName: username,
-                        avatarURL: nil
-                    )
-                    let conv = Conversation(
-                        id: conversationId,
-                        recipient: placeholderUser,
-                        lastMessage: nil,
-                        lastMessageTime: nil,
-                        unreadCount: 0
-                    )
-                    await MainActor.run {
-                        resolvedConversation = conv
-                        isLoading = false
-                    }
-                }
-            } catch {
-                let placeholderUser = User(
-                    id: UUID(),
-                    username: username,
-                    displayName: username,
-                    avatarURL: nil
-                )
-                await MainActor.run {
-                    resolvedConversation = Conversation(
-                        id: conversationId,
-                        recipient: placeholderUser,
-                        lastMessage: nil,
-                        lastMessageTime: nil,
-                        unreadCount: 0
-                    )
-                    isLoading = false
-                }
+            let conv = await chatService.resolveConversationForOpening(
+                conversationId: conversationId,
+                fallbackUsername: username,
+                currentUsername: authService.username
+            )
+            await MainActor.run {
+                resolvedConversation = conv
+                isLoading = false
             }
         }
     }

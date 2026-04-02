@@ -279,6 +279,32 @@ class ChatService: ObservableObject {
         )
     }
 
+    /// Resolve a thread for opening from push or universal link: prefer `conversationById`, then inbox list, else minimal placeholder (correct id preserves the real chat).
+    func resolveConversationForOpening(conversationId: String, fallbackUsername: String, currentUsername: String?) async -> Conversation {
+        if let full = try? await getConversationById(conversationId: conversationId, currentUsername: currentUsername) {
+            return full
+        }
+        do {
+            let convs = try await getConversations()
+            if let existing = convs.first(where: { $0.id == conversationId }) {
+                return existing
+            }
+        } catch {}
+        let placeholderUser = User(
+            id: UUID(),
+            username: fallbackUsername,
+            displayName: fallbackUsername,
+            avatarURL: nil
+        )
+        return Conversation(
+            id: conversationId,
+            recipient: placeholderUser,
+            lastMessage: nil,
+            lastMessageTime: nil,
+            unreadCount: 0
+        )
+    }
+
     /// Maps server `offerHistory` to UI rows with correct `sentByCurrentUser` from `createdBy` vs current user.
     private static func mapOfferHistory(_ rows: [OfferData], currentUsername: String?) -> [OfferInfo] {
         rows.compactMap { data -> OfferInfo? in
