@@ -260,6 +260,8 @@ struct ChatDetailView: View {
     @State private var reactionOverlayMessage: Message?
     @State private var reactionBubbleFrames: [UUID: CGRect] = [:]
     @State private var showExtendedReactionEmojis = false
+    /// Per-message timestamp visibility: key present means user override; value is shown/hidden (default comes from grouping when absent).
+    @State private var timestampVisibilityOverrides: [UUID: Bool] = [:]
     private struct PayNowPayload: Identifiable {
         let id = UUID()
         let products: [Item]
@@ -606,16 +608,27 @@ struct ChatDetailView: View {
         return isCurrentUser(username: prev.senderUsername)
     }
 
-    /// Show timestamp only on the last message of a group (same sender, within 60 seconds) to avoid "Just now" on every bubble.
+    /// Default: show timestamp only on the last bubble of a run (same sender, within 60s); hidden on earlier bubbles in the group.
     private func showTimestampForMessage(at index: Int) -> Bool {
         let list = displayedMessages
         guard index < list.count else { return true }
         if index == list.count - 1 { return true }
         let msg = list[index]
         let next = list[index + 1]
-        if next.senderUsername != msg.senderUsername { return true }
+        if next.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            != msg.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() { return true }
         if next.timestamp.timeIntervalSince(msg.timestamp) > 60 { return true }
         return false
+    }
+
+    private func effectiveShowTimestamp(at index: Int, message: Message) -> Bool {
+        if let override = timestampVisibilityOverrides[message.id] { return override }
+        return showTimestampForMessage(at: index)
+    }
+
+    private func toggleTimestampVisibility(at index: Int, message: Message) {
+        let cur = effectiveShowTimestamp(at: index, message: message)
+        timestampVisibilityOverrides[message.id] = !cur
     }
 
     /// True when the previous timeline entry is a message from the same sender within 60 seconds (same group) — use for tight spacing.
@@ -623,7 +636,8 @@ struct ChatDetailView: View {
         guard timelineIndex > 0, timelineIndex - 1 < timelineOrder.count else { return false }
         guard case .message(let prevId) = timelineOrder[timelineIndex - 1],
               let prev = displayedMessages.first(where: { $0.id == prevId }) else { return false }
-        guard prev.senderUsername == message.senderUsername else { return false }
+        guard prev.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            == message.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else { return false }
         return message.timestamp.timeIntervalSince(prev.timestamp) <= 60
     }
 
@@ -721,7 +735,7 @@ struct ChatDetailView: View {
                         message: message,
                         isCurrentUser: isCurrentUserMessage,
                         showAvatar: showAvatarForMessage(at: index),
-                        showTimestamp: showTimestampForMessage(at: index),
+                        showTimestamp: effectiveShowTimestamp(at: index, message: message),
                         avatarURL: showAvatarForMessage(at: index) ? displayedConversation.recipient.avatarURL : nil,
                         recipientUsername: displayedConversation.recipient.username,
                         showSeenLabel: showSeenLabel,
@@ -734,6 +748,11 @@ struct ChatDetailView: View {
                         onDoubleTapHeart: displayedConversation.id != "0"
                             ? {
                                 applyChatReaction(message: message, emoji: ChatReactionEmojiUsageStore.doubleTapHeartEmoji)
+                            }
+                            : nil,
+                        onToggleTimestampVisibility: displayedConversation.id != "0"
+                            ? {
+                                toggleTimestampVisibility(at: index, message: message)
                             }
                             : nil,
                         onTapMyReactionChip: displayedConversation.id != "0"
@@ -1119,6 +1138,7 @@ struct ChatDetailView: View {
             messages = []
             offers = []
             timelineOrder = []
+            timestampVisibilityOverrides = [:]
             hasAutoScrolledToBottomForThisChat = false
             refreshOfferHistoryLoadingFlagsForCurrentConversation()
             restoreCachedMessagesBeforeLoad()
@@ -1207,7 +1227,7 @@ struct ChatDetailView: View {
             do {
                 try await chatService.archiveConversation(conversationId: cid)
                 await MainActor.run {
-                    tabCoordinator?.requestInboxListRefresh()
+                    tabCoordinator?.pendingArchiveWithUndo = displayedConversation
                     dismiss()
                 }
             } catch {
@@ -3862,6 +3882,8 @@ struct MessageBubbleView: View {
     var onLongPress: (() -> Void)? = nil
     /// Double-tap the bubble to toggle ❤️ (nil disables).
     var onDoubleTapHeart: (() -> Void)? = nil
+    /// Single-tap the bubble to show/hide this row’s timestamp (nil disables; uses ExclusiveGesture with double-tap when both set).
+    var onToggleTimestampVisibility: (() -> Void)? = nil
     /// Tap the chip that matches the current user’s reaction to remove it (nil = not interactive).
     var onTapMyReactionChip: ((String) -> Void)? = nil
     /// Matched case-insensitively to `reactionsByUsername` keys for tap-to-remove.
@@ -4051,13 +4073,6 @@ struct MessageBubbleView: View {
             }
         }
         .frame(maxWidth: emojiMult != nil ? .infinity : bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
-        .simultaneousGesture(
-            TapGesture(count: 2).onEnded {
-                guard onDoubleTapHeart != nil else { return }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onDoubleTapHeart?()
-            }
-        )
         .background(
             GeometryReader { geo in
                 Color.clear.preference(
@@ -4065,7 +4080,41 @@ struct MessageBubbleView: View {
                     value: [message.id: geo.frame(in: .global)]
                 )
             }
-        )
+            )
+    }
+
+    @ViewBuilder
+    private func bubbleWithTapGestures(emojiMult: Double?, bubbleText: String) -> some View {
+        let padded = bubbleWithCornerReactions(emojiMult: emojiMult, bubbleText: bubbleText)
+            .padding(.top, hasAnyReaction ? 12 : 0)
+        if onDoubleTapHeart != nil, onToggleTimestampVisibility != nil {
+            padded.gesture(
+                ExclusiveGesture(
+                    TapGesture(count: 2).onEnded { _ in
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onDoubleTapHeart?()
+                    },
+                    TapGesture(count: 1).onEnded { _ in
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onToggleTimestampVisibility?()
+                    }
+                )
+            )
+        } else if onDoubleTapHeart != nil {
+            padded.simultaneousGesture(
+                TapGesture(count: 2).onEnded { _ in
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onDoubleTapHeart?()
+                }
+            )
+        } else if onToggleTimestampVisibility != nil {
+            padded.onTapGesture {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onToggleTimestampVisibility?()
+            }
+        } else {
+            padded
+        }
     }
 
     var body: some View {
@@ -4086,8 +4135,7 @@ struct MessageBubbleView: View {
                         }
                     }
                 }
-                bubbleWithCornerReactions(emojiMult: emojiMult, bubbleText: bubbleText)
-                    .padding(.top, hasAnyReaction ? 12 : 0)
+                bubbleWithTapGestures(emojiMult: emojiMult, bubbleText: bubbleText)
                 if !isCurrentUser { Spacer(minLength: Self.bubbleSideSpacerMin) }
             }
             if showTimestamp {

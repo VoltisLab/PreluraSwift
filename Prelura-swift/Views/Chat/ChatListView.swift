@@ -102,7 +102,11 @@ struct ChatListView: View {
                                 Button(action: {
                                     path.append(AppRoute.conversation(conversation, isArchived: inboxFilter == .archived))
                                 }) {
-                                    ChatRowView(conversation: conversation, currentUsername: authService.username)
+                                    ChatRowView(
+                                        conversation: conversation,
+                                        currentUsername: authService.username,
+                                        isPeerTyping: inboxViewModel.peerTypingConversationIds.contains(conversation.id)
+                                    )
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .contentShape(Rectangle())
                                 }
@@ -226,6 +230,11 @@ struct ChatListView: View {
                 if let preview = tabCoordinator.lastMessagePreviewForConversation {
                     inboxViewModel.updatePreview(conversationId: preview.id, text: preview.text, date: preview.date)
                     tabCoordinator.lastMessagePreviewForConversation = nil
+                }
+                if let conv = tabCoordinator.pendingArchiveWithUndo {
+                    tabCoordinator.pendingArchiveWithUndo = nil
+                    inboxViewModel.applyArchivedFromDetail(conv)
+                    presentArchiveUndo(for: conv)
                 }
                 Task { await loadInboxConversations() }
             }
@@ -357,7 +366,8 @@ private struct ArchiveUndoToast: View {
             .foregroundColor(Theme.primaryColor)
         }
         .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.sm)
+        .padding(.vertical, Theme.Spacing.md)
+        .frame(minHeight: Theme.AppBar.buttonSize - 4)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Theme.Colors.secondaryBackground)
@@ -369,6 +379,8 @@ private struct ArchiveUndoToast: View {
 struct ChatRowView: View {
     let conversation: Conversation
     var currentUsername: String?
+    /// From global conversations WebSocket `typing_status` for this thread.
+    var isPeerTyping: Bool = false
 
     private static var offerProductImageCache: [Int: String] = [:]
     private let productService = ProductService()
@@ -459,10 +471,19 @@ struct ChatRowView: View {
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
                 
-                Text(displayPreviewText)
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .lineLimit(1)
+                Group {
+                    if isPeerTyping {
+                        Text(peerTypingLine)
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.primaryColor)
+                            .lineLimit(1)
+                    } else {
+                        Text(displayPreviewText)
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .lineLimit(1)
+                    }
+                }
             }
 
             Spacer(minLength: 0)
@@ -530,6 +551,11 @@ struct ChatRowView: View {
             conversation: conversation,
             currentUsername: currentUsername
         ) ?? "No messages yet"
+    }
+
+    private var peerTypingLine: String {
+        let name = PreluraSupportBranding.displayTitle(forRecipientUsername: conversation.recipient.username)
+        return "\(name) is typing"
     }
     
     private func formatTime(_ date: Date) -> String {

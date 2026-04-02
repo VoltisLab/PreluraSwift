@@ -9,11 +9,14 @@ class InboxViewModel: ObservableObject {
     @Published var archivedConversations: [Conversation] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
+    /// Conversation ids where the peer is typing (from `ws/conversations/` typing_status).
+    @Published private(set) var peerTypingConversationIds: Set<String> = []
 
     private let chatService = ChatService()
     private var authToken: String?
     private var conversationsSocket: ConversationsWebSocketService?
     private var socketRefreshTask: Task<Void, Never>?
+    private var typingAutoHideTasks: [String: Task<Void, Never>] = [:]
 
     init() {}
 
@@ -34,8 +37,33 @@ class InboxViewModel: ObservableObject {
         socket.onShouldRefreshConversationsList = { [weak self] in
             self?.scheduleDebouncedConversationsRefresh()
         }
+        socket.onTypingStatus = { [weak self] conversationId, isTyping in
+            self?.applyPeerTypingListIndicator(conversationId: conversationId, isTyping: isTyping)
+        }
         socket.connect()
         conversationsSocket = socket
+    }
+
+    /// Apply typing indicator for inbox rows (server only notifies the other participant).
+    func applyPeerTypingListIndicator(conversationId: String, isTyping: Bool) {
+        typingAutoHideTasks[conversationId]?.cancel()
+        typingAutoHideTasks[conversationId] = nil
+        var next = peerTypingConversationIds
+        if isTyping {
+            next.insert(conversationId)
+            peerTypingConversationIds = next
+            typingAutoHideTasks[conversationId] = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard let self else { return }
+                self.typingAutoHideTasks[conversationId] = nil
+                var n = self.peerTypingConversationIds
+                n.remove(conversationId)
+                self.peerTypingConversationIds = n
+            }
+        } else {
+            next.remove(conversationId)
+            peerTypingConversationIds = next
+        }
     }
 
     /// Coalesce bursts (e.g. several `update_conversation` in one second) into one GraphQL fetch.
@@ -161,6 +189,19 @@ class InboxViewModel: ObservableObject {
         }
     }
 
+    /// After archive succeeded from chat detail (API already called). Updates lists like `archiveConversation` without a second request.
+    func applyArchivedFromDetail(_ conv: Conversation) {
+        let idStr = conv.id
+        conversations.removeAll { $0.id == idStr }
+        var arch = archivedConversations
+        if !arch.contains(where: { $0.id == idStr }) {
+            arch.append(conv)
+        }
+        archivedConversations = Self.deduplicateConversations(arch)
+        Self.sortConversationsInPlace(&archivedConversations)
+        errorMessage = nil
+    }
+
     /// Archive on server; remove from main inbox and show under Archive filter.
     func archiveConversation(conversationId: Int) async {
         let idStr = String(conversationId)
@@ -208,6 +249,10 @@ class InboxViewModel: ObservableObject {
     /// Deduplicate so counter-offers don't show as a second chat. For offer conversations: same recipient + same offer product set = one conversation (keep latest by lastMessageTime). Non-offer conversations are left as-is.
     private static func deduplicateConversations(_ list: [Conversation]) -> [Conversation] {
         func key(_ c: Conversation) -> String {
+            // Order threads stay one row per conversation (repeat purchases from same seller = separate chats).
+            if c.order != nil {
+                return "conv|\(c.id)"
+            }
             if let productIds = c.offer?.products?.compactMap(\.id), !productIds.isEmpty {
                 return "offer|\(c.recipient.username)|\(productIds.sorted().joined(separator: ","))"
             }

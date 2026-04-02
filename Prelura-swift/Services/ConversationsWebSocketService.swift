@@ -12,6 +12,8 @@ final class ConversationsWebSocketService: NSObject, @unchecked Sendable, URLSes
 
     /// Server sent `update_conversation` after `update_conversations` fan-out — refetch GraphQL list for full offer/order rows.
     var onShouldRefreshConversationsList: (@MainActor () -> Void)?
+    /// `typing_status` from the same socket (relayed from chat rooms for inbox list indicators).
+    var onTypingStatus: (@MainActor (String, Bool) -> Void)?
 
     init(token: String) {
         self.token = token
@@ -75,8 +77,30 @@ final class ConversationsWebSocketService: NSObject, @unchecked Sendable, URLSes
             await MainActor.run {
                 onShouldRefreshConversationsList?()
             }
+            return
         }
-        // typing_status: list could show indicators later; no list refetch.
+        if t == "typing_status" {
+            let rawId = json["conversation_id"] ?? json["conversationId"]
+            let convId: String? = {
+                if let s = rawId as? String, !s.isEmpty { return s }
+                if let i = rawId as? Int { return String(i) }
+                return nil
+            }()
+            guard let convId else { return }
+            let rawFlag = json["is_typing"] ?? json["isTyping"]
+            let isTyping: Bool = {
+                if let b = rawFlag as? Bool { return b }
+                if let n = rawFlag as? Int { return n != 0 }
+                if let s = rawFlag as? String {
+                    let t = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    return t == "true" || t == "1"
+                }
+                return false
+            }()
+            await MainActor.run {
+                onTypingStatus?(convId, isTyping)
+            }
+        }
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
