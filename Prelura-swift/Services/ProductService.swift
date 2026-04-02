@@ -51,6 +51,7 @@ class ProductService: ObservableObject {
               displayName
               profilePictureUrl
               isVacationMode
+              meta
             }
             category {
               id
@@ -1277,6 +1278,7 @@ extension ProductService {
               displayName
               profilePictureUrl
               isVacationMode
+              meta
             }
             category {
               id
@@ -1452,6 +1454,7 @@ extension ProductService {
               displayName
               profilePictureUrl
               isVacationMode
+              meta
             }
             category {
               id

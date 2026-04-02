@@ -41,6 +41,11 @@ struct PaymentView: View {
     @State private var showPaymentSuccess = false
     @State private var errorMessage: String?
     @State private var discountTiers: [MultibuyDiscount] = []
+    /// Set after refetching products that lacked `seller.meta` (e.g. added from Shop All before queries requested postage).
+    @State private var enrichedLineItems: [Item]?
+
+    /// Line items used for totals, postage UI, and payment (enriched when possible).
+    private var lineItems: [Item] { enrichedLineItems ?? products }
 
     private let userService = UserService()
     private let productService = ProductService()
@@ -50,7 +55,7 @@ struct PaymentView: View {
     /// When opened from an accepted offer, `totalPrice` is the accepted offer amount, and we must use it
     /// instead of the products' listing price so the checkout matches the agreed offer.
     private var orderSubtotal: Double {
-        customOffer ? totalPrice : products.reduce(0) { $0 + $1.price }
+        customOffer ? totalPrice : lineItems.reduce(0) { $0 + $1.price }
     }
     /// Multi-buy discount % from seller's tiers (when all items from same seller and count qualifies).
     private func discountPercent(for count: Int) -> Int {
@@ -61,7 +66,7 @@ struct PaymentView: View {
     private var multiBuyDiscountPercent: Int {
         // When paying from a custom offer, the offer amount should be treated as the negotiated subtotal.
         // Applying multibuy discounts again would double-adjust the price.
-        customOffer ? 0 : discountPercent(for: products.count)
+        customOffer ? 0 : discountPercent(for: lineItems.count)
     }
     private var multiBuyDiscountAmount: Double { orderSubtotal * Double(multiBuyDiscountPercent) / 100 }
     private var afterDiscount: Double { orderSubtotal - multiBuyDiscountAmount }
@@ -74,7 +79,7 @@ struct PaymentView: View {
     }
     /// Distinct sellers in the cart (one shipping charge per seller).
     private var sellerGroups: [(seller: User, items: [Item])] {
-        let g = Dictionary(grouping: products, by: { $0.seller.id })
+        let g = Dictionary(grouping: lineItems, by: { $0.seller.id })
         return g.values.compactMap { arr -> (User, [Item])? in
             guard let s = arr.first?.seller else { return nil }
             return (s, arr)
@@ -116,8 +121,8 @@ struct PaymentView: View {
 
     /// When all products share the same seller, returns that seller's userId for multibuy fetch.
     private var commonSellerUserId: Int? {
-        guard let first = products.first?.seller.userId else { return nil }
-        let allSame = products.allSatisfy { $0.seller.userId == first }
+        guard let first = lineItems.first?.seller.userId else { return nil }
+        let allSame = lineItems.allSatisfy { $0.seller.userId == first }
         return allSame ? first : nil
     }
 
@@ -166,12 +171,12 @@ struct PaymentView: View {
                     }
                     .tint(Theme.primaryColor)
 
-                    sectionHeader("\(products.count) \(products.count == 1 ? "Item" : "Items")")
+                    sectionHeader("\(lineItems.count) \(lineItems.count == 1 ? "Item" : "Items")")
                     VStack(spacing: 0) {
-                        ForEach(products) { item in
+                        ForEach(lineItems) { item in
                             let perItemOfferPrice: Double? = {
-                                guard customOffer, products.count > 0 else { return nil }
-                                return totalPrice / Double(products.count)
+                                guard customOffer, lineItems.count > 0 else { return nil }
+                                return totalPrice / Double(lineItems.count)
                             }()
                             HStack(alignment: .top) {
                                 Text(item.title)
@@ -194,7 +199,7 @@ struct PaymentView: View {
                             .overlay(ContentDivider(), alignment: .bottom)
                         }
                         infoRow(L10n.string("Price"), CurrencyFormatter.gbp(orderSubtotal))
-                        if products.count > 1 && multiBuyDiscountPercent > 0 {
+                        if lineItems.count > 1 && multiBuyDiscountPercent > 0 {
                             infoRow(String(format: L10n.string("Multi-buy discount (%d%%)"), multiBuyDiscountPercent), CurrencyFormatter.gbp(-multiBuyDiscountAmount), valueColor: Theme.primaryColor)
                         }
                         postageSummaryRows
@@ -263,25 +268,23 @@ struct PaymentView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.Colors.background, for: .navigationBar)
         .fullScreenCover(isPresented: $showPaymentSuccess) {
-            PaymentSuccessfulView(productId: products.first?.productId) {
+            PaymentSuccessfulView(productId: lineItems.first?.productId) {
                 showPaymentSuccess = false
                 dismiss()
             }
         }
         .onAppear {
-            for group in sellerGroups {
-                let opts = deliveryOptions(for: group.seller)
-                if !opts.isEmpty, selectedSellerOptionBySellerID[group.seller.id] == nil {
-                    selectedSellerOptionBySellerID[group.seller.id] = opts.first
-                }
-            }
+            seedDefaultSellerShippingSelections()
             Task {
                 await loadUser()
                 await loadPaymentMethod()
             }
         }
-        .task(id: "multibuy-\(products.count)-\(commonSellerUserId ?? -1)") {
-            guard products.count > 1, let sellerId = commonSellerUserId else {
+        .task(id: products.map(\.id.uuidString).joined(separator: "|")) {
+            await enrichLineItemsWithSellerPostageIfNeeded()
+        }
+        .task(id: "multibuy-\(lineItems.count)-\(commonSellerUserId ?? -1)") {
+            guard lineItems.count > 1, let sellerId = commonSellerUserId else {
                 discountTiers = []
                 return
             }
@@ -463,6 +466,50 @@ struct PaymentView: View {
         }
     }
 
+    /// When `seller.meta` was missing on cart lines, default postage cards show; after refetch, fill real seller options.
+    private func enrichLineItemsWithSellerPostageIfNeeded() async {
+        guard enrichedLineItems == nil else { return }
+        let baseline = products
+        let needsFetch = baseline.indices.filter { deliveryOptions(for: baseline[$0].seller).isEmpty }
+        if needsFetch.isEmpty { return }
+        productService.updateAuthToken(authService.authToken)
+        var merged = baseline
+        for idx in needsFetch {
+            guard let pid = merged[idx].productId.flatMap({ Int($0) }), pid > 0 else { continue }
+            if let fresh = try? await productService.getProduct(id: pid) {
+                merged[idx] = fresh
+            }
+        }
+        await MainActor.run {
+            enrichedLineItems = merged
+            Self.seedDefaultSellerShippingSelections(
+                items: merged,
+                selectedSellerOptionBySellerID: &selectedSellerOptionBySellerID
+            )
+        }
+    }
+
+    private func seedDefaultSellerShippingSelections() {
+        Self.seedDefaultSellerShippingSelections(
+            items: lineItems,
+            selectedSellerOptionBySellerID: &selectedSellerOptionBySellerID
+        )
+    }
+
+    private static func seedDefaultSellerShippingSelections(
+        items: [Item],
+        selectedSellerOptionBySellerID: inout [UUID: SellerDeliveryOption]
+    ) {
+        let groups = Dictionary(grouping: items, by: { $0.seller.id })
+        for (_, arr) in groups {
+            guard let seller = arr.first?.seller else { continue }
+            let opts = seller.postageOptions?.toDeliveryOptions() ?? []
+            if !opts.isEmpty, selectedSellerOptionBySellerID[seller.id] == nil {
+                selectedSellerOptionBySellerID[seller.id] = opts.first
+            }
+        }
+    }
+
     private func loadUser() async {
         do {
             currentUser = try await userService.getUser(username: nil)
@@ -504,7 +551,7 @@ struct PaymentView: View {
             do {
                 let phone = currentUser?.phoneDisplay ?? "0000000000"
                 let fee = Float(effectiveShippingFee)
-                let primarySeller = products.first?.seller
+                let primarySeller = lineItems.first?.seller
                 let primaryOpts = primarySeller.map { deliveryOptions(for: $0) } ?? []
                 let primaryChosen = primarySeller.flatMap { selectedOption(for: $0) }
                 let (provider, deliveryType): (String, String) = if let s = primarySeller, let opt = primaryChosen, !primaryOpts.isEmpty {
@@ -528,7 +575,7 @@ struct PaymentView: View {
                     deliveryType: deliveryType,
                     shippingOptionName: selectedShippingName
                 )
-                let productIds = products.compactMap { $0.productId }.compactMap { Int($0) }
+                let productIds = lineItems.compactMap { $0.productId }.compactMap { Int($0) }
                 guard !productIds.isEmpty else {
                     await MainActor.run { errorMessage = "Invalid product" }
                     return
@@ -611,7 +658,7 @@ struct PaymentView: View {
                 }
                 // Refetch so we open the conversation that has the order.
                 var conversationToOpen: Conversation?
-                if let seller = products.first?.seller, !seller.username.isEmpty {
+                if let seller = lineItems.first?.seller, !seller.username.isEmpty {
                     chatService.updateAuthToken(authService.authToken)
                     func fetchByOrderId() async throws -> Conversation? {
                         let list = try await chatService.getConversations()
