@@ -59,7 +59,7 @@ class ChatService: ObservableObject {
               status
               priceTotal
               createdAt
-              products { id name imagesUrl }
+              products { id name imagesUrl price }
             }
     """
 
@@ -115,6 +115,37 @@ class ChatService: ObservableObject {
         return Self.mapConversationDataRows(response.archivedConversations)
     }
 
+    private static func mapConversationOrderData(_ o: ConversationOrderData) -> ConversationOrder? {
+        guard let orderIdStr = Conversation.idString(from: o.id), !orderIdStr.isEmpty else { return nil }
+        let total = o.priceTotalDouble
+        let rows = o.products ?? []
+        let lineItems: [ConversationOrderLineSummary] = rows.compactMap { p in
+            guard let pid = Conversation.idString(from: p.id) else { return nil }
+            return ConversationOrderLineSummary(
+                productId: pid,
+                name: (p.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+                imageUrl: p.firstImageUrl,
+                price: p.unitPrice
+            )
+        }
+        let first = lineItems.first
+        let firstName = first?.name.isEmpty == false ? first?.name : rows.first?.name
+        let firstImg = first?.imageUrl ?? rows.first?.firstImageUrl
+        let firstPid = first?.productId ?? rows.first.flatMap { Conversation.idString(from: $0.id) }
+        let pub = (o.publicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return ConversationOrder(
+            id: orderIdStr,
+            publicId: pub.isEmpty ? nil : pub,
+            status: o.status ?? "CONFIRMED",
+            total: total,
+            firstProductName: firstName,
+            firstProductImageUrl: firstImg,
+            firstProductId: firstPid,
+            createdAt: parseGraphQLDateString(o.createdAt),
+            lineItems: lineItems
+        )
+    }
+
     private static func mapConversationDataRows(_ rows: [ConversationData]?) -> [Conversation] {
         rows?.compactMap { conv in
             guard let idString = Conversation.idString(from: conv.id) else { return nil }
@@ -127,23 +158,7 @@ class ChatService: ObservableObject {
                 recipientIdString = ""
             }
             let offer: OfferInfo? = conv.offer.flatMap { Conversation.offerInfo(from: $0) }
-            let order: ConversationOrder? = conv.order.flatMap { o in
-                let orderIdStr = Conversation.idString(from: o.id) ?? ""
-                let total = o.priceTotalDouble
-                let first = o.products?.first
-                let firstProductIdStr = first.flatMap { Conversation.idString(from: $0.id) }
-                let pub = (o.publicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                return ConversationOrder(
-                    id: orderIdStr,
-                    publicId: pub.isEmpty ? nil : pub,
-                    status: o.status ?? "CONFIRMED",
-                    total: total,
-                    firstProductName: first?.name,
-                    firstProductImageUrl: first?.firstImageUrl,
-                    firstProductId: firstProductIdStr,
-                    createdAt: parseGraphQLDateString(o.createdAt)
-                )
-            }
+            let order: ConversationOrder? = conv.order.flatMap { Self.mapConversationOrderData($0) }
             let lastTime = parseGraphQLDateString(conv.lastMessage?.createdAt)
                 ?? order?.createdAt
                 ?? offer?.createdAt
@@ -213,7 +228,7 @@ class ChatService: ObservableObject {
               status
               priceTotal
               createdAt
-              products { id name imagesUrl }
+              products { id name imagesUrl price }
             }
           }
         }
@@ -240,23 +255,7 @@ class ChatService: ObservableObject {
             recipientIdString = ""
         }
         let offer: OfferInfo? = conv.offer.flatMap { Conversation.offerInfo(from: $0) }
-        let order: ConversationOrder? = conv.order.flatMap { o in
-            let orderIdStr = Conversation.idString(from: o.id) ?? ""
-            let total = o.priceTotalDouble
-            let first = o.products?.first
-            let firstProductIdStr = first.flatMap { Conversation.idString(from: $0.id) }
-            let pub = (o.publicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            return ConversationOrder(
-                id: orderIdStr,
-                publicId: pub.isEmpty ? nil : pub,
-                status: o.status ?? "CONFIRMED",
-                total: total,
-                firstProductName: first?.name,
-                firstProductImageUrl: first?.firstImageUrl,
-                firstProductId: firstProductIdStr,
-                createdAt: parseGraphQLDateString(o.createdAt)
-            )
-        }
+        let order: ConversationOrder? = conv.order.flatMap { Self.mapConversationOrderData($0) }
         let lastTime = parseGraphQLDateString(conv.lastMessage?.createdAt) ?? order?.createdAt
         let offerHistory: [OfferInfo]? = {
             guard let rows = conv.offerHistory, !rows.isEmpty else { return nil }
@@ -608,6 +607,15 @@ class ChatService: ObservableObject {
     private func parseDate(_ dateString: String?) -> Date? { parseGraphQLDateString(dateString) }
 }
 
+/// One product line on a conversation-linked order (multi-buy uses several).
+struct ConversationOrderLineSummary: Hashable, Identifiable {
+    var id: String { productId }
+    let productId: String
+    let name: String
+    let imageUrl: String?
+    let price: Double?
+}
+
 /// Minimal order info for a conversation (sale confirmation).
 struct ConversationOrder: Hashable {
     let id: String
@@ -621,6 +629,10 @@ struct ConversationOrder: Hashable {
     let firstProductId: String?
     /// Order creation time; used for list preview when there is no last message time.
     let createdAt: Date?
+    /// All products on this order (same seller multi-buy = one order, multiple lines).
+    let lineItems: [ConversationOrderLineSummary]
+
+    var isMultibuy: Bool { lineItems.count > 1 }
 }
 
 struct Conversation: Hashable {
@@ -761,15 +773,26 @@ struct ConversationOrderData: Decodable {
         let name: String?
         /// Backend may send [String] or [{"url": "..."}]; decode leniently and expose first URL.
         private let imagesUrlElements: [OrderImageUrlElement]?
+        private let priceFlexible: Double?
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             id = try c.decodeIfPresent(AnyCodable.self, forKey: .id)
             name = try c.decodeIfPresent(String.self, forKey: .name)
             imagesUrlElements = try? c.decode([OrderImageUrlElement].self, forKey: .imagesUrl)
+            if let d = try? c.decode(Double.self, forKey: .price) {
+                priceFlexible = d
+            } else if let i = try? c.decode(Int.self, forKey: .price) {
+                priceFlexible = Double(i)
+            } else if let s = try? c.decode(String.self, forKey: .price) {
+                priceFlexible = Double(s.trimmingCharacters(in: .whitespacesAndNewlines))
+            } else {
+                priceFlexible = nil
+            }
         }
-        private enum CodingKeys: String, CodingKey { case id, name, imagesUrl }
+        private enum CodingKeys: String, CodingKey { case id, name, imagesUrl, price }
         /// First image URL whether backend sent strings or objects with "url".
         var firstImageUrl: String? { imagesUrlElements?.first?.urlString }
+        var unitPrice: Double? { priceFlexible }
     }
     /// Decodes "url" string or object { "url": "..." } from product imagesUrl array.
     /// Backend may send array of JSON strings like ["{\"url\":\"https://...\"}"], so parse that to extract url.

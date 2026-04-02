@@ -8,10 +8,16 @@ struct SellView: View {
     private static let sellFormColourNames = ["Black", "White", "Red", "Blue", "Green", "Yellow", "Pink", "Purple", "Orange", "Brown", "Grey", "Beige", "Navy", "Maroon", "Teal"]
 
     @Binding var selectedTab: Int
+    /// When set, form loads this product and saves via `updateProduct` instead of create.
+    var editProductId: Int? = nil
+    /// Called after a successful save in edit mode (e.g. dismiss sheet).
+    var onEditComplete: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.optionalTabCoordinator) private var tabCoordinator
     @EnvironmentObject private var authService: AuthService
     @StateObject private var viewModel = SellViewModel()
+    @State private var existingListingImagePairs: [(url: String, thumbnail: String)] = []
+    @State private var didStartEditLoad = false
     @State private var selectedImages: [UIImage] = []
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var title: String = ""
@@ -42,11 +48,14 @@ struct SellView: View {
         return "\(percent)%"
     }
 
+    private var isEditMode: Bool { editProductId != nil }
+
     /// Flutter: category, description, images, parcel, title, price (not 0), selectedColors, brand or customBrand, condition
     private var canUpload: Bool {
-        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasPhotos = !selectedImages.isEmpty || (isEditMode && !existingListingImagePairs.isEmpty)
+        return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !selectedImages.isEmpty
+            && hasPhotos
             && category != nil
             && (brand != nil && !(brand?.isEmpty ?? true))
             && condition != nil
@@ -61,7 +70,7 @@ struct SellView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     // 1. Upload from drafts (Flutter: same)
-                    if draftCount > 0 {
+                    if !isEditMode, draftCount > 0 {
                         draftsSection
                     }
                     // 2. Photo upload (Flutter: same)
@@ -94,29 +103,53 @@ struct SellView: View {
 
             PrimaryButtonBar {
                 PrimaryGlassButton(
-                    L10n.string("Upload"),
+                    isEditMode ? L10n.string("Save changes") : L10n.string("Upload"),
                     isEnabled: canUpload,
                     isLoading: viewModel.isSubmitting,
                     action: {
-                        viewModel.submitListing(
-                            authToken: authService.authToken,
-                            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
-                            description: description.trimmingCharacters(in: .whitespacesAndNewlines),
-                            price: price ?? 0.0,
-                            brand: brand ?? "",
-                            condition: condition ?? "",
-                            size: measurements ?? "",
-                            categoryId: category?.id,
-                            categoryName: category?.name,
-                            images: selectedImages,
-                            discountPrice: discountPrice,
-                            parcelSize: parcelSize,
-                            colours: colours,
-                            sizeId: sizeId,
-                            measurements: measurements,
-                            material: material,
-                            styles: styles
-                        )
+                        if let pid = editProductId {
+                            viewModel.updateListing(
+                                authToken: authService.authToken,
+                                productId: pid,
+                                existingImagePairs: existingListingImagePairs,
+                                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                                description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                                price: price ?? 0.0,
+                                brand: brand ?? "",
+                                condition: condition ?? "",
+                                size: measurements ?? "",
+                                categoryId: category?.id,
+                                categoryName: category?.name,
+                                newListingImages: selectedImages,
+                                discountPrice: discountPrice,
+                                parcelSize: parcelSize,
+                                colours: colours,
+                                sizeId: sizeId,
+                                measurements: measurements,
+                                material: material,
+                                styles: styles
+                            )
+                        } else {
+                            viewModel.submitListing(
+                                authToken: authService.authToken,
+                                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                                description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                                price: price ?? 0.0,
+                                brand: brand ?? "",
+                                condition: condition ?? "",
+                                size: measurements ?? "",
+                                categoryId: category?.id,
+                                categoryName: category?.name,
+                                images: selectedImages,
+                                discountPrice: discountPrice,
+                                parcelSize: parcelSize,
+                                colours: colours,
+                                sizeId: sizeId,
+                                measurements: measurements,
+                                material: material,
+                                styles: styles
+                            )
+                        }
                     }
                 )
             }
@@ -149,11 +182,16 @@ struct SellView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.isSubmitting)
-        .navigationTitle(L10n.string("Sell an item"))
+        .navigationTitle(isEditMode ? L10n.string("Edit listing") : L10n.string("Sell an item"))
         .onChange(of: viewModel.submissionSuccess) { _, success in
             if success {
                 HapticManager.success()
-                selectedTab = 4 // Profile tab
+                if isEditMode {
+                    onEditComplete?()
+                } else {
+                    clearSellFormAfterSuccessfulUpload()
+                    selectedTab = 4 // Profile tab
+                }
                 NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
             }
         }
@@ -171,7 +209,8 @@ struct SellView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: {
                         HapticManager.tap()
-                        selectedTab = 0
+                        if isEditMode { dismiss() }
+                        else { selectedTab = 0 }
                     }) {
                         Image(systemName: "xmark")
                             .font(.system(size: 18, weight: .medium))
@@ -180,7 +219,7 @@ struct SellView: View {
                     .buttonStyle(PlainTappableButtonStyle())
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    if !selectedImages.isEmpty {
+                    if !isEditMode, !selectedImages.isEmpty {
                         Button(L10n.string("Save draft")) {
                             saveCurrentAsDraft()
                         }
@@ -188,7 +227,7 @@ struct SellView: View {
                         .foregroundColor(Theme.primaryColor)
                         .opacity(viewModel.isSubmitting ? 0.5 : 1)
                         .disabled(viewModel.isSubmitting)
-                    } else if draftCount > 0 {
+                    } else if !isEditMode, draftCount > 0 {
                         Button(L10n.string("Drafts")) {
                             showDraftsSheet = true
                         }
@@ -200,6 +239,10 @@ struct SellView: View {
             .onAppear {
                 draftCount = SellDraftStore.draftCount(username: authService.username)
                 consumePendingSellPrefillIfNeeded()
+                if let pid = editProductId, !didStartEditLoad {
+                    didStartEditLoad = true
+                    Task { await loadProductForEdit(productId: pid) }
+                }
             }
             .onChange(of: tabCoordinator?.pendingSellPrefill) { _, new in
                 guard new != nil else { return }
@@ -303,7 +346,65 @@ struct SellView: View {
         parcelSize = d.parcelSize
         draftCount = SellDraftStore.draftCount(username: authService.username)
     }
-    
+
+    /// After a successful new listing upload, clear the form so returning to Sell does not show stale data.
+    private func clearSellFormAfterSuccessfulUpload() {
+        selectedImages = []
+        selectedPhotos = []
+        title = ""
+        description = ""
+        category = nil
+        brand = nil
+        condition = nil
+        colours = []
+        sizeId = nil
+        sizeName = nil
+        measurements = nil
+        material = nil
+        styles = []
+        price = nil
+        discountPrice = nil
+        parcelSize = nil
+        existingListingImagePairs = []
+    }
+
+    private func loadProductForEdit(productId: Int) async {
+        let svc = ProductService()
+        svc.updateAuthToken(authService.authToken)
+        guard let loaded = try? await svc.getProduct(id: productId) else { return }
+        await MainActor.run {
+            title = loaded.title
+            description = loaded.description
+            if let orig = loaded.originalPrice, orig > loaded.price {
+                price = orig
+                discountPrice = loaded.price
+            } else {
+                price = loaded.price
+                discountPrice = nil
+            }
+            brand = loaded.brand
+            condition = loaded.condition
+            colours = loaded.colors
+            sizeId = loaded.sellSizeBackendId
+            sizeName = loaded.size
+            if let cid = loaded.sellCategoryBackendId, !cid.isEmpty {
+                let nm = loaded.categoryName ?? loaded.category.name
+                category = SellCategory(id: cid, name: nm)
+            } else {
+                category = nil
+            }
+            material = nil
+            styles = []
+            parcelSize = "Medium"
+            existingListingImagePairs = loaded.imageURLs.map { url in
+                let t = (loaded.listDisplayImageURL?.isEmpty == false) ? (loaded.listDisplayImageURL ?? url) : url
+                return (url: url, thumbnail: t)
+            }
+            selectedImages = []
+            selectedPhotos = []
+        }
+    }
+
     // MARK: - Drafts Section
     private var draftsSection: some View {
         Button(action: {
@@ -333,13 +434,15 @@ struct SellView: View {
         .overlay(ContentDivider(), alignment: .bottom)
     }
     
+    private var totalPhotoSlots: Int { existingListingImagePairs.count + selectedImages.count }
+
     // MARK: - Photo Upload Section (horizontal slider of thumbnails)
     private var photoUploadSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            if selectedImages.isEmpty {
+            if totalPhotoSlots == 0 {
                 emptyPhotoState
             } else {
-                photoSlider
+                combinedPhotoSlider
             }
         }
         .padding(.horizontal, Theme.Spacing.md)
@@ -360,30 +463,56 @@ struct SellView: View {
                         loaded.append(image)
                     }
                 }
-                await MainActor.run { selectedImages = loaded }
+                await MainActor.run {
+                    if isEditMode, !loaded.isEmpty {
+                        selectedImages.append(contentsOf: loaded)
+                    } else {
+                        selectedImages = loaded
+                    }
+                    selectedPhotos = []
+                }
             }
         }
     }
 
-    /// Horizontal slider: thumbnails + Add photo cell; container height matches cell height so nothing is clipped.
-    private var photoSlider: some View {
+    /// Existing listing URLs (edit) plus newly picked images + add cell.
+    private var combinedPhotoSlider: some View {
         GeometryReader { geo in
             let cellWidth = min(118, (geo.size.width - Theme.Spacing.md) / 2.6)
             let cellHeight = cellWidth / SellPhotoSliderCell.aspectRatio
             let spacing = Theme.Spacing.sm
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: spacing) {
+                    ForEach(Array(existingListingImagePairs.enumerated()), id: \.offset) { _, pair in
+                        let u = URL(string: pair.thumbnail) ?? URL(string: pair.url)
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Theme.Colors.secondaryBackground)
+                            if let u {
+                                AsyncImage(url: u) { phase in
+                                    switch phase {
+                                    case .success(let img):
+                                        img.resizable().scaledToFill()
+                                    default:
+                                        Color.clear
+                                    }
+                                }
+                            }
+                        }
+                        .frame(width: cellWidth, height: cellHeight)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
                     ForEach(Array(selectedImages.enumerated()), id: \.offset) { index, image in
                         SellPhotoSliderCell(
                             image: image,
                             cellWidth: cellWidth,
                             onRemove: {
                                 selectedImages.remove(at: index)
-                                selectedPhotos.remove(at: index)
                             }
                         )
                     }
-                    if selectedImages.count < 20 {
+                    if totalPhotoSlots < 20 {
                         SellAddPhotoSliderCell(cellWidth: cellWidth, action: { showPhotoPicker = true })
                     }
                 }
@@ -392,6 +521,11 @@ struct SellView: View {
             .frame(height: cellHeight)
         }
         .frame(height: 155)
+    }
+
+    /// Horizontal slider: thumbnails + Add photo cell; container height matches cell height so nothing is clipped.
+    private var photoSlider: some View {
+        combinedPhotoSlider
     }
 
     private var emptyPhotoState: some View {

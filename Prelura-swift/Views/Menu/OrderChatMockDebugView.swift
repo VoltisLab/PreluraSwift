@@ -16,7 +16,8 @@ struct OrderChatMockDebugView: View {
         firstProductName: "Vintage Jacket",
         firstProductImageUrl: nil,
         firstProductId: nil,
-        createdAt: Date()
+        createdAt: Date(),
+        lineItems: []
     )
 
     private static let mockOfferPending = OfferInfo(

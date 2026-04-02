@@ -74,6 +74,7 @@ struct DeepLinkOverlayView: View {
             id: String(orderId),
             publicId: "PR",
             priceTotal: "0",
+            discountPrice: nil,
             status: "",
             createdAt: Date(),
             otherParty: nil,

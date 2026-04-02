@@ -2002,9 +2002,18 @@ struct ChatDetailView: View {
             .offerPrice
     }
 
+    /// Sum of line list prices when every line has a price (multi-buy header subtotal).
+    private var orderHeaderMultibuySubtotal: Double? {
+        guard let order = displayedConversation.order, order.isMultibuy else { return nil }
+        let prices = order.lineItems.compactMap(\.price)
+        guard prices.count == order.lineItems.count, !prices.isEmpty else { return nil }
+        return prices.reduce(0, +)
+    }
+
     /// Line-item price for the header: agreed offer or fetched product price. Nil until loaded — do not show `order.total` (often items + delivery) to avoid flashing wrong amount.
     private var orderHeaderLinePriceForDisplay: Double? {
         guard displayedConversation.order != nil else { return nil }
+        if let sub = orderHeaderMultibuySubtotal { return sub }
         if let p = latestAcceptedOfferPriceForHeader { return p }
         if let item = orderProductItem { return item.price }
         return nil
@@ -2012,6 +2021,9 @@ struct ChatDetailView: View {
 
     private var orderHeaderBar: some View {
         guard let order = displayedConversation.order else { return AnyView(EmptyView()) }
+        if order.isMultibuy {
+            return AnyView(multibuyOrderHeaderBar(order: order))
+        }
         let orderProductId = order.firstProductId.flatMap { Int($0) }
         let rawOrderImage = orderProductItem?.thumbnailURLForChrome
             ?? order.firstProductImageUrl.flatMap { ProductListImageURL.preferredString(from: $0) ?? $0 }
@@ -2064,29 +2076,108 @@ struct ChatDetailView: View {
         return AnyView(bar)
     }
 
+    private func multibuyOrderHeaderBar(order: ConversationOrder) -> AnyView {
+        let bar = HStack(spacing: Theme.Spacing.md) {
+            TabView {
+                ForEach(order.lineItems) { line in
+                    let raw = line.imageUrl.flatMap { ProductListImageURL.preferredString(from: $0) ?? $0 }?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    let parsed = URL(string: raw)
+                    let invalid = !raw.isEmpty && parsed == nil
+                    ChatHeaderProductThumbnail(imageURL: parsed, invalidURLFromAPI: invalid)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .automatic))
+            .frame(width: 72, height: 72)
+            .clipped()
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Multibuy")
+                    .font(Theme.Typography.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .lineLimit(1)
+                Text("\(order.lineItems.count) items")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                if let sub = orderHeaderMultibuySubtotal {
+                    Text(CurrencyFormatter.gbp(sub))
+                        .font(Theme.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.primaryColor)
+                } else {
+                    ProgressView()
+                        .scaleEffect(0.9)
+                        .tint(Theme.primaryColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(minHeight: 22)
+                }
+                Text(orderHeaderStatusText(order: order))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.primaryColor)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14))
+                .foregroundColor(Theme.Colors.secondaryText)
+        }
+        .padding(.horizontal, ChatThreadLayout.horizontalGutter)
+        .padding(.vertical, Theme.Spacing.sm)
+        .background(Theme.Colors.background)
+        .contentShape(Rectangle())
+
+        if let detailOrder = conversationOrderForDetail {
+            return AnyView(
+                NavigationLink(destination: OrderDetailView(order: detailOrder, isSeller: isSellerForOrderDetail)) { bar }
+                    .buttonStyle(PlainTappableButtonStyle())
+            )
+        }
+        return AnyView(bar)
+    }
+
     /// Map conversation order summary to full Order model for navigation from chat header.
     private var conversationOrderForDetail: Order? {
         guard let order = displayedConversation.order else { return nil }
-        let product = OrderProductSummary(
-            id: order.firstProductId ?? "0",
-            name: order.firstProductName ?? "Order item",
-            imageUrl: order.firstProductImageUrl,
-            price: orderHeaderLinePriceForDisplay.map { String(format: "%.2f", $0) },
-            condition: nil,
-            colors: [],
-            style: nil,
-            size: nil,
-            brand: nil,
-            materials: []
-        )
+        let products: [OrderProductSummary] = {
+            if !order.lineItems.isEmpty {
+                return order.lineItems.map { line in
+                    OrderProductSummary(
+                        id: line.productId,
+                        name: line.name.isEmpty ? "Item" : line.name,
+                        imageUrl: line.imageUrl,
+                        price: line.price.map { String(format: "%.2f", $0) },
+                        condition: nil,
+                        colors: [],
+                        style: nil,
+                        size: nil,
+                        brand: nil,
+                        materials: []
+                    )
+                }
+            }
+            let product = OrderProductSummary(
+                id: order.firstProductId ?? "0",
+                name: order.firstProductName ?? "Order item",
+                imageUrl: order.firstProductImageUrl,
+                price: orderHeaderLinePriceForDisplay.map { String(format: "%.2f", $0) },
+                condition: nil,
+                colors: [],
+                style: nil,
+                size: nil,
+                brand: nil,
+                materials: []
+            )
+            return [product]
+        }()
         return Order(
             id: order.id,
             publicId: order.publicId,
             priceTotal: String(format: "%.2f", order.total),
+            discountPrice: nil,
             status: order.status,
             createdAt: order.createdAt ?? Date(),
             otherParty: displayedConversation.recipient,
-            products: [product],
+            products: products,
             shippingAddress: nil,
             shipmentService: nil,
             deliveryDate: nil,

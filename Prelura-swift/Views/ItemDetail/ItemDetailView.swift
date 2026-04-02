@@ -185,7 +185,22 @@ struct ItemDetailView: View {
             .environmentObject(authService)
         }
         .sheet(isPresented: $showEditListingSheet) {
-            EditListingPlaceholderView(onDone: { showEditListingSheet = false })
+            NavigationStack {
+                SellView(
+                    selectedTab: .constant(2),
+                    editProductId: effectiveItem.productId.flatMap { Int($0) },
+                    onEditComplete: {
+                        showEditListingSheet = false
+                        Task {
+                            if let pid = displayedItem?.productId ?? item.productId,
+                               let updated = await viewModel.loadProduct(productId: pid) {
+                                await MainActor.run { displayedItem = updated }
+                            }
+                        }
+                    }
+                )
+                .environmentObject(authService)
+            }
         }
         .alert(L10n.string("Delete listing?"), isPresented: $showDeleteConfirm) {
             Button(L10n.string("Cancel"), role: .cancel) { showDeleteConfirm = false }
@@ -897,37 +912,6 @@ struct FullScreenImageViewer: View {
                     }
                 }
                 .padding(.bottom, 40)
-            }
-        }
-    }
-}
-
-// MARK: - Edit listing placeholder (until full edit flow exists)
-struct EditListingPlaceholderView: View {
-    var onDone: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: Theme.Spacing.lg) {
-                Text("Coming soon")
-                    .font(Theme.Typography.title2)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                Text("Edit listing will be available in a future update.")
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.Colors.background)
-            .navigationTitle(L10n.string("Edit listing"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.string("Done"), action: onDone)
-                        .foregroundColor(Theme.primaryColor)
-                }
             }
         }
     }

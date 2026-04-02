@@ -257,7 +257,7 @@ struct OrderDetailView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("Order - \(effectiveOrder.displayOrderId)")
+            Text(effectiveOrder.products.count > 1 ? "Multibuy · \(effectiveOrder.displayOrderId)" : "Order - \(effectiveOrder.displayOrderId)")
                 .font(.system(size: 28, weight: .bold))
                 .foregroundColor(Theme.Colors.primaryText)
             HStack(spacing: Theme.Spacing.sm) {
@@ -313,6 +313,37 @@ struct OrderDetailView: View {
     }
 
     private var productCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if effectiveOrder.products.count <= 1 {
+                singleProductCardLink
+            } else {
+                multibuyProductRows
+            }
+            if let disc = effectiveOrder.discountPrice?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !disc.isEmpty,
+               let d = Double(disc),
+               d > 0.001 {
+                HStack {
+                    Text(L10n.string("Multi-buy discount"))
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.primaryColor)
+                    Spacer()
+                    Text(CurrencyFormatter.gbp(-d))
+                        .font(Theme.Typography.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.primaryColor)
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm)
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+        )
+    }
+
+    private var singleProductCardLink: some View {
         let p = effectiveOrder.products.first
         return NavigationLink {
             productDestinationView
@@ -342,12 +373,51 @@ struct OrderDetailView: View {
                     .padding(.top, 6)
             }
             .padding(Theme.Spacing.md)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
-            )
         }
         .buttonStyle(PlainTappableButtonStyle())
+    }
+
+    private var multibuyProductRows: some View {
+        ForEach(Array(effectiveOrder.products.enumerated()), id: \.element.id) { index, p in
+            VStack(spacing: 0) {
+                if index > 0 {
+                    Rectangle()
+                        .fill(Theme.Colors.glassBorder)
+                        .frame(height: 0.5)
+                        .padding(.leading, Theme.Spacing.md)
+                }
+                NavigationLink {
+                    OrderLineProductDetailHost(productId: p.id)
+                } label: {
+                    HStack(alignment: .top, spacing: Theme.Spacing.md) {
+                        productThumb(url: p.imageUrl)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(p.name)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(Theme.Colors.primaryText)
+                                .lineLimit(2)
+                            if let details = metadataLine(for: p), !details.isEmpty {
+                                Text(details)
+                                    .font(.system(size: 13, weight: .regular))
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                    .lineLimit(2)
+                            }
+                            Spacer(minLength: 6)
+                            Text("£\(p.price ?? "—")")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundColor(Theme.Colors.primaryText)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .padding(.top, 6)
+                    }
+                    .padding(Theme.Spacing.md)
+                }
+                .buttonStyle(PlainTappableButtonStyle())
+            }
+        }
     }
 
     private var outlinedPartyCard: some View {
@@ -1006,6 +1076,41 @@ struct OrderDetailView: View {
                 hydratedOrder = found
                 Self.orderSnapshotCache[order.id] = found
             }
+        }
+    }
+}
+
+/// Loads `Item` by id for each row in a multi-item order (separate navigation stacks per line).
+private struct OrderLineProductDetailHost: View {
+    let productId: String
+    @EnvironmentObject private var authService: AuthService
+    @State private var item: Item?
+    @State private var loading = true
+    private let productService = ProductService()
+
+    var body: some View {
+        Group {
+            if let item {
+                ItemDetailView(item: item, authService: authService)
+            } else if loading {
+                ProgressView(L10n.string("Loading..."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Text(L10n.string("Product unavailable"))
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(Theme.Colors.background)
+        .task {
+            guard let id = Int(productId) else {
+                loading = false
+                return
+            }
+            productService.updateAuthToken(authService.authToken)
+            item = try? await productService.getProduct(id: id)
+            loading = false
         }
     }
 }

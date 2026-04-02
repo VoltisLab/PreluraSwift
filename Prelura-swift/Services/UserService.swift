@@ -1546,6 +1546,7 @@ class UserService: ObservableObject {
                 id: idStr,
                 publicId: row.publicId,
                 priceTotal: priceStr,
+                discountPrice: row.discountPrice?.stringValue,
                 status: row.status ?? "",
                 createdAt: createdAt,
                 otherParty: otherParty,
@@ -2357,6 +2358,8 @@ struct Order: Identifiable {
     let id: String
     let publicId: String?
     let priceTotal: String
+    /// Total merchandise discount on the order (e.g. multi-buy); monetary amount from API.
+    let discountPrice: String?
     let status: String
     let createdAt: Date
     let otherParty: User?

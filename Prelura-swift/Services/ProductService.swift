@@ -542,6 +542,117 @@ class ProductService: ObservableObject {
         return idVal
     }
 
+    /// Update an existing listing (seller only). Omit `imagePairs` to keep current photos; pass full list + `UPDATE_INDEX` to replace images after upload.
+    func updateProduct(
+        productId: Int,
+        name: String,
+        description: String,
+        price: Double,
+        categoryId: Int,
+        condition: String? = nil,
+        parcelSize: String? = nil,
+        discountSalePrice: Double? = nil,
+        color: [String]? = nil,
+        brandId: Int? = nil,
+        customBrand: String? = nil,
+        materialIds: [Int]? = nil,
+        style: String? = nil,
+        styles: [String]? = nil,
+        sizeId: Int? = nil,
+        imagePairs: [(url: String, thumbnail: String)]? = nil,
+        imageAction: String? = nil
+    ) async throws {
+        let mutation = """
+        mutation UpdateProduct(
+          $productId: Int!
+          $category: Int
+          $condition: ConditionEnum
+          $description: String
+          $imagesUrl: ImageUpdateInputType
+          $price: Float
+          $size: Int
+          $name: String
+          $parcelSize: ParcelSizeEnum
+          $discountPrice: Float
+          $color: [String]
+          $brand: Int
+          $materials: [Int]
+          $style: StyleEnum
+          $styles: [StyleEnum]
+          $customBrand: String
+        ) {
+          updateProduct(
+            productId: $productId
+            category: $category
+            condition: $condition
+            description: $description
+            imagesUrl: $imagesUrl
+            price: $price
+            size: $size
+            name: $name
+            parcelSize: $parcelSize
+            discountPrice: $discountPrice
+            color: $color
+            brand: $brand
+            materials: $materials
+            style: $style
+            styles: $styles
+            customBrand: $customBrand
+          ) {
+            success
+            message
+            product { id }
+          }
+        }
+        """
+        var variables: [String: Any] = [
+            "productId": productId,
+            "name": name,
+            "description": description,
+            "price": price,
+            "category": categoryId
+        ]
+        if let c = condition, !c.isEmpty { variables["condition"] = c }
+        if let ps = parcelSize, !ps.isEmpty { variables["parcelSize"] = ps }
+        let discountPercent: Double
+        if let sale = discountSalePrice, sale > 0, sale < price {
+            discountPercent = ((price - sale) / price) * 100
+        } else {
+            discountPercent = 0
+        }
+        variables["discountPrice"] = max(0, min(100, discountPercent))
+        if let col = color, !col.isEmpty { variables["color"] = col }
+        if let bid = brandId { variables["brand"] = bid }
+        if let cb = customBrand, !cb.isEmpty { variables["customBrand"] = cb }
+        if let mat = materialIds, !mat.isEmpty { variables["materials"] = mat }
+        if let s = style, !s.isEmpty { variables["style"] = s }
+        if let st = styles, !st.isEmpty { variables["styles"] = st }
+        if let sid = sizeId { variables["size"] = sid }
+        if let pairs = imagePairs, !pairs.isEmpty, let action = imageAction, !action.isEmpty {
+            variables["imagesUrl"] = [
+                "images": pairs.map { ["url": $0.url, "thumbnail": $0.thumbnail] },
+                "action": action
+            ]
+        }
+        struct UpdateProductResponse: Decodable {
+            let updateProduct: UpdateProductPayload?
+        }
+        struct UpdateProductPayload: Decodable {
+            let success: Bool?
+            let message: String?
+        }
+        let response: UpdateProductResponse = try await client.execute(
+            query: mutation,
+            variables: variables,
+            operationName: "UpdateProduct",
+            responseType: UpdateProductResponse.self
+        )
+        guard response.updateProduct?.success == true else {
+            let msg = response.updateProduct?.message ?? "Update failed"
+            throw NSError(domain: "ProductService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+    }
+
     /// Delete a product (own listing). Matches Flutter/backend deleteProduct if available.
     func deleteProduct(productId: Int) async throws {
         let mutation = """
