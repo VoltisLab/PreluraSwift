@@ -33,6 +33,8 @@ struct OrderDetailView: View {
     @State private var showTrackingCopiedToast = false
     @State private var cancellationBusy = false
     @State private var cancellationActionError: String?
+    @State private var showMultibuyProblemProductPicker = false
+    @State private var orderHelpProductContext: OrderProductSummary?
 
     init(order: Order, isSeller: Bool? = nil) {
         self.order = order
@@ -96,19 +98,37 @@ struct OrderDetailView: View {
                         shippingSelectedCard
 
                         if canShowBuyerOrderHelp {
-                            NavigationLink(destination: OrderHelpView(orderId: effectiveOrder.id, conversationId: "")) {
-                                HStack {
-                                    Image(systemName: "exclamationmark.bubble")
-                                    Text(L10n.string("I have a problem"))
+                            if shouldPickProductBeforeOrderHelp {
+                                Button {
+                                    showMultibuyProblemProductPicker = true
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "exclamationmark.bubble")
+                                        Text(L10n.string("I have a problem"))
+                                    }
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.primaryColor)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(Theme.Spacing.md)
+                                    .background(Theme.Colors.secondaryBackground)
+                                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
                                 }
-                                .font(Theme.Typography.body)
-                                .foregroundColor(Theme.primaryColor)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(Theme.Spacing.md)
-                                .background(Theme.Colors.secondaryBackground)
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                                .buttonStyle(PlainTappableButtonStyle())
+                            } else {
+                                NavigationLink(destination: OrderHelpView(orderId: effectiveOrder.id, conversationId: "")) {
+                                    HStack {
+                                        Image(systemName: "exclamationmark.bubble")
+                                        Text(L10n.string("I have a problem"))
+                                    }
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.primaryColor)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(Theme.Spacing.md)
+                                    .background(Theme.Colors.secondaryBackground)
+                                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                                }
+                                .buttonStyle(PlainTappableButtonStyle())
                             }
-                            .buttonStyle(PlainTappableButtonStyle())
                         }
 
                         if hasPendingCancellation, isPendingCancellationInitiator {
@@ -244,6 +264,23 @@ struct OrderDetailView: View {
                         .navigationBarTitleDisplayMode(.inline)
                 }
             }
+        }
+        .sheet(isPresented: $showMultibuyProblemProductPicker) {
+            MultibuyOrderProblemProductPickerSheet(
+                products: effectiveOrder.products,
+                onContinue: { product in
+                    showMultibuyProblemProductPicker = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        orderHelpProductContext = product
+                    }
+                },
+                onCancel: {
+                    showMultibuyProblemProductPicker = false
+                }
+            )
+        }
+        .navigationDestination(item: $orderHelpProductContext) { product in
+            OrderHelpView(orderId: effectiveOrder.id, conversationId: "", helpContextProduct: product)
         }
     }
 
@@ -803,6 +840,11 @@ struct OrderDetailView: View {
         return st != "CANCELLED" && st != "REFUNDED"
     }
 
+    /// Multibuy: buyer must pick which line item the issue is about before opening help.
+    private var shouldPickProductBeforeOrderHelp: Bool {
+        effectiveOrder.products.count > 1
+    }
+
     private var hasPendingCancellation: Bool {
         (effectiveOrder.cancellation?.status.uppercased() == "PENDING")
     }
@@ -1075,6 +1117,89 @@ struct OrderDetailView: View {
             await MainActor.run {
                 hydratedOrder = found
                 Self.orderSnapshotCache[order.id] = found
+            }
+        }
+    }
+}
+
+/// Sheet: single-select one order line before “I have a problem” help (multibuy).
+private struct MultibuyOrderProblemProductPickerSheet: View {
+    let products: [OrderProductSummary]
+    let onContinue: (OrderProductSummary) -> Void
+    let onCancel: () -> Void
+
+    @State private var selectedId: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text(L10n.string("Which item is your issue about? Choose one to continue."))
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .listRowBackground(Theme.Colors.background)
+                }
+                ForEach(products) { product in
+                    Button {
+                        selectedId = product.id
+                    } label: {
+                        HStack(spacing: Theme.Spacing.md) {
+                            Group {
+                                if let urlString = product.imageUrl, let url = URL(string: urlString) {
+                                    AsyncImage(url: url) { phase in
+                                        switch phase {
+                                        case .success(let img): img.resizable().scaledToFill()
+                                        default: ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                                        }
+                                    }
+                                } else {
+                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                                }
+                            }
+                            .frame(width: 56, height: 56)
+                            .clipped()
+                            .cornerRadius(8)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(product.name)
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                    .multilineTextAlignment(.leading)
+                                if let price = product.price, !price.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Text(price)
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(Theme.Colors.secondaryText)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            if selectedId == product.id {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(Theme.primaryColor)
+                                    .font(.system(size: 22))
+                            }
+                        }
+                    }
+                    .buttonStyle(PlainTappableButtonStyle())
+                }
+            }
+            .listStyle(.insetGrouped)
+            .background(Theme.Colors.background)
+            .navigationTitle(L10n.string("Select item"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.string("Cancel")) {
+                        onCancel()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.string("Continue")) {
+                        guard let id = selectedId, let picked = products.first(where: { $0.id == id }) else { return }
+                        onContinue(picked)
+                    }
+                    .disabled(selectedId == nil)
+                }
             }
         }
     }

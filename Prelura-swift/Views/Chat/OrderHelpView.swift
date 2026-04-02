@@ -4,8 +4,15 @@ import SwiftUI
 struct OrderHelpView: View {
     var orderId: String?
     var conversationId: String?
+    /// When set (e.g. multibuy), scopes help to that line item for support context and “item not as described” product load.
+    var helpContextProduct: OrderProductSummary? = nil
 
     @Environment(\.dismiss) private var dismiss
+
+    private var productContextDescriptionPrefix: String {
+        guard let p = helpContextProduct else { return "" }
+        return "Regarding: \(p.name) (product #\(p.id))\n\n"
+    }
 
     var body: some View {
         List {
@@ -13,7 +20,11 @@ struct OrderHelpView: View {
                 helpRow(
                     title: "Item Not as Described",
                     content: "If the item you received doesn't match the description, you can raise an issue within 3 days of delivery.",
-                    destination: ItemNotAsDescribedHelpView(orderId: orderId, conversationId: conversationId)
+                    destination: ItemNotAsDescribedHelpView(
+                        orderId: orderId,
+                        conversationId: conversationId,
+                        relatedProductId: helpContextProduct?.id
+                    )
                 )
                 helpRow(
                     title: "Order Status",
@@ -21,7 +32,7 @@ struct OrderHelpView: View {
                     destination: HelpChatView(
                         orderId: orderId,
                         conversationId: conversationId,
-                        issueDraft: SupportIssueDraft(selectedOptions: ["Order status"], description: "", imageDatas: [], issueTypeCode: nil, issueId: nil, issuePublicId: nil)
+                        issueDraft: SupportIssueDraft(selectedOptions: ["Order status"], description: productContextDescriptionPrefix, imageDatas: [], issueTypeCode: nil, issueId: nil, issuePublicId: nil)
                     )
                 )
                 helpRow(
@@ -30,7 +41,7 @@ struct OrderHelpView: View {
                     destination: HelpChatView(
                         orderId: orderId,
                         conversationId: conversationId,
-                        issueDraft: SupportIssueDraft(selectedOptions: ["Tracking information"], description: "", imageDatas: [], issueTypeCode: nil, issueId: nil, issuePublicId: nil)
+                        issueDraft: SupportIssueDraft(selectedOptions: ["Tracking information"], description: productContextDescriptionPrefix, imageDatas: [], issueTypeCode: nil, issueId: nil, issuePublicId: nil)
                     )
                 )
                 helpRow(
@@ -39,7 +50,7 @@ struct OrderHelpView: View {
                     destination: HelpChatView(
                         orderId: orderId,
                         conversationId: conversationId,
-                        issueDraft: SupportIssueDraft(selectedOptions: ["Payment issues"], description: "", imageDatas: [], issueTypeCode: nil, issueId: nil, issuePublicId: nil)
+                        issueDraft: SupportIssueDraft(selectedOptions: ["Payment issues"], description: productContextDescriptionPrefix, imageDatas: [], issueTypeCode: nil, issueId: nil, issuePublicId: nil)
                     )
                 )
                 helpRow(
@@ -48,7 +59,7 @@ struct OrderHelpView: View {
                     destination: HelpChatView(
                         orderId: orderId,
                         conversationId: conversationId,
-                        issueDraft: SupportIssueDraft(selectedOptions: ["Item not received"], description: "", imageDatas: [], issueTypeCode: nil, issueId: nil, issuePublicId: nil)
+                        issueDraft: SupportIssueDraft(selectedOptions: ["Item not received"], description: productContextDescriptionPrefix, imageDatas: [], issueTypeCode: nil, issueId: nil, issuePublicId: nil)
                     )
                 )
             }

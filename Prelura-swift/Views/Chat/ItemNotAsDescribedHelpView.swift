@@ -5,6 +5,8 @@ import PhotosUI
 struct ItemNotAsDescribedHelpView: View {
     var orderId: String?
     var conversationId: String?
+    /// When set (multibuy), load this product instead of the first line on the order.
+    var relatedProductId: String? = nil
 
     @EnvironmentObject var authService: AuthService
     @Environment(\.dismiss) private var dismiss
@@ -307,6 +309,11 @@ struct ItemNotAsDescribedHelpView: View {
         ]
         if let issueId { payload["issue_id"] = issueId }
         if let publicId, !publicId.isEmpty { payload["public_id"] = publicId }
+        if let pid = relatedItem?.productId.flatMap({ Int($0) }) {
+            payload["product_id"] = pid
+        } else if let rid = relatedProductId.flatMap({ Int($0) }) {
+            payload["product_id"] = rid
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return }
         _ = try? await chatService.sendMessage(
@@ -394,20 +401,35 @@ struct ItemNotAsDescribedHelpView: View {
         userService.updateAuthToken(authService.authToken)
         productService.updateAuthToken(authService.authToken)
         do {
+            let pid: Int? = {
+                if let rid = relatedProductId?.trimmingCharacters(in: .whitespacesAndNewlines), !rid.isEmpty, let i = Int(rid) {
+                    return i
+                }
+                return nil
+            }()
+            if let pid {
+                let product = try await productService.getProduct(id: pid)
+                await MainActor.run {
+                    relatedItem = product
+                    isLoadingRelatedProduct = false
+                    if relatedItem == nil { relatedProductError = "Related product unavailable" }
+                }
+                return
+            }
             async let sellerOrdersTask = userService.getUserOrders(isSeller: true)
             async let buyerOrdersTask = userService.getUserOrders(isSeller: false)
             let (sellerOrders, buyerOrders) = try await (sellerOrdersTask, buyerOrdersTask)
             let allOrders = sellerOrders.orders + buyerOrders.orders
             guard let matchedOrder = allOrders.first(where: { $0.id == orderId }),
                   let firstOrderProduct = matchedOrder.products.first,
-                  let pid = Int(firstOrderProduct.id) else {
+                  let fallbackPid = Int(firstOrderProduct.id) else {
                 await MainActor.run {
                     isLoadingRelatedProduct = false
                     relatedProductError = "Related product unavailable"
                 }
                 return
             }
-            let product = try await productService.getProduct(id: pid)
+            let product = try await productService.getProduct(id: fallbackPid)
             await MainActor.run {
                 relatedItem = product
                 isLoadingRelatedProduct = false

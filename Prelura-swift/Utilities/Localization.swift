@@ -66,6 +66,8 @@ enum L10n {
         "Shop Categories": "Κατηγορίες Καταστήματος",
         "Orders": "Παραγγελίες",
         "Order details": "Λεπτομέρειες παραγγελίας",
+        "Select item": "Επιλογή προϊόντος",
+        "Which item is your issue about? Choose one to continue.": "Ποιο προϊόν αφορά το πρόβλημά σας; Επιλέξτε ένα για να συνεχίσετε.",
         "Favourites": "Αγαπημένα",
         "Shop tools": "Εργαλεία Καταστήματος",
         "Background replacer": "Αντικατάσταση Φόντου",

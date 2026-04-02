@@ -2383,7 +2383,7 @@ struct Order: Identifiable {
 }
 
 /// Product summary inside an order.
-struct OrderProductSummary: Identifiable {
+struct OrderProductSummary: Identifiable, Hashable {
     let id: String
     let name: String
     let imageUrl: String?
