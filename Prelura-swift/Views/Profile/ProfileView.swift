@@ -842,7 +842,7 @@ struct ProfileView: View {
                         switch route {
                         case .itemDetail(let item):
                             ItemDetailView(item: item, authService: authService)
-                        case .conversation, .menu:
+                        case .conversation(_, _), .menu:
                             EmptyView()
                         case .reviews(let username, let rating):
                             ReviewsView(username: username, rating: rating)

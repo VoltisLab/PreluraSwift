@@ -28,6 +28,14 @@ struct DebugMenuView: View {
                         Text("Message push trace")
                     }
                 }
+                NavigationLink(destination: ChatThreadLiveUpdateDebugView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "arrow.triangle.branch")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Chat live update trace")
+                    }
+                }
                 NavigationLink(destination: WebSocketConnectionDebugView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "network")

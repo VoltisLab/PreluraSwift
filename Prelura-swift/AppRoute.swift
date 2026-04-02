@@ -3,7 +3,8 @@ import SwiftUI
 /// Central router for navigation. Only root screens live in the tab’s NavigationStack; everything else is pushed via these routes.
 enum AppRoute: Hashable {
     case itemDetail(Item)
-    case conversation(Conversation)
+    /// `isArchived`: user opened the thread from the archived inbox list (show Restore in the chat menu).
+    case conversation(Conversation, isArchived: Bool)
     case menu(MenuContext)
     case reviews(username: String, rating: Double)
 }

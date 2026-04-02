@@ -26,6 +26,9 @@ struct ChatListView: View {
     @State private var scrollPosition: String? = "inbox_top"
     /// Inbox filter from 3-dot menu: all, unread, read, archived.
     @State private var inboxFilter: InboxFilter = .all
+    /// Shown after swipe-archive; auto-dismisses after a few seconds unless the user taps Undo.
+    @State private var archiveUndoConversation: Conversation?
+    @State private var archiveUndoDismissTask: Task<Void, Never>?
 
     private var conversations: [Conversation] { inboxViewModel.conversations }
     private var archivedConversations: [Conversation] { inboxViewModel.archivedConversations }
@@ -96,7 +99,9 @@ struct ChatListView: View {
 
                         List {
                             ForEach(Array(filteredConversations.enumerated()), id: \.element.id) { index, conversation in
-                                Button(action: { path.append(AppRoute.conversation(conversation)) }) {
+                                Button(action: {
+                                    path.append(AppRoute.conversation(conversation, isArchived: inboxFilter == .archived))
+                                }) {
                                     ChatRowView(conversation: conversation, currentUsername: authService.username)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .contentShape(Rectangle())
@@ -170,6 +175,15 @@ struct ChatListView: View {
                     .refreshable {
                         await loadInboxConversations()
                     }
+                    .overlay(alignment: .bottom) {
+                        if archiveUndoConversation != nil {
+                            ArchiveUndoToast(onUndo: undoLastArchiveSwipe)
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.bottom, 88)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                    }
+                    .animation(.spring(response: 0.38, dampingFraction: 0.86), value: archiveUndoConversation?.id)
                 }
                 .onChange(of: scrollPosition) { _, new in
                     tabCoordinator.reportAtTop(tab: 3, isAtTop: new == "inbox_top")
@@ -199,7 +213,7 @@ struct ChatListView: View {
             }
             if let conv = tabCoordinator.pendingOpenConversation {
                 tabCoordinator.pendingOpenConversation = nil
-                DispatchQueue.main.async { path = [.conversation(conv)] }
+                DispatchQueue.main.async { path = [.conversation(conv, isArchived: false)] }
             }
             guard !authService.isGuestMode else { return }
             inboxViewModel.updateAuthToken(authService.authToken)
@@ -233,7 +247,7 @@ struct ChatListView: View {
                             order: conv.order
                         ))
                     }
-                    path = [.conversation(conv)]
+                    path = [.conversation(conv, isArchived: false)]
                 }
             }
         }
@@ -248,7 +262,45 @@ struct ChatListView: View {
 
     private func archiveConversation(_ conversation: Conversation) {
         guard let convId = Int(conversation.id), convId > 0 else { return }
-        Task { await inboxViewModel.archiveConversation(conversationId: convId) }
+        Task {
+            await inboxViewModel.archiveConversation(conversationId: convId)
+            await MainActor.run {
+                guard inboxViewModel.errorMessage == nil else { return }
+                presentArchiveUndo(for: conversation)
+            }
+        }
+    }
+
+    private func presentArchiveUndo(for conversation: Conversation) {
+        archiveUndoDismissTask?.cancel()
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+            archiveUndoConversation = conversation
+        }
+        archiveUndoDismissTask = Task {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            await MainActor.run {
+                dismissArchiveUndoToast(animated: true)
+            }
+        }
+    }
+
+    private func dismissArchiveUndoToast(animated: Bool) {
+        archiveUndoDismissTask?.cancel()
+        archiveUndoDismissTask = nil
+        if animated {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                archiveUndoConversation = nil
+            }
+        } else {
+            archiveUndoConversation = nil
+        }
+    }
+
+    private func undoLastArchiveSwipe() {
+        guard let conv = archiveUndoConversation, let cid = Int(conv.id), cid > 0 else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        dismissArchiveUndoToast(animated: true)
+        Task { await inboxViewModel.unarchiveConversation(conversationId: cid) }
     }
 
     private func unarchiveConversation(_ conversation: Conversation) {
@@ -289,6 +341,30 @@ struct ChatListView: View {
 
 }
 
+private struct ArchiveUndoToast: View {
+    let onUndo: () -> Void
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.md) {
+            Text(L10n.string("Archived"))
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.primaryText)
+            Spacer(minLength: 8)
+            Button(L10n.string("Undo")) {
+                onUndo()
+            }
+            .font(Theme.Typography.subheadline.weight(.semibold))
+            .foregroundColor(Theme.primaryColor)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Theme.Colors.secondaryBackground)
+                .shadow(color: Color.black.opacity(0.28), radius: 14, y: 5)
+        )
+    }
+}
 
 struct ChatRowView: View {
     let conversation: Conversation

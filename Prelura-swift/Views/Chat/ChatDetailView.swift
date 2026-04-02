@@ -37,6 +37,46 @@ private final class ChatRemoteTypingIndicatorModel: ObservableObject {
     }
 }
 
+/// Forwards WebSocket payloads into SwiftUI. Inbound chat rows bump `@Published chatInboundSequence` so `onChange`
+/// runs reliably; `PassthroughSubject` + `onReceive` for chat did not consistently refresh bubbles.
+/// Socket closures must not capture `ChatDetailView` with `[self]` (a struct).
+@MainActor
+private final class ChatWebSocketUIBridge: ObservableObject {
+    private var chatInboundQueue: [(Message, String?)] = []
+    @Published private(set) var chatInboundSequence: UInt64 = 0
+
+    let offerChannel = PassthroughSubject<OfferSocketEvent, Never>()
+    let orderChannel = PassthroughSubject<OrderSocketEvent, Never>()
+    let reactionChannel = PassthroughSubject<MessageReactionSocketEvent, Never>()
+
+    func emitIncomingMessage(_ msg: Message, _ echoUuid: String?, conversationId: String) {
+        chatInboundQueue.append((msg, echoUuid))
+        chatInboundSequence &+= 1
+        ChatThreadUIUpdateDebugState.shared.recordBridgeEmit(
+            conversationId: conversationId,
+            sequence: chatInboundSequence,
+            queueDepthAfterAppend: chatInboundQueue.count
+        )
+    }
+
+    func drainInboundChatMessages() -> [(Message, String?)] {
+        defer { chatInboundQueue.removeAll() }
+        return chatInboundQueue
+    }
+
+    func emitOffer(_ event: OfferSocketEvent) {
+        offerChannel.send(event)
+    }
+
+    func emitOrder(_ event: OrderSocketEvent) {
+        orderChannel.send(event)
+    }
+
+    func emitReaction(_ event: MessageReactionSocketEvent) {
+        reactionChannel.send(event)
+    }
+}
+
 /// Persists the last-known product image URL for chat headers so thumbnails do not show an endless spinner after leaving the thread.
 fileprivate enum ChatHeaderProductImageURLStore {
     private static let prefix = "chatHeaderImg_"
@@ -194,6 +234,7 @@ struct ChatDetailView: View {
     @State private var isLoading: Bool = false
     @State private var webSocket: ChatWebSocketService?
     @StateObject private var remoteTypingIndicator = ChatRemoteTypingIndicatorModel()
+    @StateObject private var socketUIBridge = ChatWebSocketUIBridge()
     /// Periodically re-sends typing while the composer is non-empty so the peer’s indicator does not expire mid-sentence.
     @State private var typingKeepaliveTask: Task<Void, Never>?
     @State private var didSendTypingStart = false
@@ -210,6 +251,8 @@ struct ChatDetailView: View {
     @State private var folderActionError: ChatFolderActionError?
     @State private var reconnectTask: Task<Void, Never>?
     @State private var reconnectAttempt = 0
+    /// Debounced GraphQL reload after socket-delivered rows (order/cancellation paths already refetch; this mirrors that for plain text).
+    @State private var chatCatchUpFromServerTask: Task<Void, Never>?
     /// WhatsApp-style long-press reactions (local persistence per device).
     @ObservedObject private var messageReactionsStore = ChatMessageReactionsStore.shared
     /// Learns which reaction emojis you use so the long-press bar surfaces them first.
@@ -362,7 +405,19 @@ struct ChatDetailView: View {
                 }
                 continue
             }
-            guard isCurrentUser(username: localMsg.senderUsername) else { continue }
+            if !isCurrentUser(username: localMsg.senderUsername) {
+                if localMsg.isOfferContent || localMsg.isSoldConfirmation || localMsg.isOrderIssue
+                    || localMsg.isOrderCancellationRequest || localMsg.isOrderCancellationOutcome { continue }
+                let trimmedPeer = localMsg.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmedPeer.isEmpty else { continue }
+                if serverIds.contains(localMsg.id) { continue }
+                let peerDup = server.contains { s in
+                    s.content.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedPeer
+                        && abs(s.timestamp.timeIntervalSince(localMsg.timestamp)) < 180
+                }
+                if !peerDup { result.append(localMsg) }
+                continue
+            }
             if localMsg.isOfferContent || localMsg.isSoldConfirmation || localMsg.isOrderIssue
                 || localMsg.isOrderCancellationRequest || localMsg.isOrderCancellationOutcome { continue }
             let trimmed = localMsg.content.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -985,6 +1040,41 @@ struct ChatDetailView: View {
                 dismissButton: .default(Text("OK")) { folderActionError = nil }
             )
         }
+        .onChange(of: socketUIBridge.chatInboundSequence) { _, _ in
+            let convId = displayedConversation.id
+            let pairs = socketUIBridge.drainInboundChatMessages()
+            let firstBid = pairs.first?.0.backendId.map { String($0) }
+            ChatThreadUIUpdateDebugState.shared.recordUIOnChangeDrained(
+                conversationId: convId,
+                drainedCount: pairs.count,
+                firstBackendId: firstBid
+            )
+            for pair in pairs {
+                handleSocketIncomingChatMessage(pair.0, echoMessageUuid: pair.1)
+            }
+        }
+        .onReceive(socketUIBridge.offerChannel) { event in
+            handleOfferSocketEvent(event)
+        }
+        .onReceive(socketUIBridge.orderChannel) { event in
+            guard displayedConversation.id != "0" else { return }
+            switch event.type {
+            case "order_cancellation_event", "order_status_event", "order_issue_created":
+                loadConversationAndMessagesFromBackend()
+            default:
+                break
+            }
+        }
+        .onReceive(socketUIBridge.reactionChannel) { event in
+            if isCurrentUser(username: event.username) { return }
+            let key = "b:\(event.messageId)"
+            ChatMessageReactionsStore.shared.applyRemoteReaction(
+                conversationId: displayedConversation.id,
+                messageKey: key,
+                username: event.username,
+                emoji: event.emoji
+            )
+        }
         .onAppear {
             hasAutoScrolledToBottomForThisChat = false
             if let token = authService.authToken {
@@ -1016,6 +1106,8 @@ struct ChatDetailView: View {
             fetchOrderProductIfNeeded()
         }
         .onChange(of: displayedConversation.id) { _, _ in
+            chatCatchUpFromServerTask?.cancel()
+            chatCatchUpFromServerTask = nil
             webSocket?.disconnect()
             webSocket = nil
             reconnectTask?.cancel()
@@ -1042,6 +1134,8 @@ struct ChatDetailView: View {
             // Drop the socket as soon as the app leaves the foreground so the server clears `chat_<id>` presence
             // and chat pushes are not suppressed (receiver must not appear "in room" while backgrounded or inactive).
             if phase == .inactive || phase == .background {
+                chatCatchUpFromServerTask?.cancel()
+                chatCatchUpFromServerTask = nil
                 webSocket?.disconnect()
                 webSocket = nil
                 reconnectTask?.cancel()
@@ -1102,6 +1196,8 @@ struct ChatDetailView: View {
             typingKeepaliveTask?.cancel()
             typingKeepaliveTask = nil
             didSendTypingStart = false
+            chatCatchUpFromServerTask?.cancel()
+            chatCatchUpFromServerTask = nil
         }
     }
 
@@ -2431,6 +2527,106 @@ struct ChatDetailView: View {
         }
     }
 
+    /// Light GraphQL reload shortly after a socket row (same idea as `loadConversationAndMessagesFromBackend` for order events).
+    private func scheduleDebouncedChatCatchUpFromServer() {
+        chatCatchUpFromServerTask?.cancel()
+        let convId = displayedConversation.id
+        guard convId != "0" else { return }
+        chatCatchUpFromServerTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled, displayedConversation.id == convId else { return }
+            loadMessages()
+        }
+    }
+
+    /// Applies a chat row from the socket on the main thread via `onReceive` (not from a WS closure capturing this view).
+    private func handleSocketIncomingChatMessage(_ msg: Message, echoMessageUuid: String?) {
+        let convIdForPushTrace = displayedConversation.id
+        if let pending = pendingMessageUUID, echoMessageUuid == pending,
+           let idx = messages.firstIndex(where: { $0.id.uuidString == pending }) {
+            let oldKey = "u:\(pending)"
+            let newKey = ChatMessageReactionsStore.stableKey(for: msg)
+            ChatMessageReactionsStore.shared.migrateMessageKey(
+                conversationId: displayedConversation.id,
+                from: oldKey,
+                to: newKey
+            )
+            var next = messages
+            next[idx] = msg
+            next.sort { $0.timestamp < $1.timestamp }
+            messages = next
+            pendingMessageUUID = nil
+            if msg.isOfferContent {
+                mergeOffersFromMessages()
+            }
+            rebuildTimelineOrder()
+            ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "message_received_echo")
+            publishInboxPreviewFromMessage(msg)
+            notifyInboxListShouldRefresh()
+            scheduleDebouncedChatCatchUpFromServer()
+            ChatThreadUIUpdateDebugState.shared.recordUIHandlerOutcome(
+                conversationId: convIdForPushTrace,
+                backendId: msg.backendId,
+                outcome: "echo_replace optimistic→server"
+            )
+            return
+        }
+        if let bid = msg.backendId, let idx = messages.firstIndex(where: { $0.backendId == bid }) {
+            var next = messages
+            next[idx] = msg
+            next.sort { $0.timestamp < $1.timestamp }
+            messages = next
+            if msg.isOfferContent {
+                mergeOffersFromMessages()
+            }
+            rebuildTimelineOrder()
+            ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "message_received_merge")
+            publishInboxPreviewFromMessage(msg)
+            notifyInboxListShouldRefresh()
+            scheduleDebouncedChatCatchUpFromServer()
+            ChatThreadUIUpdateDebugState.shared.recordUIHandlerOutcome(
+                conversationId: convIdForPushTrace,
+                backendId: msg.backendId,
+                outcome: "merge_same_backendId"
+            )
+            return
+        }
+        if let idx = messages.firstIndex(where: { $0.id == msg.id }) {
+            var next = messages
+            next[idx] = msg
+            next.sort { $0.timestamp < $1.timestamp }
+            messages = next
+            if msg.isOfferContent {
+                mergeOffersFromMessages()
+            }
+            rebuildTimelineOrder()
+            ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "message_received_same_id")
+            publishInboxPreviewFromMessage(msg)
+            notifyInboxListShouldRefresh()
+            scheduleDebouncedChatCatchUpFromServer()
+            ChatThreadUIUpdateDebugState.shared.recordUIHandlerOutcome(
+                conversationId: convIdForPushTrace,
+                backendId: msg.backendId,
+                outcome: "replace_same_message_id"
+            )
+            return
+        }
+        messages = (messages + [msg]).sorted { $0.timestamp < $1.timestamp }
+        if msg.isOfferContent {
+            mergeOffersFromMessages()
+        }
+        rebuildTimelineOrder()
+        ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "message_received")
+        publishInboxPreviewFromMessage(msg)
+        notifyInboxListShouldRefresh()
+        scheduleDebouncedChatCatchUpFromServer()
+        ChatThreadUIUpdateDebugState.shared.recordUIHandlerOutcome(
+            conversationId: convIdForPushTrace,
+            backendId: msg.backendId,
+            outcome: "append_new_row"
+        )
+    }
+
     private func connectWebSocket() {
         guard displayedConversation.id != "0",
               let token = (authService.refreshToken ?? authService.authToken), !token.isEmpty else { return }
@@ -2439,70 +2635,18 @@ struct ChatDetailView: View {
         ChatPushTraceDebugState.shared.markSocketConnectAttempt(conversationId: displayedConversation.id)
         let convIdForPushTrace = displayedConversation.id
         let ws = ChatWebSocketService(conversationId: displayedConversation.id, token: token)
-        ws.onNewMessage = { [self] msg, echoMessageUuid in
-            if let pending = pendingMessageUUID, echoMessageUuid == pending,
-               let idx = messages.firstIndex(where: { $0.id.uuidString == pending }) {
-                let oldKey = "u:\(pending)"
-                let newKey = ChatMessageReactionsStore.stableKey(for: msg)
-                ChatMessageReactionsStore.shared.migrateMessageKey(
-                    conversationId: displayedConversation.id,
-                    from: oldKey,
-                    to: newKey
-                )
-                var next = messages
-                next[idx] = msg
-                next.sort { $0.timestamp < $1.timestamp }
-                messages = next
-                pendingMessageUUID = nil
-                if msg.isOfferContent {
-                    mergeOffersFromMessages()
-                }
-                rebuildTimelineOrder()
-                ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "message_received_echo")
-                publishInboxPreviewFromMessage(msg)
-                notifyInboxListShouldRefresh()
-                return
-            }
-            if let bid = msg.backendId, let idx = messages.firstIndex(where: { $0.backendId == bid }) {
-                var next = messages
-                next[idx] = msg
-                next.sort { $0.timestamp < $1.timestamp }
-                messages = next
-                if msg.isOfferContent {
-                    mergeOffersFromMessages()
-                }
-                rebuildTimelineOrder()
-                ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "message_received_merge")
-                publishInboxPreviewFromMessage(msg)
-                notifyInboxListShouldRefresh()
-                return
-            }
-            if messages.contains(where: { $0.id == msg.id }) { return }
-            messages = (messages + [msg]).sorted { $0.timestamp < $1.timestamp }
-            if msg.isOfferContent {
-                mergeOffersFromMessages()
-            }
-            rebuildTimelineOrder()
-            ChatPushTraceDebugState.shared.markSocketTraffic(conversationId: convIdForPushTrace, summary: "message_received")
-            publishInboxPreviewFromMessage(msg)
-            notifyInboxListShouldRefresh()
+        let bridge = socketUIBridge
+        ws.onNewMessage = { msg, echoMessageUuid in
+            bridge.emitIncomingMessage(msg, echoMessageUuid, conversationId: convIdForPushTrace)
         }
-        ws.onOfferEvent = { [self] event in
-            handleOfferSocketEvent(event)
+        ws.onOfferEvent = { event in
+            bridge.emitOffer(event)
         }
-        ws.onOrderEvent = { [self] event in
-            guard event.type == "order_cancellation_event" else { return }
-            loadConversationAndMessagesFromBackend()
+        ws.onOrderEvent = { event in
+            bridge.emitOrder(event)
         }
-        ws.onMessageReaction = { [self] event in
-            if isCurrentUser(username: event.username) { return }
-            let key = "b:\(event.messageId)"
-            ChatMessageReactionsStore.shared.applyRemoteReaction(
-                conversationId: displayedConversation.id,
-                messageKey: key,
-                username: event.username,
-                emoji: event.emoji
-            )
+        ws.onMessageReaction = { event in
+            bridge.emitReaction(event)
         }
         let typingModel = remoteTypingIndicator
         let authForTyping = authService

@@ -61,6 +61,8 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
     var onDisconnectReason: (@MainActor (String) -> Void)?
     /// Another participant updated a message reaction (server type `message_reaction`).
     var onMessageReaction: (@MainActor (MessageReactionSocketEvent) -> Void)?
+    /// Django consumer exception path: `{"error": "Error processing message: ..."}` (no `type` / not a chat row).
+    var onServerSocketError: (@MainActor (String) -> Void)?
 
     init(conversationId: String, token: String) {
         self.conversationId = conversationId
@@ -258,12 +260,26 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
         return false
     }
 
+    /// Matches Flutter `messages_provider.dart`: only treat a frame as a chat row when `is_typing` is absent or JSON-null (not `false`).
+    private static func flutterTypingKeyIsAbsentOrNull(_ json: [String: Any]) -> Bool {
+        let v = json["is_typing"] ?? json["isTyping"]
+        return v == nil || v is NSNull
+    }
+
+    /// True when the dict looks like a persisted/plain chat line (not offer-only envelopes).
+    private static func looksLikeChatRowPayload(_ json: [String: Any]) -> Bool {
+        if hasPersistedMessageId(json) { return true }
+        let t = coerceSocketText(json).trimmingCharacters(in: .whitespacesAndNewlines)
+        return !t.isEmpty
+    }
+
     private func deliverParsedChatMessage(json: [String: Any], convId: String) async {
         guard let msg = parseWebSocketMessage(json) else {
             let summary = Self.jsonKeySummary(json)
             Self.diagLog.error("chat_frame_dropped conv=\(convId, privacy: .public) \(summary, privacy: .public)")
             print("[ChatWS] chat_frame_dropped conv=\(convId) \(summary)")
             await MainActor.run {
+                ChatThreadUIUpdateDebugState.shared.recordParseDropped(conversationId: convId, summary: summary)
                 ChatPushTraceDebugState.shared.markSocketDiagnostic(
                     conversationId: convId,
                     summary: "chat_frame_dropped \(summary)",
@@ -277,18 +293,28 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
         Self.diagLog.info("chat_message_parsed conv=\(convId, privacy: .public) backendId=\(bid, privacy: .public) sender=\(msg.senderUsername, privacy: .public) type=\(msg.type, privacy: .public) textLen=\(msg.content.count)")
         print("[ChatWS] chat_message_parsed conv=\(convId) backendId=\(bid) sender=\(msg.senderUsername) type=\(msg.type) textLen=\(msg.content.count)")
         await MainActor.run {
+            ChatThreadUIUpdateDebugState.shared.recordParseDelivering(
+                conversationId: convId,
+                backendId: bid,
+                textLen: msg.content.count,
+                sender: msg.senderUsername
+            )
             onNewMessage?(msg, echoUuid)
         }
     }
 
     private func handleReceivedString(_ text: String) async {
         let convId = conversationId
+        await MainActor.run {
+            ChatThreadUIUpdateDebugState.shared.recordWebSocketStringReceived(conversationId: convId, byteLength: text.utf8.count)
+        }
         guard let data = text.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             let preview = Self.redactForLog(text, maxLen: 200)
             Self.diagLog.error("json_parse_failed conv=\(convId, privacy: .public) len=\(text.count) preview=\(preview, privacy: .public)")
             print("[ChatWS] json_parse_failed conv=\(convId) len=\(text.count) preview=\(preview)")
             await MainActor.run {
+                ChatThreadUIUpdateDebugState.shared.recordParseDropped(conversationId: convId, summary: "json_parse_failed len=\(text.count)")
                 ChatPushTraceDebugState.shared.markSocketDiagnostic(
                     conversationId: convId,
                     summary: "json_parse_failed len=\(text.count)",
@@ -297,20 +323,48 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
             }
             return
         }
+        await MainActor.run {
+            ChatThreadUIUpdateDebugState.shared.recordJsonReceived(
+                conversationId: convId,
+                routingHint: Self.debugRoutingHint(json)
+            )
+        }
         let type = json["type"] as? String
         let typeNorm = type?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if type == "order_issue_created" || type == "order_status_event" || type == "order_cancellation_event" {
-            let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
+        if typeNorm != "chat_message",
+           let errRaw = json["error"] as? String,
+           !errRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let redacted = Self.redactForLog(errRaw, maxLen: 180)
+            await MainActor.run {
+                ChatThreadUIUpdateDebugState.shared.recordServerSocketError(
+                    conversationId: convId,
+                    redactedDetail: redacted
+                )
+                ChatPushTraceDebugState.shared.markSocketDiagnostic(
+                    conversationId: convId,
+                    summary: "server_error \(redacted)",
+                    isError: true
+                )
+                onServerSocketError?(errRaw)
+            }
+            return
+        }
+        if typeNorm == "order_issue_created" || typeNorm == "order_status_event" || typeNorm == "order_cancellation_event" {
+            let payloadConvId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
             let oid = (json["order_id"] as? Int)
                 ?? (json["orderId"] as? Int)
                 ?? ((json["order_id"] as? String).flatMap { Int($0) })
                 ?? ((json["orderId"] as? String).flatMap { Int($0) })
             await MainActor.run {
-                onOrderEvent?(OrderSocketEvent(type: type ?? "", conversationId: convId, orderId: oid))
+                ChatThreadUIUpdateDebugState.shared.recordRoutedNonChat(
+                    conversationId: convId,
+                    summary: "order_event type=\(type ?? "") payloadConv=\(payloadConvId ?? "nil")"
+                )
+                onOrderEvent?(OrderSocketEvent(type: type ?? "", conversationId: payloadConvId, orderId: oid))
             }
             return
         }
-        if type == "message_reaction" {
+        if typeNorm == "message_reaction" {
             let mid = (json["message_id"] as? Int)
                 ?? (json["messageId"] as? Int)
                 ?? ((json["message_id"] as? String).flatMap { Int($0) })
@@ -321,6 +375,7 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
             if let mid {
                 let ev = MessageReactionSocketEvent(messageId: mid, emoji: emoji, username: username)
                 await MainActor.run {
+                    ChatThreadUIUpdateDebugState.shared.recordRoutedNonChat(conversationId: convId, summary: "message_reaction id=\(mid)")
                     onMessageReaction?(ev)
                 }
             }
@@ -332,15 +387,9 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
             return
         }
         // Typing: server sends `type: typing_status`; clients may send `type: typing` + is_typing / isTyping.
-        // Persisted chat rows may omit `type`; never route those as typing because JSON null still leaves keys present as NSNull.
         let explicitTyping = typeNorm == "typing_status" || typeNorm == "typing"
-        let legacyTypingPayload =
-            !explicitTyping
-            && (typeNorm == nil || typeNorm != "chat_message")
-            && !Self.hasPersistedMessageId(json)
-            && Self.jsonHasNonNullTypingFlag(json)
-        if explicitTyping || legacyTypingPayload {
-            let convId = Self.jsonString(json["conversationId"])
+        if explicitTyping {
+            let typingConvId = Self.jsonString(json["conversationId"])
                 ?? Self.jsonString(json["conversation_id"])
             let isTyping = Self.coerceTypingFlag(json["is_typing"]) ?? Self.coerceTypingFlag(json["isTyping"]) ?? true
             let rawSender = (json["senderUsername"] as? String)
@@ -351,13 +400,51 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
                 ?? (json["username"] as? String)
             let senderUsername = rawSender?.trimmingCharacters(in: .whitespacesAndNewlines)
             await MainActor.run {
-                onTypingEvent?(TypingSocketEvent(conversationId: convId, isTyping: isTyping, senderUsername: senderUsername))
+                ChatThreadUIUpdateDebugState.shared.recordRoutedNonChat(
+                    conversationId: convId,
+                    summary: "typing explicit type=\(typeNorm ?? "") typingConv=\(typingConvId ?? "nil") isTyping=\(isTyping)"
+                )
+                onTypingEvent?(TypingSocketEvent(conversationId: typingConvId, isTyping: isTyping, senderUsername: senderUsername))
+            }
+            return
+        }
+        // Flutter: only ingest chat rows when `is_typing == null` (absent or JSON null). Do this before legacy typing
+        // so optional `is_typing` keys on mixed payloads do not swallow real messages.
+        let offerEnvelopeTypes: Set<String> = ["offer_status_event", "new_offer", "update_offer"]
+        if let tn = typeNorm, !offerEnvelopeTypes.contains(tn),
+           Self.flutterTypingKeyIsAbsentOrNull(json),
+           Self.looksLikeChatRowPayload(json),
+           parseWebSocketMessage(json) != nil {
+            await deliverParsedChatMessage(json: json, convId: convId)
+            return
+        }
+        let legacyTypingPayload =
+            (typeNorm == nil || typeNorm != "chat_message")
+            && !Self.hasPersistedMessageId(json)
+            && Self.jsonHasNonNullTypingFlag(json)
+        if legacyTypingPayload {
+            let typingConvId = Self.jsonString(json["conversationId"])
+                ?? Self.jsonString(json["conversation_id"])
+            let isTyping = Self.coerceTypingFlag(json["is_typing"]) ?? Self.coerceTypingFlag(json["isTyping"]) ?? true
+            let rawSender = (json["senderUsername"] as? String)
+                ?? (json["sender_username"] as? String)
+                ?? (json["senderName"] as? String)
+                ?? (json["sender_name"] as? String)
+                ?? (json["sender"] as? String)
+                ?? (json["username"] as? String)
+            let senderUsername = rawSender?.trimmingCharacters(in: .whitespacesAndNewlines)
+            await MainActor.run {
+                ChatThreadUIUpdateDebugState.shared.recordRoutedNonChat(
+                    conversationId: convId,
+                    summary: "typing legacy typingConv=\(typingConvId ?? "nil") isTyping=\(isTyping)"
+                )
+                onTypingEvent?(TypingSocketEvent(conversationId: typingConvId, isTyping: isTyping, senderUsername: senderUsername))
             }
             return
         }
         // Django backend sends offer_status_event with nested `offer` + sender_username (see prelura-app offer_utils).
-        if type == "offer_status_event" {
-            let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
+        if typeNorm == "offer_status_event" {
+            let offerPayloadConvId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
             let offerJson = json["offer"] as? [String: Any]
             // Prefer top-level; fall back to nested offer (backend now sends senderUsername in both).
             let senderUsername = (json["senderUsername"] as? String)
@@ -371,18 +458,20 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
             if offerJson != nil {
                 let offer = parseOfferFromSocket(offerJson)
                 await MainActor.run {
-                    onOfferEvent?(OfferSocketEvent(type: "NEW_OFFER", conversationId: convId, offer: offer, offerId: offerId, status: status, senderUsername: senderUsername))
+                    ChatThreadUIUpdateDebugState.shared.recordRoutedNonChat(conversationId: convId, summary: "offer_status_event payloadConv=\(offerPayloadConvId ?? "nil")")
+                    onOfferEvent?(OfferSocketEvent(type: "NEW_OFFER", conversationId: offerPayloadConvId, offer: offer, offerId: offerId, status: status, senderUsername: senderUsername))
                 }
             } else {
                 await MainActor.run {
-                    onOfferEvent?(OfferSocketEvent(type: "UPDATE_OFFER", conversationId: convId, offer: nil, offerId: offerId, status: status, senderUsername: senderUsername))
+                    ChatThreadUIUpdateDebugState.shared.recordRoutedNonChat(conversationId: convId, summary: "offer_status_event UPDATE payloadConv=\(offerPayloadConvId ?? "nil")")
+                    onOfferEvent?(OfferSocketEvent(type: "UPDATE_OFFER", conversationId: offerPayloadConvId, offer: nil, offerId: offerId, status: status, senderUsername: senderUsername))
                 }
             }
             return
         }
         // Offer events: optional explicit NEW_OFFER / UPDATE_OFFER (same payload shape).
         if type == "NEW_OFFER" || type == "UPDATE_OFFER" {
-            let convId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
+            let offerPayloadConvId = (json["conversationId"] as? String) ?? (json["conversation_id"] as? String)
             let offerJson = json["offer"] as? [String: Any]
             let offer = parseOfferFromSocket(offerJson)
             let offerId = (json["offerId"] as? String) ?? (json["offer_id"] as? String) ?? (json["offerId"] as? Int).map { String($0) }
@@ -393,12 +482,26 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
                 ?? (json["senderName"] as? String)
                 ?? (json["sender_name"] as? String)
             await MainActor.run {
-                onOfferEvent?(OfferSocketEvent(type: type ?? "", conversationId: convId, offer: offer, offerId: offerId, status: status, senderUsername: senderUsername))
+                ChatThreadUIUpdateDebugState.shared.recordRoutedNonChat(conversationId: convId, summary: "offer_envelope \(type ?? "") payloadConv=\(offerPayloadConvId ?? "nil")")
+                onOfferEvent?(OfferSocketEvent(type: type ?? "", conversationId: offerPayloadConvId, offer: offer, offerId: offerId, status: status, senderUsername: senderUsername))
             }
             return
         }
         // New message: parse and notify on main actor (messageUuid when server confirms our send).
         await deliverParsedChatMessage(json: json, convId: convId)
+    }
+
+    private static func debugRoutingHint(_ json: [String: Any]) -> String {
+        let t = (json["type"] as? String) ?? "(nil)"
+        let rawId = json["id"]
+        let hasId = rawId != nil && !(rawId is NSNull)
+        let tl = coerceSocketText(json).count
+        let typingKey = json["is_typing"] ?? json["isTyping"]
+        let tk: String
+        if typingKey == nil { tk = "absent" }
+        else if typingKey is NSNull { tk = "null" }
+        else { tk = "set" }
+        return "type=\(t) hasId=\(hasId) textLen=\(tl) typingKey=\(tk)"
     }
 
     private static func redactForLog(_ s: String, maxLen: Int) -> String {

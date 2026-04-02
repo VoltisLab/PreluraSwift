@@ -13,7 +13,7 @@ struct HomeNavigation: View {
                     switch route {
                     case .itemDetail(let item):
                         ItemDetailView(item: item, authService: authService)
-                    case .conversation, .menu:
+                    case .conversation(_, _), .menu:
                         EmptyView()
                     case .reviews(let username, let rating):
                         ReviewsView(username: username, rating: rating)
@@ -37,7 +37,7 @@ struct DiscoverNavigation: View {
                     switch route {
                     case .itemDetail(let item):
                         ItemDetailView(item: item, authService: authService)
-                    case .conversation, .menu:
+                    case .conversation(_, _), .menu:
                         EmptyView()
                     case .reviews(let username, let rating):
                         ReviewsView(username: username, rating: rating)
@@ -71,8 +71,8 @@ struct InboxNavigation: View {
             ChatListView(tabCoordinator: tabCoordinator, path: $path, inboxViewModel: inboxViewModel)
                 .navigationDestination(for: AppRoute.self) { route in
                     switch route {
-                    case .conversation(let conversation):
-                        ChatDetailView(conversation: conversation)
+                    case .conversation(let conversation, let isArchived):
+                        ChatDetailView(conversation: conversation, isOpenedFromArchive: isArchived)
                     case .itemDetail, .menu:
                         EmptyView()
                     case .reviews(let username, let rating):

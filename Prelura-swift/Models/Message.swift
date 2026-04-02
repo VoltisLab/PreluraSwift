@@ -49,6 +49,10 @@ struct Message: Identifiable {
     var emojiOnlyScaleMultiplier: Double? {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.hasPrefix("{") else { return nil }
+        // ASCII letters/digits only (e.g. test codes like "90768798") must use the standard bubble, not emoji-only styling (no background).
+        if trimmed.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }) {
+            return nil
+        }
         var emojiCount = 0
         for ch in trimmed where !ch.isWhitespace {
             guard ch.isEmojiForChatBubble else { return nil }
