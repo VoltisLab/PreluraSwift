@@ -92,7 +92,7 @@ struct DeepLinkOverlayView: View {
     @ViewBuilder
     private var destinationView: some View {
         switch destination {
-        case .product(let productId):
+        case .product(let publicSlug):
             if let item = resolvedItem {
                 ItemDetailView(item: item, authService: authService)
                     .overlay(alignment: .topLeading) {
@@ -164,9 +164,9 @@ struct DeepLinkOverlayView: View {
         case .orderDetail, .orderIssueSupport:
             await MainActor.run { isLoading = false }
 
-        case .product(let productId):
+        case .product(let publicSlug):
             do {
-                let item = try await productService.getProduct(id: productId)
+                let item = try await productService.getProduct(publicSlug: publicSlug)
                 await MainActor.run {
                     resolvedItem = item
                     loadError = item == nil ? "Product not found" : nil

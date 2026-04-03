@@ -26,6 +26,7 @@ class ProductService: ObservableObject {
         query AllProducts($pageNumber: Int, $pageCount: Int, $search: String, $filters: ProductFiltersInput) {
           allProducts(pageNumber: $pageNumber, pageCount: $pageCount, search: $search, filters: $filters) {
             id
+            listingCode
             name
             description
             price
@@ -179,9 +180,14 @@ class ProductService: ObservableObject {
                 finalPrice = originalPrice
                 itemOriginalPrice = nil
             }
+            let listingCode: String? = {
+                guard let lc = product.listingCode?.trimmingCharacters(in: .whitespacesAndNewlines), !lc.isEmpty else { return nil }
+                return lc
+            }()
             return Item(
                 id: Item.id(fromProductId: idString),
                 productId: idString,
+                listingCode: listingCode,
                 title: product.name ?? "",
                 description: product.description ?? "",
                 price: finalPrice,
@@ -262,7 +268,7 @@ class ProductService: ObservableObject {
         let query = """
         query FilterProductsByPrice($priceLimit: Float!, $pageCount: Int, $pageNumber: Int) {
           filterProductsByPrice(priceLimit: $priceLimit, pageCount: $pageCount, pageNumber: $pageNumber) {
-            id name description price discountPrice imagesUrl condition createdAt
+            id listingCode name description price discountPrice imagesUrl condition createdAt
             size { id name }
             brand { id name }
             customBrand likes views userLiked
@@ -307,7 +313,7 @@ class ProductService: ObservableObject {
         let query = """
         query FavoriteBrandProducts($top: Int!) {
           favoriteBrandProducts(top: $top) {
-            id name description price discountPrice imagesUrl condition createdAt
+            id listingCode name description price discountPrice imagesUrl condition createdAt
             size { id name }
             brand { id name }
             customBrand likes views userLiked
@@ -770,6 +776,7 @@ class ProductService: ObservableObject {
           likedProducts(pageCount: $pageCount, pageNumber: $pageNumber) {
             product {
               id
+              listingCode
               name
               description
               price
@@ -1098,6 +1105,7 @@ struct AllProductsResponse: Decodable {
 
 struct ProductData: Decodable {
     let id: AnyCodable?
+    let listingCode: String?
     let name: String?
     let description: String?
     let price: Double?
@@ -1210,12 +1218,20 @@ struct CreateOrderResult {
 }
 
 extension ProductService {
-    /// Fetch a single product by ID (for deep links / notification navigation). Matches GraphQL query product(id: Int!).
+    /// Fetch a single product by numeric id (for deep links / notifications).
     func getProduct(id: Int) async throws -> Item? {
+        try await getProduct(publicSlug: String(id))
+    }
+
+    /// Resolve by backend id (all-digit slug) or public `listingCode` (web `/item/...`).
+    func getProduct(publicSlug: String) async throws -> Item? {
+        let trimmed = publicSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
         let query = """
-        query ProductDetail($id: Int!) {
-          product(id: $id) {
+        query ProductDetail($id: Int, $listingCode: String) {
+          product(id: $id, listingCode: $listingCode) {
             id
+            listingCode
             name
             description
             price
@@ -1239,9 +1255,15 @@ extension ProductService {
         struct ProductDetailResponse: Decodable {
             let product: ProductData?
         }
+        var variables: [String: Any] = [:]
+        if trimmed.unicodeScalars.allSatisfy({ CharacterSet.decimalDigits.contains($0) }), let pid = Int(trimmed) {
+            variables["id"] = pid
+        } else {
+            variables["listingCode"] = trimmed
+        }
         let response: ProductDetailResponse = try await client.execute(
             query: query,
-            variables: ["id": id],
+            variables: variables,
             responseType: ProductDetailResponse.self
         )
         guard let product = response.product else { return nil }
@@ -1253,6 +1275,7 @@ extension ProductService {
         query RecentlyViewedProducts {
           recentlyViewedProducts {
             id
+            listingCode
             name
             description
             price
@@ -1371,9 +1394,14 @@ extension ProductService {
             // Get size
             let sizeName = product.size?.name ?? "One Size"
             
+            let listingCode: String? = {
+                guard let lc = product.listingCode?.trimmingCharacters(in: .whitespacesAndNewlines), !lc.isEmpty else { return nil }
+                return lc
+            }()
             return Item(
                 id: Item.id(fromProductId: idString),
                 productId: idString,
+                listingCode: listingCode,
                 title: product.name ?? "",
                 description: product.description ?? "",
                 price: finalPrice,
@@ -1429,6 +1457,7 @@ extension ProductService {
         query SimilarProducts($productId: Int, $categoryId: Int, $pageNumber: Int, $pageCount: Int) {
           similarProducts(productId: $productId, categoryId: $categoryId, pageNumber: $pageNumber, pageCount: $pageCount) {
             id
+            listingCode
             name
             description
             price
@@ -1617,20 +1646,26 @@ extension ProductService {
             finalPrice = originalPrice
             itemOriginalPrice = nil
         }
-        
-            // Extract image URLs from imagesUrl array (which contains JSON strings)
-            let imageURLs = extractImageURLs(from: product.imagesUrl)
-            let listDisplayURL = ProductListImageURL.preferredString(fromImagesUrlArray: product.imagesUrl) ?? imageURLs.first
 
-            // Get brand name (use customBrand as fallback)
-            let brandName = product.brand?.name ?? product.customBrand
-        
+        // Extract image URLs from imagesUrl array (which contains JSON strings)
+        let imageURLs = extractImageURLs(from: product.imagesUrl)
+        let listDisplayURL = ProductListImageURL.preferredString(fromImagesUrlArray: product.imagesUrl) ?? imageURLs.first
+
+        // Get brand name (use customBrand as fallback)
+        let brandName = product.brand?.name ?? product.customBrand
+
         // Get size
         let sizeName = product.size?.name ?? "One Size"
-        
+
+        let listingCode: String? = {
+            guard let lc = product.listingCode?.trimmingCharacters(in: .whitespacesAndNewlines), !lc.isEmpty else { return nil }
+            return lc
+        }()
+
         return Item(
             id: Item.id(fromProductId: idString),
             productId: idString,
+            listingCode: listingCode,
             title: product.name ?? "",
             description: product.description ?? "",
             price: finalPrice,

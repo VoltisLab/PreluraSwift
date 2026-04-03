@@ -4171,7 +4171,7 @@ struct MessageBubbleView: View {
                     value: [message.id: geo.frame(in: .global)]
                 )
             }
-            )
+        )
     }
 
     @ViewBuilder

@@ -4,7 +4,8 @@ import SwiftUI
 
 /// Destination opened from a deep link or push notification (matches Flutter notification_service routes).
 enum DeepLinkDestination: Equatable {
-    case product(productId: Int)
+    /// Numeric product id or public `listingCode` (same resolver as web `/item/{slug}`).
+    case product(publicSlug: String)
     case user(username: String)
     case conversation(conversationId: String, username: String, isOffer: Bool, isOrder: Bool)
     /// Push: order shipped / generic order tap when no chat thread id is present.
@@ -31,7 +32,7 @@ final class AppRouter: ObservableObject {
     /// When set, `MainTabView` switches to Inbox and pushes this thread on the tab’s `NavigationStack` (same UX as opening from the list).
     @Published var pendingInboxChat: PendingInboxChatNavigation?
 
-    /// Hosts that serve `/item/{id}` universal links for this app. Keep in sync with entitlements **Associated Domains** and the site’s `apple-app-site-association`.
+    /// Hosts that serve `/item/{slug}` universal links for this app. Keep in sync with entitlements **Associated Domains** and the site’s `apple-app-site-association`.
     private static func isPreluraItemUniversalLinkHost(_ host: String) -> Bool {
         switch host.lowercased() {
         case "prelura.uk", "www.prelura.uk", "prelura.com", "www.prelura.com":
@@ -48,7 +49,7 @@ final class AppRouter: ObservableObject {
         return r
     }
 
-    /// Handle URL (e.g. prelura://product/123, https://prelura.uk/item/123, prelura://user/john).
+    /// Handle URL (e.g. prelura://product/Ab3xY9k2Mn, https://prelura.uk/item/Ab3xY9k2Mn, prelura://user/john).
     func handle(url: URL) {
         var dest: DeepLinkDestination?
         let scheme = (url.scheme ?? "").lowercased()
@@ -57,8 +58,12 @@ final class AppRouter: ObservableObject {
             let host = (url.host ?? "").lowercased()
             guard Self.isPreluraItemUniversalLinkHost(host) else { return }
             let parts = url.path.split(separator: "/").map(String.init).filter { !$0.isEmpty }
-            if parts.count >= 2, parts[0].lowercased() == "item", let id = Int(parts[1]) {
-                dest = .product(productId: id)
+            if parts.count >= 2, parts[0].lowercased() == "item" {
+                let raw = parts[1]
+                let slug = (raw.removingPercentEncoding ?? raw).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !slug.isEmpty {
+                    dest = .product(publicSlug: slug)
+                }
             }
         } else {
             guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
@@ -68,8 +73,11 @@ final class AppRouter: ObservableObject {
             let pathComponents = components.path.split(separator: "/").map(String.init)
             switch host.lowercased() {
             case "product":
-                if let idStr = pathComponents.first, let id = Int(idStr) {
-                    dest = .product(productId: id)
+                if let raw = pathComponents.first {
+                    let slug = (raw.removingPercentEncoding ?? raw).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !slug.isEmpty {
+                        dest = .product(publicSlug: slug)
+                    }
                 }
             case "user", "profile":
                 if let username = pathComponents.first, !username.isEmpty {
@@ -210,10 +218,10 @@ final class AppRouter: ObservableObject {
             }
 
         case "PRODUCT", "PRODUCT_FLAG", "LISTING":
-            if let s = Self.pushString(p, "object_id"), let id = Int(s) {
-                dest = .product(productId: id)
+            if let s = Self.pushString(p, "object_id"), !s.isEmpty {
+                dest = .product(publicSlug: s)
             } else if let id = Self.pushValue(p, "object_id") as? Int {
-                dest = .product(productId: id)
+                dest = .product(publicSlug: String(id))
             }
 
         case "USER", "PROFILE", "FOLLOW":

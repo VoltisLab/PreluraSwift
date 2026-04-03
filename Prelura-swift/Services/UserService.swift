@@ -1620,6 +1620,7 @@ class UserService: ObservableObject {
         query UserProducts($username: String) {
           userProducts(username: $username) {
             id
+            listingCode
             name
             description
             price
@@ -1731,10 +1732,16 @@ class UserService: ObservableObject {
                 finalPrice = originalPrice
                 itemOriginalPrice = nil
             }
-            
+
+            let listingCode: String? = {
+                guard let lc = product.listingCode?.trimmingCharacters(in: .whitespacesAndNewlines), !lc.isEmpty else { return nil }
+                return lc
+            }()
+
             return Item(
                 id: Item.id(fromProductId: idString),
                 productId: idString,
+                listingCode: listingCode,
                 title: product.name ?? "",
                 description: product.description ?? "",
                 price: finalPrice,

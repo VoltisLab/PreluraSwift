@@ -281,7 +281,10 @@ struct ItemDetailView: View {
     }
 
     private func shareProduct() {
-        guard let url = URL(string: "\(Constants.publicWebItemLinkBaseURL)/item/\(item.productId ?? "")") else { return }
+        let slug = item.publicWebItemSlug
+        guard !slug.isEmpty else { return }
+        let encoded = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
+        guard let url = URL(string: "\(Constants.publicWebItemLinkBaseURL)/item/\(encoded)") else { return }
         let av = UIActivityViewController(activityItems: [effectiveItem.title, url], applicationActivities: nil)
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let root = windowScene.windows.first?.rootViewController else { return }
@@ -291,8 +294,10 @@ struct ItemDetailView: View {
     }
 
     private func copyProductLink() {
-        let urlString = "\(Constants.publicWebItemLinkBaseURL)/item/\(item.productId ?? "")"
-        UIPasteboard.general.string = urlString
+        let slug = item.publicWebItemSlug
+        guard !slug.isEmpty else { return }
+        let encoded = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
+        UIPasteboard.general.string = "\(Constants.publicWebItemLinkBaseURL)/item/\(encoded)"
     }
 
     /// Avatar URL for seller: use item's seller avatar if set, else for own product use current user's profile picture.

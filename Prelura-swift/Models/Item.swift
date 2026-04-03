@@ -3,6 +3,8 @@ import Foundation
 struct Item: Identifiable, Hashable {
     let id: UUID
     let productId: String? // Store the actual backend product ID
+    /// Public listing code for `/item/{slug}` URLs (preferred over numeric id when sharing).
+    let listingCode: String?
     let title: String
     let description: String
     let price: Double
@@ -32,6 +34,7 @@ struct Item: Identifiable, Hashable {
     init(
         id: UUID = UUID(),
         productId: String? = nil,
+        listingCode: String? = nil,
         title: String,
         description: String,
         price: Double,
@@ -55,6 +58,7 @@ struct Item: Identifiable, Hashable {
     ) {
         self.id = id
         self.productId = productId
+        self.listingCode = listingCode
         self.title = title
         self.description = description
         self.price = price
@@ -95,10 +99,11 @@ struct Item: Identifiable, Hashable {
     }
     
     /// Returns a copy with updated like state (for optimistic/local updates after toggle like).
-    func with(likeCount: Int? = nil, isLiked: Bool? = nil, status: String? = nil) -> Item {
+    func with(likeCount: Int? = nil, isLiked: Bool? = nil, status: String? = nil, listingCode: String? = nil) -> Item {
         Item(
             id: id,
             productId: productId,
+            listingCode: listingCode ?? self.listingCode,
             title: title,
             description: description,
             price: price,
@@ -150,6 +155,13 @@ struct Item: Identifiable, Hashable {
     
     /// True when product status is SOLD (hide Buy/Offer, show sold state).
     var isSold: Bool { status.uppercased() == "SOLD" }
+
+    /// Path segment for universal links and sharing (`/item/{slug}`).
+    var publicWebItemSlug: String {
+        let lc = listingCode?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !lc.isEmpty { return lc }
+        return productId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
     
     var formattedCondition: String {
         // Map condition enum values to display text (matching Flutter app)

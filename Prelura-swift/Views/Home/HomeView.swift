@@ -45,6 +45,22 @@ struct HomeView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
 
+                            if let err = viewModel.errorMessage, !err.isEmpty {
+                                HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.orange)
+                                    Text(err)
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(Theme.Colors.secondaryText)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(Theme.Spacing.md)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.orange.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .padding(.horizontal, Theme.Spacing.md)
+                            }
+
                             categoryFiltersSection
                             productGridSection
                         }
