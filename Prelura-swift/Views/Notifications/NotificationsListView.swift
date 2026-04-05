@@ -5,11 +5,12 @@ struct NotificationsListView: View {
     @EnvironmentObject private var authService: AuthService
     @Environment(\.dismiss) private var dismiss
     @State private var notifications: [AppNotification] = []
-    @State private var totalNumber: Int = 0
     @State private var isLoading = true
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
-    @State private var page = 1
+    /// Next GraphQL page to request (1-based). Chat rows are filtered out unless stale unread.
+    @State private var nextBackendPage = 1
+    @State private var backendHasMore = true
     private let pageSize = 15
     private let notificationService = NotificationService()
 
@@ -29,7 +30,7 @@ struct NotificationsListView: View {
                         .multilineTextAlignment(.center)
                     Button("Retry") {
                         errorMessage = nil
-                        Task { await load(page: 1) }
+                        Task { await reloadFromStart() }
                     }
                     .foregroundColor(Theme.primaryColor)
                 }
@@ -65,13 +66,13 @@ struct NotificationsListView: View {
                         }
                     }
                     .listRowBackground(Theme.Colors.background)
-                    if notifications.count < totalNumber {
+                    if backendHasMore {
                         HStack {
                             Spacer()
                             if isLoadingMore { ProgressView() }
                             Spacer()
                         }
-                        .onAppear { Task { await loadMore() } }
+                        .onAppear { Task { await loadMoreVisible() } }
                         .listRowBackground(Theme.Colors.background)
                     }
                 }
@@ -83,50 +84,74 @@ struct NotificationsListView: View {
         .navigationTitle(L10n.string("Notifications"))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
-            await load(page: 1)
+            await reloadFromStart()
         }
         .onAppear {
             notificationService.updateAuthToken(authService.authToken)
-            Task { await load(page: 1) }
+            Task { await reloadFromStart() }
         }
         .onChange(of: authService.authToken) { _, newToken in
             notificationService.updateAuthToken(newToken)
         }
+        .onDisappear {
+            NotificationCenter.default.post(name: .preluraInAppNotificationsDidChange, object: nil)
+        }
         .toolbar(.hidden, for: .tabBar)
     }
 
-    private func load(page: Int) async {
-        if page == 1 {
-            isLoading = true
-            errorMessage = nil
-            notifications = []
-        } else {
-            isLoadingMore = true
-        }
-        defer {
-            if page == 1 { isLoading = false } else { isLoadingMore = false }
-        }
+    private func reloadFromStart() async {
+        isLoading = true
+        errorMessage = nil
+        nextBackendPage = 1
+        backendHasMore = true
+        defer { isLoading = false }
         do {
-            notificationService.updateAuthToken(authService.authToken)
-            let (list, total) = try await notificationService.getNotifications(pageCount: pageSize, pageNumber: page)
-            await MainActor.run {
-                if page == 1 {
-                    notifications = list
-                    totalNumber = total
-                    self.page = 1
-                } else {
-                    notifications.append(contentsOf: list)
-                    self.page = page
-                }
-            }
+            try await fetchVisibleBatch(appending: false)
+            await MainActor.run { NotificationCenter.default.post(name: .preluraInAppNotificationsDidChange, object: nil) }
         } catch {
             await MainActor.run { errorMessage = L10n.userFacingError(error) }
         }
     }
 
-    private func loadMore() async {
-        guard !isLoading, !isLoadingMore, notifications.count < totalNumber else { return }
-        await load(page: page + 1)
+    /// Pulls one or more backend pages until `pageSize` visible rows or API exhaustion.
+    private func fetchVisibleBatch(appending: Bool) async throws {
+        notificationService.updateAuthToken(authService.authToken)
+        var collected: [AppNotification] = []
+        var safety = 0
+        while collected.count < pageSize && backendHasMore && safety < 40 {
+            safety += 1
+            let (batch, _) = try await notificationService.getNotifications(pageCount: pageSize, pageNumber: nextBackendPage)
+            backendHasMore = batch.count == pageSize
+            nextBackendPage += 1
+            for n in batch where n.shouldShowOnNotificationsPage() {
+                collected.append(n)
+            }
+            if batch.isEmpty {
+                backendHasMore = false
+                break
+            }
+            if collected.count >= pageSize {
+                break
+            }
+        }
+        await MainActor.run {
+            if appending {
+                notifications.append(contentsOf: collected)
+            } else {
+                notifications = collected
+            }
+        }
+    }
+
+    private func loadMoreVisible() async {
+        guard !isLoading, !isLoadingMore, backendHasMore else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        do {
+            try await fetchVisibleBatch(appending: true)
+        } catch {
+            await MainActor.run { errorMessage = L10n.userFacingError(error) }
+        }
     }
     
     private func markAsRead(_ notification: AppNotification) {
@@ -134,6 +159,7 @@ struct NotificationsListView: View {
         Task {
             _ = try? await notificationService.readNotifications(notificationIds: [idInt])
             await MainActor.run {
+                NotificationCenter.default.post(name: .preluraInAppNotificationsDidChange, object: nil)
                 if let idx = notifications.firstIndex(where: { $0.id == notification.id }) {
                     notifications[idx] = AppNotification(
                         id: notifications[idx].id,
@@ -158,7 +184,7 @@ struct NotificationsListView: View {
                 _ = try await notificationService.deleteNotification(notificationId: idInt)
                 await MainActor.run {
                     notifications.removeAll { $0.id == notification.id }
-                    totalNumber = max(0, totalNumber - 1)
+                    NotificationCenter.default.post(name: .preluraInAppNotificationsDidChange, object: nil)
                 }
             } catch {
                 await MainActor.run { errorMessage = L10n.userFacingError(error) }
@@ -174,6 +200,11 @@ struct NotificationDestinationView: View {
     let notification: AppNotification
     var onMarkRead: (() -> Void)? = nil
     @EnvironmentObject private var authService: AuthService
+
+    /// Backend sets `meta.is_liked_item_sold` when a favorited listing sells (similar picks screen).
+    private var isLikedItemSoldNotification: Bool {
+        notification.meta?["is_liked_item_sold"] == "true"
+    }
 
     @State private var resolvedItem: Item?
     @State private var resolvedUser: User?
@@ -194,13 +225,24 @@ struct NotificationDestinationView: View {
             userService.updateAuthToken(authService.authToken)
             chatService.updateAuthToken(authService.authToken)
             onMarkRead?()
-            Task { await resolve() }
+            if isLikedItemSoldNotification {
+                isLoading = false
+            } else {
+                Task { await resolve() }
+            }
         }
     }
 
     @ViewBuilder
     private var content: some View {
-        if isLoading {
+        if isLikedItemSoldNotification {
+            LikedItemSoldSimilarView(
+                soldProductId: notification.meta?["sold_product_id"] ?? notification.modelId ?? "",
+                categoryId: Int(notification.meta?["category_id"] ?? ""),
+                suggestionQuery: notification.meta?["suggestion_query"] ?? ""
+            )
+            .environmentObject(authService)
+        } else if isLoading {
             VStack(spacing: Theme.Spacing.md) {
                 ProgressView()
                 if let err = loadError {
@@ -322,6 +364,9 @@ struct NotificationDestinationView: View {
 private struct NotificationRowView: View {
     let notification: AppNotification
 
+    /// Slightly larger than `Theme.Typography.caption` (13pt) for readability.
+    private static let lineFontSize: CGFloat = 15
+
     private var senderUsername: String? {
         notification.sender?.username
     }
@@ -330,19 +375,79 @@ private struct NotificationRowView: View {
         PreluraSupportBranding.isSupportSender(username: senderUsername)
     }
 
-    /// Strips the sender's username from the start of the message (e.g. "shinor Transaction paused" → "Transaction paused").
+    /// Legacy payment success copy stored as "SOLD!… Your item sold for £…" — show same short line as new backend.
+    private var isLegacySellerSaleRow: Bool {
+        let g = (notification.modelGroup ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard g.caseInsensitiveCompare("Order") == .orderedSame else { return false }
+        let m = notification.message
+        return m.localizedCaseInsensitiveContains("your item sold")
+            || m.range(of: "SOLD!", options: .caseInsensitive) != nil
+    }
+
+    /// Bell list line: always show who it’s from. If the API omits the username in `message`, prepend `sender.username`.
     private var displayMessage: String {
-        let msg = notification.message
-        guard let username = notification.sender?.username, !username.isEmpty else { return msg }
-        let prefix = username + " "
-        if msg.hasPrefix(prefix) {
-            return String(msg.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        let msg = notification.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isSupportNotification { return msg }
+        if isLegacySellerSaleRow,
+           let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
+            return "\(username) bought your item"
         }
-        return msg
+        guard let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty else {
+            return msg
+        }
+        let lowerMsg = msg.lowercased()
+        let lowerUser = username.lowercased()
+        if lowerMsg.hasPrefix(lowerUser + " ") || lowerMsg == lowerUser {
+            return msg
+        }
+        return "\(username) \(msg)"
+    }
+
+    /// When the line starts with the sender username, return that segment (preserving message casing) and the rest for styled `Text` composition.
+    private var usernamePrefixAndBody: (username: String, body: String)? {
+        if isSupportNotification { return nil }
+        guard let u = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !u.isEmpty else { return nil }
+        let msg = displayMessage
+        guard msg.lowercased().hasPrefix(u.lowercased()) else { return nil }
+        let nameEnd = msg.index(msg.startIndex, offsetBy: u.count)
+        guard nameEnd <= msg.endIndex else { return nil }
+        let namePart = String(msg[..<nameEnd])
+        if nameEnd < msg.endIndex, msg[nameEnd] == " " {
+            let afterSpace = msg.index(after: nameEnd)
+            return (namePart, String(msg[afterSpace...]))
+        }
+        if nameEnd == msg.endIndex { return (namePart, "") }
+        return nil
+    }
+
+    private var notificationBodyFont: Font {
+        .system(size: Self.lineFontSize, weight: .regular)
+    }
+
+    private var notificationUsernameFont: Font {
+        .system(size: Self.lineFontSize, weight: .semibold)
+    }
+
+    @ViewBuilder
+    private var messageText: some View {
+        let primary = Theme.Colors.primaryText
+        if let parts = usernamePrefixAndBody {
+            let tail = parts.body.isEmpty ? "" : " " + parts.body
+            (Text(parts.username).font(notificationUsernameFont).foregroundColor(primary)
+                + Text(tail).font(notificationBodyFont).foregroundColor(primary))
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        } else {
+            Text(displayMessage)
+                .font(notificationBodyFont)
+                .foregroundColor(primary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        }
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.md) {
+        HStack(alignment: .center, spacing: Theme.Spacing.md) {
             if isSupportNotification {
                 PreluraSupportBranding.supportAvatar(size: 44)
             } else if let sender = notification.sender, let urlString = sender.profilePictureUrl, let url = URL(string: urlString) {
@@ -371,22 +476,19 @@ private struct NotificationRowView: View {
                             .foregroundColor(Theme.Colors.secondaryText)
                     )
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(displayMessage)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .lineLimit(2)
+            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                messageText
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if let date = notification.createdAt {
                     Text(formatDate(date))
-                        .font(Theme.Typography.caption)
+                        .font(notificationBodyFont)
                         .foregroundColor(Theme.Colors.secondaryText)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, Theme.Spacing.xs)
+        .padding(.vertical, Theme.Spacing.sm)
     }
 
     private func formatDate(_ date: Date) -> String {
