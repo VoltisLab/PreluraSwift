@@ -23,8 +23,8 @@ struct Constants {
     
     /// Used when inviting contacts (share sheet / SMS). Same landing URL as before rebrand.
     static let inviteFriendsLandingURL = "https://prelura.voltislabs.uk"
-    /// Public web URLs for sharing listings and universal links (`/item/{slug}`: listing code or legacy numeric id). Must match **Associated Domains** / `apple-app-site-association` on this host (production: prelura.uk).
-    static let publicWebItemLinkBaseURL = "https://prelura.uk"
+    /// Public web URLs for sharing listings and universal links (`/item/{slug}`: listing code or legacy numeric id). Must match **Associated Domains** / `apple-app-site-association` on this host (production: wearhouse.co.uk).
+    static let publicWebItemLinkBaseURL = "https://wearhouse.co.uk"
     
     // API Configuration
     static let apiTimeout: TimeInterval = 60.0

@@ -35,7 +35,8 @@ final class AppRouter: ObservableObject {
     /// Hosts that serve `/item/{slug}` universal links for this app. Keep in sync with entitlements **Associated Domains** and the site’s `apple-app-site-association`.
     private static func isWearhouseItemUniversalLinkHost(_ host: String) -> Bool {
         switch host.lowercased() {
-        case "prelura.uk", "www.prelura.uk", "prelura.com", "www.prelura.com":
+        case "wearhouse.co.uk", "www.wearhouse.co.uk",
+             "prelura.uk", "www.prelura.uk", "prelura.com", "www.prelura.com":
             return true
         default:
             return false
@@ -49,7 +50,7 @@ final class AppRouter: ObservableObject {
         return r
     }
 
-    /// Handle URL (e.g. prelura://product/Ab3xY9k2Mn, https://prelura.uk/item/Ab3xY9k2Mn, prelura://user/john).
+    /// Handle URL (e.g. prelura://product/Ab3xY9k2Mn, https://wearhouse.co.uk/item/Ab3xY9k2Mn, prelura://user/john).
     func handle(url: URL) {
         var dest: DeepLinkDestination?
         let scheme = (url.scheme ?? "").lowercased()
