@@ -45,9 +45,9 @@ struct SellFormPrefill: Equatable {
             colours: item.colors,
             sizeId: item.sellSizeBackendId,
             sizeName: sizeName,
-            measurements: nil,
-            material: nil,
-            styles: [],
+            measurements: item.listingMeasurements,
+            material: item.materialSummary,
+            styles: StyleEnumCatalog.normalizedUnique(item.styleTags, maxCount: 2),
             price: listPrice > 0 ? listPrice : nil,
             discountPrice: sale,
             parcelSize: nil

@@ -36,6 +36,11 @@ struct FilteredProductsView: View {
     @State private var didScheduleTryCartOnboardingThisVisit: Bool = false
     /// Try Cart: when on, grid + detail use the shared bag (toolbar bag on Shop All). Defaults on for Shop All so Add to bag is visible immediately.
     @State private var shopAllBagToolbarActive: Bool
+    @State private var showProductsTopChrome = true
+    @State private var lastProductsScrollMinY: CGFloat = 0
+    @State private var productsHeaderHeight: CGFloat = 0
+
+    private let productsScrollSpace = "filteredProductsScroll"
 
     let title: String
     let filterType: ProductFilterType
@@ -137,14 +142,25 @@ struct FilteredProductsView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)
                 .padding(.bottom, (tryCartShoppingEnabled && shopAllBagToolbarActive) ? 88 : 0)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(
+                            key: ScrollMinYPreferenceKey.self,
+                            value: geo.frame(in: .named(productsScrollSpace)).minY
+                        )
+                    }
+                )
             }
+            .coordinateSpace(name: productsScrollSpace)
             .refreshable {
                 await viewModel.refreshAsync()
             }
         }
     }
 
-    var body: some View {
+    /// Search, category/style pills, and filter/sort row — slides off-screen when scrolling down the grid.
+    @ViewBuilder
+    private var filteredProductsFixedHeader: some View {
         VStack(spacing: 0) {
             // Search Bar (same position as feed / discover / inbox)
             DiscoverSearchField(
@@ -351,9 +367,39 @@ struct FilteredProductsView: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
             .background(Theme.Colors.background)
+        }
+    }
 
-            // Product Grid
-            productGridContent
+    private var resolvedProductsHeaderHeight: CGFloat {
+        productsHeaderHeight > 8 ? productsHeaderHeight : 220
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: showProductsTopChrome ? resolvedProductsHeaderHeight : 0)
+                productGridContent
+            }
+            .clipped()
+
+            filteredProductsFixedHeader
+                .background(Theme.Colors.background)
+                .offset(y: showProductsTopChrome ? 0 : -resolvedProductsHeaderHeight)
+                .allowsHitTesting(showProductsTopChrome)
+                .background(
+                    GeometryReader { g in
+                        Color.clear.preference(key: FilteredProductsHeaderHeightKey.self, value: g.size.height)
+                    }
+                )
+        }
+        .onPreferenceChange(FilteredProductsHeaderHeightKey.self) { productsHeaderHeight = $0 }
+        .onPreferenceChange(ScrollMinYPreferenceKey.self) { minY in
+            CollapsingScrollChrome.updateVisibility(
+                scrollMinY: minY,
+                lastY: &lastProductsScrollMinY,
+                isVisible: $showProductsTopChrome
+            )
         }
         .background(Theme.Colors.background)
         .navigationTitle(title)
@@ -437,6 +483,10 @@ struct FilteredProductsView: View {
                     .buttonStyle(PlainTappableButtonStyle())
                 }
             }
+        }
+        .toolbar(showProductsTopChrome ? .visible : .hidden, for: .navigationBar)
+        .onChange(of: viewModel.items.isEmpty) { _, empty in
+            if empty { showProductsTopChrome = true }
         }
         .overlay(alignment: .bottom) {
             if tryCartShoppingEnabled {

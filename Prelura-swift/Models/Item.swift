@@ -30,7 +30,13 @@ struct Item: Identifiable, Hashable {
     let sellCategoryBackendId: String?
     /// GraphQL product size id when available (sell prefill).
     let sellSizeBackendId: Int?
-    
+    /// Parsed from description when measurements were embedded at listing time (see `ListingDescriptionAttachments`).
+    let listingMeasurements: String?
+    /// Material names from API `materials { name }` (joined for display).
+    let materialSummary: String?
+    /// Style enum raw values from API (`styles` and optional legacy `style`).
+    let styleTags: [String]
+
     init(
         id: UUID = UUID(),
         productId: String? = nil,
@@ -54,7 +60,10 @@ struct Item: Identifiable, Hashable {
         isLiked: Bool = false,
         status: String = "ACTIVE",
         sellCategoryBackendId: String? = nil,
-        sellSizeBackendId: Int? = nil
+        sellSizeBackendId: Int? = nil,
+        listingMeasurements: String? = nil,
+        materialSummary: String? = nil,
+        styleTags: [String] = []
     ) {
         self.id = id
         self.productId = productId
@@ -79,6 +88,9 @@ struct Item: Identifiable, Hashable {
         self.status = status
         self.sellCategoryBackendId = sellCategoryBackendId
         self.sellSizeBackendId = sellSizeBackendId
+        self.listingMeasurements = listingMeasurements
+        self.materialSummary = materialSummary
+        self.styleTags = styleTags
     }
     
     // Hashable conformance
@@ -123,7 +135,10 @@ struct Item: Identifiable, Hashable {
             isLiked: isLiked ?? self.isLiked,
             status: status ?? self.status,
             sellCategoryBackendId: sellCategoryBackendId,
-            sellSizeBackendId: sellSizeBackendId
+            sellSizeBackendId: sellSizeBackendId,
+            listingMeasurements: listingMeasurements,
+            materialSummary: materialSummary,
+            styleTags: styleTags
         )
     }
 

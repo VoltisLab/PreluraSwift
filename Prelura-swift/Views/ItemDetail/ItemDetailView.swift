@@ -260,6 +260,13 @@ struct ItemDetailView: View {
         displayedItem ?? item
     }
 
+    /// Deduped style tags for display (avoids duplicate labels when API repeats `style` and `styles`).
+    private var dedupedStyleDisplayLine: String? {
+        let tags = StyleEnumCatalog.normalizedUnique(effectiveItem.styleTags, maxCount: nil)
+        guard !tags.isEmpty else { return nil }
+        return tags.map { StyleEnumCatalog.displayName(for: $0) }.joined(separator: ", ")
+    }
+
     // MARK: - Product options sheet (3-dot menu; modal list design like ProfileMenuView)
     private var productOptionsSheet: some View {
         ProductOptionsSheet(
@@ -662,9 +669,22 @@ struct ItemDetailView: View {
             attributeRow(label: "Category", value: effectiveItem.categoryName ?? effectiveItem.category.name)
             if let brandName = effectiveItem.brand {
                 NavigationLink(destination: FilteredProductsView(title: brandName, filterType: .byBrand(brandName: brandName), authService: authService)) {
-                    attributeRow(label: "Material", value: brandName, valueColor: Theme.primaryColor)
+                    attributeRow(label: "Brand", value: brandName, valueColor: Theme.primaryColor)
                 }
                 .buttonStyle(PlainTappableButtonStyle())
+            }
+            if let material = effectiveItem.materialSummary?.trimmingCharacters(in: .whitespacesAndNewlines), !material.isEmpty {
+                attributeRow(label: "Material", value: material)
+            }
+            if let styleLine = dedupedStyleDisplayLine {
+                attributeRow(label: "Style", value: styleLine)
+            }
+            if let meas = effectiveItem.listingMeasurements?.trimmingCharacters(in: .whitespacesAndNewlines), !meas.isEmpty {
+                let measOneLine = meas.split(whereSeparator: \.isNewline)
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: ", ")
+                attributeRow(label: "Measurements", value: measOneLine)
             }
             if let size = effectiveItem.size {
                 let displaySize = sizeDisplayValue(size)
@@ -690,12 +710,13 @@ struct ItemDetailView: View {
             Text(value)
                 .font(Theme.Typography.body)
                 .foregroundColor(valueColor ?? Theme.Colors.primaryText)
+                .multilineTextAlignment(.trailing)
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.lg)
         .overlay(ContentDivider(), alignment: .bottom)
     }
-    
+
     private func formatDate(_ date: Date) -> String {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
@@ -732,25 +753,26 @@ struct ItemDetailView: View {
     
     private var membersItemsTab: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            // Shop Bundles Section
-            HStack {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text(L10n.string("Shop bundles"))
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.primaryText)
-                    Text(L10n.string("Save on postage"))
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.secondaryText)
+            if effectiveItem.seller.isMultibuyEnabled {
+                HStack {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        Text(L10n.string("Shop Multibuy"))
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.primaryText)
+                        Text(L10n.string("Save on postage"))
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                    }
+                    Spacer()
+                    PrimaryGlassButton(L10n.string("multibuy"), action: {
+                        // Multibuy entry (parity with seller multi-buy flow when wired)
+                    })
+                    .fixedSize(horizontal: true, vertical: false)
                 }
-                Spacer()
-                PrimaryGlassButton("Create Bundle", action: {
-                    // Create bundle
-                })
-                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
             }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.md)
-            
+
             // Product Grid
             if viewModel.isLoadingMember {
                 ProgressView()

@@ -19,13 +19,7 @@ struct WearhouseWordmarkView: View {
                     .foregroundStyle(Theme.primaryColor)
             case .toolbar:
                 wordmark(metrics: metrics)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Theme.Colors.primaryText, Theme.Colors.primaryText.opacity(0.9)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                    .foregroundStyle(Theme.primaryColor)
             case .login:
                 wordmark(metrics: metrics)
                     .foregroundStyle(
@@ -41,7 +35,7 @@ struct WearhouseWordmarkView: View {
 
     private func metrics(for style: Style) -> (fontSize: CGFloat, tracking: CGFloat) {
         switch style {
-        case .toolbar: return (11, 2.8)
+        case .toolbar: return (16, 4.0)
         case .login: return (17.5, 4.2)
         case .splash: return (28, 6.5)
         }

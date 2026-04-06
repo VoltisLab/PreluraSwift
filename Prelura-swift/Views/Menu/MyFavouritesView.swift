@@ -23,11 +23,15 @@ struct MyFavouritesView: View {
         GridItem(.flexible(), spacing: Theme.Spacing.md),
         GridItem(.flexible(), spacing: Theme.Spacing.md)
     ]
-    private let photoColumns = [
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2)
-    ]
+    /// Tight spacing for an Instagram-style profile grid (edge-to-edge).
+    private let lookbookGridSpacing: CGFloat = 1
+    private var lookbookGridColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: lookbookGridSpacing),
+            GridItem(.flexible(), spacing: lookbookGridSpacing),
+            GridItem(.flexible(), spacing: lookbookGridSpacing)
+        ]
+    }
 
     private var isProductsTab: Bool { favouritesSegment == 0 }
 
@@ -51,7 +55,7 @@ struct MyFavouritesView: View {
         VStack(spacing: 0) {
             Picker("", selection: $favouritesSegment) {
                 Text(L10n.string("Products")).tag(0)
-                Text(L10n.string("Photos")).tag(1)
+                Text(L10n.string("Lookbook")).tag(1)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, Theme.Spacing.md)
@@ -60,7 +64,7 @@ struct MyFavouritesView: View {
 
             DiscoverSearchField(
                 text: $searchText,
-                placeholder: isProductsTab ? L10n.string("Search favourites") : L10n.string("Search saved photos"),
+                placeholder: isProductsTab ? L10n.string("Search favourites") : L10n.string("Search saved lookbooks"),
                 topPadding: Theme.Spacing.xs
             )
 
@@ -210,22 +214,26 @@ struct MyFavouritesView: View {
             Spacer()
         } else {
             ScrollView {
-                LazyVGrid(columns: photoColumns, alignment: .leading, spacing: 2, pinnedViews: []) {
+                LazyVGrid(columns: lookbookGridColumns, alignment: .leading, spacing: lookbookGridSpacing, pinnedViews: []) {
                     ForEach(filteredSavedPhotos) { photo in
-                        NavigationLink(destination: SavedLookbookPhotoDetailView(photo: photo)) {
-                            savedPhotoCell(photo)
+                        NavigationLink(
+                            destination: SavedLookbookFavoritesFeedView(
+                                orderedPhotoIds: filteredSavedPhotos.map(\.id),
+                                initialPhotoId: photo.id
+                            )
+                            .environmentObject(savedLookbookFavorites)
+                        ) {
+                            savedPhotoGridCell(photo)
                         }
                         .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.lg)
             }
         }
     }
 
-    private func savedPhotoCell(_ photo: SavedLookbookPhoto) -> some View {
+    private func savedPhotoGridCell(_ photo: SavedLookbookPhoto) -> some View {
         Group {
             if let url = URL(string: photo.imageUrl) {
                 AsyncImage(url: url) { phase in
@@ -244,6 +252,7 @@ struct MyFavouritesView: View {
         }
         .aspectRatio(1, contentMode: .fill)
         .clipped()
+        .contentShape(Rectangle())
     }
 
     /// Same as Shop All Try Cart: tap opens `ShopAllBagView` → Checkout → `PaymentView`.
@@ -330,68 +339,118 @@ struct MyFavouritesView: View {
     }
 }
 
-// MARK: - Saved Lookbook photo detail
+// MARK: - Saved Lookbook feed (vertical scroll from grid tap)
 
-private struct SavedLookbookPhotoDetailView: View {
-    let photo: SavedLookbookPhoto
+private struct SavedLookbookFavoritesFeedView: View {
+    /// Order matches the favourites grid / search results; rows resolve from the store so removes update live.
+    let orderedPhotoIds: [String]
+    let initialPhotoId: String?
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
-    @Environment(\.dismiss) private var dismiss
+
+    private let feedBlockSpacing: CGFloat = 16
+
+    private var photos: [SavedLookbookPhoto] {
+        let byId = Dictionary(uniqueKeysWithValues: savedLookbookFavorites.photos.map { ($0.id, $0) })
+        return orderedPhotoIds.compactMap { byId[$0] }
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                if let url = URL(string: photo.imageUrl) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img):
-                            img.resizable().scaledToFit()
-                        case .failure:
-                            VStack(spacing: Theme.Spacing.sm) {
-                                Image(systemName: "photo")
-                                    .font(.system(size: 40))
-                                Text(L10n.string("Image unavailable"))
-                                    .font(Theme.Typography.caption)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .foregroundStyle(Theme.Colors.secondaryText)
-                            .padding(.vertical, Theme.Spacing.xl)
-                        case .empty:
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, Theme.Spacing.xl)
-                        @unknown default:
-                            EmptyView()
-                        }
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: feedBlockSpacing) {
+                    ForEach(photos) { photo in
+                        savedLookbookFeedBlock(photo)
+                            .id(photo.id)
                     }
-                    .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.menuContainerCornerRadius, style: .continuous))
                 }
+                .padding(.bottom, Theme.Spacing.xl)
+            }
+            .onAppear {
+                guard let id = initialPhotoId else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        proxy.scrollTo(id, anchor: .top)
+                    }
+                }
+            }
+        }
+        .background(Theme.Colors.background)
+        .navigationTitle(L10n.string("Lookbook"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
 
+    @ViewBuilder
+    private func savedLookbookFeedBlock(_ photo: SavedLookbookPhoto) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(spacing: Theme.Spacing.sm) {
+                Circle()
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: 36, height: 36)
+                    .overlay {
+                        Text(String(photo.posterUsername.prefix(1)).uppercased())
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
                 Text("@\(photo.posterUsername)")
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
-
-                if let cap = photo.caption?.trimmingCharacters(in: .whitespacesAndNewlines), !cap.isEmpty {
-                    Text(cap)
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-
-                Button(role: .destructive) {
-                    HapticManager.tap()
-                    savedLookbookFavorites.remove(id: photo.id)
-                    dismiss()
-                } label: {
-                    Text(L10n.string("Remove from favourites"))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .padding(.top, Theme.Spacing.sm)
+                Spacer(minLength: 0)
             }
-            .padding(Theme.Spacing.md)
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.xs)
+
+            if let url = URL(string: photo.imageUrl) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
+                    case .failure:
+                        feedImagePlaceholder
+                    case .empty:
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, Theme.Spacing.xxl)
+                    @unknown default:
+                        feedImagePlaceholder
+                    }
+                }
+            } else {
+                feedImagePlaceholder
+            }
+
+            if let cap = photo.caption?.trimmingCharacters(in: .whitespacesAndNewlines), !cap.isEmpty {
+                Text(cap)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .padding(.horizontal, Theme.Spacing.md)
+            }
+
+            Button(role: .destructive) {
+                HapticManager.tap()
+                savedLookbookFavorites.remove(id: photo.id)
+            } label: {
+                Text(L10n.string("Remove from favourites"))
+                    .font(Theme.Typography.caption)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.bottom, Theme.Spacing.sm)
         }
         .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("Photo"))
-        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var feedImagePlaceholder: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            Image(systemName: "photo")
+                .font(.system(size: 40))
+            Text(L10n.string("Image unavailable"))
+                .font(Theme.Typography.caption)
+        }
+        .frame(maxWidth: .infinity)
+        .foregroundStyle(Theme.Colors.secondaryText)
+        .padding(.vertical, Theme.Spacing.xl)
+        .background(Theme.Colors.secondaryBackground)
     }
 }

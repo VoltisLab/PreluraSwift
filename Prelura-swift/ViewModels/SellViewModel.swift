@@ -70,10 +70,12 @@ class SellViewModel: ObservableObject {
                 // 4. Parcel size enum (Small -> SMALL, etc.)
                 let parcelSizeEnum = Self.mapParcelSizeToEnum(parcelSize)
 
-                // 5. Create product
+                // 5. Create product (optional measurements embedded in description; see ListingDescriptionAttachments)
+                let descriptionForApi = ListingDescriptionAttachments.embedMeasurements(description, measurements: measurements)
+                let styleRaws = StyleSelectionView.normalizedUniqueStyleRaws(styles)
                 _ = try await productService.createProduct(
                     name: title,
-                    description: description,
+                    description: descriptionForApi,
                     price: price,
                     imageUrl: imageUrl,
                     categoryId: categoryIdInt,
@@ -84,8 +86,8 @@ class SellViewModel: ObservableObject {
                     brandId: brandId,
                     customBrand: customBrand,
                     materialIds: materialIds,
-                    style: styles.first,
-                    styles: styles.count > 1 ? Array(styles.prefix(2)) : (styles.isEmpty ? nil : styles),
+                    style: styleRaws.first,
+                    styles: styleRaws.count > 1 ? Array(styleRaws.prefix(2)) : nil,
                     sizeId: sizeId,
                     status: "ACTIVE"
                 )
@@ -158,10 +160,12 @@ class SellViewModel: ObservableObject {
                     imageAction = "UPDATE_INDEX"
                 }
 
+                let descriptionForApi = ListingDescriptionAttachments.embedMeasurements(description, measurements: measurements)
+                let styleRaws = StyleSelectionView.normalizedUniqueStyleRaws(styles)
                 try await productService.updateProduct(
                     productId: productId,
                     name: title,
-                    description: description,
+                    description: descriptionForApi,
                     price: price,
                     categoryId: categoryIdInt,
                     condition: condition.isEmpty ? nil : condition,
@@ -171,8 +175,8 @@ class SellViewModel: ObservableObject {
                     brandId: brandId,
                     customBrand: customBrand,
                     materialIds: materialIds,
-                    style: styles.first,
-                    styles: styles.count > 1 ? Array(styles.prefix(2)) : (styles.isEmpty ? nil : styles),
+                    style: styleRaws.first,
+                    styles: styleRaws.count > 1 ? Array(styleRaws.prefix(2)) : nil,
                     sizeId: sizeId,
                     imagePairs: imagePairs,
                     imageAction: imageAction

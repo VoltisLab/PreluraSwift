@@ -52,6 +52,7 @@ class ProductService: ObservableObject {
               displayName
               profilePictureUrl
               isVacationMode
+              isMultibuyEnabled
               meta
             }
             category {
@@ -59,6 +60,9 @@ class ProductService: ObservableObject {
               name
             }
             color
+            materials { id name }
+            styles
+            style
             status
           }
           allProductsTotalNumber
@@ -184,12 +188,13 @@ class ProductService: ObservableObject {
                 guard let lc = product.listingCode?.trimmingCharacters(in: .whitespacesAndNewlines), !lc.isEmpty else { return nil }
                 return lc
             }()
+            let (descBody, measNote) = ListingDescriptionAttachments.splitMeasurements(from: product.description)
             return Item(
                 id: Item.id(fromProductId: idString),
                 productId: idString,
                 listingCode: listingCode,
                 title: product.name ?? "",
-                description: product.description ?? "",
+                description: descBody,
                 price: finalPrice,
                 originalPrice: itemOriginalPrice,
                 imageURLs: imageURLs,
@@ -203,10 +208,11 @@ class ProductService: ObservableObject {
                     displayName: product.seller?.displayName ?? "",
                     avatarURL: product.seller?.profilePictureUrl,
                     isVacationMode: product.seller?.isVacationMode ?? false,
+                    isMultibuyEnabled: product.seller?.isMultibuyEnabled ?? false,
                     postageOptions: SellerPostageOptions.from(decoded: product.seller?.meta?.value?.postage)
                 ),
                 condition: product.condition ?? "",
-                size: product.size?.name,
+                size: product.size?.name ?? "One Size",
                 brand: product.brand?.name ?? product.customBrand,
                 colors: product.color ?? [],
                 likeCount: product.likes ?? 0,
@@ -215,7 +221,10 @@ class ProductService: ObservableObject {
                 isLiked: product.userLiked ?? false,
                 status: product.status ?? "ACTIVE",
                 sellCategoryBackendId: Self.graphQLStringId(product.category?.id),
-                sellSizeBackendId: Self.graphQLIntId(product.size?.id)
+                sellSizeBackendId: Self.graphQLIntId(product.size?.id),
+                listingMeasurements: measNote,
+                materialSummary: ProductListingFields.materialSummary(from: product.materials),
+                styleTags: ProductListingFields.mergedStyleTags(styles: product.styles, legacyStyle: product.style)
             )
         }
     }
@@ -272,9 +281,9 @@ class ProductService: ObservableObject {
             size { id name }
             brand { id name }
             customBrand likes views userLiked
-            seller { id username displayName profilePictureUrl isVacationMode meta }
+            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta }
             category { id name }
-            color status
+            color materials { id name } styles style status
           }
         }
         """
@@ -317,9 +326,9 @@ class ProductService: ObservableObject {
             size { id name }
             brand { id name }
             customBrand likes views userLiked
-            seller { id username displayName profilePictureUrl isVacationMode meta }
+            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta }
             category { id name }
-            color status
+            color materials { id name } styles style status
           }
         }
         """
@@ -800,9 +809,13 @@ class ProductService: ObservableObject {
               likes
               views
               userLiked
-            seller { id username displayName profilePictureUrl isVacationMode meta }
+            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta }
             category { id name }
             color
+            materials { id name }
+            styles
+            style
+            status
             }
           }
           likedProductsTotalNumber
@@ -1131,6 +1144,10 @@ struct ProductData: Decodable {
     let seller: SellerData?
     let category: CategoryData?
     let status: String?
+    /// ProductType.materials: [BrandType]
+    let materials: [BrandData]?
+    let styles: [String]?
+    let style: String?
 }
 
 struct SizeData: Decodable {
@@ -1155,6 +1172,8 @@ struct SellerData: Decodable {
     let displayName: String?
     let profilePictureUrl: String?
     let isVacationMode: Bool?
+    /// Seller has multi-buy discounts enabled (product `seller` fragment).
+    let isMultibuyEnabled: Bool?
     /// Backend may send meta as object or JSON string; use SafeMetaDecode so decoding never fails.
     let meta: SafeMetaDecode?
 }
@@ -1253,9 +1272,12 @@ extension ProductService {
             likes
             views
             userLiked
-            seller { id username displayName profilePictureUrl isVacationMode meta }
+            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta }
             category { id name }
             color
+            materials { id name }
+            styles
+            style
             status
           }
         }
@@ -1309,6 +1331,7 @@ extension ProductService {
               displayName
               profilePictureUrl
               isVacationMode
+              isMultibuyEnabled
               meta
             }
             category {
@@ -1316,6 +1339,9 @@ extension ProductService {
               name
             }
             color
+            materials { id name }
+            styles
+            style
             status
           }
         }
@@ -1334,112 +1360,8 @@ extension ProductService {
         guard let products = response.recentlyViewedProducts else {
             return []
         }
-        
-        return products.compactMap { product in
-            // Extract product id
-            let idString: String
-            if let productId = product.id {
-                if let intValue = productId.value as? Int {
-                    idString = String(intValue)
-                } else if let stringValue = productId.value as? String {
-                    idString = stringValue
-                } else {
-                    idString = String(describing: productId.value)
-                }
-            } else {
-                idString = UUID().uuidString
-            }
-            
-            // Extract seller id (string for UUID, int for backend userId / multibuy)
-            let sellerIdString: String
-            let sellerUserIdInt: Int?
-            if let sellerId = product.seller?.id {
-                if let intValue = sellerId.value as? Int {
-                    sellerIdString = String(intValue)
-                    sellerUserIdInt = intValue
-                } else if let stringValue = sellerId.value as? String {
-                    sellerIdString = stringValue
-                    sellerUserIdInt = Int(stringValue)
-                } else {
-                    sellerIdString = String(describing: sellerId.value)
-                    sellerUserIdInt = nil
-                }
-            } else {
-                sellerIdString = ""
-                sellerUserIdInt = nil
-            }
-            
-            // Parse discountPrice (it's a percentage string, e.g., "20" for 20% off)
-            let originalPrice = product.price ?? 0.0
-            let discountPercentage: Double? = {
-                guard let discountPriceStr = product.discountPrice,
-                      let discount = Double(discountPriceStr),
-                      discount > 0 else {
-                    return nil
-                }
-                return discount
-            }()
-            
-            // Calculate final price: if discount exists, apply it; otherwise use original price
-            let finalPrice: Double
-            let itemOriginalPrice: Double?
-            if let discount = discountPercentage {
-                // Calculate discounted price: originalPrice - (originalPrice * discount / 100)
-                finalPrice = originalPrice - (originalPrice * discount / 100)
-                itemOriginalPrice = originalPrice
-            } else {
-                finalPrice = originalPrice
-                itemOriginalPrice = nil
-            }
-            
-            // Extract image URLs from imagesUrl array (which contains JSON strings)
-            let imageURLs = extractImageURLs(from: product.imagesUrl)
-            let listDisplayURL = ProductListImageURL.preferredString(fromImagesUrlArray: product.imagesUrl) ?? imageURLs.first
 
-            // Get brand name (use customBrand as fallback)
-            let brandName = product.brand?.name ?? product.customBrand
-            
-            // Get size
-            let sizeName = product.size?.name ?? "One Size"
-            
-            let listingCode: String? = {
-                guard let lc = product.listingCode?.trimmingCharacters(in: .whitespacesAndNewlines), !lc.isEmpty else { return nil }
-                return lc
-            }()
-            return Item(
-                id: Item.id(fromProductId: idString),
-                productId: idString,
-                listingCode: listingCode,
-                title: product.name ?? "",
-                description: product.description ?? "",
-                price: finalPrice,
-                originalPrice: itemOriginalPrice,
-                imageURLs: imageURLs,
-                listDisplayImageURL: listDisplayURL,
-                category: Category.fromName(product.category?.name ?? ""),
-                categoryName: product.category?.name, // Store actual category name from API (subcategory)
-                seller: User(
-                    id: UUID(uuidString: sellerIdString) ?? UUID(),
-                    userId: sellerUserIdInt,
-                    username: product.seller?.username ?? "",
-                    displayName: product.seller?.displayName ?? "",
-                    avatarURL: product.seller?.profilePictureUrl,
-                    isVacationMode: product.seller?.isVacationMode ?? false,
-                    postageOptions: SellerPostageOptions.from(decoded: product.seller?.meta?.value?.postage)
-                ),
-                condition: product.condition ?? "UNKNOWN",
-                size: sizeName,
-                brand: brandName,
-                colors: product.color ?? [],
-                likeCount: product.likes ?? 0,
-                views: product.views ?? 0,
-                createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),
-                isLiked: product.userLiked ?? false,
-                status: product.status ?? "ACTIVE",
-                sellCategoryBackendId: Self.graphQLStringId(product.category?.id),
-                sellSizeBackendId: Self.graphQLIntId(product.size?.id)
-            )
-        }
+        return products.compactMap { mapProductToItem(product: $0) }
     }
 
     /// Record product view for recently viewed. Call when user opens product detail. Matches backend mutation used by Flutter. Ignores errors so missing/different schema does not break the app.
@@ -1491,6 +1413,7 @@ extension ProductService {
               displayName
               profilePictureUrl
               isVacationMode
+              isMultibuyEnabled
               meta
             }
             category {
@@ -1498,6 +1421,9 @@ extension ProductService {
               name
             }
             color
+            materials { id name }
+            styles
+            style
             status
           }
         }
@@ -1597,7 +1523,7 @@ extension ProductService {
         if let s = v as? String { return Int(s.trimmingCharacters(in: .whitespacesAndNewlines)) }
         return nil
     }
-    
+
     private func mapProductToItem(product: ProductData) -> Item? {
         // Extract product id
         let idString: String
@@ -1670,12 +1596,14 @@ extension ProductService {
             return lc
         }()
 
+        let (descBody, measNote) = ListingDescriptionAttachments.splitMeasurements(from: product.description)
+
         return Item(
             id: Item.id(fromProductId: idString),
             productId: idString,
             listingCode: listingCode,
             title: product.name ?? "",
-            description: product.description ?? "",
+            description: descBody,
             price: finalPrice,
             originalPrice: itemOriginalPrice,
             imageURLs: imageURLs,
@@ -1689,6 +1617,7 @@ extension ProductService {
                 displayName: product.seller?.displayName ?? "",
                 avatarURL: product.seller?.profilePictureUrl,
                 isVacationMode: product.seller?.isVacationMode ?? false,
+                isMultibuyEnabled: product.seller?.isMultibuyEnabled ?? false,
                 postageOptions: SellerPostageOptions.from(decoded: product.seller?.meta?.value?.postage)
             ),
             condition: product.condition ?? "UNKNOWN",
@@ -1701,7 +1630,10 @@ extension ProductService {
             isLiked: product.userLiked ?? false,
             status: product.status ?? "ACTIVE",
             sellCategoryBackendId: Self.graphQLStringId(product.category?.id),
-            sellSizeBackendId: Self.graphQLIntId(product.size?.id)
+            sellSizeBackendId: Self.graphQLIntId(product.size?.id),
+            listingMeasurements: measNote,
+            materialSummary: ProductListingFields.materialSummary(from: product.materials),
+            styleTags: ProductListingFields.mergedStyleTags(styles: product.styles, legacyStyle: product.style)
         )
     }
 }

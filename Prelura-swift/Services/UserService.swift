@@ -1646,6 +1646,7 @@ class UserService: ObservableObject {
               displayName
               profilePictureUrl
               isVacationMode
+              isMultibuyEnabled
             }
             category {
               id
@@ -1653,6 +1654,12 @@ class UserService: ObservableObject {
             }
             color
             status
+            materials {
+              id
+              name
+            }
+            styles
+            style
           }
         }
         """
@@ -1738,12 +1745,14 @@ class UserService: ObservableObject {
                 return lc
             }()
 
+            let (descriptionBody, measurementsNote) = ListingDescriptionAttachments.splitMeasurements(from: product.description)
+
             return Item(
                 id: Item.id(fromProductId: idString),
                 productId: idString,
                 listingCode: listingCode,
                 title: product.name ?? "",
-                description: product.description ?? "",
+                description: descriptionBody,
                 price: finalPrice,
                 originalPrice: itemOriginalPrice,
                 imageURLs: imageURLs,
@@ -1756,7 +1765,8 @@ class UserService: ObservableObject {
                     username: product.seller?.username ?? "",
                     displayName: product.seller?.displayName ?? "",
                     avatarURL: product.seller?.profilePictureUrl,
-                    isVacationMode: product.seller?.isVacationMode ?? false
+                    isVacationMode: product.seller?.isVacationMode ?? false,
+                    isMultibuyEnabled: product.seller?.isMultibuyEnabled ?? false
                 ),
                 condition: product.condition ?? "",
                 size: product.size?.name,
@@ -1768,7 +1778,10 @@ class UserService: ObservableObject {
                 isLiked: product.userLiked ?? false,
                 status: product.status ?? "ACTIVE",
                 sellCategoryBackendId: Self.graphQLStringId(product.category?.id),
-                sellSizeBackendId: Self.graphQLIntId(product.size?.id)
+                sellSizeBackendId: Self.graphQLIntId(product.size?.id),
+                listingMeasurements: measurementsNote,
+                materialSummary: ProductListingFields.materialSummary(from: product.materials),
+                styleTags: ProductListingFields.mergedStyleTags(styles: product.styles, legacyStyle: product.style)
             )
         }
     }

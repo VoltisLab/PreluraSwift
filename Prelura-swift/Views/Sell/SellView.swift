@@ -117,7 +117,7 @@ struct SellView: View {
                                 price: price ?? 0.0,
                                 brand: brand ?? "",
                                 condition: condition ?? "",
-                                size: measurements ?? "",
+                                size: sizeName ?? "",
                                 categoryId: category?.id,
                                 categoryName: category?.name,
                                 newListingImages: selectedImages,
@@ -137,7 +137,7 @@ struct SellView: View {
                                 price: price ?? 0.0,
                                 brand: brand ?? "",
                                 condition: condition ?? "",
-                                size: measurements ?? "",
+                                size: sizeName ?? "",
                                 categoryId: category?.id,
                                 categoryName: category?.name,
                                 images: selectedImages,
@@ -319,7 +319,7 @@ struct SellView: View {
         sizeName = p.sizeName
         measurements = p.measurements
         material = p.material
-        styles = p.styles
+        styles = StyleSelectionView.normalizedUniqueStyleRaws(p.styles)
         price = p.price
         discountPrice = p.discountPrice
         parcelSize = p.parcelSize
@@ -340,7 +340,7 @@ struct SellView: View {
         sizeName = d.sizeName
         measurements = d.measurements
         material = d.material
-        styles = d.styles
+        styles = StyleSelectionView.normalizedUniqueStyleRaws(d.styles)
         price = d.price
         discountPrice = d.discountPrice
         parcelSize = d.parcelSize
@@ -455,6 +455,9 @@ struct SellView: View {
             matching: .images
         )
         .onChange(of: selectedPhotos) { _, newItems in
+            // Clearing `selectedPhotos` after import triggers this again with `[]`; without this guard,
+            // `selectedImages = loaded` would wipe the images we just applied.
+            guard !newItems.isEmpty else { return }
             Task {
                 var loaded: [UIImage] = []
                 for item in newItems {
@@ -466,7 +469,7 @@ struct SellView: View {
                 await MainActor.run {
                     if isEditMode, !loaded.isEmpty {
                         selectedImages.append(contentsOf: loaded)
-                    } else {
+                    } else if !loaded.isEmpty {
                         selectedImages = loaded
                     }
                     selectedPhotos = []
@@ -1540,38 +1543,36 @@ struct SizeSelectionView: View {
 // MARK: - Measurement entry for structured UI
 private struct MeasurementRow: Identifiable {
     var id = UUID()
-    var label: String
+    /// When non-nil, label is fixed to this preset (not editable). When nil, user edits `customLabel` ("Custom" mode).
+    var presetLabel: String?
+    var customLabel: String
     var value: String
-    var unit: String // "" for none, "in", "cm"
+    /// `"in"` (default) or `"cm"`.
+    var unit: String
 }
 
-// MARK: - Measurements View (structured: label + value + unit; presets + custom)
+// MARK: - Measurements View (preset labels locked; custom editable; in/cm unit picker)
 struct MeasurementsView: View {
     @Binding var measurements: String?
     @Environment(\.presentationMode) var presentationMode
     @State private var entries: [MeasurementRow] = []
-    @FocusState private var focusedRowId: UUID?
 
     private static let presetLabels = [
         "Chest", "Waist", "Hip", "Length", "Sleeve", "Inseam", "Shoulder", "Neck", "Size"
     ]
-    private static let unitOptions = ["", "in", "cm"]
+    private static let unitOptions = ["in", "cm"]
 
     var body: some View {
         VStack(spacing: 0) {
-            if entries.isEmpty {
-                emptyState
-            } else {
-                List {
-                    ForEach(entries) { entry in
-                        measurementRowView(entry)
-                    }
-                    .onDelete(perform: deleteEntries)
-                    .listRowBackground(Theme.Colors.background)
+            List {
+                ForEach(Array(entries.enumerated()), id: \.element.id) { index, _ in
+                    measurementRowView(at: index)
                 }
-                .listStyle(PlainListStyle())
-                .scrollContentBackground(.hidden)
+                .onDelete(perform: deleteEntries)
+                .listRowBackground(Theme.Colors.background)
             }
+            .listStyle(PlainListStyle())
+            .scrollContentBackground(.hidden)
             addButton
         }
         .background(Theme.Colors.background)
@@ -1589,75 +1590,91 @@ struct MeasurementsView: View {
         }
         .onAppear {
             parseFromBinding()
+            if entries.isEmpty {
+                entries = [MeasurementRow(presetLabel: "Chest", customLabel: "", value: "", unit: "in")]
+            }
         }
         .onDisappear {
             commitToBinding()
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "ruler")
-                .font(.system(size: 44))
-                .foregroundColor(Theme.Colors.secondaryText)
-            Text(L10n.string("Add measurements like chest, waist, length"))
-                .font(Theme.Typography.subheadline)
-                .foregroundColor(Theme.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Spacing.xxl)
-    }
-
-    private func measurementRowView(_ entry: MeasurementRow) -> some View {
-        let binding = binding(for: entry)
+    private func measurementRowView(at index: Int) -> some View {
+        let rowId = entries[index].id
         return HStack(alignment: .center, spacing: Theme.Spacing.sm) {
-            Menu {
-                ForEach(Self.presetLabels, id: \.self) { preset in
-                    Button(preset) { binding.label.wrappedValue = preset }
-                }
-                Button(L10n.string("Custom…")) { binding.label.wrappedValue = "" }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(entry.label.isEmpty ? L10n.string("Label") : entry.label)
-                        .font(Theme.Typography.body)
-                        .foregroundColor(entry.label.isEmpty ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 12))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                }
-                .frame(width: 100, alignment: .leading)
-            }
-            TextField(L10n.string("Value"), text: PriceFieldFilter.binding(get: { binding.value.wrappedValue }, set: { binding.value.wrappedValue = $0 }))
+            if let preset = entries[index].presetLabel {
+                Text(preset)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .frame(minWidth: 72, maxWidth: 140, alignment: .leading)
+            } else {
+                TextField(L10n.string("Label"), text: Binding(
+                    get: { entries[index].customLabel },
+                    set: { newVal in
+                        var e = entries[index]
+                        e.customLabel = newVal
+                        entries[index] = e
+                    }
+                ))
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.primaryText)
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
-                .frame(maxWidth: .infinity)
-            Picker("", selection: binding.unit) {
-                ForEach(Self.unitOptions, id: \.self) { opt in
-                    Text(unitDisplay(opt)).tag(opt)
+                .frame(minWidth: 72, maxWidth: 140, alignment: .leading)
+            }
+            Menu {
+                ForEach(Self.presetLabels, id: \.self) { preset in
+                    Button(preset) {
+                        guard let i = entries.firstIndex(where: { $0.id == rowId }) else { return }
+                        var e = entries[i]
+                        e.presetLabel = preset
+                        e.customLabel = ""
+                        entries[i] = e
+                    }
+                }
+                Button(L10n.string("Custom")) {
+                    guard let i = entries.firstIndex(where: { $0.id == rowId }) else { return }
+                    var e = entries[i]
+                    e.presetLabel = nil
+                    entries[i] = e
+                }
+            } label: {
+                Image(systemName: "chevron.down.circle.fill")
+                    .font(.system(size: 22))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Theme.Colors.secondaryText)
+            }
+            .accessibilityLabel(L10n.string("Preset label"))
+            TextField(
+                L10n.string("Value"),
+                text: PriceFieldFilter.binding(
+                    get: { entries[index].value },
+                    set: { newVal in
+                        var e = entries[index]
+                        e.value = newVal
+                        entries[index] = e
+                    }
+                )
+            )
+            .font(Theme.Typography.body)
+            .foregroundColor(Theme.Colors.primaryText)
+            .keyboardType(.decimalPad)
+            .multilineTextAlignment(.trailing)
+            .frame(maxWidth: .infinity)
+            Picker("", selection: Binding(
+                get: { entries[index].unit },
+                set: { newUnit in
+                    var e = entries[index]
+                    e.unit = newUnit
+                    entries[index] = e
+                }
+            )) {
+                ForEach(Self.unitOptions, id: \.self) { u in
+                    Text(u).tag(u)
                 }
             }
             .pickerStyle(.menu)
-            .frame(width: 56)
+            .frame(width: 56, alignment: .trailing)
         }
         .padding(.vertical, Theme.Spacing.xs)
-    }
-
-    private func binding(for entry: MeasurementRow) -> (label: Binding<String>, value: Binding<String>, unit: Binding<String>) {
-        let i = entries.firstIndex(where: { $0.id == entry.id }) ?? 0
-        return (
-            Binding(get: { entries[i].label }, set: { entries[i].label = $0 }),
-            Binding(get: { entries[i].value }, set: { entries[i].value = $0 }),
-            Binding(get: { entries[i].unit }, set: { entries[i].unit = $0 })
-        )
-    }
-
-    private func unitDisplay(_ unit: String) -> String {
-        if unit.isEmpty { return "—" }
-        return unit
     }
 
     private var addButton: some View {
@@ -1677,7 +1694,7 @@ struct MeasurementsView: View {
     }
 
     private func addEntry() {
-        entries.append(MeasurementRow(label: "", value: "", unit: ""))
+        entries.append(MeasurementRow(presetLabel: nil, customLabel: "", value: "", unit: "in"))
     }
 
     private func deleteEntries(at offsets: IndexSet) {
@@ -1689,9 +1706,16 @@ struct MeasurementsView: View {
         guard !line.isEmpty, let colon = line.firstIndex(of: ":") else { return nil }
         let label = String(line[..<colon]).trimmingCharacters(in: .whitespaces)
         let rest = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
-        let parts = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: false)
-        let value = parts.isEmpty ? "" : String(parts[0])
-        let unit = parts.count > 1 ? String(parts[1]) : ""
+        let tokens = rest.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard let first = tokens.first else { return (label, "", "in") }
+        let value = first
+        let unit: String
+        if tokens.count > 1 {
+            let u = tokens[1].lowercased()
+            unit = (u == "cm" || u == "in") ? u : "in"
+        } else {
+            unit = "in"
+        }
         return (label, value, unit)
     }
 
@@ -1703,20 +1727,30 @@ struct MeasurementsView: View {
         let lines = raw.components(separatedBy: .newlines)
         entries = lines.compactMap { line -> MeasurementRow? in
             guard let t = Self.parseLine(line) else { return nil }
-            return MeasurementRow(label: t.label, value: t.value, unit: t.unit)
+            let label = t.label
+            if let match = Self.presetLabels.first(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) {
+                return MeasurementRow(presetLabel: match, customLabel: "", value: t.value, unit: t.unit)
+            }
+            return MeasurementRow(presetLabel: nil, customLabel: label, value: t.value, unit: t.unit)
         }
         if entries.isEmpty && !raw.isEmpty {
-            entries = [MeasurementRow(label: "", value: raw, unit: "")]
+            entries = [MeasurementRow(presetLabel: nil, customLabel: "", value: raw, unit: "in")]
         }
     }
 
     private func commitToBinding() {
-        let lines = entries
-            .filter { !$0.label.isEmpty && !$0.value.trimmingCharacters(in: .whitespaces).isEmpty }
-            .map { row in
-                let u = row.unit.trimmingCharacters(in: .whitespaces)
-                return u.isEmpty ? "\(row.label): \(row.value)" : "\(row.label): \(row.value) \(u)"
-            }
+        let lines = entries.compactMap { row -> String? in
+            let v = row.value.trimmingCharacters(in: .whitespaces)
+            guard !v.isEmpty else { return nil }
+            let labelText: String = {
+                if let p = row.presetLabel { return p }
+                let c = row.customLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+                return c
+            }()
+            guard !labelText.isEmpty else { return nil }
+            let u = row.unit == "cm" ? "cm" : "in"
+            return "\(labelText): \(v) \(u)"
+        }
         measurements = lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 }
@@ -1800,36 +1834,31 @@ struct StyleSelectionView: View {
     @Environment(\.presentationMode) var presentationMode
     @State private var searchText = ""
 
-    /// Backend StyleEnum values (matches GraphQL schema; not fetched, enum is fixed).
-    private static let styleEnumRawValues: [String] = [
-        "WORKWEAR", "WORKOUT", "CASUAL", "PARTY_DRESS", "PARTY_OUTFIT", "FORMAL_WEAR", "EVENING_WEAR",
-        "WEDDING_GUEST", "LOUNGEWEAR", "VACATION_RESORT_WEAR", "FESTIVAL_WEAR", "ACTIVEWEAR", "NIGHTWEAR",
-        "VINTAGE", "Y2K", "BOHO", "MINIMALIST", "GRUNGE", "CHIC", "STREETWEAR", "PREPPY", "RETRO",
-        "COTTAGECORE", "GLAM", "SUMMER_STYLES", "WINTER_ESSENTIALS", "SPRING_FLORALS", "AUTUMN_LAYERS",
-        "RAINY_DAY_WEAR", "DENIM_JEANS", "DRESSES_GOWNS", "JACKETS_COATS", "KNITWEAR_SWEATERS",
-        "SKIRTS_SHORTS", "SUITS_BLAZERS", "TOPS_BLOUSES", "SHOES_FOOTWEAR", "TRAVEL_FRIENDLY",
-        "MATERNITY_WEAR", "ATHLEISURE", "ECO_FRIENDLY", "FESTIVAL_READY", "DATE_NIGHT", "ETHNIC_WEAR",
-        "OFFICE_PARTY_OUTFIT", "COCKTAIL_ATTIRE", "PROM_DRESSES", "MUSIC_CONCERT_WEAR", "OVERSIZED",
-        "SLIM_FIT", "RELAXED_FIT", "CHRISTMAS", "SCHOOL_UNIFORMS"
-    ]
-
     private static let maxSelections = 2
 
     private var filteredStyles: [String] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if q.isEmpty {
-            return Self.styleEnumRawValues
+            return StyleEnumCatalog.rawValues
         }
-        return Self.styleEnumRawValues.filter {
-            Self.displayName(for: $0).lowercased().contains(q)
+        return StyleEnumCatalog.rawValues.filter {
+            StyleEnumCatalog.displayName(for: $0).lowercased().contains(q)
         }
     }
 
     /// Human-readable label for a StyleEnum raw value (e.g. FORMAL_WEAR → "Formal wear").
     static func displayName(for rawValue: String) -> String {
-        let lower = rawValue.replacingOccurrences(of: "_", with: " ").lowercased()
-        guard !lower.isEmpty else { return rawValue }
-        return lower.prefix(1).uppercased() + lower.dropFirst()
+        StyleEnumCatalog.displayName(for: rawValue)
+    }
+
+    /// Maps user-facing or legacy strings to a valid `StyleEnum` raw value, or nil if unknown.
+    static func resolvedEnumRaw(_ value: String) -> String? {
+        StyleEnumCatalog.resolvedRaw(value)
+    }
+
+    /// Deduplicates, resolves to enum raws, preserves order, max two (sell form).
+    static func normalizedUniqueStyleRaws(_ values: [String]) -> [String] {
+        StyleEnumCatalog.normalizedUnique(values, maxCount: Self.maxSelections)
     }
 
     var body: some View {
@@ -1863,6 +1892,12 @@ struct StyleSelectionView: View {
                     presentationMode.wrappedValue.dismiss()
                 }
                 .foregroundColor(Theme.primaryColor)
+            }
+        }
+        .onAppear {
+            let normalized = Self.normalizedUniqueStyleRaws(selectedStyles)
+            if normalized != selectedStyles {
+                selectedStyles = normalized
             }
         }
     }
@@ -2333,6 +2368,8 @@ struct DiscountPriceInputView: View {
                                     percentText = sanitized
                                     return
                                 }
+                                // Only derive sale from % while editing the % field; avoids overwriting sale when % updates from sale typing.
+                                guard focusedField == .percent else { return }
                                 guard !syncingFromSale else { return }
                                 syncSaleFromPercent()
                             }
@@ -2367,6 +2404,7 @@ struct DiscountPriceInputView: View {
                                     salePriceText = sanitized
                                     return
                                 }
+                                guard focusedField == .sale else { return }
                                 guard !syncingFromPercent else { return }
                                 syncPercentFromSale()
                             }
@@ -2417,7 +2455,6 @@ struct DiscountPriceInputView: View {
             }
             syncingFromPercent = false
             syncingFromSale = false
-            focusedField = .percent
         }
     }
 

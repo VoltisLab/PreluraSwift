@@ -13,10 +13,13 @@ struct HomeView: View {
     @State private var showGuestSignInPrompt: Bool = false
     /// Programmatic push avoids `NavigationLink` in the toolbar, which often skips redraws for the red dot.
     @State private var showNotificationsList: Bool = false
+    @State private var showFeedNavChrome = true
+    @State private var lastFeedScrollMinY: CGFloat = 0
 
     let categories = ["All", "Women", "Men", "Boys", "Girls", "Toddlers"]
 
     private let topId = "home_top"
+    private let homeScrollSpace = "homeFeedScroll"
 
     var body: some View {
         homeChromeAndLifecycle
@@ -26,6 +29,13 @@ struct HomeView: View {
         homeMainContent
             .onChange(of: scrollPosition) { _, new in
                 tabCoordinator.reportAtTop(tab: 0, isAtTop: new == topId)
+            }
+            .onPreferenceChange(ScrollMinYPreferenceKey.self) { minY in
+                CollapsingScrollChrome.updateVisibility(
+                    scrollMinY: minY,
+                    lastY: &lastFeedScrollMinY,
+                    isVisible: $showFeedNavChrome
+                )
             }
             .background(Theme.Colors.background)
             .navigationBarTitleDisplayMode(.inline)
@@ -38,6 +48,7 @@ struct HomeView: View {
                     homeNotificationsBellLink
                 }
             }
+            .toolbar(showFeedNavChrome ? .visible : .hidden, for: .navigationBar)
             .refreshable {
                 await viewModel.refreshAsync()
             }
@@ -135,7 +146,16 @@ struct HomeView: View {
                         categoryFiltersSection
                         productGridSection
                     }
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: ScrollMinYPreferenceKey.self,
+                                value: geo.frame(in: .named(homeScrollSpace)).minY
+                            )
+                        }
+                    )
                 }
+                .coordinateSpace(name: homeScrollSpace)
                 .scrollPosition(id: $scrollPosition, anchor: .top)
                 .onAppear {
                     tabCoordinator.reportAtTop(tab: 0, isAtTop: true)
