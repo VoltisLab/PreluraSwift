@@ -31,11 +31,7 @@ struct SplashView: View {
 
             VStack(spacing: 0) {
                 Spacer()
-                Image("SplashLogo")
-                    .resizable()
-                    .renderingMode(.template)
-                    .foregroundColor(Theme.primaryColor)
-                    .scaledToFit()
+                WearhouseWordmarkView(style: .splash)
                     .frame(maxWidth: 280)
                     .scaleEffect(phase == .hidden ? 0.92 : (phase == .exiting ? 1.04 : 1.0))
                     .opacity(phase == .hidden ? 0 : (phase == .exiting ? 0 : 1))

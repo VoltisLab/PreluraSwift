@@ -77,7 +77,7 @@ struct VacationModeView: View {
             await MainActor.run {
                 isOn = user.isVacationMode
                 isUpdating = false
-                NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
+                NotificationCenter.default.post(name: .wearhouseUserProfileDidUpdate, object: nil)
             }
         } catch {
             await MainActor.run {

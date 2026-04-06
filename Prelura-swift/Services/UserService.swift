@@ -935,7 +935,7 @@ class UserService: ObservableObject {
         return result
     }
 
-    /// Seller: open or reuse persisted Prelura support thread for this order issue (mirrors buyer `createOrderCase` support chat).
+    /// Seller: open or reuse persisted Wearhouse support thread for this order issue (mirrors buyer `createOrderCase` support chat).
     func ensureSellerOrderIssueSupportThread(issueId: Int) async throws -> Int {
         let mutation = """
         mutation EnsureSellerOrderIssueSupportThread($issueId: Int!) {

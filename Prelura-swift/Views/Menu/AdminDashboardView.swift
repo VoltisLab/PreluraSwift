@@ -193,7 +193,7 @@ struct AdminDashboardView: View {
                     ordersConfirmCount = nil
                     if success {
                         ordersResult = "Done. Orders: 0, Conversations: 0."
-                        NotificationCenter.default.post(name: .preluraSellerEarningsShouldRefresh, object: nil)
+                        NotificationCenter.default.post(name: .wearhouseSellerEarningsShouldRefresh, object: nil)
                     } else {
                         ordersResult = message ?? "Delete failed."
                     }

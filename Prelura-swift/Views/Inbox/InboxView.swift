@@ -14,15 +14,15 @@ struct InboxMessageRow: View {
     let message: Message
 
     private var senderDisplayName: String {
-        PreluraSupportBranding.displayTitle(forRecipientUsername: message.senderUsername)
+        WearhouseSupportBranding.displayTitle(forRecipientUsername: message.senderUsername)
     }
     
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Spacing.md) {
             // Profile Picture
             Group {
-                if PreluraSupportBranding.isSupportRecipient(username: message.senderUsername) {
-                    PreluraSupportBranding.supportAvatar(size: 50)
+                if WearhouseSupportBranding.isSupportRecipient(username: message.senderUsername) {
+                    WearhouseSupportBranding.supportAvatar(size: 50)
                 } else {
                     ZStack {
                         Circle()
@@ -88,7 +88,7 @@ struct MessageDetailView: View {
             .padding()
         }
         .background(Theme.Colors.background)
-        .navigationTitle(PreluraSupportBranding.displayTitle(forRecipientUsername: message.senderUsername))
+        .navigationTitle(WearhouseSupportBranding.displayTitle(forRecipientUsername: message.senderUsername))
         .navigationBarTitleDisplayMode(.inline)
     }
 }

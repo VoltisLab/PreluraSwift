@@ -1,7 +1,7 @@
 import SwiftUI
 import Contacts
 
-/// Contacts screen: request access, show contact list, and invite friends to Prelura via share sheet.
+/// Contacts screen: request access, show contact list, and invite friends to Wearhouse via share sheet.
 struct ListOfContactsView: View {
     @State private var authorizationStatus: CNAuthorizationStatus = .notDetermined
     @State private var contacts: [ContactDisplay] = []
@@ -12,7 +12,7 @@ struct ListOfContactsView: View {
 
     private let store = CNContactStore()
     private static var inviteMessage: String {
-        "Join me on Prelura — buy and sell preloved fashion. \(Constants.inviteToPreluraURL)"
+        "Join me on Wearhouse — buy and sell preloved fashion. \(Constants.inviteFriendsLandingURL)"
     }
 
     var body: some View {
@@ -48,7 +48,7 @@ struct ListOfContactsView: View {
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .multilineTextAlignment(.center)
-                    Text("to Prelura.")
+                    Text("to Wearhouse.")
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .multilineTextAlignment(.center)
@@ -72,7 +72,7 @@ struct ListOfContactsView: View {
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.primaryText)
                 .multilineTextAlignment(.center)
-            Text("You can allow access in Settings → Prelura → Contacts.")
+            Text("You can allow access in Settings → Wearhouse → Contacts.")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
                 .multilineTextAlignment(.center)

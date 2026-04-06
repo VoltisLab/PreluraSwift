@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Try Cart intro: three beats inside a **card** (host adds scrim via `TryCartOnboardingPopupOverlay`).
-struct TryCartOnboardingView: View {
+/// Three-page Lookbooks intro (same interaction model as Try Cart onboarding).
+struct LookbooksOnboardingView: View {
     var onComplete: () -> Void
 
     @State private var page = 0
@@ -9,38 +9,37 @@ struct TryCartOnboardingView: View {
     @State private var contentAppeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private struct TryCartPage: Identifiable {
+    private struct LookbooksPage: Identifiable {
         let id = UUID()
         let titleKey: String
         let bodyKey: String
-        let heroAsset: String
+        let systemImage: String
         let accent: Color
         let halo: Color
     }
 
-    /// Fixed height for each pager page so copy length varies but layout (text → gap → dots) stays consistent.
     private let tabPageHeight: CGFloat = 408
 
-    private var pages: [TryCartPage] {
+    private var pages: [LookbooksPage] {
         [
-            TryCartPage(
-                titleKey: "One bag, many sellers",
-                bodyKey: "Try Cart lets you add pieces from different shops into a single bag. Keep browsing—your picks stay with you everywhere on Wearhouse.",
-                heroAsset: "TryCartOnboardBag",
+            LookbooksPage(
+                titleKey: "Share your fits",
+                bodyKey: "Lookbook posts are outfit photos with tags and style. Show how you wear pieces and inspire the community.",
+                systemImage: "photo.on.rectangle.angled",
                 accent: Theme.primaryColor,
                 halo: Color(hex: "E8B4FF")
             ),
-            TryCartPage(
-                titleKey: "Save time on every haul",
-                bodyKey: "No more jumping seller by seller. Search, tap the bag, and build your haul in one flow—with a running total so you always know where you stand.",
-                heroAsset: "TryCartOnboardBolt",
+            LookbooksPage(
+                titleKey: "Tag what you wear",
+                bodyKey: "Link products on your photos so others can shop the look. Your tagged items appear for viewers in one tap.",
+                systemImage: "tag",
                 accent: Color(hex: "C77DFF"),
                 halo: Color(hex: "7C5CFF")
             ),
-            TryCartPage(
-                titleKey: "Shop smarter, checkout clearer",
-                bodyKey: "Use Try Cart from Shop All and favourites. Mix brands freely, review your bag anytime, then check out when you are ready—on your terms.",
-                heroAsset: "TryCartOnboardSparkle",
+            LookbooksPage(
+                titleKey: "Browse Feed and Explore",
+                bodyKey: "Catch the latest looks in Feed, dive into styles and themes in Explore, and revisit your uploads in My items.",
+                systemImage: "square.grid.2x2",
                 accent: Color(hex: "FF6B9D"),
                 halo: Theme.primaryColor
             )
@@ -140,7 +139,7 @@ struct TryCartOnboardingView: View {
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(2.2)
                     .foregroundStyle(.white.opacity(0.42))
-                Text(L10n.string("Try Cart"))
+                Text(L10n.string("Lookbook"))
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
             }
@@ -176,7 +175,7 @@ struct TryCartOnboardingView: View {
     }
 
     @ViewBuilder
-    private func pageContent(_ p: TryCartPage) -> some View {
+    private func pageContent(_ p: LookbooksPage) -> some View {
         let scale: CGFloat = contentAppeared ? 1 : (reduceMotion ? 1 : 0.96)
         let opacity: Double = contentAppeared ? 1 : (reduceMotion ? 1 : 0)
 
@@ -213,10 +212,16 @@ struct TryCartOnboardingView: View {
                         .frame(width: 106, height: 106)
                         .shadow(color: p.accent.opacity(0.32), radius: 20, y: 10)
 
-                    Image(p.heroAsset)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 64, height: 64)
+                    Image(systemName: p.systemImage)
+                        .font(.system(size: 40, weight: .medium))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.white, p.accent.opacity(0.9)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .symbolRenderingMode(.monochrome)
                 }
             }
             .padding(.bottom, Theme.Spacing.md)
@@ -272,7 +277,6 @@ struct TryCartOnboardingView: View {
             }
             .padding(.top, Theme.Spacing.md)
 
-            // No `PrimaryButtonBar` here — it uses `Theme.Colors.background` (flat black) which clashes with the card gradient.
             Group {
                 if page < pages.count - 1 {
                     PrimaryGlassButton(L10n.string("Next")) {
@@ -281,7 +285,7 @@ struct TryCartOnboardingView: View {
                         }
                     }
                 } else {
-                    PrimaryGlassButton(L10n.string("Start shopping")) {
+                    PrimaryGlassButton(L10n.string("Get started")) {
                         HapticManager.success()
                         onComplete()
                     }
@@ -292,10 +296,8 @@ struct TryCartOnboardingView: View {
     }
 }
 
-// MARK: - Popup shell (scrim + animation; avoids fullScreenCover / status-bar overlap)
-
-/// Dimmed backdrop + centered card. Use as an overlay on the host screen.
-struct TryCartOnboardingPopupOverlay: View {
+/// Dimmed backdrop + centered card for Lookbooks intro.
+struct LookbooksOnboardingPopupOverlay: View {
     var onComplete: () -> Void
     @State private var presented = false
 
@@ -311,7 +313,7 @@ struct TryCartOnboardingPopupOverlay: View {
                     .ignoresSafeArea()
                     .animation(.easeOut(duration: 0.2), value: presented)
 
-                TryCartOnboardingView(onComplete: onComplete)
+                LookbooksOnboardingView(onComplete: onComplete)
                     .frame(width: maxCardW)
                     .frame(maxHeight: maxCardH)
                     .scaleEffect(presented ? 1 : 0.94, anchor: .center)
@@ -326,16 +328,4 @@ struct TryCartOnboardingPopupOverlay: View {
             }
         }
     }
-}
-
-#Preview("Card") {
-    ZStack {
-        Color.gray.opacity(0.3)
-        TryCartOnboardingView(onComplete: {})
-            .padding()
-    }
-}
-
-#Preview("Popup") {
-    TryCartOnboardingPopupOverlay(onComplete: {})
 }

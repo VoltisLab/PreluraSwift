@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// UI for the system Prelura support user (`prelura_support` on the backend).
-enum PreluraSupportBranding {
+/// UI for the system support account (`prelura_support` on the backend — unchanged for API compatibility).
+enum WearhouseSupportBranding {
     /// Backend default from `SUPPORT_SYSTEM_USERNAME`.
     static let systemUsernameLowercased = "prelura_support"
 
@@ -23,7 +23,7 @@ enum PreluraSupportBranding {
     /// Navigation bar + inbox title (human-readable).
     static func displayTitle(forRecipientUsername username: String) -> String {
         if isSupportRecipient(username: username) {
-            return "Prelura Support"
+            return "Wearhouse Support"
         }
         return username.trimmingCharacters(in: .whitespacesAndNewlines)
     }

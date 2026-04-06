@@ -80,7 +80,7 @@ struct AcknowledgementsView: View {
     private var staticAcknowledgements: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                Text("Prelura thanks the following open-source projects and services that help power this app.")
+                Text("Wearhouse thanks the following open-source projects and services that help power this app.")
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.secondaryText)
                 Text("• Swift & SwiftUI (Apple)")

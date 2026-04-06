@@ -213,7 +213,6 @@ struct ChatListView: View {
             }
             if path.isEmpty, let preview = tabCoordinator.lastMessagePreviewForConversation {
                 inboxViewModel.updatePreview(conversationId: preview.id, text: preview.text, date: preview.date)
-                tabCoordinator.lastMessagePreviewForConversation = nil
             }
             if let conv = tabCoordinator.pendingOpenConversation {
                 tabCoordinator.pendingOpenConversation = nil
@@ -229,7 +228,6 @@ struct ChatListView: View {
             if oldCount > 0, newCount == 0, !authService.isGuestMode {
                 if let preview = tabCoordinator.lastMessagePreviewForConversation {
                     inboxViewModel.updatePreview(conversationId: preview.id, text: preview.text, date: preview.date)
-                    tabCoordinator.lastMessagePreviewForConversation = nil
                 }
                 if let conv = tabCoordinator.pendingArchiveWithUndo {
                     tabCoordinator.pendingArchiveWithUndo = nil
@@ -321,7 +319,7 @@ struct ChatListView: View {
     private func loadInboxConversations() async {
         let preview = tabCoordinator.lastMessagePreviewForConversation
         let previewTuple: (id: String, text: String, date: Date)? = preview.map { ($0.id, $0.text, $0.date) }
-        await inboxViewModel.loadConversationsAsync(preview: previewTuple)
+        await inboxViewModel.loadConversationsAsync(preview: previewTuple, currentUsername: authService.username)
         if preview != nil { tabCoordinator.lastMessagePreviewForConversation = nil }
     }
     
@@ -341,7 +339,7 @@ struct ChatListView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return list }
         return list.filter {
-            let title = PreluraSupportBranding.displayTitle(forRecipientUsername: $0.recipient.username).lowercased()
+            let title = WearhouseSupportBranding.displayTitle(forRecipientUsername: $0.recipient.username).lowercased()
             return $0.recipient.username.lowercased().contains(query)
                 || title.contains(query)
                 || ($0.lastMessage?.lowercased().contains(query) ?? false)
@@ -429,9 +427,9 @@ struct ChatRowView: View {
 
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
-            // Avatar (branded for system Prelura Support account)
-            if PreluraSupportBranding.isSupportRecipient(username: conversation.recipient.username) {
-                PreluraSupportBranding.supportAvatar(size: 50)
+            // Avatar (branded for system Wearhouse Support account)
+            if WearhouseSupportBranding.isSupportRecipient(username: conversation.recipient.username) {
+                WearhouseSupportBranding.supportAvatar(size: 50)
             } else if let avatarURL = conversation.recipient.avatarURL, let url = URL(string: avatarURL) {
                 AsyncImage(url: url) { image in
                     image
@@ -462,7 +460,7 @@ struct ChatRowView: View {
             // Content
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 HStack(spacing: Theme.Spacing.xs) {
-                    Text(PreluraSupportBranding.displayTitle(forRecipientUsername: conversation.recipient.username))
+                    Text(WearhouseSupportBranding.displayTitle(forRecipientUsername: conversation.recipient.username))
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
 
@@ -554,7 +552,7 @@ struct ChatRowView: View {
     }
 
     private var peerTypingLine: String {
-        let name = PreluraSupportBranding.displayTitle(forRecipientUsername: conversation.recipient.username)
+        let name = WearhouseSupportBranding.displayTitle(forRecipientUsername: conversation.recipient.username)
         return "\(name) is typing"
     }
     

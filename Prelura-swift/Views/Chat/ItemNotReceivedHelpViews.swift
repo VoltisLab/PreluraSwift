@@ -31,7 +31,7 @@ struct ItemNotReceivedGuidanceHelpView: View {
                 guidanceCard(
                     icon: "exclamationmark.triangle.fill",
                     title: "Delays outside our control",
-                    body: "Severe weather, customs checks (on international routes), industrial action, incorrect or incomplete addresses, access issues (buzzer, gate, safe place), and high-volume events can all delay delivery. Sellers ship through third-party carriers; Prelura does not operate the courier network, but we can help investigate once a reasonable time has passed."
+                    body: "Severe weather, customs checks (on international routes), industrial action, incorrect or incomplete addresses, access issues (buzzer, gate, safe place), and high-volume events can all delay delivery. Sellers ship through third-party carriers; Wearhouse does not operate the courier network, but we can help investigate once a reasonable time has passed."
                 )
 
                 guidanceCard(

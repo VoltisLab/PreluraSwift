@@ -21,10 +21,7 @@ struct LoginView: View {
                     VStack(spacing: Theme.Spacing.lg) {
                         // Header
                         VStack(spacing: Theme.Spacing.sm) {
-                            Image("PreluraLogo")
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(height: 44)
+                            WearhouseWordmarkView(style: .login)
                             Text(L10n.string("Welcome back"))
                                 .font(Theme.Typography.title2)
                                 .foregroundColor(Theme.Colors.authOverVideoText)

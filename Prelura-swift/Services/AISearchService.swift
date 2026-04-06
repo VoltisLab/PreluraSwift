@@ -35,7 +35,7 @@ struct ParsedSearch {
 /// supports typos (fuzzy match) and maps common colour names to app colours.
 /// Backend is not modified; we only produce a search string and optional category.
 ///
-/// Training data: Prelura AI Training Dataset — Category & Colour Detection (100 Query Types).
+/// Training data: Wearhouse AI Training Dataset — Category & Colour Detection (100 Query Types).
 /// Covers: Basic + Conversational colour+category, Multi-colour, Relative colour, Style+colour,
 /// Price+colour, Material+colour, Size+colour, Event, Casual/messy queries.
 final class AISearchService {
@@ -49,7 +49,7 @@ final class AISearchService {
     ]
     
     /// Parent categories (feed filter)
-    static let parentCategories: [String] = ["All", "Women", "Men", "Kids", "Toddlers", "Boys", "Girls"]
+    static let parentCategories: [String] = ["All", "Women", "Men", "Boys", "Girls", "Toddlers"]
     
     /// Subcategories (from Category model) for keyword matching
     static let subCategories: [String] = [
@@ -352,7 +352,7 @@ final class AISearchService {
         case "man's", "men's", "mens", "men": return "Men"
         case "boy's", "boys'", "boys": return "Boys"
         case "girl's", "girls'", "girls": return "Girls"
-        case "kid's", "kids'", "kids": return "Kids"
+        case "kid's", "kids'", "kids": return nil
         case "toddler's", "toddlers'", "toddlers": return "Toddlers"
         default: return nil
         }
@@ -531,7 +531,7 @@ final class AISearchService {
 
     // MARK: - Realistic response sets (Batch 1: 20 query types × 5 responses)
 
-    /// Response sets for contextual replies (Prelura AI Training Dataset — Realistic User Queries Batch 1).
+    /// Response sets for contextual replies (Wearhouse AI Training Dataset — Realistic User Queries Batch 1).
     private static let responseBatch1: [(name: String, responses: [String])] = [
         ("birthday_party", [
             "Happy birthday! Let's find some great green dresses for your celebration.",
@@ -1381,18 +1381,18 @@ final class AISearchService {
         return Self.salutations.contains(withoutLenny) || Self.socialGreetingPhrases.contains(withoutLenny)
     }
 
-    /// Greeting replies when user says "hi", "hello", or social questions. Lenny always identifies himself and welcomes to Prelura. Used for both salutations and social Q&A.
+    /// Greeting replies when user says "hi", "hello", or social questions. Lenny always identifies himself and welcomes to Wearhouse. Used for both salutations and social Q&A.
     private static let greetingReplies: [String] = [
-        "Hi, I'm Lenny — welcome to Prelura. How can I help?",
-        "Hello! I'm Lenny, welcome to Prelura. What can I help you find today?",
-        "Hey there! Lenny here — welcome to Prelura. How can I help you?",
-        "Hi! I'm Lenny, welcome to Prelura. How can I help?",
-        "Hello! Welcome to Prelura — I'm Lenny. How can I help you today?",
-        "Hey! I'm Lenny, welcome to Prelura. What are you looking for?",
-        "Hi there! Lenny here. Welcome to Prelura — how can I help?",
-        "Hello! I'm Lenny, welcome to Prelura. How can I help you find something?",
-        "Hi! Welcome to Prelura. I'm Lenny — how can I help?",
-        "Hey there! I'm Lenny, welcome to Prelura. What can I help you with?",
+        "Hi, I'm Lenny — welcome to Wearhouse. How can I help?",
+        "Hello! I'm Lenny, welcome to Wearhouse. What can I help you find today?",
+        "Hey there! Lenny here — welcome to Wearhouse. How can I help you?",
+        "Hi! I'm Lenny, welcome to Wearhouse. How can I help?",
+        "Hello! Welcome to Wearhouse — I'm Lenny. How can I help you today?",
+        "Hey! I'm Lenny, welcome to Wearhouse. What are you looking for?",
+        "Hi there! Lenny here. Welcome to Wearhouse — how can I help?",
+        "Hello! I'm Lenny, welcome to Wearhouse. How can I help you find something?",
+        "Hi! Welcome to Wearhouse. I'm Lenny — how can I help?",
+        "Hey there! I'm Lenny, welcome to Wearhouse. What can I help you with?",
         "Hello! Welcome to the chat — I'm Lenny, and I'm here to help with whatever you need. Just type what you're looking for to get started.",
         "Hey there! I'm Lenny. Great to have you here. Tell me what you're after — a colour and item like leather jacket or denim jeans works a treat.",
         "Hi! Lenny here. Welcome in. I'm here to help you find something lovely — try typing something like black jacket or green dress.",

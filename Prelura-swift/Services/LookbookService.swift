@@ -14,6 +14,8 @@ struct ServerLookbookPost: Decodable {
     let imageUrl: String
     let caption: String?
     let username: String
+    /// Poster profile image from `getUser`-style field on the post (optional until backend supports it).
+    let profilePictureUrl: String?
     let createdAt: String?
     var likesCount: Int?
     var commentsCount: Int?
@@ -72,7 +74,7 @@ final class LookbookService {
 
     /// Upload a single image with fileType LOOKBOOK. Returns the image URL. Fails when backend has no LOOKBOOK type yet.
     func uploadLookbookImage(_ imageData: Data) async throws -> String {
-        let boundary = "----PreluraBoundary\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        let boundary = "----WearhouseBoundary\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
         var body = Data()
 
         let operations: [String: Any] = [
@@ -158,7 +160,7 @@ final class LookbookService {
         let query = """
         mutation CreateLookbook($imageUrl: String!, $caption: String) {
           createLookbook(imageUrl: $imageUrl, caption: $caption) {
-            lookbookPost { id imageUrl caption username createdAt likesCount commentsCount userLiked }
+            lookbookPost { id imageUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked }
             success
             message
           }
@@ -194,8 +196,8 @@ final class LookbookService {
         let query = """
         query Lookbooks($first: Int) {
           lookbooks(first: $first) {
-            nodes { id imageUrl caption username createdAt likesCount commentsCount userLiked }
-            edges { node { id imageUrl caption username createdAt likesCount commentsCount userLiked } }
+            nodes { id imageUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked }
+            edges { node { id imageUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked } }
           }
         }
         """

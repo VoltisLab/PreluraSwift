@@ -4,7 +4,7 @@ import UserNotifications
 import FirebaseCore
 import FirebaseMessaging
 
-private let pushBootstrapLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Prelura", category: "PushBootstrap")
+private let pushBootstrapLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Wearhouse", category: "PushBootstrap")
 
 /// Name for the notification posted when user taps a push notification (payload in userInfo).
 let kNotificationTapPayloadKey = "payload"
@@ -15,20 +15,22 @@ let kDeviceTokenKey = "prelura_device_token"
 let kLastFcmTokenSentToBackendKey = "prelura_last_fcm_token_sent_to_backend"
 
 /// Menu → Push diagnostics schedules this to prove alerts work without any server (UserNotifications only).
-let kPreluraLocalPushTestNotificationId = "prelura_debug_local_test"
+let kWearhouseLocalPushTestNotificationId = "prelura_debug_local_test"
 /// `userInfo` flag on that local request so delegates can log and ignore deep-link routing.
-let kPreluraLocalPushTestUserInfoKey = "prelura_local_test"
+let kWearhouseLocalPushTestUserInfoKey = "prelura_local_test"
 
 extension Notification.Name {
-    static let preluraNotificationTapped = Notification.Name("PreluraNotificationTapped")
+    static let wearhouseNotificationTapped = Notification.Name("WearhouseNotificationTapped")
     /// Posted when a new APNs device token is received so the app can register it with the backend.
-    static let preluraDeviceTokenDidUpdate = Notification.Name("PreluraDeviceTokenDidUpdate")
+    static let wearhouseDeviceTokenDidUpdate = Notification.Name("WearhouseDeviceTokenDidUpdate")
     /// Posted when vacation mode (or other profile flags) are updated so Profile can refresh.
-    static let preluraUserProfileDidUpdate = Notification.Name("PreluraUserProfileDidUpdate")
+    static let wearhouseUserProfileDidUpdate = Notification.Name("WearhouseUserProfileDidUpdate")
     /// Posted when the user views a product so Discover (and Recently viewed) can refresh.
-    static let preluraRecentlyViewedDidUpdate = Notification.Name("PreluraRecentlyViewedDidUpdate")
+    static let wearhouseRecentlyViewedDidUpdate = Notification.Name("WearhouseRecentlyViewedDidUpdate")
     /// Posted after admin wipes orders/payments so Dashboard can refetch `userEarnings`.
-    static let preluraSellerEarningsShouldRefresh = Notification.Name("PreluraSellerEarningsShouldRefresh")
+    static let wearhouseSellerEarningsShouldRefresh = Notification.Name("WearhouseSellerEarningsShouldRefresh")
+    /// In-app notification list changed (read/delete/refresh) so Home bell badge can update.
+    static let wearhouseInAppNotificationsDidChange = Notification.Name("WearhouseInAppNotificationsDidChange")
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
@@ -36,9 +38,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     /// `FirebaseApp.configure()` aborts if the default plist is missing or invalid. Only true after a successful configure.
     private static var isFirebaseConfigured: Bool { FirebaseApp.app() != nil }
 
-    private static func isPreluraLocalPushTest(userInfo: [AnyHashable: Any], requestIdentifier: String) -> Bool {
-        if requestIdentifier == kPreluraLocalPushTestNotificationId { return true }
-        let v = userInfo[kPreluraLocalPushTestUserInfoKey]
+    private static func isWearhouseLocalPushTest(userInfo: [AnyHashable: Any], requestIdentifier: String) -> Bool {
+        if requestIdentifier == kWearhouseLocalPushTestNotificationId { return true }
+        let v = userInfo[kWearhouseLocalPushTestUserInfoKey]
         if let i = v as? Int, i == 1 { return true }
         if let n = v as? NSNumber, n.intValue == 1 { return true }
         return false
@@ -46,7 +48,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     /// When FCM payload looks like a chat/DM notification, append a `chat_push` line for Debug → Message push trace.
     private static func logChatPushPayloadIfRelevant(_ userInfo: [AnyHashable: Any], context: String) {
-        let isLocalFlag = userInfo[kPreluraLocalPushTestUserInfoKey]
+        let isLocalFlag = userInfo[kWearhouseLocalPushTestUserInfoKey]
         if let i = isLocalFlag as? Int, i == 1 { return }
         if let n = isLocalFlag as? NSNumber, n.intValue == 1 { return }
 
@@ -199,7 +201,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 application.registerForRemoteNotifications()
                 guard Self.isFirebaseConfigured else { return }
                 // Wait for APNs before token(); avoids "No APNS token specified" on cold start / simulator.
-                PreluraFCMRegistration.fetchRegistrationToken { result in
+                WearhouseFCMRegistration.fetchRegistrationToken { result in
                     guard case .success(let token) = result, !token.isEmpty else {
                         if case .failure(let error) = result {
                             pushBootstrapLog.error("FCM foreground refresh error: \(error.localizedDescription, privacy: .public)")
@@ -214,7 +216,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                     let prev = UserDefaults.standard.string(forKey: kDeviceTokenKey)
                     if prev != token {
                         UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
-                        NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
+                        NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
                     }
                 }
             }
@@ -235,7 +237,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                                 application.registerForRemoteNotifications()
                                 // Without an explicit token fetch here, FCM can lag until the next foreground cycle.
                                 guard Self.isFirebaseConfigured else { return }
-                                PreluraFCMRegistration.fetchRegistrationToken { result in
+                                WearhouseFCMRegistration.fetchRegistrationToken { result in
                                     guard case .success(let token) = result, !token.isEmpty else {
                                         if case .failure(let error) = result {
                                             pushBootstrapLog.error("FCM token after permission: \(error.localizedDescription, privacy: .public)")
@@ -248,10 +250,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                                         return
                                     }
                                     UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
-                                    NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
+                                    NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
                                 }
                             } else {
-                                pushBootstrapLog.warning("User declined notification permission — enable in Settings → Prelura → Notifications.")
+                                pushBootstrapLog.warning("User declined notification permission — enable in Settings → Wearhouse → Notifications.")
                                 NotificationDebugLog.append(
                                     source: "permission",
                                     message: "User declined notification permission in system prompt",
@@ -261,10 +263,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                         }
                     }
                 case .denied:
-                    pushBootstrapLog.warning("Notifications denied for Prelura — enable in Settings → Notifications.")
+                    pushBootstrapLog.warning("Notifications denied for Wearhouse — enable in Settings → Notifications.")
                     NotificationDebugLog.append(
                         source: "permission",
-                        message: "Notifications authorization denied (Settings → Prelura → Notifications)",
+                        message: "Notifications authorization denied (Settings → Wearhouse → Notifications)",
                         isError: true
                     )
                 @unknown default:
@@ -292,11 +294,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             isError: false
         )
         // Explicit fetch: delegate can lag; ensures UserDefaults + backend sync see a token.
-        PreluraFCMRegistration.fetchRegistrationToken { result in
+        WearhouseFCMRegistration.fetchRegistrationToken { result in
             switch result {
             case .success(let token):
                 UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
-                NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
+                NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
             case .failure(let error):
                 pushBootstrapLog.error("FCM token after APNs registration: \(error.localizedDescription, privacy: .public)")
                 NotificationDebugLog.append(
@@ -343,7 +345,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
         guard let fcmToken, !fcmToken.isEmpty else { return }
         UserDefaults.standard.set(fcmToken, forKey: kDeviceTokenKey)
-        NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
+        NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
         NotificationDebugLog.append(
             source: "fcm",
             message: "FCM registration token refreshed (\(fcmToken.count) chars)",
@@ -365,7 +367,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        if Self.isPreluraLocalPushTest(userInfo: userInfo, requestIdentifier: response.notification.request.identifier) {
+        if Self.isWearhouseLocalPushTest(userInfo: userInfo, requestIdentifier: response.notification.request.identifier) {
             NotificationDebugLog.append(
                 source: "local",
                 message: "Tapped local on-device test notification (no server)",
@@ -382,7 +384,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         )
         Self.logChatPushPayloadIfRelevant(userInfo, context: "Tapped notification")
         NotificationCenter.default.post(
-            name: .preluraNotificationTapped,
+            name: .wearhouseNotificationTapped,
             object: nil,
             userInfo: [kNotificationTapPayloadKey: userInfo]
         )
@@ -396,7 +398,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         let u = notification.request.content.userInfo
-        let isLocalDebug = Self.isPreluraLocalPushTest(userInfo: u, requestIdentifier: notification.request.identifier)
+        let isLocalDebug = Self.isWearhouseLocalPushTest(userInfo: u, requestIdentifier: notification.request.identifier)
         if isLocalDebug {
             NotificationDebugLog.append(
                 source: "local",
@@ -417,6 +419,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             isError: false
         )
         Self.logChatPushPayloadIfRelevant(u, context: "Foreground willPresent")
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
+        }
         completionHandler([.banner, .badge, .sound])
     }
 }

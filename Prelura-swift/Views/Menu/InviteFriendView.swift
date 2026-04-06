@@ -7,7 +7,7 @@ struct InviteFriendView: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
                 // Intro
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Bring friends to Prelura")
+                    Text("Bring friends to Wearhouse")
                         .font(Theme.Typography.title3)
                         .foregroundColor(Theme.Colors.primaryText)
                     Text("Share your profile or invite from your contacts.")

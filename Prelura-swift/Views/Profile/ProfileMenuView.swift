@@ -30,7 +30,7 @@ struct ProfileMenuView: View {
                 menuDivider
                 MenuItemRow(title: L10n.string("Help Centre"), icon: "questionmark.circle.fill", action: { onDismiss(); onSelect(.helpCentre) })
                 menuDivider
-                MenuItemRow(title: L10n.string("About Prelura"), icon: "info.circle.fill", action: { onDismiss(); onSelect(.aboutPrelura) })
+                MenuItemRow(title: L10n.string("About Wearhouse"), icon: "info.circle.fill", action: { onDismiss(); onSelect(.aboutWearhouse) })
                 menuDivider
                 MenuItemRow(title: L10n.string("Settings"), icon: "gearshape.fill", action: { onDismiss(); onSelect(.settings) })
                 menuDivider
@@ -219,12 +219,12 @@ struct ShippingMenuView: View {
     }
 }
 
-// MARK: - Submenu: About Prelura (Flutter AboutPreluraMenuScreen). Presented as pushed destination.
-struct AboutPreluraMenuView: View {
+// MARK: - Submenu: About Wearhouse. Presented as pushed destination.
+struct AboutWearhouseMenuView: View {
     var body: some View {
         List {
-            NavigationLink(destination: HowToUsePreluraView()) {
-                aboutRow(L10n.string("How to use Prelura"), icon: "book")
+            NavigationLink(destination: HowToUseWearhouseView()) {
+                aboutRow(L10n.string("How to use Wearhouse"), icon: "book")
             }
             NavigationLink(destination: LegalInformationView()) {
                 aboutRow(L10n.string("Legal Information"), icon: "doc.text")
@@ -232,7 +232,7 @@ struct AboutPreluraMenuView: View {
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("About Prelura"))
+        .navigationTitle(L10n.string("About Wearhouse"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }

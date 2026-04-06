@@ -8,6 +8,7 @@
 import SwiftUI
 import Shimmer
 import UIKit
+import MessageUI
 
 /// One lookbook post: image(s), poster, likes, comments, styles for filtering. Remote URLs in `imageUrls` (carousel), or legacy document/asset.
 /// Optional tags + productSnapshots come from local LookbookFeedStore (merged when post id / URL matches).
@@ -21,6 +22,8 @@ struct LookbookEntry: Identifiable {
     /// First remote URL, if any.
     var imageUrl: String? { imageUrls.first }
     let posterUsername: String
+    /// Remote avatar URL for the poster when the API provides it.
+    let posterProfilePictureUrl: String?
     let caption: String?
     var likesCount: Int
     var commentsCount: Int
@@ -31,7 +34,7 @@ struct LookbookEntry: Identifiable {
     /// productId -> snapshot for thumbnails; from local store when available.
     let productSnapshots: [String: LookbookProductSnapshot]?
 
-    init(id: UUID? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, posterUsername: String, caption: String? = nil, likesCount: Int, commentsCount: Int, isLiked: Bool, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
+    init(id: UUID? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, likesCount: Int, commentsCount: Int, isLiked: Bool, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
         self.id = id ?? UUID()
         self.imageNames = imageNames
         self.documentImagePath = documentImagePath
@@ -41,6 +44,7 @@ struct LookbookEntry: Identifiable {
             self.imageUrls = []
         }
         self.posterUsername = posterUsername
+        self.posterProfilePictureUrl = posterProfilePictureUrl
         self.caption = caption
         self.likesCount = likesCount
         self.commentsCount = commentsCount
@@ -68,6 +72,7 @@ struct LookbookEntry: Identifiable {
             self.imageUrls = fromServer
         }
         self.posterUsername = serverPost.username
+        self.posterProfilePictureUrl = serverPost.profilePictureUrl
         self.caption = serverPost.caption
         self.likesCount = serverPost.likesCount ?? 0
         self.commentsCount = serverPost.commentsCount ?? 0
@@ -78,7 +83,10 @@ struct LookbookEntry: Identifiable {
     }
 }
 
-private let lookbookSpacing: CGFloat = 12
+/// Vertical rhythm between major feed blocks (slightly looser than before).
+private let lookbookSpacing: CGFloat = 16
+/// Horizontal gap between carousel thumbnails (was `sm`; nudge wider).
+private let lookbookThumbInterItem: CGFloat = Theme.Spacing.sm + 4
 private let lookbookTopId = "lookbook_top"
 
 /// Ordered de-duplication so accidental duplicate URLs do not spawn a multi-page `TabView` with collapsed height.
@@ -130,7 +138,172 @@ private struct ProductIdNavigator: Identifiable, Hashable {
     let id: String
 }
 
+/// Lookbooks entry: choose Feed, Explore, or My items (onboarding on first open).
 struct LookbookView: View {
+    @EnvironmentObject private var authService: AuthService
+    @State private var showLookbooksOnboarding = false
+    @State private var didScheduleLookbooksOnboarding = false
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: Theme.Spacing.md) {
+                LookbooksHubBannerRow(
+                    kind: .feed,
+                    title: L10n.string("Feed"),
+                    subtitle: L10n.string("Latest looks from people you follow and the community.")
+                ) {
+                    LookbookFeedScreenView()
+                }
+                LookbooksHubBannerRow(
+                    kind: .explore,
+                    title: L10n.string("Explore"),
+                    subtitle: L10n.string("Browse by style, communities, and editorial picks.")
+                ) {
+                    LookbookExploreScreenView()
+                }
+                LookbooksHubBannerRow(
+                    kind: .myItems,
+                    title: L10n.string("My items"),
+                    subtitle: L10n.string("Your uploads — switch between feed and a 3-column grid.")
+                ) {
+                    LookbookMyItemsScreenView()
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.lg)
+        }
+        .scrollContentBackground(.hidden)
+        .background(Theme.Colors.background)
+        .navigationTitle(L10n.string("Lookbook"))
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { scheduleLookbooksOnboardingIfNeeded() }
+        .overlay {
+            if showLookbooksOnboarding {
+                LookbooksOnboardingPopupOverlay(onComplete: finishLookbooksOnboarding)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .zIndex(900)
+            }
+        }
+    }
+
+    private func scheduleLookbooksOnboardingIfNeeded() {
+        guard !didScheduleLookbooksOnboarding else { return }
+        guard AppBannerPolicy.shouldPresent(.lookbooksIntro) else { return }
+        didScheduleLookbooksOnboarding = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 380_000_000)
+            withAnimation(.easeOut(duration: 0.22)) {
+                showLookbooksOnboarding = true
+            }
+        }
+    }
+
+    private func finishLookbooksOnboarding() {
+        if !AppBannerPolicy.forceShowLookbooksIntroEveryTime {
+            AppBannerPolicy.markSeen(.lookbooksIntro)
+        }
+        withAnimation(.easeOut(duration: 0.2)) {
+            showLookbooksOnboarding = false
+        }
+    }
+}
+
+private enum LookbookHubBannerKind {
+    case feed, explore, myItems
+
+    fileprivate var symbol: String {
+        switch self {
+        case .feed: return "rectangle.stack"
+        case .explore: return "sparkles.rectangle.stack"
+        case .myItems: return "person.crop.square"
+        }
+    }
+
+    fileprivate var accent: Color {
+        switch self {
+        case .feed: return Theme.primaryColor
+        case .explore: return Color(red: 0.58, green: 0.38, blue: 0.98)
+        case .myItems: return Color(red: 0.98, green: 0.48, blue: 0.42)
+        }
+    }
+}
+
+private struct LookbooksHubBannerRow<Destination: View>: View {
+    let kind: LookbookHubBannerKind
+    let title: String
+    let subtitle: String
+    @ViewBuilder var destination: () -> Destination
+
+    var body: some View {
+        NavigationLink(destination: destination()) {
+            HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    kind.accent.opacity(0.65),
+                                    kind.accent.opacity(0.22),
+                                    Theme.Colors.tertiaryBackground.opacity(0.9)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.45), kind.accent.opacity(0.35)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                    Image(systemName: kind.symbol)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.white, .white.opacity(0.85)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .shadow(color: kind.accent.opacity(0.55), radius: 8, x: 0, y: 3)
+                }
+                .frame(width: 56, height: 56)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(Theme.Typography.headline)
+                        .foregroundColor(Theme.Colors.primaryText)
+                    Text(subtitle)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+            .padding(Theme.Spacing.md)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Glass.menuContainerCornerRadius, style: .continuous)
+                    .fill(Theme.Colors.secondaryBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Glass.menuContainerCornerRadius, style: .continuous)
+                    .strokeBorder(Theme.Colors.glassBorder.opacity(0.35), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Feed (posts only)
+
+private struct LookbookFeedScreenView: View {
     @EnvironmentObject private var authService: AuthService
     @State private var entries: [LookbookEntry] = []
     @State private var feedLoading = false
@@ -150,38 +323,10 @@ struct LookbookView: View {
                     LazyVStack(spacing: 0) {
                         Color.clear.frame(height: 1).id(lookbookTopId)
 
-                        LookbookTopBanner()
-
-                        LookbookStyleThumbnailStrip()
-
-                        LookbookHorizontalPortraitSection(
-                            title: L10n.string("Explore communities"),
-                            showSeeAll: true,
-                            cards: LookbookFeedAssets.exploreCommunityCards,
-                            visibleThumbCount: 2.8,
-                            containerWidth: geometry.size.width
-                        )
-
-                        LookbookHorizontalPortraitSection(
-                            title: L10n.string("Get inspired"),
-                            showSeeAll: false,
-                            cards: LookbookFeedAssets.getInspiredCards,
-                            visibleThumbCount: 2,
-                            containerWidth: geometry.size.width
-                        )
-
-                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                            Text(L10n.string("Feed"))
-                                .font(Theme.Typography.headline)
-                                .foregroundColor(Theme.Colors.primaryText)
-                                .padding(.horizontal, Theme.Spacing.md)
-                                .padding(.top, Theme.Spacing.sm)
-                        }
-
                         if feedLoading && entries.isEmpty {
-                            LookbookShimmerView()
+                            LookbookFeedOnlyShimmerView()
                         } else if entries.isEmpty {
-                            emptyPlaceholder(minHeight: geometry.size.height - 120)
+                            feedEmptyPlaceholder(minHeight: geometry.size.height - 120)
                         } else {
                             ForEach(buildLookbookFeedRows(from: entries)) { row in
                                 lookbookFeedRow(model: row)
@@ -190,10 +335,10 @@ struct LookbookView: View {
                     }
                     .padding(.bottom, Theme.Spacing.xl)
                 }
+                .scrollPosition(id: $scrollPosition, anchor: .top)
+                .scrollContentBackground(.hidden)
+                .background(Theme.Colors.background)
             }
-            .scrollPosition(id: $scrollPosition, anchor: .top)
-            .scrollContentBackground(.hidden)
-            .background(Theme.Colors.background)
 
             if let entry = fullScreenEntry {
                 LookbookTransparentFullscreenOverlay(entry: entry) {
@@ -209,28 +354,21 @@ struct LookbookView: View {
             }
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.86), value: fullScreenEntry?.id)
-        .navigationTitle(L10n.string("Lookbooks"))
+        .navigationTitle(L10n.string("Feed"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar(.visible, for: .navigationBar)
-        .toolbar(.hidden, for: .tabBar)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: Theme.Spacing.sm) {
                     NavigationLink(destination: LookbooksUploadView()) {
-                        Image(systemName: "plus.circle")
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                            .contentShape(Rectangle())
+                        GlassIconView(icon: "plus.circle", iconColor: Theme.Colors.primaryText, iconSize: 18)
                     }
                     .buttonStyle(HapticTapButtonStyle())
-                    Button(action: { showSearchSheet = true }) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(HapticTapButtonStyle())
+                    GlassIconButton(
+                        icon: "magnifyingglass",
+                        iconColor: Theme.Colors.primaryText,
+                        iconSize: 18,
+                        action: { showSearchSheet = true }
+                    )
                 }
             }
         }
@@ -288,20 +426,19 @@ struct LookbookView: View {
                     || (error as? URLError)?.code == .cancelled
                     || error.localizedDescription.lowercased().contains("cancelled")
                 feedError = isCancelled ? nil : error.localizedDescription
-                // Keep existing feed on refresh failure so the list doesn’t go blank.
             }
         }
     }
 
-    private func emptyPlaceholder(minHeight: CGFloat) -> some View {
+    private func feedEmptyPlaceholder(minHeight: CGFloat) -> some View {
         VStack(spacing: Theme.Spacing.md) {
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 48))
                 .foregroundColor(Theme.Colors.secondaryText)
-            Text("No lookbooks yet")
+            Text(L10n.string("No Lookbook posts yet"))
                 .font(Theme.Typography.title3)
                 .foregroundColor(Theme.Colors.primaryText)
-            Text("Upload from the menu to add your first look.")
+            Text(L10n.string("Upload from the menu to add your first look."))
                 .font(Theme.Typography.subheadline)
                 .foregroundColor(Theme.Colors.secondaryText)
                 .multilineTextAlignment(.center)
@@ -316,6 +453,275 @@ struct LookbookView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minHeight: max(minHeight, 200))
+    }
+
+    private func lookbookFeedRow(model: LookbookFeedRowModel) -> some View {
+        LookbookFeedRowView(
+            entry: model.entry,
+            onHeartTap: { entry in
+                let entryId = entry.id
+                guard let i = entries.firstIndex(where: { $0.id == entryId }) else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    var e = entries[i]
+                    e.isLiked.toggle()
+                    e.likesCount += e.isLiked ? 1 : -1
+                    entries[i] = e
+                }
+                Task { await syncLookbookLike(postId: entryId.uuidString) }
+            },
+            onImageDoubleTap: { entry in
+                let entryId = entry.id
+                guard let i = entries.firstIndex(where: { $0.id == entryId }), !entries[i].isLiked else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    var e = entries[i]
+                    e.isLiked = true
+                    e.likesCount += 1
+                    entries[i] = e
+                }
+                Task { await syncLookbookLike(postId: entryId.uuidString) }
+            },
+            onCommentsTap: { entry in commentsEntry = entry },
+            onImageTap: { entry in
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                    fullScreenEntry = entry
+                }
+            },
+            onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) }
+        )
+        .id(model.id)
+        .padding(.bottom, lookbookSpacing)
+    }
+
+    private func syncLookbookLike(postId: String) async {
+        do {
+            let client = GraphQLClient()
+            client.setAuthToken(authService.authToken)
+            let service = LookbookService(client: client)
+            let result = try await service.toggleLike(postId: postId)
+            await MainActor.run {
+                guard let uuid = UUID(uuidString: postId),
+                      let idx = entries.firstIndex(where: { $0.id == uuid }) else { return }
+                var entry = entries[idx]
+                entry.isLiked = result.liked
+                entry.likesCount = result.likesCount
+                entries[idx] = entry
+            }
+        } catch {
+            await MainActor.run {
+                guard let uuid = UUID(uuidString: postId),
+                      let idx = entries.firstIndex(where: { $0.id == uuid }) else { return }
+                var entry = entries[idx]
+                entry.isLiked.toggle()
+                entry.likesCount += entry.isLiked ? 1 : -1
+                entries[idx] = entry
+            }
+        }
+    }
+}
+
+// MARK: - Explore (style strip + editorial carousels)
+
+private struct LookbookExploreScreenView: View {
+    var body: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    LookbookStyleThumbnailStrip()
+                    LookbookHorizontalPortraitSection(
+                        title: L10n.string("Explore communities"),
+                        subtitle: L10n.string("Curated themes and seller stories to browse."),
+                        showSeeAll: true,
+                        cards: LookbookFeedAssets.exploreCommunityCards,
+                        visibleThumbCount: 2.8,
+                        containerWidth: geometry.size.width
+                    )
+                    LookbookHorizontalPortraitSection(
+                        title: L10n.string("Get inspired"),
+                        subtitle: L10n.string("Editorial picks and seasonal mood boards."),
+                        showSeeAll: false,
+                        cards: LookbookFeedAssets.getInspiredCards,
+                        visibleThumbCount: 2,
+                        containerWidth: geometry.size.width
+                    )
+                }
+                .padding(.bottom, Theme.Spacing.xl)
+            }
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
+        }
+        .navigationTitle(L10n.string("Explore"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - My items (own posts, list or 3-column grid)
+
+private struct LookbookMyItemsScreenView: View {
+    @EnvironmentObject private var authService: AuthService
+    @State private var entries: [LookbookEntry] = []
+    @State private var feedLoading = false
+    @State private var feedError: String?
+    @State private var useGrid = false
+    @State private var commentsEntry: LookbookEntry?
+    @State private var fullScreenEntry: LookbookEntry?
+    @State private var selectedProductId: ProductIdNavigator?
+    private let productService = ProductService()
+
+    private var myEntries: [LookbookEntry] {
+        guard let me = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !me.isEmpty else { return [] }
+        return entries.filter { $0.posterUsername.lowercased() == me }
+    }
+
+    private static let gridColumns: [GridItem] = [
+        GridItem(.flexible(), spacing: 1),
+        GridItem(.flexible(), spacing: 1),
+        GridItem(.flexible(), spacing: 1)
+    ]
+
+    var body: some View {
+        ZStack {
+            Group {
+                if feedLoading && entries.isEmpty {
+                    LookbookFeedOnlyShimmerView()
+                } else if myEntries.isEmpty {
+                    myItemsEmpty
+                } else if useGrid {
+                    ScrollView {
+                        LazyVGrid(columns: Self.gridColumns, spacing: 1) {
+                            ForEach(myEntries) { entry in
+                                Button {
+                                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                                        fullScreenEntry = entry
+                                    }
+                                } label: {
+                                    LookbookEntryThumbnail(entry: entry)
+                                        .aspectRatio(1, contentMode: .fill)
+                                        .clipped()
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .scrollContentBackground(.hidden)
+                    .background(Theme.Colors.background)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(buildLookbookFeedRows(from: myEntries)) { row in
+                                lookbookFeedRow(model: row)
+                            }
+                        }
+                        .padding(.bottom, Theme.Spacing.xl)
+                    }
+                    .scrollContentBackground(.hidden)
+                    .background(Theme.Colors.background)
+                }
+            }
+
+            if let entry = fullScreenEntry {
+                LookbookTransparentFullscreenOverlay(entry: entry) {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                        fullScreenEntry = nil
+                    }
+                }
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.94, anchor: .center)),
+                    removal: .opacity
+                ))
+                .zIndex(2)
+            }
+        }
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: fullScreenEntry?.id)
+        .navigationTitle(L10n.string("My items"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Button {
+                        useGrid.toggle()
+                    } label: {
+                        Image(systemName: useGrid ? "list.bullet" : "square.grid.3x3")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(Theme.Colors.primaryText)
+                    }
+                    .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
+                    NavigationLink(destination: LookbooksUploadView()) {
+                        GlassIconView(icon: "plus.circle", iconColor: Theme.Colors.primaryText, iconSize: 18)
+                    }
+                    .buttonStyle(HapticTapButtonStyle())
+                }
+            }
+        }
+        .sheet(item: $commentsEntry) { entry in
+            LookbookCommentsSheet(entry: entry) { newCount in
+                if let idx = entries.firstIndex(where: { $0.id == entry.id }) {
+                    var updated = entries[idx]
+                    updated.commentsCount = newCount
+                    entries[idx] = updated
+                }
+            }
+        }
+        .navigationDestination(item: $selectedProductId) { nav in
+            LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
+        }
+        .onAppear { loadFeedFromServer() }
+        .refreshable { await loadFeedFromServerAsync() }
+    }
+
+    private var myItemsEmpty: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: "tray")
+                .font(.system(size: 48))
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text(L10n.string("No uploads yet"))
+                .font(Theme.Typography.title3)
+                .foregroundColor(Theme.Colors.primaryText)
+            Text(L10n.string("Post a look from the plus button — it will show up here."))
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Theme.Spacing.xl)
+            if let err = feedError, !err.isEmpty {
+                Text(err)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, Theme.Spacing.xl)
+    }
+
+    private func loadFeedFromServer() {
+        Task { await loadFeedFromServerAsync() }
+    }
+
+    private func loadFeedFromServerAsync() async {
+        guard authService.isAuthenticated else {
+            await MainActor.run { entries = []; feedLoading = false }
+            return
+        }
+        await MainActor.run { feedLoading = true; feedError = nil }
+        let client = GraphQLClient()
+        client.setAuthToken(authService.authToken)
+        let service = LookbookService(client: client)
+        service.setAuthToken(authService.authToken)
+        do {
+            let posts = try await service.fetchLookbooks()
+            let localRecords = LookbookFeedStore.load()
+            await MainActor.run {
+                entries = posts.map { post in
+                    LookbookEntry(from: post, localRecord: localRecords.first { r in r.id == post.id || r.imagePath == post.imageUrl })
+                }
+                feedLoading = false
+                feedError = nil
+            }
+        } catch {
+            await MainActor.run {
+                feedLoading = false
+                feedError = (error as? URLError)?.code == .cancelled ? nil : error.localizedDescription
+            }
+        }
     }
 
     private func lookbookFeedRow(model: LookbookFeedRowModel) -> some View {
@@ -604,7 +1010,7 @@ private struct LookbookTopicFeedView: View {
 private struct LookbookBundledPortraitTile: View {
     let resourceName: String
     let width: CGFloat
-    var cornerRadius: CGFloat = 12
+    var cornerRadius: CGFloat = 10
 
     private var tileHeight: CGFloat {
         width / LookbookCanonicalAspect.portrait1080x1350.rawValue
@@ -626,7 +1032,19 @@ private struct LookbookBundledPortraitTile: View {
         }
         .frame(width: width, height: tileHeight)
         .clipped()
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .modifier(LookbookTileCornerClip(radius: cornerRadius))
+    }
+}
+
+/// Square corners by default (IG-style); optional radius for rare cases.
+private struct LookbookTileCornerClip: ViewModifier {
+    let radius: CGFloat
+    func body(content: Content) -> some View {
+        if radius <= 0 {
+            content
+        } else {
+            content.clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+        }
     }
 }
 
@@ -665,46 +1083,7 @@ private struct LookbookHorizontalPortraitTile: View {
                 .padding(Theme.Spacing.sm)
         }
         .frame(width: width, height: tileHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-
-private struct LookbookTopBanner: View {
-    private let bannerHeight: CGFloat = 196
-
-    var body: some View {
-        Group {
-            if let ui = LookbookFeedAssets.uiImage(named: LookbookFeedAssets.bannerResourceName) {
-                Image(uiImage: ui)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                LinearGradient(
-                    colors: [
-                        Theme.primaryColor.opacity(0.55),
-                        Theme.Colors.secondaryBackground
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
-        }
-        .frame(height: bannerHeight)
-        .frame(maxWidth: .infinity)
-        .clipped()
-        .clipShape(
-            UnevenRoundedRectangle(
-                cornerRadii: RectangleCornerRadii(
-                    topLeading: 0,
-                    bottomLeading: 22,
-                    bottomTrailing: 22,
-                    topTrailing: 0
-                ),
-                style: .continuous
-            )
-        )
-        .padding(.bottom, Theme.Spacing.sm)
-        .ignoresSafeArea(edges: .top)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -713,24 +1092,31 @@ private struct LookbookStyleThumbnailStrip: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text(L10n.string("Explore by style"))
-                .font(Theme.Typography.headline)
-                .foregroundColor(Theme.Colors.primaryText)
-                .padding(.horizontal, Theme.Spacing.md)
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text(L10n.string("Explore by style"))
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.primaryText)
+                Text(L10n.string("Tap a look to open posts tagged with that vibe."))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.sm)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.Spacing.sm) {
+                HStack(spacing: lookbookThumbInterItem) {
                     ForEach(Array(lookbookStylePillValues.enumerated()), id: \.offset) { index, raw in
                         let resource = LookbookFeedAssets.styleThumbnailResource(styleIndex: index)
+                        let label = StyleSelectionView.displayName(for: raw)
                         NavigationLink {
                             LookbookTopicFeedView(
-                                screenTitle: StyleSelectionView.displayName(for: raw),
+                                screenTitle: label,
                                 styleFilter: [raw]
                             )
                         } label: {
                             VStack(spacing: Theme.Spacing.sm) {
                                 LookbookBundledPortraitTile(resourceName: resource, width: thumbWidth, cornerRadius: 10)
-                                Text(StyleSelectionView.displayName(for: raw))
+                                Text(label)
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundColor(Theme.Colors.secondaryText)
                                     .lineLimit(2)
@@ -750,16 +1136,17 @@ private struct LookbookStyleThumbnailStrip: View {
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
-                .padding(.bottom, Theme.Spacing.xs)
+                .padding(.bottom, Theme.Spacing.sm)
             }
         }
-        .padding(.top, Theme.Spacing.sm)
+        .padding(.bottom, Theme.Spacing.lg)
         .background(Theme.Colors.background)
     }
 }
 
 private struct LookbookHorizontalPortraitSection: View {
     let title: String
+    var subtitle: String? = nil
     var showSeeAll: Bool = false
     var onSeeAll: (() -> Void)?
     let cards: [LookbookHorizontalCard]
@@ -767,12 +1154,15 @@ private struct LookbookHorizontalPortraitSection: View {
     let visibleThumbCount: CGFloat
     let containerWidth: CGFloat
 
+    /// Wider gutter between editorial cards so tiles never read as one strip.
+    private var exploreCardGap: CGFloat { Theme.Spacing.md }
+
     private var contentWidth: CGFloat {
         containerWidth - Theme.Spacing.md * 2
     }
 
     private var thumbWidth: CGFloat {
-        let gap = Theme.Spacing.sm
+        let gap = exploreCardGap
         if visibleThumbCount <= 2.01 {
             return (contentWidth - gap) / visibleThumbCount
         }
@@ -781,28 +1171,35 @@ private struct LookbookHorizontalPortraitSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(title)
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                Spacer(minLength: Theme.Spacing.sm)
-                if showSeeAll {
-                    Button {
-                        onSeeAll?()
-                    } label: {
-                        Text(L10n.string("See all"))
-                            .font(Theme.Typography.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(Theme.primaryColor)
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(title)
+                        .font(Theme.Typography.headline)
+                        .foregroundColor(Theme.Colors.primaryText)
+                    Spacer(minLength: Theme.Spacing.sm)
+                    if showSeeAll {
+                        Button {
+                            onSeeAll?()
+                        } label: {
+                            Text(L10n.string("See all"))
+                                .font(Theme.Typography.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(Theme.primaryColor)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                }
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
                 }
             }
             .padding(.horizontal, Theme.Spacing.md)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.Spacing.sm) {
+                HStack(spacing: exploreCardGap) {
                     ForEach(cards) { card in
                         NavigationLink {
                             LookbookTopicFeedView(screenTitle: card.overlayTitle, styleFilter: card.styleFilter)
@@ -815,7 +1212,8 @@ private struct LookbookHorizontalPortraitSection: View {
                 .padding(.horizontal, Theme.Spacing.md)
             }
         }
-        .padding(.bottom, Theme.Spacing.md)
+        .padding(.top, Theme.Spacing.sm)
+        .padding(.bottom, Theme.Spacing.lg)
     }
 }
 
@@ -880,7 +1278,23 @@ private struct LookbookTransparentFullscreenOverlay: View {
     }
 }
 
-// MARK: - Feed image: canonical aspect bucket, fill frame, double-tap like, pinch zoom, bag for tagged products.
+// MARK: - Share sheet (lookbook post menu)
+private struct LookbookSharePayload: Identifiable {
+    let id = UUID()
+    let items: [Any]
+}
+
+private struct LookbookActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Feed image: intrinsic aspect ratio, double-tap like, pinch zoom, bag for tagged products.
 private struct LookbookFeedImage: View {
     let imageName: String
     let documentImagePath: String?
@@ -892,19 +1306,20 @@ private struct LookbookFeedImage: View {
     let onDoubleTapLike: () -> Void
     let onTap: () -> Void
     let onProductTap: (String) -> Void
+    /// Width ÷ height from decoded pixels; updates parent layout (no letterboxing to a fixed bucket).
+    var onAspectRatioResolved: ((CGFloat) -> Void)? = nil
 
     @State private var scale: CGFloat = 1
     @State private var anchorScale: CGFloat = 1
     @State private var dragOffset: CGSize = .zero
     @State private var anchorDragOffset: CGSize = .zero
     @State private var showTaggedProducts = false
-    @State private var bucket: LookbookCanonicalAspect = .square1080
+    @State private var displayAspect: CGFloat = LookbookCanonicalAspect.portrait1080x1350.rawValue
     @State private var remoteImage: UIImage?
     @State private var remoteLoading = false
 
     private let minScale: CGFloat = 1
     private let maxScale: CGFloat = 4
-    private let bagSize: CGFloat = 44
     private let thumbSize: CGFloat = 56
 
     private var hasTaggedProducts: Bool {
@@ -989,18 +1404,15 @@ private struct LookbookFeedImage: View {
             .scaleEffect(scale)
             .offset(dragOffset)
             .frame(maxWidth: .infinity)
-            .aspectRatio(bucket.rawValue, contentMode: .fit)
+            .aspectRatio(displayAspect, contentMode: .fit)
             .clipped()
-            .overlay(alignment: .topTrailing) {
+            .overlay(alignment: .bottomLeading) {
                 if hasTaggedProducts {
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showTaggedProducts.toggle() } }) {
-                        Image(systemName: "bag.fill")
-                            .font(.system(size: 20))
+                        Image(systemName: "bag")
+                            .font(.system(size: 22, weight: .medium))
                             .foregroundStyle(.white)
-                            .frame(width: bagSize, height: bagSize)
-                            .background(Theme.primaryColor.opacity(0.9))
-                            .clipShape(Circle())
-                            .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+                            .shadow(color: .black.opacity(0.55), radius: 3, x: 0, y: 1)
                     }
                     .buttonStyle(PlainTappableButtonStyle())
                     .padding(Theme.Spacing.sm)
@@ -1035,13 +1447,19 @@ private struct LookbookFeedImage: View {
                 core
             }
         }
-        .onAppear(perform: syncBucketFromLocalIfPossible)
+        .onAppear(perform: syncAspectFromLocalIfPossible)
         .task(id: imageUrl) { await loadRemoteIfNeeded() }
     }
 
-    private func syncBucketFromLocalIfPossible() {
+    private func applyAspect(width: CGFloat, height: CGFloat) {
+        let r = width / max(height, 1)
+        displayAspect = r
+        onAspectRatioResolved?(r)
+    }
+
+    private func syncAspectFromLocalIfPossible() {
         if let ui = localUIImage {
-            bucket = LookbookCanonicalAspect.bucket(for: ui.size.width / max(ui.size.height, 1))
+            applyAspect(width: ui.size.width, height: ui.size.height)
         }
     }
 
@@ -1058,10 +1476,9 @@ private struct LookbookFeedImage: View {
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
             guard let ui = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
-            let b = LookbookCanonicalAspect.bucket(for: ui.size.width / max(ui.size.height, 1))
             await MainActor.run {
                 remoteImage = ui
-                bucket = b
+                applyAspect(width: ui.size.width, height: ui.size.height)
                 remoteLoading = false
             }
         } catch {
@@ -1135,6 +1552,19 @@ private struct LookbookShimmerView: View {
     }
 }
 
+/// Shimmer for feed-only screens (no style-pill strip).
+private struct LookbookFeedOnlyShimmerView: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<3, id: \.self) { _ in
+                LookbookPostCardShimmer()
+            }
+        }
+        .padding(.bottom, Theme.Spacing.xl)
+        .shimmering()
+    }
+}
+
 private struct LookbookPostCardShimmer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1181,22 +1611,136 @@ private struct LookbookFeedRowView: View {
     let onImageTap: (LookbookEntry) -> Void
     let onProductTap: (String) -> Void
 
+    @EnvironmentObject private var authService: AuthService
+    @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
     @State private var carouselIndex: Int = 0
+    @State private var mediaAspectRatio: CGFloat = LookbookCanonicalAspect.portrait1080x1350.rawValue
+    @State private var slideAspects: [Int: CGFloat] = [:]
+    @State private var showReportSheet = false
+    @State private var sharePayload: LookbookSharePayload?
+    @State private var showTaggedProductsSheet = false
+    @State private var showMessageCompose = false
 
-    private let iconSize: CGFloat = 18
+    private let iconSize: CGFloat = 20
+    private let defaultMediaAspect: CGFloat = LookbookCanonicalAspect.portrait1080x1350.rawValue
 
-    private func detailLine(for entry: LookbookEntry) -> String {
-        if let first = entry.styles.first, !first.isEmpty {
-            return "\(StyleSelectionView.displayName(for: first)) fit"
-        }
-        return "New fit"
+    private var isOwnPost: Bool {
+        guard let me = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !me.isEmpty else { return false }
+        return me == entry.posterUsername.lowercased()
     }
 
-    /// Stable height for the media slot: `TabView` + async image load otherwise collapsed to a few points in `LazyVStack`.
+    private var taggedProductCount: Int {
+        guard let tags = entry.tags, let snaps = entry.productSnapshots else { return 0 }
+        let ids = tags.map(\.productId).filter { snaps[$0] != nil }
+        return Set(ids).count
+    }
+
+    private var messageForwardBody: String {
+        var parts: [String] = []
+        if let c = entry.caption, !c.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append(c)
+        }
+        if let u = entry.imageUrls.first, !u.isEmpty {
+            parts.append(u)
+        }
+        parts.append("@\(entry.posterUsername) on Wearhouse")
+        return parts.joined(separator: "\n\n")
+    }
+
+    private var currentMediaAspect: CGFloat {
+        let urls = entry.imageUrls
+        if urls.count > 1 {
+            return slideAspects[carouselIndex] ?? defaultMediaAspect
+        }
+        return mediaAspectRatio
+    }
+
+    private func styleSubtitle(for entry: LookbookEntry) -> String? {
+        guard let first = entry.styles.first, !first.isEmpty else { return nil }
+        return StyleSelectionView.displayName(for: first)
+    }
+
+    private func openSendForward() {
+        if MFMessageComposeViewController.canSendText() {
+            showMessageCompose = true
+        } else {
+            sharePayload = LookbookSharePayload(items: shareItemsForEntry())
+        }
+    }
+
+    /// Image URL for the currently visible carousel slide (or the only image).
+    private var currentDisplayImageURL: String? {
+        let urls = entry.imageUrls
+        guard !urls.isEmpty else { return nil }
+        if urls.count > 1, urls.indices.contains(carouselIndex) {
+            return urls[carouselIndex]
+        }
+        return urls.first
+    }
+
+    private var isPhotoFavorited: Bool {
+        savedLookbookFavorites.isSaved(postId: entry.id.uuidString)
+    }
+
+    private var posterAvatar: some View {
+        let trimmed = entry.posterProfilePictureUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return Group {
+            if let url = URL(string: trimmed), !trimmed.isEmpty {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFill()
+                    case .failure, .empty:
+                        avatarPlaceholder
+                    @unknown default:
+                        avatarPlaceholder
+                    }
+                }
+            } else {
+                avatarPlaceholder
+            }
+        }
+        .frame(width: 36, height: 36)
+        .clipShape(Circle())
+    }
+
+    private var avatarPlaceholder: some View {
+        Circle()
+            .fill(Theme.Colors.secondaryBackground)
+            .overlay(
+                Text(String(entry.posterUsername.prefix(1)).uppercased())
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.Colors.secondaryText)
+            )
+    }
+
+    private func shareItemsForEntry() -> [Any] {
+        var items: [Any] = []
+        if let u = entry.imageUrls.first, let url = URL(string: u) {
+            items.append(url)
+        }
+        var textParts: [String] = []
+        if let c = entry.caption, !c.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            textParts.append(c)
+        }
+        textParts.append("— @\(entry.posterUsername) on Wearhouse")
+        items.append(textParts.joined(separator: "\n"))
+        return items
+    }
+
+    private func copyPostLink() {
+        if let u = entry.imageUrls.first, !u.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            UIPasteboard.general.string = u
+        } else {
+            UIPasteboard.general.string = "@\(entry.posterUsername) — Wearhouse"
+        }
+    }
+
+    /// Height follows each slide’s intrinsic aspect (landscape = short, portrait = tall); no fixed portrait letterbox.
     private var mediaBlock: some View {
         let urls = entry.imageUrls
         return Color.clear
-            .aspectRatio(LookbookCanonicalAspect.portrait1080x1350.rawValue, contentMode: .fit)
+            .aspectRatio(currentMediaAspect, contentMode: .fit)
             .overlay {
                 mediaOverlayInner(urls: urls)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1219,7 +1763,10 @@ private struct LookbookFeedRowView: View {
                         showTagOverlay: idx == 0,
                         onDoubleTapLike: { onImageDoubleTap(entry) },
                         onTap: { onImageTap(entry) },
-                        onProductTap: onProductTap
+                        onProductTap: onProductTap,
+                        onAspectRatioResolved: { r in
+                            slideAspects[idx] = r
+                        }
                     )
                     .tag(idx)
                 }
@@ -1235,78 +1782,165 @@ private struct LookbookFeedRowView: View {
                 showTagOverlay: true,
                 onDoubleTapLike: { onImageDoubleTap(entry) },
                 onTap: { onImageTap(entry) },
-                onProductTap: onProductTap
+                onProductTap: onProductTap,
+                onAspectRatioResolved: { r in
+                    mediaAspectRatio = r
+                }
             )
         }
     }
 
+    private var postOptionsMenu: some View {
+        Menu {
+            Button {
+                sharePayload = LookbookSharePayload(items: shareItemsForEntry())
+            } label: {
+                Label(L10n.string("Share"), systemImage: "square.and.arrow.up")
+            }
+            NavigationLink {
+                UserProfileView(
+                    seller: User(username: entry.posterUsername, displayName: entry.posterUsername),
+                    authService: authService
+                )
+            } label: {
+                Label(L10n.string("View shop"), systemImage: "storefront")
+            }
+            Button {
+                copyPostLink()
+            } label: {
+                Label(L10n.string("Copy link"), systemImage: "link")
+            }
+            if let caption = entry.caption, !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button {
+                    UIPasteboard.general.string = caption
+                } label: {
+                    Label(L10n.string("Copy caption"), systemImage: "text.alignleft")
+                }
+            }
+            if !isOwnPost {
+                Divider()
+                Button {
+                    showReportSheet = true
+                } label: {
+                    Label(L10n.string("Report"), systemImage: "exclamationmark.bubble")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(Theme.Colors.primaryText)
+                .frame(width: 36, height: 36)
+                .contentShape(Rectangle())
+        }
+    }
+
     var body: some View {
+        let styleSub = styleSubtitle(for: entry)
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(spacing: Theme.Spacing.sm) {
-                Circle()
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 36, height: 36)
-                    .overlay(
-                        Text(String(entry.posterUsername.prefix(1)).uppercased())
-                            .font(.system(size: 16, weight: .semibold))
+            HStack(alignment: styleSub == nil ? .center : .top, spacing: Theme.Spacing.sm) {
+                posterAvatar
+                if let sub = styleSub {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.posterUsername)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Theme.Colors.primaryText)
+                        Text(sub)
+                            .font(Theme.Typography.caption)
                             .foregroundColor(Theme.Colors.secondaryText)
-                    )
-                Text(entry.posterUsername)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Theme.Colors.primaryText)
-                Spacer()
+                    }
+                } else {
+                    Text(entry.posterUsername)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Theme.Colors.primaryText)
+                }
+                Spacer(minLength: 0)
+                postOptionsMenu
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.top, Theme.Spacing.sm)
 
-            Text("📍 \(detailLine(for: entry))")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Theme.Colors.primaryText)
-                .padding(.horizontal, Theme.Spacing.md)
-
-            if let caption = entry.caption, !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                HashtagColoredText(text: caption)
-                    .padding(.horizontal, Theme.Spacing.md)
-            }
-
             mediaBlock
                 .frame(maxWidth: .infinity)
-                .background(Theme.Colors.secondaryBackground.opacity(0.35))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .padding(.horizontal, Theme.Spacing.md)
 
-            HStack(spacing: Theme.Spacing.lg) {
+            if let cap = entry.caption?.trimmingCharacters(in: .whitespacesAndNewlines), !cap.isEmpty {
+                HStack(alignment: .top, spacing: 4) {
+                    Text(entry.posterUsername)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Theme.Colors.primaryText)
+                    HashtagColoredText(text: cap)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.xs)
+            }
+
+            HStack(spacing: Theme.Spacing.md) {
                 Button(action: { onHeartTap(entry) }) {
                     HStack(spacing: 4) {
                         Image(systemName: entry.isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: iconSize))
+                            .font(.system(size: iconSize, weight: entry.isLiked ? .semibold : .regular))
                             .foregroundColor(entry.isLiked ? Theme.primaryColor : Theme.Colors.primaryText)
                         Text("\(entry.likesCount)")
-                            .font(.system(size: 14))
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundColor(Theme.Colors.primaryText)
-                        Text("Likes")
-                            .font(.system(size: 14))
-                            .foregroundColor(Theme.Colors.secondaryText)
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainTappableButtonStyle())
+
                 Button(action: { onCommentsTap(entry) }) {
                     HStack(spacing: 4) {
                         Image(systemName: "bubble.right")
-                            .font(.system(size: iconSize))
+                            .font(.system(size: iconSize, weight: .regular))
                             .foregroundColor(Theme.Colors.primaryText)
                         Text("\(entry.commentsCount)")
-                            .font(.system(size: 14))
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundColor(Theme.Colors.primaryText)
-                        Text("Comments")
-                            .font(.system(size: 14))
-                            .foregroundColor(Theme.Colors.secondaryText)
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainTappableButtonStyle())
-                Spacer()
+
+                if taggedProductCount > 0 {
+                    Button { showTaggedProductsSheet = true } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "bag")
+                                .font(.system(size: iconSize, weight: .regular))
+                                .foregroundColor(Theme.Colors.primaryText)
+                            Text("\(taggedProductCount)")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Theme.Colors.primaryText)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainTappableButtonStyle())
+                }
+
+                Spacer(minLength: Theme.Spacing.sm)
+
+                Button(action: openSendForward) {
+                    Image(systemName: "paperplane")
+                        .font(.system(size: iconSize, weight: .regular))
+                        .foregroundColor(Theme.Colors.primaryText)
+                }
+                .buttonStyle(PlainTappableButtonStyle())
+
+                Button { sharePayload = LookbookSharePayload(items: shareItemsForEntry()) } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: iconSize, weight: .regular))
+                        .foregroundColor(Theme.Colors.primaryText)
+                }
+                .buttonStyle(PlainTappableButtonStyle())
+
+                Button {
+                    HapticManager.tap()
+                    _ = savedLookbookFavorites.toggle(entry: entry, imageUrl: currentDisplayImageURL)
+                } label: {
+                    Image(systemName: isPhotoFavorited ? "bookmark.fill" : "bookmark")
+                        .font(.system(size: iconSize, weight: .regular))
+                        .foregroundColor(isPhotoFavorited ? Theme.primaryColor : Theme.Colors.primaryText)
+                }
+                .buttonStyle(PlainTappableButtonStyle())
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.top, Theme.Spacing.xs)
@@ -1316,6 +1950,26 @@ private struct LookbookFeedRowView: View {
                 .fill(Theme.Colors.glassBorder.opacity(0.45))
                 .frame(height: 0.5)
                 .padding(.leading, Theme.Spacing.md)
+        }
+        .sheet(item: $sharePayload) { payload in
+            LookbookActivityView(activityItems: payload.items)
+        }
+        .sheet(isPresented: $showTaggedProductsSheet) {
+            LookbookTaggedProductsSheet(entry: entry, onSelectProduct: onProductTap)
+        }
+        .sheet(isPresented: $showMessageCompose) {
+            LookbookMessageComposeView(isPresented: $showMessageCompose, bodyText: messageForwardBody)
+        }
+        .sheet(isPresented: $showReportSheet) {
+            NavigationStack {
+                ReportUserView(username: entry.posterUsername)
+                    .environmentObject(authService)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(L10n.string("Close")) { showReportSheet = false }
+                        }
+                    }
+            }
         }
         .onChange(of: entry.imageUrls.count) { _, newCount in
             if carouselIndex >= newCount { carouselIndex = max(0, newCount - 1) }
@@ -1352,6 +2006,110 @@ private struct LookbookProductDetailLoader: View {
             }
         }
     }
+}
+
+// MARK: - Tagged products sheet (from feed bag control)
+private struct LookbookTaggedProductRow: Identifiable {
+    let id: String
+    let snapshot: LookbookProductSnapshot
+}
+
+private struct LookbookTaggedProductsSheet: View {
+    let entry: LookbookEntry
+    let onSelectProduct: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private var rows: [LookbookTaggedProductRow] {
+        guard let tags = entry.tags, let snaps = entry.productSnapshots else { return [] }
+        var seen = Set<String>()
+        var out: [LookbookTaggedProductRow] = []
+        for t in tags {
+            guard let s = snaps[t.productId], seen.insert(t.productId).inserted else { continue }
+            out.append(LookbookTaggedProductRow(id: t.productId, snapshot: s))
+        }
+        return out
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(rows) { row in
+                    Button {
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            onSelectProduct(row.id)
+                        }
+                    } label: {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Group {
+                                if let urlString = row.snapshot.imageUrl, let url = URL(string: urlString) {
+                                    AsyncImage(url: url) { phase in
+                                        switch phase {
+                                        case .success(let img): img.resizable().scaledToFill()
+                                        default: Color.gray.opacity(0.25)
+                                        }
+                                    }
+                                } else {
+                                    Color.gray.opacity(0.25)
+                                }
+                            }
+                            .frame(width: 52, height: 52)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(row.snapshot.title)
+                                    .font(Theme.Typography.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(PlainTappableButtonStyle())
+                }
+            }
+            .listStyle(.plain)
+            .background(Theme.Colors.background)
+            .scrollContentBackground(.hidden)
+            .navigationTitle(L10n.string("Tagged products"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.string("Done")) { dismiss() }
+                        .foregroundColor(Theme.primaryColor)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - iMessage forward (Send)
+private struct LookbookMessageComposeView: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    let bodyText: String
+
+    final class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
+        var isPresented: Binding<Bool>
+        init(isPresented: Binding<Bool>) { self.isPresented = isPresented }
+
+        func messageComposeViewController(_ controller: MFMessageComposeViewController, didFinishWith result: MessageComposeResult) {
+            controller.dismiss(animated: true)
+            isPresented.wrappedValue = false
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(isPresented: $isPresented) }
+
+    func makeUIViewController(context: Context) -> MFMessageComposeViewController {
+        let vc = MFMessageComposeViewController()
+        vc.messageComposeDelegate = context.coordinator
+        vc.body = bodyText
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: MFMessageComposeViewController, context: Context) {}
 }
 
 // MARK: - Comments sheet

@@ -77,7 +77,7 @@ class NotificationSettingsViewModel: ObservableObject {
             } else {
                 try await service.updateNotificationPreference(isPushNotification: value)
                 // Backend may expect a fresh FCM registration after push prefs change (parity with typical client flows).
-                NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
+                NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -94,7 +94,7 @@ class NotificationSettingsViewModel: ObservableObject {
                 try await service.updateNotificationPreference(emailNotifications: subPreferences)
             } else {
                 try await service.updateNotificationPreference(inappNotifications: subPreferences)
-                NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
+                NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
             }
         } catch {
             errorMessage = error.localizedDescription

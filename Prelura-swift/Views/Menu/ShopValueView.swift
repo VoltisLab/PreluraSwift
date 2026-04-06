@@ -89,7 +89,7 @@ struct ShopValueView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             Task { await loadEarnings() }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .preluraSellerEarningsShouldRefresh)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .wearhouseSellerEarningsShouldRefresh)) { _ in
             // Avoid showing pre-wipe KPIs if the next fetch fails or is slow.
             earnings = nil
             Task { await loadEarnings() }

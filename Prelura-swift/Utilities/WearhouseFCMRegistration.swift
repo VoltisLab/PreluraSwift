@@ -4,7 +4,7 @@ import UIKit
 /// Firebase `Messaging.token()` requires an APNs device token first (`Messaging.apnsToken`).
 /// On launch and simulator, `token()` is often called too early → "No APNS token specified…".
 /// This helper waits and retries instead of treating that as a fatal error.
-enum PreluraFCMRegistration {
+enum WearhouseFCMRegistration {
     /// APNs can arrive several seconds after `registerForRemoteNotifications()` (especially right after the permission prompt).
     private static let retryDelay: TimeInterval = 0.45
     #if targetEnvironment(simulator)
@@ -58,14 +58,14 @@ enum PreluraFCMRegistration {
             " On device: Apple Developer → Identifiers → com.prelura.preloved → enable Push Notifications, then regenerate the provisioning profile / reinstall the app. Also confirm notification permission and that the TestFlight build uses Release signing (production APNs)."
         #endif
         return NSError(
-            domain: "PreluraFCM",
+            domain: "WearhouseFCM",
             code: 1,
             userInfo: [NSLocalizedDescriptionKey: "APNs device token not received in time (~\(Int(Double(maxAttempts) * retryDelay))s).\(hint)"]
         )
     }
 
     private static var emptyTokenError: NSError {
-        NSError(domain: "PreluraFCM", code: 2, userInfo: [NSLocalizedDescriptionKey: "FCM returned an empty token"])
+        NSError(domain: "WearhouseFCM", code: 2, userInfo: [NSLocalizedDescriptionKey: "FCM returned an empty token"])
     }
 
     private static func isApnsNotReady(_ error: Error) -> Bool {

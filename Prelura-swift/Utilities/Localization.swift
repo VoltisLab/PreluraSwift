@@ -78,7 +78,7 @@ enum L10n {
         "Vacation Mode": "Λειτουργία Αργίας",
         "Invite Friend": "Προσκάλεσε Φίλο",
         "Help Centre": "Κέντρο Βοήθειας",
-        "About Prelura": "Σχετικά με το Prelura",
+        "About Wearhouse": "Σχετικά με το Wearhouse",
         "Admin Dashboard": "Πίνακας Διαχείρισης",
         "Settings": "Ρυθμίσεις",
         "Logout": "Αποσύνδεση",
@@ -117,8 +117,8 @@ enum L10n {
         "Greek": "Ελληνικά",
         "Greek displays the app in Greek.": "Η γλώσσα Ελληνικά εμφανίζει την εφαρμογή στα Ελληνικά.",
 
-        // About Prelura
-        "How to use Prelura": "Πώς να χρησιμοποιήσετε το Prelura",
+        // About Wearhouse
+        "How to use Wearhouse": "Πώς να χρησιμοποιήσετε το Wearhouse",
         "Legal Information": "Νομικές πληροφορίες",
 
         // Help Centre
@@ -138,7 +138,7 @@ enum L10n {
 
         // Menu (navigation)
         "Menu": "Μενού",
-        "© Prelura 2026": "© Prelura 2026",
+        "© Wearhouse 2026": "© Wearhouse 2026",
         "© Voltis Labs 2026": "© Voltis Labs 2026",
         "Debug": "Εντοπισμός σφαλμάτων",
 
@@ -174,6 +174,17 @@ enum L10n {
         "Items you save as favourites will appear here.": "Τα προϊόντα που αποθηκεύετε ως αγαπημένα θα εμφανίζονται εδώ.",
         "No results for \"%@\"": "Δεν βρέθηκαν αποτελέσματα για «%@»",
         "Search favourites": "Αναζήτηση αγαπημένων",
+        "Search saved photos": "Αναζήτηση αποθηκευμένων φωτογραφιών",
+        "Products": "Προϊόντα",
+        "Photos": "Φωτογραφίες",
+        "No saved Lookbook photos yet": "Δεν έχετε αποθηκεύσει φωτογραφίες Lookbook ακόμα",
+        "Lookbook photos you save from the feed appear here.": "Οι φωτογραφίες Lookbook που αποθηκεύετε από τη ροή εμφανίζονται εδώ.",
+        "Remove from favourites": "Αφαίρεση από τα αγαπημένα",
+        "Image unavailable": "Η εικόνα δεν είναι διαθέσιμη",
+        "Photo": "Φωτογραφία",
+        "Lookbook": "Lookbook",
+        "No Lookbook posts yet": "Δεν υπάρχουν δημοσιεύσεις Lookbook ακόμα",
+        "Lookbook upload": "Μεταφόρτωση Lookbook",
 
         // Profile (Favourites used from Menu section)
         "Listings": "Αγγελίες",
@@ -299,7 +310,7 @@ enum L10n {
         "No brands match your search.": "Δεν βρέθηκαν μάρκες που ταιριάζουν με την αναζήτησή σας.",
         "Try Cart": "Δοκιμαστικό καλάθι",
         "One bag, many sellers": "Ένα καλάθι, πολλοί πωλητές",
-        "Try Cart lets you add pieces from different shops into a single bag. Keep browsing—your picks stay with you everywhere on Prelura.": "Το Δοκιμαστικό καλάθι σάς επιτρέπει να προσθέτετε κομμάτια από διαφορετικά καταστήματα σε ένα καλάθι. Συνεχίστε την περιήγηση—οι επιλογές σας μένουν μαζί σας παντού στο Prelura.",
+        "Try Cart lets you add pieces from different shops into a single bag. Keep browsing—your picks stay with you everywhere on Wearhouse.": "Το Δοκιμαστικό καλάθι σάς επιτρέπει να προσθέτετε κομμάτια από διαφορετικά καταστήματα σε ένα καλάθι. Συνεχίστε την περιήγηση—οι επιλογές σας μένουν μαζί σας παντού στο Wearhouse.",
         "Save time on every haul": "Εξοικονομήστε χρόνο σε κάθε αγορά",
         "No more jumping seller by seller. Search, tap the bag, and build your haul in one flow—with a running total so you always know where you stand.": "Χωρίς άλματα από πωλητή σε πωλητή. Αναζητήστε, πατήστε το καλάθι και χτίστε την αγορά σας σε μία ροή—με τρέχον σύνολο ώστε να ξέρετε πάντα πού βρίσκεστε.",
         "Shop smarter, checkout clearer": "Ψωνίστε πιο έξυπνα, ταμείο πιο καθαρά",
@@ -309,7 +320,7 @@ enum L10n {
         "Skip": "Παράλειψη",
         "Shop All": "Όλα τα προϊόντα",
         "Enter brand name": "Εισάγετε όνομα μάρκας",
-        "Tip: similar price range is recommended based on similar items sold on Prelura.": "Συμβουλή: συνιστάται παρόμοιο εύρος τιμών με βάση παρόμοια αντικείμενα που πωλήθηκαν στο Prelura.",
+        "Tip: similar price range is recommended based on similar items sold on Wearhouse.": "Συμβουλή: συνιστάται παρόμοιο εύρος τιμών με βάση παρόμοια αντικείμενα που πωλήθηκαν στο Wearhouse.",
         "Similar sold items": "Παρόμοια πωλημένα αντικείμενα",
 
         // Discover
@@ -347,7 +358,7 @@ enum L10n {
 
         // Auth (extra)
         "Create Account": "Δημιουργία λογαριασμού",
-        "Join Prelura today": "Γίνε μέλος του Prelura σήμερα",
+        "Join Wearhouse today": "Γίνε μέλος του Wearhouse σήμερα",
         "Email": "Email",
         "First Name": "Όνομα",
         "Last Name": "Επώνυμο",

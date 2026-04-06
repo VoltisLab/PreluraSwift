@@ -35,7 +35,7 @@ struct MessageDeliveryDebugView: View {
                     ForEach(conversations, id: \.id) { c in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(PreluraSupportBranding.displayTitle(forRecipientUsername: c.recipient.username))
+                                Text(WearhouseSupportBranding.displayTitle(forRecipientUsername: c.recipient.username))
                                     .font(.subheadline.weight(.semibold))
                                 Text("conv id: \(c.id)")
                                     .font(.caption2)

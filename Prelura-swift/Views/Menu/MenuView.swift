@@ -78,8 +78,8 @@ struct MenuView: View {
             NavigationLink(destination: HelpCentreView()) {
                 menuRow(L10n.string("Help Centre"), icon: "questionmark.circle")
             }
-            NavigationLink(destination: AboutPreluraMenuView()) {
-                menuRow(L10n.string("About Prelura"), icon: "info.circle")
+            NavigationLink(destination: AboutWearhouseMenuView()) {
+                menuRow(L10n.string("About Wearhouse"), icon: "info.circle")
             }
             Button(role: .destructive, action: {
                 showLogoutConfirm = true
@@ -110,7 +110,7 @@ struct MenuView: View {
             displayedVacation = isVacationMode
             Task { await refreshUserState() }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .preluraUserProfileDidUpdate)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .wearhouseUserProfileDidUpdate)) { _ in
             Task { await refreshUserState() }
         }
         .listStyle(.insetGrouped)

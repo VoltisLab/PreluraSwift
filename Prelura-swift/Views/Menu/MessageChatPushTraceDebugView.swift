@@ -140,7 +140,7 @@ struct MessageChatPushTraceDebugView: View {
             reloadPermission()
             reloadChatPushEntries()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .preluraNotificationDebugLogDidChange)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .wearhouseNotificationDebugLogDidChange)) { _ in
             reloadChatPushEntries()
         }
     }

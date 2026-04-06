@@ -1,5 +1,12 @@
 import Foundation
 
+private struct DynamicCodingKeys: CodingKey {
+    var stringValue: String
+    init?(stringValue: String) { self.stringValue = stringValue }
+    var intValue: Int? { nil }
+    init?(intValue: Int) { return nil }
+}
+
 /// Sub-preferences for in-app or email (likes, messages, newFollowers, profileView). Matches Flutter NotificationsPreferenceInputType.
 struct NotificationSubPreferences {
     var likes: Bool
@@ -157,7 +164,7 @@ final class NotificationService {
             let modelGroup: String?
             let isRead: Bool?
             let createdAt: String?
-            let meta: String?
+            let metaDict: [String: String]?
             let sender: RawSender?
             enum CodingKeys: String, CodingKey { case id, message, model, modelId, modelGroup, isRead, createdAt, meta, sender }
             init(from decoder: Decoder) throws {
@@ -173,8 +180,43 @@ final class NotificationService {
                 modelGroup = try c.decodeIfPresent(String.self, forKey: .modelGroup)
                 isRead = try c.decodeIfPresent(Bool.self, forKey: .isRead)
                 createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
-                meta = try c.decodeIfPresent(String.self, forKey: .meta)
                 sender = try c.decodeIfPresent(RawSender.self, forKey: .sender)
+
+                if c.contains(.meta) {
+                    if try c.decodeNil(forKey: .meta) {
+                        metaDict = nil
+                    } else if let s = try? c.decode(String.self, forKey: .meta), !s.isEmpty {
+                        metaDict = Self.parseMetaFromString(s)
+                    } else if let nested = try? c.nestedContainer(keyedBy: DynamicCodingKeys.self, forKey: .meta) {
+                        metaDict = Self.flattenMetaContainer(nested)
+                    } else {
+                        metaDict = nil
+                    }
+                } else {
+                    metaDict = nil
+                }
+            }
+
+            private static func parseMetaFromString(_ s: String) -> [String: String]? {
+                guard let data = s.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+                return json.mapValues { String(describing: $0) }
+            }
+
+            private static func flattenMetaContainer(_ nested: KeyedDecodingContainer<DynamicCodingKeys>) -> [String: String] {
+                var out: [String: String] = [:]
+                for key in nested.allKeys {
+                    if let s = try? nested.decode(String.self, forKey: key) {
+                        out[key.stringValue] = s
+                    } else if let i = try? nested.decode(Int.self, forKey: key) {
+                        out[key.stringValue] = String(i)
+                    } else if let b = try? nested.decode(Bool.self, forKey: key) {
+                        out[key.stringValue] = b ? "true" : "false"
+                    } else if let d = try? nested.decode(Double.self, forKey: key) {
+                        out[key.stringValue] = String(d)
+                    }
+                }
+                return out
             }
         }
         struct RawSender: Decodable {
@@ -194,11 +236,6 @@ final class NotificationService {
                 iso.formatOptions = [.withInternetDateTime]
                 return iso.date(from: s)
             }()
-            let metaDict: [String: String]? = {
-                guard let s = raw.meta, !s.isEmpty, let data = s.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-                return json.mapValues { String(describing: $0) }
-            }()
             return AppNotification(
                 id: raw.id,
                 sender: raw.sender.map { s in AppNotification.NotificationSender(username: s.username, profilePictureUrl: s.profilePictureUrl) },
@@ -208,10 +245,23 @@ final class NotificationService {
                 modelGroup: raw.modelGroup,
                 isRead: raw.isRead ?? false,
                 createdAt: createdAt,
-                meta: metaDict
+                meta: raw.metaDict
             )
         }
         return (parsed, total)
+    }
+
+    /// Unread notifications that belong on the bell list (excludes fresh chat; matches `shouldShowOnNotificationsPage`).
+    func countUnreadBellEligibleNotifications(pageCount: Int = 15, maxPages: Int = 8) async throws -> Int {
+        var count = 0
+        for page in 1...maxPages {
+            let (batch, _) = try await getNotifications(pageCount: pageCount, pageNumber: page)
+            for n in batch where n.shouldCountTowardBellBadge {
+                count += 1
+            }
+            if batch.count < pageCount { break }
+        }
+        return count
     }
     
     /// Mark notifications as read. Matches Flutter readNotification(notificationIds).
@@ -272,7 +322,7 @@ final class NotificationService {
             }
         } catch {
             #if DEBUG
-            print("Prelura: registerDeviceToken failed (backend may use a different mutation name): \(error)")
+            print("Wearhouse: registerDeviceToken failed (backend may use a different mutation name): \(error)")
             #endif
             throw error
         }

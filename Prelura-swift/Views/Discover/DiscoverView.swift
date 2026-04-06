@@ -76,7 +76,7 @@ struct DiscoverView: View {
                 viewModel.refresh()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .preluraRecentlyViewedDidUpdate)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .wearhouseRecentlyViewedDidUpdate)) { _ in
             viewModel.refreshRecentlyViewedSection()
         }
         .fullScreenCover(isPresented: $showSearchMembersResults) {
@@ -387,7 +387,7 @@ struct DiscoverView: View {
                     .clipped()
                 Color.black.opacity(0.45)
                     .frame(width: containerWidth, height: Self.bannerHeight)
-                Text(L10n.string("Lookbooks"))
+                Text(L10n.string("Lookbook"))
                     .font(Theme.Typography.title3)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)

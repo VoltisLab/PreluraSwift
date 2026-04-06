@@ -2,7 +2,7 @@ import Foundation
 
 extension Notification.Name {
     /// Posted when the notification debug trace changes (Menu → Push diagnostics should refresh).
-    static let preluraNotificationDebugLogDidChange = Notification.Name("PreluraNotificationDebugLogDidChange")
+    static let wearhouseNotificationDebugLogDidChange = Notification.Name("WearhouseNotificationDebugLogDidChange")
 }
 
 /// Ring buffer of push-related events (errors, arrivals, API outcomes) for Menu → Debug → Push diagnostics.
@@ -38,7 +38,7 @@ enum NotificationDebugLog {
             UserDefaults.standard.set(data, forKey: storageKey)
         }
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .preluraNotificationDebugLogDidChange, object: nil)
+            NotificationCenter.default.post(name: .wearhouseNotificationDebugLogDidChange, object: nil)
         }
     }
 
@@ -49,7 +49,7 @@ enum NotificationDebugLog {
     static func clear() {
         UserDefaults.standard.removeObject(forKey: storageKey)
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .preluraNotificationDebugLogDidChange, object: nil)
+            NotificationCenter.default.post(name: .wearhouseNotificationDebugLogDidChange, object: nil)
         }
     }
 

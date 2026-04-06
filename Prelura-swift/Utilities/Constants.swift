@@ -1,6 +1,6 @@
 import Foundation
 
-/// App-wide constants. API base URLs point to the Prelura backend.
+/// App-wide constants. **Wearhouse** client; API hostnames below are the shared production backend (unchanged).
 ///
 /// **Backend repository (do not modify from this app):**
 /// https://github.com/VoltisLab/prelura-app
@@ -21,8 +21,8 @@ struct Constants {
     static let acknowledgementsURL = "https://prelura.voltislabs.uk/acknowledgements/"
     static let hmrcReportingURL = "https://www.gov.uk/government/organisations/hm-revenue-customs/contact/report-fraud-or-an-untrustworthy-website"
     
-    /// Used when inviting contacts (share sheet / SMS).
-    static let inviteToPreluraURL = "https://prelura.voltislabs.uk"
+    /// Used when inviting contacts (share sheet / SMS). Same landing URL as before rebrand.
+    static let inviteFriendsLandingURL = "https://prelura.voltislabs.uk"
     /// Public web URLs for sharing listings and universal links (`/item/{slug}`: listing code or legacy numeric id). Must match **Associated Domains** / `apple-app-site-association` on this host (production: prelura.uk).
     static let publicWebItemLinkBaseURL = "https://prelura.uk"
     

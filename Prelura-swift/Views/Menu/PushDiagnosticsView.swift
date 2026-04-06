@@ -19,9 +19,9 @@ private enum PushTestInstructionKind {
     var shortLabel: String {
         switch self {
         case .localOnDevice:
-            return "Only your iPhone schedules this alert — no Prelura API, no Firebase, no APNs. Use it to confirm notification permission and banners work."
+            return "Only your iPhone schedules this alert — no Wearhouse API, no Firebase, no APNs. Use it to confirm notification permission and banners work."
         case .serverFCM:
-            return "Prelura’s API asks Firebase to send APNs to this app. That only matches if Firebase has the Swift app (com.prelura.preloved) set up with the same keys as Flutter’s bundle."
+            return "Wearhouse’s API asks Firebase to send APNs to this app. That only matches if Firebase has the Swift app (com.prelura.preloved) set up with the same keys as Flutter’s bundle."
         }
     }
 }
@@ -70,7 +70,7 @@ struct PushDiagnosticsView: View {
         List {
             Section {
                 Text(
-                    "Step 1 — Prove the OS: use **Local on-device test** below, background Prelura when the sheet says so, and see a banner. That needs no server.\n\n"
+                    "Step 1 — Prove the OS: use **Local on-device test** below, background Wearhouse when the sheet says so, and see a banner. That needs no server.\n\n"
                         + "Step 2 — Remote push: use **Server test push** (or Firebase console with your token). Flutter’s bundle (com.prelura.app) can work while Swift (com.prelura.preloved) does not until that app is registered in Firebase with the same APNs key."
                 )
                 .font(.caption)
@@ -154,7 +154,7 @@ struct PushDiagnosticsView: View {
                 Text("Registration")
             } footer: {
                 Text(
-                    "If **APNs for FCM** stays “Not received” on TestFlight, enable **Push Notifications** for **com.prelura.preloved** in Apple Developer, ensure the **distribution** profile includes push, reinstall the app, then Settings → Prelura → Notifications. A stored FCM string without APNs is often stale."
+                    "If **APNs for FCM** stays “Not received” on TestFlight, enable **Push Notifications** for **com.prelura.preloved** in Apple Developer, ensure the **distribution** profile includes push, reinstall the app, then Settings → Wearhouse → Notifications. A stored FCM string without APNs is often stale."
                 )
             }
 
@@ -188,7 +188,7 @@ struct PushDiagnosticsView: View {
                 .disabled(!authService.isAuthenticated || testPushBusy)
 
                 Text(
-                    "Both tests wait \(pushTestLeadSeconds) seconds. When the sheet appears, **leave Prelura** (swipe up / Home) so the alert can appear like a real push. Keeping the app open may still show a banner in some cases.\n\n"
+                    "Both tests wait \(pushTestLeadSeconds) seconds. When the sheet appears, **leave Wearhouse** (swipe up / Home) so the alert can appear like a real push. Keeping the app open may still show a banner in some cases.\n\n"
                         + "**Simulator:** the server test only proves the API + FCM send path. Apple often does **not** deliver remote APNs to the Simulator, so you may see no banner even when the event trace says sendDebugTestPush OK. **Use a physical iPhone** to know if Swift remote push works."
                 )
                 .font(.caption)
@@ -250,7 +250,7 @@ struct PushDiagnosticsView: View {
                     Text(backgroundSheetKind.shortLabel)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Text("**Now background Prelura:** swipe up from the bottom edge, double-tap Home, or use the Home button — then stay out of the app until the time hits zero.")
+                    Text("**Now background Wearhouse:** swipe up from the bottom edge, double-tap Home, or use the Home button — then stay out of the app until the time hits zero.")
                         .font(.body)
                     if let c = displayedCountdownSeconds {
                         Text("Fires in \(c)s")
@@ -281,7 +281,7 @@ struct PushDiagnosticsView: View {
             loadStaticState()
             reloadTrace()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .preluraNotificationDebugLogDidChange)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .wearhouseNotificationDebugLogDidChange)) { _ in
             reloadTrace()
         }
         .onReceive(Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()) { _ in
@@ -348,7 +348,7 @@ struct PushDiagnosticsView: View {
         return "\(a)…\(b) (\(full.count) chars)"
     }
 
-    /// Proves alerts work using only `UserNotifications` (no API, no FCM, no APNs from Prelura).
+    /// Proves alerts work using only `UserNotifications` (no API, no FCM, no APNs from our servers).
     private func startLocalOnDeviceTest() {
         guard !testPushBusy else { return }
         UNUserNotificationCenter.current().getNotificationSettings { settings in
@@ -361,7 +361,7 @@ struct PushDiagnosticsView: View {
                 DispatchQueue.main.async {
                     NotificationDebugLog.append(
                         source: "local",
-                        message: "Local test skipped — notification permission not granted (Settings → Prelura → Notifications)",
+                        message: "Local test skipped — notification permission not granted (Settings → Wearhouse → Notifications)",
                         isError: true
                     )
                     reloadTrace()
@@ -378,18 +378,18 @@ struct PushDiagnosticsView: View {
     @MainActor
     private func scheduleLocalTestNotification() async {
         let content = UNMutableNotificationContent()
-        content.title = "Prelura — on-device test"
+        content.title = "Wearhouse — on-device test"
         content.body = "This alert did not use any server. If you see it, notifications work on this iPhone."
         content.sound = .default
-        content.userInfo = [kPreluraLocalPushTestUserInfoKey: 1]
+        content.userInfo = [kWearhouseLocalPushTestUserInfoKey: 1]
 
         let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: [kPreluraLocalPushTestNotificationId])
-        center.removeDeliveredNotifications(withIdentifiers: [kPreluraLocalPushTestNotificationId])
+        center.removePendingNotificationRequests(withIdentifiers: [kWearhouseLocalPushTestNotificationId])
+        center.removeDeliveredNotifications(withIdentifiers: [kWearhouseLocalPushTestNotificationId])
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
-            identifier: kPreluraLocalPushTestNotificationId,
+            identifier: kWearhouseLocalPushTestNotificationId,
             content: content,
             trigger: trigger
         )
@@ -583,7 +583,7 @@ struct PushDiagnosticsView: View {
 
         let permitted = await ensureNotificationPermissionForRemotePush()
         guard permitted else {
-            refreshNote = "Notification permission denied or not granted — enable in Settings → Prelura → Notifications."
+            refreshNote = "Notification permission denied or not granted — enable in Settings → Wearhouse → Notifications."
             NotificationDebugLog.append(
                 source: "diagnostics",
                 message: "Manual refresh: no notification permission",
@@ -597,7 +597,7 @@ struct PushDiagnosticsView: View {
         try? await Task.sleep(nanoseconds: 300_000_000)
 
         let tokenResult: Result<String, Error> = await withCheckedContinuation { continuation in
-            PreluraFCMRegistration.fetchRegistrationToken { result in
+            WearhouseFCMRegistration.fetchRegistrationToken { result in
                 continuation.resume(returning: result)
             }
         }
@@ -624,7 +624,7 @@ struct PushDiagnosticsView: View {
         }
 
         UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
-        NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
+        NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
 
         guard authService.isAuthenticated, let bearer = authService.authToken else {
             refreshNote = "FCM token saved on device; sign in to upload to the API."

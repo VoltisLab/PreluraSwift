@@ -12,13 +12,13 @@ import OSLog
 import SwiftUI
 import UIKit
 
-private let pushRegistrationLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Prelura", category: "PushRegistration")
+private let pushRegistrationLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Wearhouse", category: "PushRegistration")
 
 /// Storage key for appearance: "system" | "light" | "dark"
 let kAppearanceMode = "appearance_mode"
 
 /// When the user is logged in, read the **current** FCM token from Firebase and send it via `updateProfile(fcmToken:)`.
-/// Uses `PreluraFCMRegistration` so we wait for APNs before `token()` and do not rely on UserDefaults alone (race after `storeTokens`).
+/// Uses `WearhouseFCMRegistration` so we wait for APNs before `token()` and do not rely on UserDefaults alone (race after `storeTokens`).
 private func registerPushTokenIfNeeded(authService: AuthService) {
     guard authService.isAuthenticated else {
         pushRegistrationLogger.debug("Skip FCM upload: not authenticated.")
@@ -32,7 +32,7 @@ private func registerPushTokenIfNeeded(authService: AuthService) {
         return
     }
     UIApplication.shared.registerForRemoteNotifications()
-    PreluraFCMRegistration.fetchRegistrationToken { result in
+    WearhouseFCMRegistration.fetchRegistrationToken { result in
         Task { @MainActor in
             guard authService.isAuthenticated else { return }
             let token: String
@@ -97,7 +97,7 @@ struct Prelura_swiftApp: App {
             }
             .environmentObject(authService)
             .environmentObject(appRouter)
-            .onReceive(NotificationCenter.default.publisher(for: .preluraNotificationTapped)) { notification in
+            .onReceive(NotificationCenter.default.publisher(for: .wearhouseNotificationTapped)) { notification in
                 guard let payload = notification.userInfo?[kNotificationTapPayloadKey] as? [AnyHashable: Any] else { return }
                 Task { @MainActor in
                     if showSplash {
@@ -123,7 +123,7 @@ struct Prelura_swiftApp: App {
                 registerPushTokenIfNeeded(authService: authService)
             }
             // Also during splash: token can arrive before AppearanceRootView exists; still upload when logged in.
-            .onReceive(NotificationCenter.default.publisher(for: .preluraDeviceTokenDidUpdate)) { _ in
+            .onReceive(NotificationCenter.default.publisher(for: .wearhouseDeviceTokenDidUpdate)) { _ in
                 registerPushTokenIfNeeded(authService: authService)
             }
         }
@@ -179,7 +179,7 @@ struct AppearanceRootView: View {
             }
             .onAppear { registerPushTokenIfNeeded(authService: authService) }
             .onChange(of: authService.isAuthenticated) { _, _ in registerPushTokenIfNeeded(authService: authService) }
-            .onReceive(NotificationCenter.default.publisher(for: .preluraDeviceTokenDidUpdate)) { _ in
+            .onReceive(NotificationCenter.default.publisher(for: .wearhouseDeviceTokenDidUpdate)) { _ in
                 registerPushTokenIfNeeded(authService: authService)
             }
     }
@@ -230,6 +230,7 @@ struct ContentView: View {
 struct MainTabView: View {
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var appRouter: AppRouter
+    @StateObject private var bellUnreadStore = BellUnreadStore()
     @StateObject private var tabCoordinator = TabCoordinator()
     @StateObject private var discoverViewModel = DiscoverViewModel(authService: nil)
     @StateObject private var inboxViewModel = InboxViewModel()
@@ -276,6 +277,7 @@ struct MainTabView: View {
                 .environmentObject(tabCoordinator)
                 .environment(\.optionalTabCoordinator, tabCoordinator)
                 .tabItem { Label(L10n.string("Inbox"), systemImage: "envelope") }
+                .badge(inboxViewModel.totalUnreadMessagesCount)
                 .tag(3)
 
             ProfileNavigation(tabCoordinator: tabCoordinator)
@@ -286,6 +288,8 @@ struct MainTabView: View {
         }
         .accentColor(Theme.primaryColor)
         .environmentObject(shopAllBagStore)
+        .environmentObject(SavedLookbookFavoritesStore.shared)
+        .environmentObject(bellUnreadStore)
         .onAppear {
             applyTabBarAppearance()
             discoverViewModel.updateAuthToken(authService.authToken)

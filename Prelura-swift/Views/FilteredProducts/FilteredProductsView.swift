@@ -395,7 +395,7 @@ struct FilteredProductsView: View {
                 viewModel.updateAuthToken(newToken)
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .preluraRecentlyViewedDidUpdate)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .wearhouseRecentlyViewedDidUpdate)) { _ in
             if case .recentlyViewed = filterType {
                 viewModel.loadData()
             }

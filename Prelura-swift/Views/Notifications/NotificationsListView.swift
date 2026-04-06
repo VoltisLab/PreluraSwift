@@ -94,7 +94,7 @@ struct NotificationsListView: View {
             notificationService.updateAuthToken(newToken)
         }
         .onDisappear {
-            NotificationCenter.default.post(name: .preluraInAppNotificationsDidChange, object: nil)
+            NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
         }
         .toolbar(.hidden, for: .tabBar)
     }
@@ -107,7 +107,8 @@ struct NotificationsListView: View {
         defer { isLoading = false }
         do {
             try await fetchVisibleBatch(appending: false)
-            await MainActor.run { NotificationCenter.default.post(name: .preluraInAppNotificationsDidChange, object: nil) }
+            // Do not post here: opening this screen triggered a duplicate Home bell refresh that could race
+            // with an in-flight count and briefly show then clear the red dot. Post on disappear / read / delete instead.
         } catch {
             await MainActor.run { errorMessage = L10n.userFacingError(error) }
         }
@@ -159,7 +160,7 @@ struct NotificationsListView: View {
         Task {
             _ = try? await notificationService.readNotifications(notificationIds: [idInt])
             await MainActor.run {
-                NotificationCenter.default.post(name: .preluraInAppNotificationsDidChange, object: nil)
+                NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
                 if let idx = notifications.firstIndex(where: { $0.id == notification.id }) {
                     notifications[idx] = AppNotification(
                         id: notifications[idx].id,
@@ -184,7 +185,7 @@ struct NotificationsListView: View {
                 _ = try await notificationService.deleteNotification(notificationId: idInt)
                 await MainActor.run {
                     notifications.removeAll { $0.id == notification.id }
-                    NotificationCenter.default.post(name: .preluraInAppNotificationsDidChange, object: nil)
+                    NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
                 }
             } catch {
                 await MainActor.run { errorMessage = L10n.userFacingError(error) }
@@ -372,7 +373,7 @@ private struct NotificationRowView: View {
     }
 
     private var isSupportNotification: Bool {
-        PreluraSupportBranding.isSupportSender(username: senderUsername)
+        WearhouseSupportBranding.isSupportSender(username: senderUsername)
     }
 
     /// Legacy payment success copy stored as "SOLD!… Your item sold for £…" — show same short line as new backend.
@@ -449,7 +450,7 @@ private struct NotificationRowView: View {
     var body: some View {
         HStack(alignment: .center, spacing: Theme.Spacing.md) {
             if isSupportNotification {
-                PreluraSupportBranding.supportAvatar(size: 44)
+                WearhouseSupportBranding.supportAvatar(size: 44)
             } else if let sender = notification.sender, let urlString = sender.profilePictureUrl, let url = URL(string: urlString) {
                 AsyncImage(url: url) { phase in
                     switch phase {

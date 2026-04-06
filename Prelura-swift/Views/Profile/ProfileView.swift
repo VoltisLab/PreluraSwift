@@ -220,7 +220,7 @@ struct ProfileView: View {
         .onChange(of: viewModel.user?.isMultibuyEnabled) { _, new in
             if let v = new { isMultiBuyEnabled = v }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .preluraUserProfileDidUpdate)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .wearhouseUserProfileDidUpdate)) { _ in
             viewModel.refresh()
         }
     }

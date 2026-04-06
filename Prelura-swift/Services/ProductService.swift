@@ -392,7 +392,7 @@ class ProductService: ObservableObject {
         return (names, response.brandsTotalNumber)
     }
 
-    /// Resolve brand name to backend brand id (for CreateProduct). Fetches one page of brands and finds first match by name.
+    /// Resolve brand name to backend brand id (for CreateProduct). Paginates `brands` search until an exact name match (case-insensitive).
     func getBrandId(byName name: String) async throws -> Int? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -411,13 +411,23 @@ class ProductService: ObservableObject {
           }
         }
         """
-        let response: BrandsResponse = try await client.execute(
-            query: query,
-            variables: ["search": trimmed, "pageCount": 50, "pageNumber": 1],
-            responseType: BrandsResponse.self
-        )
-        let match = (response.brands ?? []).first { ($0.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == trimmed.lowercased() }
-        return match?.id
+        let pageCount = 100
+        var page = 1
+        let target = trimmed.lowercased()
+        while page < 30 {
+            let response: BrandsResponse = try await client.execute(
+                query: query,
+                variables: ["search": trimmed, "pageCount": pageCount, "pageNumber": page],
+                responseType: BrandsResponse.self
+            )
+            let rows = response.brands ?? []
+            if let match = rows.first(where: { ($0.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == target }) {
+                return match.id
+            }
+            if rows.count < pageCount { break }
+            page += 1
+        }
+        return nil
     }
 
     /// Create a product (listing). Upload images first via FileUploadService.uploadProductImages, then call this with the returned imageUrl list.
@@ -1084,8 +1094,6 @@ class ProductService: ObservableObject {
             return "WOMEN"
         case "Men":
             return "MEN"
-        case "Kids":
-            return "KIDS"
         case "Toddlers":
             return "TODDLERS"
         case "Boys":

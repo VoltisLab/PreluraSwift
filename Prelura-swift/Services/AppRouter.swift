@@ -33,7 +33,7 @@ final class AppRouter: ObservableObject {
     @Published var pendingInboxChat: PendingInboxChatNavigation?
 
     /// Hosts that serve `/item/{slug}` universal links for this app. Keep in sync with entitlements **Associated Domains** and the site’s `apple-app-site-association`.
-    private static func isPreluraItemUniversalLinkHost(_ host: String) -> Bool {
+    private static func isWearhouseItemUniversalLinkHost(_ host: String) -> Bool {
         switch host.lowercased() {
         case "prelura.uk", "www.prelura.uk", "prelura.com", "www.prelura.com":
             return true
@@ -56,7 +56,7 @@ final class AppRouter: ObservableObject {
 
         if scheme == "http" || scheme == "https" {
             let host = (url.host ?? "").lowercased()
-            guard Self.isPreluraItemUniversalLinkHost(host) else { return }
+            guard Self.isWearhouseItemUniversalLinkHost(host) else { return }
             let parts = url.path.split(separator: "/").map(String.init).filter { !$0.isEmpty }
             if parts.count >= 2, parts[0].lowercased() == "item" {
                 let raw = parts[1]

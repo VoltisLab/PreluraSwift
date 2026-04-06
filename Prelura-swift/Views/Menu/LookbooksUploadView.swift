@@ -425,7 +425,7 @@ struct LookbooksUploadView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: uploadState.uploading)
         .animation(.easeInOut(duration: 0.3), value: showSuccessBanner)
-        .navigationTitle("Lookbooks Upload")
+        .navigationTitle(L10n.string("Lookbook upload"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .fullScreenCover(isPresented: $showTagScreen) {

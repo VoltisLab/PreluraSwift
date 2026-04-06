@@ -109,7 +109,7 @@ class ItemDetailViewModel: ObservableObject {
         Task {
             await productService.addToRecentlyViewed(productId: productIdInt)
             await MainActor.run {
-                NotificationCenter.default.post(name: .preluraRecentlyViewedDidUpdate, object: nil)
+                NotificationCenter.default.post(name: .wearhouseRecentlyViewedDidUpdate, object: nil)
             }
         }
     }
@@ -141,7 +141,7 @@ class ItemDetailViewModel: ObservableObject {
         guard let id = Int(productId) else { return }
         try await productService.deleteProduct(productId: id)
         await MainActor.run {
-            NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
+            NotificationCenter.default.post(name: .wearhouseUserProfileDidUpdate, object: nil)
         }
     }
 
@@ -150,7 +150,7 @@ class ItemDetailViewModel: ObservableObject {
         guard let id = Int(productId) else { return }
         try await productService.updateProductStatus(productId: id, status: "SOLD")
         await MainActor.run {
-            NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
+            NotificationCenter.default.post(name: .wearhouseUserProfileDidUpdate, object: nil)
         }
     }
 

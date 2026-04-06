@@ -21,7 +21,7 @@ final class FileUploadService {
 
     /// Upload image data as PROFILE_PICTURE; returns (profilePictureUrl, thumbnailUrl) for updateProfile.
     func uploadProfileImage(_ imageData: Data) async throws -> (url: String, thumbnail: String) {
-        let boundary = "----PreluraBoundary\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        let boundary = "----WearhouseBoundary\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
         var body = Data()
 
         let operations: [String: Any] = [
@@ -111,7 +111,7 @@ final class FileUploadService {
     func uploadProductImages(_ imageDataList: [Data]) async throws -> [(url: String, thumbnail: String)] {
         guard !imageDataList.isEmpty else { return [] }
 
-        let boundary = "----PreluraBoundary\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        let boundary = "----WearhouseBoundary\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
         var body = Data()
 
         // variables.files: [null, null, ...] one per file

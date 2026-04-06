@@ -6,7 +6,7 @@ import OSLog
 import UIKit
 import UserNotifications
 
-private let authSessionLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Prelura", category: "AuthSession")
+private let authSessionLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Wearhouse", category: "AuthSession")
 
 @MainActor
 class AuthService: ObservableObject {
@@ -55,7 +55,7 @@ class AuthService: ObservableObject {
         self.isGuestMode = false
         client.setAuthToken(token)
         // After login, upload FCM token to backend (same moment GraphQL has Bearer token).
-        NotificationCenter.default.post(name: .preluraDeviceTokenDidUpdate, object: nil)
+        NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
         // OSLog: visible when filtering `subsystem == com.prelura.preloved`. Never log raw JWTs.
         authSessionLogger.info("Session stored for \(username, privacy: .public) — access JWT \(token.count, privacy: .public) chars, refresh \(refreshToken.count, privacy: .public) chars.")
         print("[Auth] Session stored for \(username) — access JWT \(token.count) chars, refresh \(refreshToken.count) chars.")

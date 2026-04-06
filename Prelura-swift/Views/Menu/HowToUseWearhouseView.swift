@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// How to use Prelura (from Flutter AboutPrelura – empty onTap). Placeholder content until copy is finalised.
-struct HowToUsePreluraView: View {
+/// How to use Wearhouse. Placeholder content until copy is finalised.
+struct HowToUseWearhouseView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                Text("How to use Prelura")
+                Text("How to use Wearhouse")
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
                 Text("Discover, buy and sell preloved fashion. Browse items, add to favourites, make offers and manage your orders from the app.")
@@ -16,7 +16,7 @@ struct HowToUsePreluraView: View {
             .padding(Theme.Spacing.md)
         }
         .background(Theme.Colors.background)
-        .navigationTitle("How to use Prelura")
+        .navigationTitle("How to use Wearhouse")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }

@@ -9,7 +9,7 @@ enum MenuDestination: Identifiable, Hashable {
     case vacationMode
     case inviteFriend
     case helpCentre
-    case aboutPrelura
+    case aboutWearhouse
     case settings
     case logout
     
@@ -26,8 +26,8 @@ enum MenuDestination: Identifiable, Hashable {
     case emailNotifications
     case adminActions
     
-    /// Submenu for About Prelura
-    case howToUsePrelura
+    /// Submenu for About Wearhouse
+    case howToUseWearhouse
     case legalInformation
     
     var id: String { "\(self)" }

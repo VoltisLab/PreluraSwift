@@ -3,130 +3,174 @@ import Shimmer
 
 struct HomeView: View {
     @EnvironmentObject var authService: AuthService
+    @EnvironmentObject private var bellUnreadStore: BellUnreadStore
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var tabCoordinator: TabCoordinator
     @StateObject private var viewModel = HomeViewModel()
     @State private var searchText: String = ""
     @State private var scrollPosition: String? = "home_top"
     @State private var showAIChat: Bool = false
     @State private var showGuestSignInPrompt: Bool = false
+    /// Programmatic push avoids `NavigationLink` in the toolbar, which often skips redraws for the red dot.
+    @State private var showNotificationsList: Bool = false
 
-    let categories = ["All", "Women", "Men", "Kids", "Toddlers"]
+    let categories = ["All", "Women", "Men", "Boys", "Girls", "Toddlers"]
 
     private let topId = "home_top"
 
     var body: some View {
-        Group {
-            if viewModel.isLoading && viewModel.filteredItems.isEmpty {
-                FeedShimmerView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            Color.clear.frame(height: 1).id(topId)
-                            FeedSearchField(
-                                text: $searchText,
-                                onSubmit: { viewModel.searchWithParsed($0) },
-                                onAITap: { showAIChat = true },
-                                topPadding: Theme.Spacing.xs
-                            )
+        homeChromeAndLifecycle
+    }
 
-                            if let hint = viewModel.searchClosestMatchHint {
-                                HStack(spacing: Theme.Spacing.xs) {
-                                    Image(systemName: "info.circle.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(Theme.primaryColor)
-                                    Text(hint)
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText)
-                                }
-                                .padding(.horizontal, Theme.Spacing.md)
-                                .padding(.vertical, Theme.Spacing.xs)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+    private var homeNavChromeStack: some View {
+        homeMainContent
+            .onChange(of: scrollPosition) { _, new in
+                tabCoordinator.reportAtTop(tab: 0, isAtTop: new == topId)
+            }
+            .background(Theme.Colors.background)
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(viewModel.isLoading && viewModel.filteredItems.isEmpty)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    WearhouseWordmarkView(style: .toolbar)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    homeNotificationsBellLink
+                }
+            }
+            .refreshable {
+                await viewModel.refreshAsync()
+            }
+    }
+
+    private var homeChromeAndLifecycle: some View {
+        homeNavChromeStack
+            .onAppear {
+                viewModel.updateAuthToken(authService.isGuestMode ? nil : authService.authToken)
+                bellUnreadStore.scheduleRefresh(authService: authService)
+            }
+            .onChange(of: authService.isGuestMode) { _, _ in
+                viewModel.updateAuthToken(authService.isGuestMode ? nil : authService.authToken)
+                if authService.isGuestMode { viewModel.loadData() }
+                bellUnreadStore.scheduleRefresh(authService: authService)
+            }
+            .onChange(of: authService.authToken) { _, _ in
+                if !authService.isGuestMode { viewModel.updateAuthToken(authService.authToken) }
+                bellUnreadStore.scheduleRefresh(authService: authService)
+            }
+            .onChange(of: tabCoordinator.inboxListRefreshNonce) { _, _ in
+                bellUnreadStore.scheduleRefresh(authService: authService)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .wearhouseInAppNotificationsDidChange)) { _ in
+                bellUnreadStore.scheduleRefresh(authService: authService)
+            }
+            .onChange(of: tabCoordinator.selectedTab) { _, tab in
+                if tab == 0 {
+                    bellUnreadStore.scheduleRefresh(authService: authService)
+                }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    bellUnreadStore.scheduleRefresh(authService: authService)
+                }
+            }
+            .navigationDestination(isPresented: $showNotificationsList) {
+                NotificationsListView()
+            }
+            .background(
+                NavigationLink(destination: AIChatView(viewModel: viewModel).environmentObject(authService), isActive: $showAIChat) {
+                    EmptyView()
+                }
+                .hidden()
+            )
+            .fullScreenCover(isPresented: $showGuestSignInPrompt) {
+                GuestSignInPromptView()
+            }
+    }
+
+    @ViewBuilder
+    private var homeMainContent: some View {
+        if viewModel.isLoading && viewModel.filteredItems.isEmpty {
+            FeedShimmerView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Color.clear.frame(height: 1).id(topId)
+                        FeedSearchField(
+                            text: $searchText,
+                            onSubmit: { viewModel.searchWithParsed($0) },
+                            onAITap: { showAIChat = true },
+                            topPadding: Theme.Spacing.xs
+                        )
+                        if let hint = viewModel.searchClosestMatchHint {
+                            HStack(spacing: Theme.Spacing.xs) {
+                                Image(systemName: "info.circle.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Theme.primaryColor)
+                                Text(hint)
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.Colors.secondaryText)
                             }
-
-                            if let err = viewModel.errorMessage, !err.isEmpty {
-                                HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundColor(.orange)
-                                    Text(err)
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText)
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(Theme.Spacing.md)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.orange.opacity(0.12))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.xs)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if let err = viewModel.errorMessage, !err.isEmpty {
+                            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text(err)
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                                Spacer(minLength: 0)
                             }
-
-                            categoryFiltersSection
-                            productGridSection
+                            .padding(Theme.Spacing.md)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.orange.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .padding(.horizontal, Theme.Spacing.md)
+                        }
+                        categoryFiltersSection
+                        productGridSection
+                    }
+                }
+                .scrollPosition(id: $scrollPosition, anchor: .top)
+                .onAppear {
+                    tabCoordinator.reportAtTop(tab: 0, isAtTop: true)
+                    tabCoordinator.registerScrollToTop(tab: 0) {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo(topId, anchor: .top)
                         }
                     }
-                    .scrollPosition(id: $scrollPosition, anchor: .top)
-                    .onAppear {
-                        tabCoordinator.reportAtTop(tab: 0, isAtTop: true)
-                        tabCoordinator.registerScrollToTop(tab: 0) {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                proxy.scrollTo(topId, anchor: .top)
-                            }
-                        }
-                        tabCoordinator.registerRefresh(tab: 0) {
-                            Task { await viewModel.refreshAsync() }
-                        }
+                    tabCoordinator.registerRefresh(tab: 0) {
+                        Task { await viewModel.refreshAsync() }
                     }
                 }
             }
         }
-        .onChange(of: scrollPosition) { _, new in
-            tabCoordinator.reportAtTop(tab: 0, isAtTop: new == topId)
-        }
-        .background(Theme.Colors.background)
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarHidden(viewModel.isLoading && viewModel.filteredItems.isEmpty)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Image("PreluraLogo")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(height: 26)
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: Theme.Spacing.sm) {
-                    NavigationLink(destination: NotificationsListView()) {
-                        Image(systemName: "bell")
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(HapticTapButtonStyle())
+    }
+
+    private var homeNotificationsBellLink: some View {
+        Button {
+            showNotificationsList = true
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "bell")
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                if bellUnreadStore.hasUnread {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                        .offset(x: 4, y: -2)
+                        .allowsHitTesting(false)
                 }
             }
+            .contentShape(Rectangle())
         }
-        .refreshable {
-            await viewModel.refreshAsync()
-        }
-        .onAppear {
-            viewModel.updateAuthToken(authService.isGuestMode ? nil : authService.authToken)
-        }
-        .onChange(of: authService.isGuestMode) { _, _ in
-            viewModel.updateAuthToken(authService.isGuestMode ? nil : authService.authToken)
-            if authService.isGuestMode { viewModel.loadData() }
-        }
-        .onChange(of: authService.authToken) { _, _ in
-            if !authService.isGuestMode { viewModel.updateAuthToken(authService.authToken) }
-        }
-        .background(
-            NavigationLink(destination: AIChatView(viewModel: viewModel).environmentObject(authService), isActive: $showAIChat) {
-                EmptyView()
-            }
-            .hidden()
-        )
-        .fullScreenCover(isPresented: $showGuestSignInPrompt) {
-            GuestSignInPromptView()
-        }
+        .buttonStyle(HapticTapButtonStyle())
     }
 
     // MARK: - Category Filters
@@ -396,5 +440,6 @@ struct HomeItemCard: View {
 
 #Preview {
     HomeView(tabCoordinator: TabCoordinator())
+        .environmentObject(BellUnreadStore())
         .preferredColorScheme(.dark)
 }

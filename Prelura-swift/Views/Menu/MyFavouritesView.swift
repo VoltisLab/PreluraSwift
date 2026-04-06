@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// Favourites: fetch liked products, grid, search, empty state. Matches Flutter MyFavouriteScreen.
+/// Favourites: liked products (default) and Lookbook photos saved from the feed. Matches Flutter MyFavouriteScreen + local photo bookmarks.
 struct MyFavouritesView: View {
     @EnvironmentObject var authService: AuthService
-    /// Shared with Shop All and item detail (injected from `MainTabView`).
     @EnvironmentObject private var shopAllBag: ShopAllBagStore
+    @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
     /// When true, opened from Shop All (e.g. Try Cart rules already apply from that flow).
     var fromShopAll: Bool = false
-    /// User turns this on to pass the shared bag into item detail (toolbar bag on Favourites).
     @State private var shopAllBagToolbarActive = false
+    @State private var favouritesSegment: Int = 0
     @State private var searchText: String = ""
     @State private var items: [Item] = []
     @State private var totalNumber: Int = 0
@@ -19,11 +19,17 @@ struct MyFavouritesView: View {
 
     private let productService = ProductService()
     private let pageCount = 20
-    /// Same grid as feed: column and row spacing so products don’t bleed together.
     private let columns = [
         GridItem(.flexible(), spacing: Theme.Spacing.md),
         GridItem(.flexible(), spacing: Theme.Spacing.md)
     ]
+    private let photoColumns = [
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2)
+    ]
+
+    private var isProductsTab: Bool { favouritesSegment == 0 }
 
     private var filteredItems: [Item] {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
@@ -31,96 +37,37 @@ struct MyFavouritesView: View {
         return items.filter { $0.title.lowercased().contains(q) }
     }
 
+    private var filteredSavedPhotos: [SavedLookbookPhoto] {
+        let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+        let base = savedLookbookFavorites.photos
+        if q.isEmpty { return base }
+        return base.filter {
+            $0.posterUsername.lowercased().contains(q)
+            || ($0.caption ?? "").lowercased().contains(q)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            Picker("", selection: $favouritesSegment) {
+                Text(L10n.string("Products")).tag(0)
+                Text(L10n.string("Photos")).tag(1)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.xs)
+
             DiscoverSearchField(
                 text: $searchText,
-                placeholder: L10n.string("Search favourites"),
+                placeholder: isProductsTab ? L10n.string("Search favourites") : L10n.string("Search saved photos"),
                 topPadding: Theme.Spacing.xs
             )
 
-            if let err = errorMessage {
-                Text(err)
-                    .font(Theme.Typography.caption)
-                    .foregroundColor(Theme.Colors.error)
-                    .padding(.horizontal)
-            }
-
-            if isLoading && items.isEmpty {
-                Spacer()
-                ProgressView()
-                Spacer()
-            } else if items.isEmpty {
-                Spacer()
-                VStack(spacing: Theme.Spacing.md) {
-                    Text(L10n.string("No favourites yet"))
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.primaryText)
-                    Text(L10n.string("Items you save as favourites will appear here."))
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(Theme.Spacing.xl)
-                Spacer()
-            } else if filteredItems.isEmpty {
-                Spacer()
-                Text(String(format: L10n.string("No results for \"%@\""), searchText))
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                Spacer()
+            if isProductsTab {
+                productsTabContent
             } else {
-                ScrollView {
-                    LazyVGrid(
-                        columns: columns,
-                        alignment: .leading,
-                        spacing: Theme.Spacing.md,
-                        pinnedViews: []
-                    ) {
-                        ForEach(filteredItems) { item in
-                            let inBag = shopAllBag.items.contains(where: { $0.id == item.id })
-                            NavigationLink(destination: ItemDetailView(
-                                item: item,
-                                authService: authService,
-                                offersAllowed: !(fromShopAll || shopAllBagToolbarActive),
-                                shopAllBag: shopAllBagToolbarActive ? shopAllBag : nil,
-                                activateShopBagActionsInitially: shopAllBagToolbarActive
-                            )) {
-                                HomeItemCard(
-                                    item: item,
-                                    onLikeTap: { unfavourite(item) },
-                                    showAddToBag: shopAllBagToolbarActive,
-                                    onAddToBag: shopAllBagToolbarActive
-                                        ? {
-                                            if !shopAllBag.items.contains(where: { $0.id == item.id }) {
-                                                shopAllBag.add(item)
-                                            }
-                                        }
-                                        : nil,
-                                    isInBag: inBag,
-                                    onRemove: shopAllBagToolbarActive
-                                        ? { shopAllBag.remove(item) }
-                                        : nil
-                                )
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-                            }
-                            .buttonStyle(PlainTappableButtonStyle())
-                            .onAppear {
-                                if item.id == filteredItems.last?.id {
-                                    loadMoreIfNeeded()
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .padding(.bottom, shopAllBagToolbarActive ? 88 : Theme.Spacing.lg)
-
-                    if isLoadingMore {
-                        ProgressView()
-                            .padding()
-                    }
-                }
+                photosTabContent
             }
         }
         .background(Theme.Colors.background)
@@ -128,27 +75,175 @@ struct MyFavouritesView: View {
         .navigationTitle(L10n.string("Favourites"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    shopAllBagToolbarActive.toggle()
-                } label: {
-                    Image(systemName: shopAllBagToolbarActive ? "bag.fill" : "bag")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(shopAllBagToolbarActive ? Theme.primaryColor : Theme.Colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+            if isProductsTab {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        shopAllBagToolbarActive.toggle()
+                    } label: {
+                        Image(systemName: shopAllBagToolbarActive ? "bag.fill" : "bag")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(shopAllBagToolbarActive ? Theme.primaryColor : Theme.Colors.primaryText)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainTappableButtonStyle())
+                    .accessibilityLabel("Toggle shopping bag mode")
                 }
-                .buttonStyle(PlainTappableButtonStyle())
-                .accessibilityLabel("Toggle shopping bag mode")
             }
         }
         .overlay(alignment: .bottom) {
-            if shopAllBagToolbarActive {
+            if isProductsTab && shopAllBagToolbarActive {
                 favouritesTryCartFloatingBar
             }
         }
-        .refreshable { await load(resetPage: true) }
-        .task { await load(resetPage: true) }
+        .refreshable {
+            if isProductsTab {
+                await load(resetPage: true)
+            }
+        }
+        .task {
+            await load(resetPage: true)
+        }
+    }
+
+    @ViewBuilder
+    private var productsTabContent: some View {
+        if let err = errorMessage {
+            Text(err)
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.error)
+                .padding(.horizontal)
+        }
+
+        if isLoading && items.isEmpty {
+            Spacer()
+            ProgressView()
+            Spacer()
+        } else if items.isEmpty {
+            Spacer()
+            VStack(spacing: Theme.Spacing.md) {
+                Text(L10n.string("No favourites yet"))
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                Text(L10n.string("Items you save as favourites will appear here."))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(Theme.Spacing.xl)
+            Spacer()
+        } else if filteredItems.isEmpty {
+            Spacer()
+            Text(String(format: L10n.string("No results for \"%@\""), searchText))
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.secondaryText)
+            Spacer()
+        } else {
+            ScrollView {
+                LazyVGrid(
+                    columns: columns,
+                    alignment: .leading,
+                    spacing: Theme.Spacing.md,
+                    pinnedViews: []
+                ) {
+                    ForEach(filteredItems) { item in
+                        let inBag = shopAllBag.items.contains(where: { $0.id == item.id })
+                        NavigationLink(destination: ItemDetailView(
+                            item: item,
+                            authService: authService,
+                            offersAllowed: !(fromShopAll || shopAllBagToolbarActive),
+                            shopAllBag: shopAllBagToolbarActive ? shopAllBag : nil,
+                            activateShopBagActionsInitially: shopAllBagToolbarActive
+                        )) {
+                            HomeItemCard(
+                                item: item,
+                                onLikeTap: { unfavourite(item) },
+                                showAddToBag: shopAllBagToolbarActive,
+                                onAddToBag: shopAllBagToolbarActive
+                                    ? {
+                                        if !shopAllBag.items.contains(where: { $0.id == item.id }) {
+                                            shopAllBag.add(item)
+                                        }
+                                    }
+                                    : nil,
+                                isInBag: inBag,
+                                onRemove: shopAllBagToolbarActive
+                                    ? { shopAllBag.remove(item) }
+                                    : nil
+                            )
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        }
+                        .buttonStyle(PlainTappableButtonStyle())
+                        .onAppear {
+                            if item.id == filteredItems.last?.id {
+                                loadMoreIfNeeded()
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
+                .padding(.bottom, shopAllBagToolbarActive ? 88 : Theme.Spacing.lg)
+
+                if isLoadingMore {
+                    ProgressView()
+                        .padding()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var photosTabContent: some View {
+        if filteredSavedPhotos.isEmpty {
+            Spacer()
+            VStack(spacing: Theme.Spacing.md) {
+                Text(L10n.string("No saved Lookbook photos yet"))
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                Text(L10n.string("Lookbook photos you save from the feed appear here."))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(Theme.Spacing.xl)
+            Spacer()
+        } else {
+            ScrollView {
+                LazyVGrid(columns: photoColumns, alignment: .leading, spacing: 2, pinnedViews: []) {
+                    ForEach(filteredSavedPhotos) { photo in
+                        NavigationLink(destination: SavedLookbookPhotoDetailView(photo: photo)) {
+                            savedPhotoCell(photo)
+                        }
+                        .buttonStyle(PlainTappableButtonStyle())
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.lg)
+            }
+        }
+    }
+
+    private func savedPhotoCell(_ photo: SavedLookbookPhoto) -> some View {
+        Group {
+            if let url = URL(string: photo.imageUrl) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFill()
+                    case .failure, .empty:
+                        Rectangle().fill(Theme.Colors.secondaryBackground)
+                    @unknown default:
+                        Rectangle().fill(Theme.Colors.secondaryBackground)
+                    }
+                }
+            } else {
+                Rectangle().fill(Theme.Colors.secondaryBackground)
+            }
+        }
+        .aspectRatio(1, contentMode: .fill)
+        .clipped()
     }
 
     /// Same as Shop All Try Cart: tap opens `ShopAllBagView` → Checkout → `PaymentView`.
@@ -220,7 +315,6 @@ struct MyFavouritesView: View {
         }
     }
 
-    /// Unfavourite (toggle like off) and remove from list.
     private func unfavourite(_ item: Item) {
         guard let productId = item.productId, !productId.isEmpty else { return }
         items.removeAll { $0.id == item.id }
@@ -236,3 +330,68 @@ struct MyFavouritesView: View {
     }
 }
 
+// MARK: - Saved Lookbook photo detail
+
+private struct SavedLookbookPhotoDetailView: View {
+    let photo: SavedLookbookPhoto
+    @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                if let url = URL(string: photo.imageUrl) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img):
+                            img.resizable().scaledToFit()
+                        case .failure:
+                            VStack(spacing: Theme.Spacing.sm) {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 40))
+                                Text(L10n.string("Image unavailable"))
+                                    .font(Theme.Typography.caption)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .padding(.vertical, Theme.Spacing.xl)
+                        case .empty:
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, Theme.Spacing.xl)
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.menuContainerCornerRadius, style: .continuous))
+                }
+
+                Text("@\(photo.posterUsername)")
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(Theme.Colors.primaryText)
+
+                if let cap = photo.caption?.trimmingCharacters(in: .whitespacesAndNewlines), !cap.isEmpty {
+                    Text(cap)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+
+                Button(role: .destructive) {
+                    HapticManager.tap()
+                    savedLookbookFavorites.remove(id: photo.id)
+                    dismiss()
+                } label: {
+                    Text(L10n.string("Remove from favourites"))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, Theme.Spacing.sm)
+            }
+            .padding(Theme.Spacing.md)
+        }
+        .background(Theme.Colors.background)
+        .navigationTitle(L10n.string("Photo"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}

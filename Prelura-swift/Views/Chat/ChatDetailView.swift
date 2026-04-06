@@ -487,17 +487,17 @@ struct ChatDetailView: View {
     }
 
     private var recipientTitle: String {
-        PreluraSupportBranding.displayTitle(forRecipientUsername: displayedConversation.recipient.username)
+        WearhouseSupportBranding.displayTitle(forRecipientUsername: displayedConversation.recipient.username)
     }
 
     private var typingDisplayName: String {
         let trimmed = remoteTypingIndicator.peerUsername?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let raw = trimmed.isEmpty ? displayedConversation.recipient.username : trimmed
-        return PreluraSupportBranding.displayTitle(forRecipientUsername: raw)
+        return WearhouseSupportBranding.displayTitle(forRecipientUsername: raw)
     }
 
     private var isSupportConversation: Bool {
-        PreluraSupportBranding.isSupportRecipient(username: displayedConversation.recipient.username)
+        WearhouseSupportBranding.isSupportRecipient(username: displayedConversation.recipient.username)
     }
 
     /// Messages to show: in offer conversations hide raw offer payload bubbles (offer card represents the offer).
@@ -963,7 +963,7 @@ struct ChatDetailView: View {
                         .onAppear { showExtendedReactionEmojis = false }
                 }
             }
-            .preluraGlassModalSheetBackground()
+            .wearhouseGlassModalSheetBackground()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
@@ -2349,8 +2349,8 @@ struct ChatDetailView: View {
 
     @ViewBuilder
     private func chatTitleAvatar(url: String?, username: String) -> some View {
-        if PreluraSupportBranding.isSupportRecipient(username: username) {
-            PreluraSupportBranding.supportAvatar(size: Self.chatAvatarSize)
+        if WearhouseSupportBranding.isSupportRecipient(username: username) {
+            WearhouseSupportBranding.supportAvatar(size: Self.chatAvatarSize)
         } else {
             Group {
                 if let u = url, !u.isEmpty, let parsed = URL(string: u) {
@@ -3992,8 +3992,8 @@ struct MessageBubbleView: View {
 
     @ViewBuilder
     private var messageAvatarView: some View {
-        if PreluraSupportBranding.isSupportRecipient(username: recipientUsername) {
-            PreluraSupportBranding.supportAvatar(size: Self.messageAvatarSize)
+        if WearhouseSupportBranding.isSupportRecipient(username: recipientUsername) {
+            WearhouseSupportBranding.supportAvatar(size: Self.messageAvatarSize)
         } else {
             Group {
                 if let u = avatarURL, !u.isEmpty, let url = URL(string: u) {

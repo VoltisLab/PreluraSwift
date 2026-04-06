@@ -192,7 +192,7 @@ struct SellView: View {
                     clearSellFormAfterSuccessfulUpload()
                     selectedTab = 4 // Profile tab
                 }
-                NotificationCenter.default.post(name: .preluraUserProfileDidUpdate, object: nil)
+                NotificationCenter.default.post(name: .wearhouseUserProfileDidUpdate, object: nil)
             }
         }
         .alert(L10n.string("Upload failed"), isPresented: Binding(
@@ -640,7 +640,8 @@ extension SellView {
                     placeholder: "e.g. only worn a few times, true to size",
                     text: $description,
                     minLines: 6,
-                    maxLines: nil
+                    maxLines: nil,
+                    highlightHashtags: true
                 )
             }
             .padding(.horizontal, Theme.Spacing.md)
@@ -1936,7 +1937,7 @@ struct PriceInputView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.sm)
 
-                Text(L10n.string("Tip: similar price range is recommended based on similar items sold on Prelura."))
+                Text(L10n.string("Tip: similar price range is recommended based on similar items sold on Wearhouse."))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.horizontal, Theme.Spacing.md)

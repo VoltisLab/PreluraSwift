@@ -28,12 +28,12 @@ struct UserProfileView: View {
         _viewModel = StateObject(wrappedValue: UserProfileViewModel(seller: seller, authService: authService))
     }
 
-    private var isPreluraSupportProfile: Bool {
-        PreluraSupportBranding.isSupportRecipient(username: viewModel.user.username)
+    private var isWearhouseSupportProfile: Bool {
+        WearhouseSupportBranding.isSupportRecipient(username: viewModel.user.username)
     }
 
     private var profileNavigationTitle: String {
-        PreluraSupportBranding.displayTitle(forRecipientUsername: viewModel.user.username)
+        WearhouseSupportBranding.displayTitle(forRecipientUsername: viewModel.user.username)
     }
 
     var body: some View {
@@ -181,8 +181,8 @@ struct UserProfileView: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack(alignment: .center, spacing: 0) {
                 Group {
-                    if isPreluraSupportProfile {
-                        PreluraSupportBranding.supportAvatar(size: Self.profilePhotoSize)
+                    if isWearhouseSupportProfile {
+                        WearhouseSupportBranding.supportAvatar(size: Self.profilePhotoSize)
                             .overlay(
                                 Circle()
                                     .stroke(Theme.Colors.profileRingBorder, lineWidth: 2.5)
