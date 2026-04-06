@@ -29,7 +29,7 @@ final class SavedLookbookFavoritesStore: ObservableObject {
     /// Adds or removes the photo for this post; returns whether it is saved after the action.
     @discardableResult
     func toggle(entry: LookbookEntry, imageUrl: String?) -> Bool {
-        let id = entry.id.uuidString
+        let id = entry.apiPostId
         let url = (imageUrl ?? entry.imageUrls.first)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !url.isEmpty else { return isSaved(postId: id) }
         if let idx = photos.firstIndex(where: { $0.id == id }) {

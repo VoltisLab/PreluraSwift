@@ -224,6 +224,34 @@ final class LookbookService {
         return []
     }
 
+    /// Fetches a single lookbook post (e.g. universal link / deep link).
+    func fetchLookbookPost(postId: String) async throws -> ServerLookbookPost? {
+        let query = """
+        query LookbookPost($postId: UUID!) {
+          lookbookPost(postId: $postId) {
+            id
+            imageUrl
+            caption
+            username
+            profilePictureUrl
+            createdAt
+            likesCount
+            commentsCount
+            userLiked
+          }
+        }
+        """
+        let variables: [String: Any] = ["postId": postId]
+        struct Response: Decodable { let lookbookPost: ServerLookbookPost? }
+        let response: Response = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "LookbookPost",
+            responseType: Response.self
+        )
+        return response.lookbookPost
+    }
+
     func toggleLike(postId: String) async throws -> (liked: Bool, likesCount: Int) {
         let query = """
         mutation ToggleLookbookLike($postId: UUID!) {

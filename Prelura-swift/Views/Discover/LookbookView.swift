@@ -8,12 +8,12 @@
 import SwiftUI
 import Shimmer
 import UIKit
-import MessageUI
-
 /// One lookbook post: image(s), poster, likes, comments, styles for filtering. Remote URLs in `imageUrls` (carousel), or legacy document/asset.
 /// Optional tags + productSnapshots come from local LookbookFeedStore (merged when post id / URL matches).
 struct LookbookEntry: Identifiable {
     let id: UUID
+    /// Raw id from the API (`ServerLookbookPost.id`). Mutations must use this string, not a client-only `id` when it differs.
+    let serverPostId: String?
     let imageNames: [String]
     /// When set, first image is loaded from Documents (legacy local).
     let documentImagePath: String?
@@ -34,8 +34,16 @@ struct LookbookEntry: Identifiable {
     /// productId -> snapshot for thumbnails; from local store when available.
     let productSnapshots: [String: LookbookProductSnapshot]?
 
-    init(id: UUID? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, likesCount: Int, commentsCount: Int, isLiked: Bool, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
+    /// GraphQL `UUID` argument for this post (server id when available).
+    var apiPostId: String {
+        let s = serverPostId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !s.isEmpty { return s }
+        return id.uuidString
+    }
+
+    init(id: UUID? = nil, serverPostId: String? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, likesCount: Int, commentsCount: Int, isLiked: Bool, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
         self.id = id ?? UUID()
+        self.serverPostId = serverPostId
         self.imageNames = imageNames
         self.documentImagePath = documentImagePath
         if let u = imageUrl, !u.isEmpty {
@@ -56,7 +64,10 @@ struct LookbookEntry: Identifiable {
 
     /// Entry from server (feed). Merges local multi-image URLs and tags when record matches.
     init(from serverPost: ServerLookbookPost, localRecord: LookbookUploadRecord? = nil) {
-        self.id = UUID(uuidString: serverPost.id) ?? UUID()
+        self.serverPostId = serverPost.id
+        let tid = serverPost.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = tid.replacingOccurrences(of: "urn:uuid:", with: "", options: .caseInsensitive)
+        self.id = UUID(uuidString: tid) ?? UUID(uuidString: normalized) ?? UUID()
         self.imageNames = []
         self.documentImagePath = nil
         let serverTrim = serverPost.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -374,7 +385,8 @@ private struct LookbookFeedScreenView: View {
         }
         .sheet(item: $commentsEntry) { entry in
             LookbookCommentsSheet(entry: entry) { newCount in
-                if let idx = entries.firstIndex(where: { $0.id == entry.id }) {
+                let key = entry.apiPostId.lowercased()
+                if let idx = entries.firstIndex(where: { $0.apiPostId.lowercased() == key }) {
                     var updated = entries[idx]
                     updated.commentsCount = newCount
                     entries[idx] = updated
@@ -455,30 +467,37 @@ private struct LookbookFeedScreenView: View {
         .frame(minHeight: max(minHeight, 200))
     }
 
+    private func lookbookEntryIndex(forApiPostId pid: String) -> Int? {
+        let p = pid.lowercased()
+        return entries.firstIndex { $0.apiPostId.lowercased() == p }
+    }
+
     private func lookbookFeedRow(model: LookbookFeedRowModel) -> some View {
         LookbookFeedRowView(
             entry: model.entry,
             onHeartTap: { entry in
-                let entryId = entry.id
-                guard let i = entries.firstIndex(where: { $0.id == entryId }) else { return }
+                let apiId = entry.apiPostId
+                guard let i = lookbookEntryIndex(forApiPostId: apiId) else { return }
+                HapticManager.tap()
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
                     e.isLiked.toggle()
                     e.likesCount += e.isLiked ? 1 : -1
                     entries[i] = e
                 }
-                Task { await syncLookbookLike(postId: entryId.uuidString) }
+                Task { await syncLookbookLike(postId: apiId) }
             },
             onImageDoubleTap: { entry in
-                let entryId = entry.id
-                guard let i = entries.firstIndex(where: { $0.id == entryId }), !entries[i].isLiked else { return }
+                let apiId = entry.apiPostId
+                guard let i = lookbookEntryIndex(forApiPostId: apiId), !entries[i].isLiked else { return }
+                HapticManager.tap()
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
                     e.isLiked = true
                     e.likesCount += 1
                     entries[i] = e
                 }
-                Task { await syncLookbookLike(postId: entryId.uuidString) }
+                Task { await syncLookbookLike(postId: apiId) }
             },
             onCommentsTap: { entry in commentsEntry = entry },
             onImageTap: { entry in
@@ -499,17 +518,17 @@ private struct LookbookFeedScreenView: View {
             let service = LookbookService(client: client)
             let result = try await service.toggleLike(postId: postId)
             await MainActor.run {
-                guard let uuid = UUID(uuidString: postId),
-                      let idx = entries.firstIndex(where: { $0.id == uuid }) else { return }
+                guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
                 var entry = entries[idx]
                 entry.isLiked = result.liked
                 entry.likesCount = result.likesCount
                 entries[idx] = entry
             }
+        } catch is CancellationError {
+            return
         } catch {
             await MainActor.run {
-                guard let uuid = UUID(uuidString: postId),
-                      let idx = entries.firstIndex(where: { $0.id == uuid }) else { return }
+                guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
                 var entry = entries[idx]
                 entry.isLiked.toggle()
                 entry.likesCount += entry.isLiked ? 1 : -1
@@ -654,7 +673,8 @@ private struct LookbookMyItemsScreenView: View {
         }
         .sheet(item: $commentsEntry) { entry in
             LookbookCommentsSheet(entry: entry) { newCount in
-                if let idx = entries.firstIndex(where: { $0.id == entry.id }) {
+                let key = entry.apiPostId.lowercased()
+                if let idx = entries.firstIndex(where: { $0.apiPostId.lowercased() == key }) {
                     var updated = entries[idx]
                     updated.commentsCount = newCount
                     entries[idx] = updated
@@ -724,30 +744,37 @@ private struct LookbookMyItemsScreenView: View {
         }
     }
 
+    private func lookbookEntryIndex(forApiPostId pid: String) -> Int? {
+        let p = pid.lowercased()
+        return entries.firstIndex { $0.apiPostId.lowercased() == p }
+    }
+
     private func lookbookFeedRow(model: LookbookFeedRowModel) -> some View {
         LookbookFeedRowView(
             entry: model.entry,
             onHeartTap: { entry in
-                let entryId = entry.id
-                guard let i = entries.firstIndex(where: { $0.id == entryId }) else { return }
+                let apiId = entry.apiPostId
+                guard let i = lookbookEntryIndex(forApiPostId: apiId) else { return }
+                HapticManager.tap()
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
                     e.isLiked.toggle()
                     e.likesCount += e.isLiked ? 1 : -1
                     entries[i] = e
                 }
-                Task { await syncLookbookLike(postId: entryId.uuidString) }
+                Task { await syncLookbookLike(postId: apiId) }
             },
             onImageDoubleTap: { entry in
-                let entryId = entry.id
-                guard let i = entries.firstIndex(where: { $0.id == entryId }), !entries[i].isLiked else { return }
+                let apiId = entry.apiPostId
+                guard let i = lookbookEntryIndex(forApiPostId: apiId), !entries[i].isLiked else { return }
+                HapticManager.tap()
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
                     e.isLiked = true
                     e.likesCount += 1
                     entries[i] = e
                 }
-                Task { await syncLookbookLike(postId: entryId.uuidString) }
+                Task { await syncLookbookLike(postId: apiId) }
             },
             onCommentsTap: { entry in commentsEntry = entry },
             onImageTap: { entry in
@@ -768,17 +795,17 @@ private struct LookbookMyItemsScreenView: View {
             let service = LookbookService(client: client)
             let result = try await service.toggleLike(postId: postId)
             await MainActor.run {
-                guard let uuid = UUID(uuidString: postId),
-                      let idx = entries.firstIndex(where: { $0.id == uuid }) else { return }
+                guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
                 var entry = entries[idx]
                 entry.isLiked = result.liked
                 entry.likesCount = result.likesCount
                 entries[idx] = entry
             }
+        } catch is CancellationError {
+            return
         } catch {
             await MainActor.run {
-                guard let uuid = UUID(uuidString: postId),
-                      let idx = entries.firstIndex(where: { $0.id == uuid }) else { return }
+                guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
                 var entry = entries[idx]
                 entry.isLiked.toggle()
                 entry.likesCount += entry.isLiked ? 1 : -1
@@ -852,7 +879,8 @@ private struct LookbookTopicFeedView: View {
         .toolbar(.visible, for: .navigationBar)
         .sheet(item: $commentsEntry) { entry in
             LookbookCommentsSheet(entry: entry) { newCount in
-                if let idx = entries.firstIndex(where: { $0.id == entry.id }) {
+                let key = entry.apiPostId.lowercased()
+                if let idx = entries.firstIndex(where: { $0.apiPostId.lowercased() == key }) {
                     var updated = entries[idx]
                     updated.commentsCount = newCount
                     entries[idx] = updated
@@ -902,30 +930,37 @@ private struct LookbookTopicFeedView: View {
         .padding(.top, Theme.Spacing.xl)
     }
 
+    private func lookbookEntryIndex(forApiPostId pid: String) -> Int? {
+        let p = pid.lowercased()
+        return entries.firstIndex { $0.apiPostId.lowercased() == p }
+    }
+
     private func topicFeedRow(model: LookbookFeedRowModel) -> some View {
         LookbookFeedRowView(
             entry: model.entry,
             onHeartTap: { entry in
-                let entryId = entry.id
-                guard let i = entries.firstIndex(where: { $0.id == entryId }) else { return }
+                let apiId = entry.apiPostId
+                guard let i = lookbookEntryIndex(forApiPostId: apiId) else { return }
+                HapticManager.tap()
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
                     e.isLiked.toggle()
                     e.likesCount += e.isLiked ? 1 : -1
                     entries[i] = e
                 }
-                Task { await syncLookbookLike(postId: entryId.uuidString) }
+                Task { await syncLookbookLike(postId: apiId) }
             },
             onImageDoubleTap: { entry in
-                let entryId = entry.id
-                guard let i = entries.firstIndex(where: { $0.id == entryId }), !entries[i].isLiked else { return }
+                let apiId = entry.apiPostId
+                guard let i = lookbookEntryIndex(forApiPostId: apiId), !entries[i].isLiked else { return }
+                HapticManager.tap()
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
                     e.isLiked = true
                     e.likesCount += 1
                     entries[i] = e
                 }
-                Task { await syncLookbookLike(postId: entryId.uuidString) }
+                Task { await syncLookbookLike(postId: apiId) }
             },
             onCommentsTap: { entry in commentsEntry = entry },
             onImageTap: { entry in
@@ -985,17 +1020,17 @@ private struct LookbookTopicFeedView: View {
             let service = LookbookService(client: client)
             let result = try await service.toggleLike(postId: postId)
             await MainActor.run {
-                guard let uuid = UUID(uuidString: postId),
-                      let idx = entries.firstIndex(where: { $0.id == uuid }) else { return }
+                guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
                 var entry = entries[idx]
                 entry.isLiked = result.liked
                 entry.likesCount = result.likesCount
                 entries[idx] = entry
             }
+        } catch is CancellationError {
+            return
         } catch {
             await MainActor.run {
-                guard let uuid = UUID(uuidString: postId),
-                      let idx = entries.firstIndex(where: { $0.id == uuid }) else { return }
+                guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
                 var entry = entries[idx]
                 entry.isLiked.toggle()
                 entry.likesCount += entry.isLiked ? 1 : -1
@@ -1218,7 +1253,7 @@ private struct LookbookHorizontalPortraitSection: View {
 }
 
 /// Full-bleed dimmed overlay so the feed stays visible; image scales in with a light spring.
-private struct LookbookTransparentFullscreenOverlay: View {
+struct LookbookTransparentFullscreenOverlay: View {
     let entry: LookbookEntry
     var onDismiss: () -> Void
 
@@ -1619,7 +1654,8 @@ private struct LookbookFeedRowView: View {
     @State private var showReportSheet = false
     @State private var sharePayload: LookbookSharePayload?
     @State private var showTaggedProductsSheet = false
-    @State private var showMessageCompose = false
+    @State private var showMutualShareSheet = false
+    @State private var shareToChatRecipient: User?
 
     private let iconSize: CGFloat = 20
     private let defaultMediaAspect: CGFloat = LookbookCanonicalAspect.portrait1080x1350.rawValue
@@ -1635,12 +1671,22 @@ private struct LookbookFeedRowView: View {
         return Set(ids).count
     }
 
-    private var messageForwardBody: String {
+    /// Public lookbook URL (Open Graph on server) for rich previews when shared.
+    private var lookbookShareURLString: String? {
+        let raw = entry.apiPostId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
+        let base = Constants.publicWebItemLinkBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return "\(base)/lookbook/\(raw)"
+    }
+
+    private var forwardMessageText: String {
         var parts: [String] = []
         if let c = entry.caption, !c.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             parts.append(c)
         }
-        if let u = entry.imageUrls.first, !u.isEmpty {
+        if let link = lookbookShareURLString, !link.isEmpty {
+            parts.append(link)
+        } else if let u = entry.imageUrls.first, !u.isEmpty {
             parts.append(u)
         }
         parts.append("@\(entry.posterUsername) on Wearhouse")
@@ -1661,11 +1707,11 @@ private struct LookbookFeedRowView: View {
     }
 
     private func openSendForward() {
-        if MFMessageComposeViewController.canSendText() {
-            showMessageCompose = true
-        } else {
+        guard authService.isAuthenticated else {
             sharePayload = LookbookSharePayload(items: shareItemsForEntry())
+            return
         }
+        showMutualShareSheet = true
     }
 
     /// Image URL for the currently visible carousel slide (or the only image).
@@ -1679,7 +1725,7 @@ private struct LookbookFeedRowView: View {
     }
 
     private var isPhotoFavorited: Bool {
-        savedLookbookFavorites.isSaved(postId: entry.id.uuidString)
+        savedLookbookFavorites.isSaved(postId: entry.apiPostId)
     }
 
     private var posterAvatar: some View {
@@ -1716,6 +1762,9 @@ private struct LookbookFeedRowView: View {
 
     private func shareItemsForEntry() -> [Any] {
         var items: [Any] = []
+        if let link = lookbookShareURLString, let url = URL(string: link) {
+            items.append(url)
+        }
         if let u = entry.imageUrls.first, let url = URL(string: u) {
             items.append(url)
         }
@@ -1729,7 +1778,9 @@ private struct LookbookFeedRowView: View {
     }
 
     private func copyPostLink() {
-        if let u = entry.imageUrls.first, !u.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if let link = lookbookShareURLString, !link.isEmpty {
+            UIPasteboard.general.string = link
+        } else if let u = entry.imageUrls.first, !u.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             UIPasteboard.general.string = u
         } else {
             UIPasteboard.general.string = "@\(entry.posterUsername) — Wearhouse"
@@ -1957,8 +2008,22 @@ private struct LookbookFeedRowView: View {
         .sheet(isPresented: $showTaggedProductsSheet) {
             LookbookTaggedProductsSheet(entry: entry, onSelectProduct: onProductTap)
         }
-        .sheet(isPresented: $showMessageCompose) {
-            LookbookMessageComposeView(isPresented: $showMessageCompose, bodyText: messageForwardBody)
+        .sheet(isPresented: $showMutualShareSheet) {
+            LookbookMutualConnectionsShareSheet { user in
+                shareToChatRecipient = user
+            }
+            .environmentObject(authService)
+        }
+        .sheet(item: $shareToChatRecipient) { user in
+            NavigationStack {
+                ChatWithSellerView(
+                    seller: user,
+                    item: nil,
+                    precomposedMessage: forwardMessageText,
+                    authService: authService
+                )
+                .environmentObject(authService)
+            }
         }
         .sheet(isPresented: $showReportSheet) {
             NavigationStack {
@@ -2085,31 +2150,133 @@ private struct LookbookTaggedProductsSheet: View {
     }
 }
 
-// MARK: - iMessage forward (Send)
-private struct LookbookMessageComposeView: UIViewControllerRepresentable {
-    @Binding var isPresented: Bool
-    let bodyText: String
+// MARK: - Mutual connections (in-app Messages share)
+private struct LookbookMutualConnectionsShareSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var authService: AuthService
+    let onPick: (User) -> Void
 
-    final class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
-        var isPresented: Binding<Bool>
-        init(isPresented: Binding<Bool>) { self.isPresented = isPresented }
+    @State private var mutuals: [User] = []
+    @State private var loading = true
+    @State private var errorText: String?
+    private let userService = UserService()
 
-        func messageComposeViewController(_ controller: MFMessageComposeViewController, didFinishWith result: MessageComposeResult) {
-            controller.dismiss(animated: true)
-            isPresented.wrappedValue = false
+    var body: some View {
+        NavigationStack {
+            Group {
+                if loading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let err = errorText, !err.isEmpty {
+                    Text(err)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                } else if mutuals.isEmpty {
+                    ContentUnavailableView(
+                        "No mutual connections",
+                        systemImage: "person.2",
+                        description: Text("Only people who follow you and whom you follow appear here.")
+                    )
+                } else {
+                    List {
+                        ForEach(mutuals) { user in
+                            Button {
+                                dismiss()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                    onPick(user)
+                                }
+                            } label: {
+                                HStack(spacing: Theme.Spacing.sm) {
+                                    avatar(for: user)
+                                        .frame(width: 40, height: 40)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(user.displayName)
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(Theme.Colors.primaryText)
+                                        Text("@\(user.username)")
+                                            .font(Theme.Typography.caption)
+                                            .foregroundColor(Theme.Colors.secondaryText)
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.vertical, 4)
+                            }
+                            .buttonStyle(PlainTappableButtonStyle())
+                        }
+                    }
+                    .listStyle(.plain)
+                }
+            }
+            .background(Theme.Colors.background)
+            .navigationTitle("Send to")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.string("Close")) { dismiss() }
+                }
+            }
+            .task { await loadMutuals() }
         }
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(isPresented: $isPresented) }
-
-    func makeUIViewController(context: Context) -> MFMessageComposeViewController {
-        let vc = MFMessageComposeViewController()
-        vc.messageComposeDelegate = context.coordinator
-        vc.body = bodyText
-        return vc
+    @ViewBuilder
+    private func avatar(for user: User) -> some View {
+        let trimmed = user.avatarURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if let url = URL(string: trimmed), !trimmed.isEmpty {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let img):
+                    img.resizable().scaledToFill()
+                default:
+                    Circle().fill(Theme.Colors.secondaryBackground)
+                }
+            }
+            .clipShape(Circle())
+        } else {
+            Circle()
+                .fill(Theme.Colors.secondaryBackground)
+                .overlay(
+                    Text(String(user.username.prefix(1)).uppercased())
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Theme.Colors.secondaryText)
+                )
+        }
     }
 
-    func updateUIViewController(_ uiViewController: MFMessageComposeViewController, context: Context) {}
+    private func loadMutuals() async {
+        guard let me = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines), !me.isEmpty else {
+            await MainActor.run {
+                loading = false
+                errorText = "Sign in to share."
+            }
+            return
+        }
+        userService.updateAuthToken(authService.authToken)
+        do {
+            async let followersTask = userService.getFollowers(username: me, pageNumber: 1, pageCount: 200)
+            async let followingTask = userService.getFollowing(username: me, pageNumber: 1, pageCount: 200)
+            let (followers, following) = try await (followersTask, followingTask)
+            let followerSet = Set(followers.map { $0.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+            let mutual = following.filter {
+                followerSet.contains($0.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+            }
+            let sorted = mutual.sorted {
+                $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+            }
+            await MainActor.run {
+                mutuals = sorted
+                loading = false
+                errorText = nil
+            }
+        } catch {
+            await MainActor.run {
+                loading = false
+                errorText = error.localizedDescription
+            }
+        }
+    }
 }
 
 // MARK: - Comments sheet
@@ -2187,7 +2354,7 @@ struct LookbookCommentsSheet: View {
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
-        if let loaded = try? await service.fetchComments(postId: entry.id.uuidString) {
+        if let loaded = try? await service.fetchComments(postId: entry.apiPostId) {
             comments = loaded
             onCountChanged?(loaded.count)
         }
@@ -2202,7 +2369,7 @@ struct LookbookCommentsSheet: View {
         let service = LookbookService(client: client)
         Task {
             do {
-                let result = try await service.addComment(postId: entry.id.uuidString, text: text)
+                let result = try await service.addComment(postId: entry.apiPostId, text: text)
                 await MainActor.run {
                     draft = ""
                     comments.append(result.comment)

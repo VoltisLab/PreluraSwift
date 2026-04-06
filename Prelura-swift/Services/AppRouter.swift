@@ -7,6 +7,8 @@ enum DeepLinkDestination: Equatable {
     /// Numeric product id or public `listingCode` (same resolver as web `/item/{slug}`).
     case product(publicSlug: String)
     case user(username: String)
+    /// Lookbook post UUID string (matches `/lookbook/{uuid}/` share URL).
+    case lookbookPost(id: String)
     case conversation(conversationId: String, username: String, isOffer: Bool, isOrder: Bool)
     /// Push: order shipped / generic order tap when no chat thread id is present.
     case orderDetail(orderId: Int)
@@ -36,6 +38,7 @@ final class AppRouter: ObservableObject {
     private static func isWearhouseItemUniversalLinkHost(_ host: String) -> Bool {
         switch host.lowercased() {
         case "wearhouse.co.uk", "www.wearhouse.co.uk",
+             "mywearhouse.co.uk", "www.mywearhouse.co.uk",
              "prelura.uk", "www.prelura.uk", "prelura.com", "www.prelura.com":
             return true
         default:
@@ -54,7 +57,7 @@ final class AppRouter: ObservableObject {
     /// Single path segment on marketing hosts only — avoid treating site routes as usernames.
     private static let reservedProfilePathSegments: Set<String> = [
         "item", "join", "app", "terms", "privacy", "login", "sell", "cart", "checkout",
-        "discover", "api", "graphql", "admin", "static", "assets", "_next", "help",
+        "discover", "lookbook", "api", "graphql", "admin", "static", "assets", "_next", "help",
         "support", "about", "contact", "blog", "legal", "cookies", "sitemap", "robots.txt",
         "download", "invite", "internal", "ws", "media", "register", "signin", "signup",
     ]
@@ -89,6 +92,12 @@ final class AppRouter: ObservableObject {
                 let slug = (raw.removingPercentEncoding ?? raw).trimmingCharacters(in: .whitespacesAndNewlines)
                 if !slug.isEmpty {
                     dest = .product(publicSlug: slug)
+                }
+            } else if parts.count >= 2, parts[0].lowercased() == "lookbook" {
+                let raw = parts[1]
+                let idStr = (raw.removingPercentEncoding ?? raw).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !idStr.isEmpty {
+                    dest = .lookbookPost(id: idStr)
                 }
             } else if parts.count >= 3, parts[0].lowercased() == "app", parts[1].lowercased() == "u" {
                 let raw = parts[2]
@@ -262,6 +271,11 @@ final class AppRouter: ObservableObject {
                 dest = .product(publicSlug: s)
             } else if let id = Self.pushValue(p, "object_id") as? Int {
                 dest = .product(publicSlug: String(id))
+            }
+
+        case "LOOKBOOK":
+            if let oid = Self.pushString(p, "object_id"), !oid.isEmpty {
+                dest = .lookbookPost(id: oid)
             }
 
         case "USER", "PROFILE", "FOLLOW":

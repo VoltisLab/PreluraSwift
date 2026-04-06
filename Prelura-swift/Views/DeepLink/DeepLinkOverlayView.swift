@@ -9,6 +9,7 @@ struct DeepLinkOverlayView: View {
     @State private var resolvedItem: Item?
     @State private var resolvedUser: User?
     @State private var resolvedConversation: Conversation?
+    @State private var resolvedLookbookEntry: LookbookEntry?
     @State private var isLoading = true
     @State private var loadError: String?
 
@@ -110,6 +111,12 @@ struct DeepLinkOverlayView: View {
             } else {
                 deepLinkErrorView(message: "User not found")
             }
+        case .lookbookPost:
+            if let entry = resolvedLookbookEntry {
+                LookbookTransparentFullscreenOverlay(entry: entry, onDismiss: onDismiss)
+            } else {
+                deepLinkErrorView(message: loadError ?? "Lookbook not found")
+            }
         case .conversation(let conversationId, let username, _, _):
             if let conv = resolvedConversation {
                 NavigationStack {
@@ -200,6 +207,32 @@ struct DeepLinkOverlayView: View {
             await MainActor.run {
                 resolvedConversation = conv
                 isLoading = false
+            }
+
+        case .lookbookPost(let id):
+            do {
+                let client = GraphQLClient()
+                if let token = authService.authToken {
+                    client.setAuthToken(token)
+                }
+                let service = LookbookService(client: client)
+                guard let post = try await service.fetchLookbookPost(postId: id) else {
+                    await MainActor.run {
+                        loadError = "Lookbook not found"
+                        isLoading = false
+                    }
+                    return
+                }
+                let entry = LookbookEntry(from: post, localRecord: nil)
+                await MainActor.run {
+                    resolvedLookbookEntry = entry
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    loadError = error.localizedDescription
+                    isLoading = false
+                }
             }
         }
     }

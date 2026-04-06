@@ -99,6 +99,8 @@ struct ChatWithSellerView: View {
     let seller: User
     /// When non-nil, chat shows this product at the top (e.g. when starting conversation from product detail).
     var item: Item? = nil
+    /// Prefills the composer when opening the thread (e.g. lookbook share).
+    var precomposedMessage: String? = nil
     let authService: AuthService?
     @State private var resolvedConversation: Conversation?
     @State private var isLoading = true
@@ -107,13 +109,17 @@ struct ChatWithSellerView: View {
     var body: some View {
         Group {
             if let conv = resolvedConversation {
-                ChatDetailView(conversation: conv, item: item)
+                ChatDetailView(conversation: conv, item: item, initialComposerText: precomposedMessage)
             } else if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Theme.Colors.background)
             } else {
-                ChatDetailView(conversation: Conversation(id: "0", recipient: seller, lastMessage: nil, lastMessageTime: nil, unreadCount: 0), item: item)
+                ChatDetailView(
+                    conversation: Conversation(id: "0", recipient: seller, lastMessage: nil, lastMessageTime: nil, unreadCount: 0),
+                    item: item,
+                    initialComposerText: precomposedMessage
+                )
             }
         }
         .toolbar(.hidden, for: .tabBar)
@@ -220,6 +226,8 @@ struct ChatDetailView: View {
     var item: Item? = nil
     /// When true, the thread was opened from the archived inbox list (⋯ menu shows Restore instead of Archive).
     var isOpenedFromArchive: Bool = false
+    /// Optional text to seed the message field (share flows).
+    var initialComposerText: String? = nil
 
     @EnvironmentObject var authService: AuthService
     @Environment(\.optionalTabCoordinator) private var tabCoordinator
@@ -249,6 +257,8 @@ struct ChatDetailView: View {
     @State private var offerModalSubmitting = false
     @State private var showReportUserSheet = false
     @State private var folderActionError: ChatFolderActionError?
+    /// Shown when profanity triggered a Support inbox message (that thread is separate from this seller chat).
+    @State private var profanitySupportInboxBannerText: String?
     @State private var reconnectTask: Task<Void, Never>?
     @State private var reconnectAttempt = 0
     /// Debounced GraphQL reload after socket-delivered rows (order/cancellation paths already refetch; this mirrors that for plain text).
@@ -468,11 +478,14 @@ struct ChatDetailView: View {
             && !hasLocalOfferHistoryCache(convId: convId)
     }
 
-    init(conversation: Conversation, item: Item? = nil, isOpenedFromArchive: Bool = false) {
+    init(conversation: Conversation, item: Item? = nil, isOpenedFromArchive: Bool = false, initialComposerText: String? = nil) {
         self.conversation = conversation
         self.item = item
         self.isOpenedFromArchive = isOpenedFromArchive
+        self.initialComposerText = initialComposerText
         _displayedConversation = State(initialValue: conversation)
+        let seed = initialComposerText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        _newMessage = State(initialValue: seed)
         // Hydrate from in-memory product cache immediately so the header URL exists on first layout (onAppear ran too late → spinner).
         if let pid = conversation.offer?.products?.first?.id.flatMap({ Int($0) }) {
             _offerProductItem = State(initialValue: Self.offerProductCache[pid])
@@ -858,6 +871,32 @@ struct ChatDetailView: View {
                         .fill(Theme.Colors.glassBorder)
                         .frame(height: 0.5)
                 }
+            }
+            if let banner = profanitySupportInboxBannerText {
+                HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                    Image(systemName: "lifepreserver.fill")
+                        .foregroundStyle(Theme.primaryColor)
+                        .padding(.top, 2)
+                    Text(banner)
+                        .font(Theme.Typography.subheadline)
+                        .foregroundStyle(Theme.Colors.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button {
+                        profanitySupportInboxBannerText = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss")
+                }
+                .padding(.horizontal, ChatThreadLayout.horizontalGutter)
+                .padding(.vertical, Theme.Spacing.md)
+                .background(Theme.primaryColor.opacity(0.14))
+                Rectangle()
+                    .fill(Theme.Colors.glassBorder)
+                    .frame(height: 0.5)
             }
             ScrollViewReader { proxy in
                 ScrollView {
@@ -2919,7 +2958,8 @@ struct ChatDetailView: View {
     }
 
     private func sendMessage() {
-        let text = newMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = newMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = ProfanityFilter.sanitize(raw)
         guard !text.isEmpty, displayedConversation.id != "0" else { return }
         newMessage = ""
         if didSendTypingStart {
@@ -2927,36 +2967,74 @@ struct ChatDetailView: View {
             didSendTypingStart = false
         }
         let messageUUID = UUID().uuidString
-        let optimistic = Message(
-            id: UUID(uuidString: messageUUID) ?? UUID(),
-            senderUsername: authService.username ?? "You",
-            content: text,
-            type: "text"
-        )
-        messages = (messages + [optimistic]).sorted { $0.timestamp < $1.timestamp }
-        pendingMessageUUID = messageUUID
-        rebuildTimelineOrder()
-        publishInboxPreviewFromMessage(optimistic)
-        if let ws = webSocket, ws.send(message: text, messageUUID: messageUUID) {
-            // WebSocket path persists on the server and triggers push; GraphQL SendMessage would duplicate the row.
-        } else {
-            Task {
-                do {
-                    _ = try await chatService.sendMessage(conversationId: displayedConversation.id, message: text, messageUuid: messageUUID)
-                    await MainActor.run {
-                        pendingMessageUUID = nil
-                        loadMessages()
-                    }
-                } catch {
-                    await MainActor.run {
-                        messages = messages.filter { $0.id.uuidString != messageUUID }
-                        pendingMessageUUID = nil
-                        rebuildTimelineOrder()
+        let convInt = Int(displayedConversation.id)
+        let recordIfNeededAndSend: () -> Void = {
+            let optimistic = Message(
+                id: UUID(uuidString: messageUUID) ?? UUID(),
+                senderUsername: authService.username ?? "You",
+                content: text,
+                type: "text"
+            )
+            messages = (messages + [optimistic]).sorted { $0.timestamp < $1.timestamp }
+            pendingMessageUUID = messageUUID
+            rebuildTimelineOrder()
+            publishInboxPreviewFromMessage(optimistic)
+            if let ws = webSocket, ws.send(message: text, messageUUID: messageUUID) {
+                // WebSocket path persists on the server and triggers push; GraphQL SendMessage would duplicate the row.
+            } else {
+                Task {
+                    do {
+                        _ = try await chatService.sendMessage(conversationId: displayedConversation.id, message: text, messageUuid: messageUUID)
+                        await MainActor.run {
+                            pendingMessageUUID = nil
+                            loadMessages()
+                        }
+                    } catch {
+                        await MainActor.run {
+                            messages = messages.filter { $0.id.uuidString != messageUUID }
+                            pendingMessageUUID = nil
+                            rebuildTimelineOrder()
+                        }
                     }
                 }
             }
+            notifyInboxListShouldRefresh()
         }
-        notifyInboxListShouldRefresh()
+
+        if ProfanityFilter.maskingWouldChange(raw) {
+            orderCancellationUserService.updateAuthToken(authService.authToken)
+            Task {
+                do {
+                    let outcome = try await orderCancellationUserService.recordProfanityUsage(
+                        channel: "chat_message",
+                        relatedConversationId: convInt,
+                        sanitizedSnippet: text
+                    )
+                    await MainActor.run {
+                        if outcome?.insertedSupportThreadMessage == true {
+                            profanitySupportInboxBannerText =
+                                "Wearhouse Support sent you a private message about community guidelines. Open Inbox and open the Support conversation to read it."
+                            Task {
+                                try? await Task.sleep(nanoseconds: 12_000_000_000)
+                                await MainActor.run {
+                                    if profanitySupportInboxBannerText != nil {
+                                        profanitySupportInboxBannerText = nil
+                                    }
+                                }
+                            }
+                        }
+                        recordIfNeededAndSend()
+                    }
+                } catch {
+                    await MainActor.run {
+                        print("[Profanity] recordProfanityUsage failed: \(error.localizedDescription)")
+                        recordIfNeededAndSend()
+                    }
+                }
+            }
+        } else {
+            recordIfNeededAndSend()
+        }
     }
 }
 
