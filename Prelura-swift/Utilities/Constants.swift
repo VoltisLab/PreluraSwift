@@ -25,8 +25,8 @@ struct Constants {
     static let universalLinksAPIBaseURL = "https://prelura.voltislabs.uk"
     /// Used when inviting contacts (share sheet / SMS).
     static let inviteFriendsLandingURL = "https://prelura.voltislabs.uk/join/"
-    /// Public web URLs for sharing listings and universal links (`/item/{slug}`: listing code or legacy numeric id). Must match **Associated Domains** / `apple-app-site-association` on this host (production: mywearhouse.co.uk).
-    static let publicWebItemLinkBaseURL = "https://mywearhouse.co.uk"
+    /// Public web URLs for sharing listings and universal links (`/item/{slug}`: listing code or legacy numeric id). Must match **Associated Domains** / `apple-app-site-association` on this host (production: wearhouse.co.uk).
+    static let publicWebItemLinkBaseURL = "https://wearhouse.co.uk"
     
     // API Configuration
     static let apiTimeout: TimeInterval = 60.0
