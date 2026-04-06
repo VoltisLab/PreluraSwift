@@ -12,12 +12,31 @@ struct WearhouseWordmarkView: View {
 
     var body: some View {
         let metrics = metrics(for: style)
-        Text("WEARHOUSE")
-            .font(.system(size: metrics.fontSize, weight: .black, design: .rounded))
-            .tracking(metrics.tracking)
-            .minimumScaleFactor(0.72)
-            .lineLimit(1)
-            .foregroundStyle(foreground(for: style))
+        Group {
+            switch style {
+            case .splash:
+                wordmark(metrics: metrics)
+                    .foregroundStyle(Theme.primaryColor)
+            case .toolbar:
+                wordmark(metrics: metrics)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Theme.Colors.primaryText, Theme.Colors.primaryText.opacity(0.9)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            case .login:
+                wordmark(metrics: metrics)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.white, .white.opacity(0.92)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            }
+        }
     }
 
     private func metrics(for style: Style) -> (fontSize: CGFloat, tracking: CGFloat) {
@@ -28,23 +47,11 @@ struct WearhouseWordmarkView: View {
         }
     }
 
-    @ViewBuilder
-    private func foreground(for style: Style) -> some ShapeStyle {
-        switch style {
-        case .splash:
-            Theme.primaryColor
-        case .toolbar:
-            LinearGradient(
-                colors: [Theme.Colors.primaryText, Theme.Colors.primaryText.opacity(0.9)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        case .login:
-            LinearGradient(
-                colors: [.white, .white.opacity(0.92)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
+    private func wordmark(metrics: (fontSize: CGFloat, tracking: CGFloat)) -> some View {
+        Text("WEARHOUSE")
+            .font(.system(size: metrics.fontSize, weight: .black, design: .rounded))
+            .tracking(metrics.tracking)
+            .minimumScaleFactor(0.72)
+            .lineLimit(1)
     }
 }
