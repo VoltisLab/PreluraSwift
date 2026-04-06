@@ -974,8 +974,24 @@ struct ProductOptionsSheet: View {
             .padding(.horizontal, Theme.Spacing.md)
     }
 
+    /// Height for `.presentationDetents(.height(...))`: header (handle + title + close) + padded rows + dividers (matches `MenuRowContent` vertical padding).
+    private var sheetHeightDetent: CGFloat {
+        let header: CGFloat = 108
+        let row: CGFloat = 54
+        let contentVerticalPadding: CGFloat = 32
+        let rows = isCurrentUser ? 5 : 3
+        let dividers: CGFloat = CGFloat(max(0, rows - 1)) * 0.5
+        return header + contentVerticalPadding + CGFloat(rows) * row + dividers + 12
+    }
+
     var body: some View {
-        OptionsSheet(title: L10n.string("Options"), onDismiss: onDismiss, useCustomCornerRadius: false) {
+        OptionsSheet(
+            title: L10n.string("Options"),
+            onDismiss: onDismiss,
+            detents: [.height(sheetHeightDetent)],
+            useCustomCornerRadius: false,
+            fillsAvailableVerticalSpace: false
+        ) {
             VStack(alignment: .leading, spacing: 0) {
                 if isCurrentUser {
                     MenuItemRow(title: L10n.string("Edit listing"), icon: "square.and.pencil", action: { onEdit() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
