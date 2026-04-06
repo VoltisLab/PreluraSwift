@@ -21,8 +21,10 @@ struct Constants {
     static let acknowledgementsURL = "https://prelura.voltislabs.uk/acknowledgements/"
     static let hmrcReportingURL = "https://www.gov.uk/government/organisations/hm-revenue-customs/contact/report-fraud-or-an-untrustworthy-website"
     
-    /// Used when inviting contacts (share sheet / SMS). Same landing URL as before rebrand.
-    static let inviteFriendsLandingURL = "https://prelura.voltislabs.uk"
+    /// Django-served universal link that opens the app when installed (`/join/` is in `apple-app-site-association`).
+    static let universalLinksAPIBaseURL = "https://prelura.voltislabs.uk"
+    /// Used when inviting contacts (share sheet / SMS).
+    static let inviteFriendsLandingURL = "https://prelura.voltislabs.uk/join/"
     /// Public web URLs for sharing listings and universal links (`/item/{slug}`: listing code or legacy numeric id). Must match **Associated Domains** / `apple-app-site-association` on this host (production: wearhouse.co.uk).
     static let publicWebItemLinkBaseURL = "https://wearhouse.co.uk"
     
