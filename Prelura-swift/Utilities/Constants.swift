@@ -58,8 +58,8 @@ struct Constants {
     static let universalLinksAPIBaseURL = "https://prelura.voltislabs.uk"
     /// Used when inviting contacts (share sheet / SMS).
     static let inviteFriendsLandingURL = "https://prelura.voltislabs.uk/join/"
-    /// Public web URLs for sharing listings and universal links (`/item/{slug}`: listing code or legacy numeric id). Must match **Associated Domains** / `apple-app-site-association` on this host (production: wearhouse.co.uk).
-    static let publicWebItemLinkBaseURL = "https://wearhouse.co.uk"
+    /// Product and lookbook share links (`/item/…`, `/lookbook/…`). Uses the **API host** so iOS can load `/.well-known/apple-app-site-association` and open the app. (`mywearhouse.co.uk` does not serve AASA yet; legal/help URLs still use `publicWebsiteBaseURL`.)
+    static var publicWebItemLinkBaseURL: String { universalLinksAPIBaseURL }
     
     // API Configuration
     static let apiTimeout: TimeInterval = 60.0
