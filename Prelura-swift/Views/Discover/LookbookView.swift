@@ -19,6 +19,8 @@ struct LookbookEntry: Identifiable {
     let documentImagePath: String?
     /// Remote slide URLs (single or multiple for in-post carousel). Empty when using document/assets only.
     let imageUrls: [String]
+    /// Server or CDN thumbnail for the primary image (grid / fast loads); full `imageUrls` stay HD for the feed.
+    let thumbnailUrl: String?
     /// First remote URL, if any.
     var imageUrl: String? { imageUrls.first }
     let posterUsername: String
@@ -45,7 +47,7 @@ struct LookbookEntry: Identifiable {
         return id.uuidString
     }
 
-    init(id: UUID? = nil, serverPostId: String? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, likesCount: Int, commentsCount: Int, isLiked: Bool, productLinkClicks: Int = 0, shopLinkClicks: Int = 0, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
+    init(id: UUID? = nil, serverPostId: String? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, thumbnailUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, likesCount: Int, commentsCount: Int, isLiked: Bool, productLinkClicks: Int = 0, shopLinkClicks: Int = 0, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
         self.id = id ?? UUID()
         self.serverPostId = serverPostId
         self.imageNames = imageNames
@@ -55,6 +57,7 @@ struct LookbookEntry: Identifiable {
         } else {
             self.imageUrls = []
         }
+        self.thumbnailUrl = thumbnailUrl
         self.posterUsername = posterUsername
         self.posterProfilePictureUrl = posterProfilePictureUrl
         self.caption = caption
@@ -88,6 +91,14 @@ struct LookbookEntry: Identifiable {
         } else {
             self.imageUrls = fromServer
         }
+        let apiThumb = serverPost.thumbnailUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let t = apiThumb, !t.isEmpty {
+            self.thumbnailUrl = t
+        } else if !serverTrim.isEmpty, let derived = LookbookCDNThumbnailURL.urlString(forFullImageURL: serverTrim) {
+            self.thumbnailUrl = derived
+        } else {
+            self.thumbnailUrl = nil
+        }
         self.posterUsername = serverPost.username
         self.posterProfilePictureUrl = serverPost.profilePictureUrl
         self.caption = serverPost.caption
@@ -118,6 +129,23 @@ private func dedupeOrderedValidLookbookURLs(_ urls: [String]) -> [String] {
         if seen.insert(t).inserted { out.append(t) }
     }
     return out
+}
+
+/// Matches `prelura-app/utils/upload_utils.py` LOOKBOOK keys: `…/abc.jpeg` → `…/abc_thumbnail.jpeg` on the CDN.
+private enum LookbookCDNThumbnailURL {
+    static func urlString(forFullImageURL full: String) -> String? {
+        let t = full.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, let u = URL(string: t), u.host != nil, !u.path.isEmpty else { return nil }
+        let path = u.path
+        guard let dotIdx = path.lastIndex(of: "."), dotIdx < path.endIndex else { return nil }
+        let prefix = path[..<dotIdx]
+        let ext = path[path.index(after: dotIdx)...]
+        if prefix.hasSuffix("_thumbnail") { return nil }
+        let newPath = String(prefix) + "_thumbnail." + String(ext)
+        var c = URLComponents(url: u, resolvingAgainstBaseURL: false)
+        c?.path = newPath
+        return c?.string
+    }
 }
 
 // MARK: - Canonical media frames (1080×1350, 1080×1080, 1920×1080)
@@ -355,10 +383,10 @@ private struct LookbookFeedScreenView: View {
                         }
                     }
                     .padding(.bottom, Theme.Spacing.xl)
-                }
-                .scrollPosition(id: $scrollPosition, anchor: .top)
-                .scrollContentBackground(.hidden)
-                .background(Theme.Colors.background)
+            }
+            .scrollPosition(id: $scrollPosition, anchor: .top)
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
             }
 
             if let entry = fullScreenEntry {
@@ -612,7 +640,9 @@ private struct LookbookMyItemsScreenView: View {
     @State private var feedError: String?
     @State private var useGrid = false
     @State private var commentsEntry: LookbookEntry?
-    @State private var fullScreenEntry: LookbookEntry?
+    /// When set, shows a full-screen vertical pager (Instagram/TikTok-style) starting at this post id.
+    @State private var immersiveFeedInitialPostId: String?
+    @State private var immersiveScrollTargetId: UUID?
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
     @State private var lookbookLikeSerialByPostId: [String: UInt64] = [:]
@@ -623,11 +653,81 @@ private struct LookbookMyItemsScreenView: View {
         return entries.filter { $0.posterUsername.lowercased() == me }
     }
 
+    /// Profile grid: small spacing between cells; page background matches the main Feed (`Theme.Colors.background`).
+    private static let gridGutter: CGFloat = 2
     private static let gridColumns: [GridItem] = [
-        GridItem(.flexible(), spacing: 1),
-        GridItem(.flexible(), spacing: 1),
-        GridItem(.flexible(), spacing: 1)
+        GridItem(.flexible(), spacing: gridGutter),
+        GridItem(.flexible(), spacing: gridGutter),
+        GridItem(.flexible(), spacing: gridGutter)
     ]
+
+    /// One fullscreen page: full-width media like the main feed; inner scroll only when the post is taller than the viewport (centers short posts).
+    @ViewBuilder
+    private func immersivePagerPage(entry: LookbookEntry, pageHeight: CGFloat) -> some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                lookbookFeedRow(
+                    model: LookbookFeedRowModel(id: "imm-\(entry.id.uuidString)", entry: entry),
+                    immersive: true
+                )
+                Spacer(minLength: 0)
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: pageHeight)
+        }
+        .frame(maxWidth: .infinity, minHeight: pageHeight, maxHeight: pageHeight)
+        .id(entry.id)
+    }
+
+    private var immersivePagerDismissButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                immersiveFeedInitialPostId = nil
+                immersiveScrollTargetId = nil
+            }
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Theme.Colors.primaryText)
+                .frame(width: 40, height: 40)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 12)
+        .padding(.trailing, 12)
+    }
+
+    @ViewBuilder
+    private func immersiveVerticalPager(pageHeight: CGFloat) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 0) {
+                ForEach(myEntries) { entry in
+                    immersivePagerPage(entry: entry, pageHeight: pageHeight)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $immersiveScrollTargetId, anchor: .center)
+        .task(id: immersiveFeedInitialPostId) {
+            guard let pid = immersiveFeedInitialPostId else {
+                await MainActor.run { immersiveScrollTargetId = nil }
+                return
+            }
+            await Task.yield()
+            await Task.yield()
+            await MainActor.run {
+                immersiveScrollTargetId = myEntries.first { $0.apiPostId.lowercased() == pid.lowercased() }?.id
+                    ?? myEntries.first?.id
+            }
+        }
+        .onChange(of: myEntries.count) { _, newCount in
+            if newCount == 0 {
+                immersiveFeedInitialPostId = nil
+                immersiveScrollTargetId = nil
+            }
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -638,20 +738,23 @@ private struct LookbookMyItemsScreenView: View {
                     myItemsEmpty
                 } else if useGrid {
                     ScrollView {
-                        LazyVGrid(columns: Self.gridColumns, spacing: 1) {
+                        LazyVGrid(columns: Self.gridColumns, spacing: Self.gridGutter) {
                             ForEach(myEntries) { entry in
                                 Button {
                                     withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                                        fullScreenEntry = entry
+                                        immersiveFeedInitialPostId = entry.apiPostId
                                     }
                                 } label: {
-                                    LookbookEntryThumbnail(entry: entry)
-                                        .aspectRatio(1, contentMode: .fill)
-                                        .clipped()
+                                    LookbookSquareGridThumbnail(entry: entry)
+                                        .padding(1)
+                                        .background(Theme.Colors.background)
+                                        .aspectRatio(1, contentMode: .fit)
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
+                        .padding(2)
                     }
                     .scrollContentBackground(.hidden)
                     .background(Theme.Colors.background)
@@ -669,20 +772,24 @@ private struct LookbookMyItemsScreenView: View {
                 }
             }
 
-            if let entry = fullScreenEntry {
-                LookbookTransparentFullscreenOverlay(entry: entry) {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                        fullScreenEntry = nil
+            if immersiveFeedInitialPostId != nil {
+                GeometryReader { geo in
+                    let pageHeight = geo.size.height
+                    ZStack(alignment: .topTrailing) {
+                        Theme.Colors.background.ignoresSafeArea()
+                        immersiveVerticalPager(pageHeight: pageHeight)
+                        immersivePagerDismissButton
                     }
                 }
+                .ignoresSafeArea()
                 .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 0.94, anchor: .center)),
+                    insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .center)),
                     removal: .opacity
                 ))
                 .zIndex(2)
             }
         }
-        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: fullScreenEntry?.id)
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: immersiveFeedInitialPostId)
         .navigationTitle(L10n.string("My items"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -789,7 +896,7 @@ private struct LookbookMyItemsScreenView: View {
         return entries.firstIndex { $0.apiPostId.lowercased() == p }
     }
 
-    private func lookbookFeedRow(model: LookbookFeedRowModel) -> some View {
+    private func lookbookFeedRow(model: LookbookFeedRowModel, immersive: Bool = false) -> some View {
         LookbookFeedRowView(
             entry: model.entry,
             onHeartTap: { entry in
@@ -823,8 +930,9 @@ private struct LookbookMyItemsScreenView: View {
             },
             onCommentsTap: { entry in commentsEntry = entry },
             onImageTap: { entry in
+                guard !immersive else { return }
                 withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                    fullScreenEntry = entry
+                    immersiveFeedInitialPostId = entry.apiPostId
                 }
             },
             onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) },
@@ -834,7 +942,7 @@ private struct LookbookMyItemsScreenView: View {
             onOpenAnalytics: { analyticsEntry = $0 }
         )
         .id(model.id)
-        .padding(.bottom, lookbookSpacing)
+        .padding(.bottom, immersive ? 0 : lookbookSpacing)
     }
 
     private func syncLookbookLike(postId: String, serial: UInt64) async {
@@ -2027,9 +2135,9 @@ private struct LookbookFeedRowView: View {
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
                 } else {
-                    Text(entry.posterUsername)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Theme.Colors.primaryText)
+                Text(entry.posterUsername)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Theme.Colors.primaryText)
                 }
                 Spacer(minLength: 0)
                 postOptionsMenu
@@ -2044,7 +2152,7 @@ private struct LookbookFeedRowView: View {
                 HStack(alignment: .top, spacing: 4) {
                     Text(entry.posterUsername)
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(Theme.Colors.primaryText)
+                .foregroundColor(Theme.Colors.primaryText)
                     HashtagColoredText(text: cap)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -2076,17 +2184,17 @@ private struct LookbookFeedRowView: View {
 
                 if taggedProductCount > 0 {
                     Button { showTaggedProductsSheet = true } label: {
-                        HStack(spacing: 4) {
+                    HStack(spacing: 4) {
                             Image(systemName: "bag")
                                 .font(.system(size: iconSize, weight: .regular))
-                                .foregroundColor(Theme.Colors.primaryText)
+                            .foregroundColor(Theme.Colors.primaryText)
                             Text("\(taggedProductCount)")
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Theme.Colors.primaryText)
-                        }
-                        .contentShape(Rectangle())
+                            .foregroundColor(Theme.Colors.primaryText)
                     }
-                    .buttonStyle(PlainTappableButtonStyle())
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainTappableButtonStyle())
                 }
 
                 Button(action: openSendForward) {
@@ -2578,7 +2686,7 @@ struct LookbookCommentsSheet: View {
     @State private var sending = false
 
     var body: some View {
-        VStack(spacing: 0) {
+            VStack(spacing: 0) {
             HStack {
                 Text(L10n.string("Comments"))
                     .font(.system(size: 17, weight: .semibold))
@@ -2592,56 +2700,56 @@ struct LookbookCommentsSheet: View {
             .padding(.top, Theme.Spacing.sm)
             .padding(.bottom, Theme.Spacing.xs)
 
-            if loading {
+                if loading {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.top, Theme.Spacing.lg)
-            }
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    ForEach(comments) { c in
-                        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                            Circle()
-                                .fill(Theme.Colors.secondaryBackground)
-                                .frame(width: 32, height: 32)
-                                .overlay(Text(String(c.username.prefix(1)).uppercased())
-                                    .font(.caption)
-                                    .foregroundColor(Theme.Colors.secondaryText))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(c.username)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                HashtagColoredText(text: c.text)
-                            }
-                            Spacer()
-                        }
-                        .padding(.horizontal, Theme.Spacing.md)
-                    }
                 }
-                .padding(.vertical, Theme.Spacing.md)
-            }
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                        ForEach(comments) { c in
+                            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                                Circle()
+                                    .fill(Theme.Colors.secondaryBackground)
+                                    .frame(width: 32, height: 32)
+                                    .overlay(Text(String(c.username.prefix(1)).uppercased())
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Colors.secondaryText))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(c.username)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(Theme.Colors.primaryText)
+                                    HashtagColoredText(text: c.text)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, Theme.Spacing.md)
+                        }
+                    }
+                    .padding(.vertical, Theme.Spacing.md)
+                }
 
             HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
                 TextField(L10n.string("Add a comment"), text: $draft, axis: .vertical)
-                    .lineLimit(1...4)
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.sm)
-                    .background(Theme.Colors.secondaryBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .lineLimit(1...4)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.sm)
+                        .background(Theme.Colors.secondaryBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
                 Button(sending ? "…" : L10n.string("Send")) {
-                    sendComment()
-                }
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
-                .foregroundColor(Theme.primaryColor)
+                        sendComment()
+                    }
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
+                    .foregroundColor(Theme.primaryColor)
                 .font(.system(size: 16, weight: .semibold))
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm)
             .background(Theme.Colors.background)
         }
         .background(Theme.Colors.background)
-        .task { await loadComments() }
+            .task { await loadComments() }
     }
 
     private func loadComments() async {
@@ -2675,6 +2783,129 @@ struct LookbookCommentsSheet: View {
             } catch {
                 await MainActor.run { sending = false }
             }
+        }
+    }
+}
+
+// MARK: - Square grid cell (Instagram-style crop; loading/error keep same bounds)
+/// Grid-only: load CDN `*_thumbnail` (or `entry.thumbnailUrl`) first for speed; open post still uses full `imageUrls` in the feed row.
+private struct LookbookSquareGridRemoteImage: View {
+    let fullURLString: String
+    let serverThumbnailURL: String?
+
+    @State private var useFullImage = false
+
+    private var thumbnailToTry: String? {
+        if let s = serverThumbnailURL?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty { return s }
+        return LookbookCDNThumbnailURL.urlString(forFullImageURL: fullURLString)
+    }
+
+    private var urlToLoad: URL? {
+        let full = fullURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !full.isEmpty else { return nil }
+        if useFullImage { return URL(string: full) }
+        if let t = thumbnailToTry, t != full, let u = URL(string: t) { return u }
+        return URL(string: full)
+    }
+
+    var body: some View {
+        AsyncImage(url: urlToLoad) { phase in
+            switch phase {
+            case .success(let image):
+                image.resizable().scaledToFill()
+            case .failure:
+                gridRemoteFailurePlaceholder
+                    .onAppear {
+                        let full = fullURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !useFullImage, let t = thumbnailToTry, t != full {
+                            useFullImage = true
+                        }
+                    }
+            default:
+                ZStack {
+                    Theme.Colors.secondaryBackground
+                    ProgressView()
+                }
+            }
+        }
+        .id("\(useFullImage)-\(urlToLoad?.absoluteString ?? "")")
+    }
+
+    private var gridRemoteFailurePlaceholder: some View {
+        ZStack {
+            Theme.Colors.secondaryBackground
+            Image(systemName: "photo")
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(Theme.Colors.secondaryText)
+        }
+    }
+}
+
+private struct LookbookSquareGridThumbnail: View {
+    let entry: LookbookEntry
+
+    /// Same rule as `LookbookFeedRowView.taggedProductCount`: tags with a local product snapshot count as tagged products.
+    private var taggedProductCount: Int {
+        guard let tags = entry.tags, let snaps = entry.productSnapshots else { return 0 }
+        let ids = tags.map(\.productId).filter { snaps[$0] != nil }
+        return Set(ids).count
+    }
+
+    var body: some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                squareFillContent
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if taggedProductCount > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "bag.fill")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text("\(taggedProductCount)")
+                            .font(.system(size: 10, weight: .semibold))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.black.opacity(0.58))
+                    .clipShape(Capsule())
+                    .padding(5)
+                    .allowsHitTesting(false)
+                }
+            }
+            .clipped()
+    }
+
+    @ViewBuilder
+    private var squareFillContent: some View {
+        if let urlString = entry.imageUrls.first, URL(string: urlString) != nil {
+            LookbookSquareGridRemoteImage(fullURLString: urlString, serverThumbnailURL: entry.thumbnailUrl)
+        } else if let path = entry.documentImagePath,
+                  let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appending(path: path),
+                  let data = try? Data(contentsOf: base),
+                  let uiImage = UIImage(data: data) {
+            Image(uiImage: uiImage)
+                .resizable()
+                .scaledToFill()
+        } else if let first = entry.imageNames.first {
+            Image(first)
+                .resizable()
+                .scaledToFill()
+        } else {
+            squarePlaceholder
+        }
+    }
+
+    private var squarePlaceholder: some View {
+        ZStack {
+            Theme.Colors.secondaryBackground
+            Image(systemName: "photo")
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(Theme.Colors.secondaryText)
         }
     }
 }

@@ -27,6 +27,8 @@ enum LookbookPostIdFormatting {
 struct ServerLookbookPost: Decodable {
     let id: String
     let imageUrl: String
+    /// Smaller companion file from LOOKBOOK upload (`*_thumbnail.jpeg`); optional for older API responses.
+    let thumbnailUrl: String?
     let caption: String?
     let username: String
     /// Poster profile image from `getUser`-style field on the post (optional until backend supports it).
@@ -177,7 +179,7 @@ final class LookbookService {
         let query = """
         mutation CreateLookbook($imageUrl: String!, $caption: String) {
           createLookbook(imageUrl: $imageUrl, caption: $caption) {
-            lookbookPost { id imageUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked }
+            lookbookPost { id imageUrl thumbnailUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked }
             success
             message
           }
@@ -213,8 +215,8 @@ final class LookbookService {
         let query = """
         query Lookbooks($first: Int) {
           lookbooks(first: $first) {
-            nodes { id imageUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked productLinkClicks shopLinkClicks }
-            edges { node { id imageUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked productLinkClicks shopLinkClicks } }
+            nodes { id imageUrl thumbnailUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked productLinkClicks shopLinkClicks }
+            edges { node { id imageUrl thumbnailUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked productLinkClicks shopLinkClicks } }
           }
         }
         """
@@ -248,6 +250,7 @@ final class LookbookService {
           lookbookPost(postId: $postId) {
             id
             imageUrl
+            thumbnailUrl
             caption
             username
             profilePictureUrl
