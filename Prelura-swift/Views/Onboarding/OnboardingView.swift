@@ -11,7 +11,7 @@ struct OnboardingView: View {
             VStack(spacing: Theme.Spacing.xl) {
                 TabView(selection: $page) {
                     onboardingPage(
-                        title: "Welcome to Wearhouse",
+                        title: "Welcome to WEARHOUSE",
                         bodyText: "Buy and sell preloved fashion. Sustainable choices, one tap away.",
                         imageName: "leaf.fill"
                     )

@@ -103,7 +103,8 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
     @discardableResult
     func send(message: String, messageUUID: String) -> Bool {
         guard let task = task else { return false }
-        let payload: [String: Any] = ["message": message, "message_uuid": messageUUID]
+        let messageOut = ProfanityFilter.sanitize(message)
+        let payload: [String: Any] = ["message": messageOut, "message_uuid": messageUUID]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let string = String(data: data, encoding: .utf8) else { return false }
         // Do not require `isConnected`: the handshake can still be in flight; the task queues outbound frames.

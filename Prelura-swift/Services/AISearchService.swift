@@ -1381,18 +1381,18 @@ final class AISearchService {
         return Self.salutations.contains(withoutLenny) || Self.socialGreetingPhrases.contains(withoutLenny)
     }
 
-    /// Greeting replies when user says "hi", "hello", or social questions. Lenny always identifies himself and welcomes to Wearhouse. Used for both salutations and social Q&A.
+    /// Greeting replies when user says "hi", "hello", or social questions. Lenny always identifies himself and welcomes to WEARHOUSE. Used for both salutations and social Q&A.
     private static let greetingReplies: [String] = [
-        "Hi, I'm Lenny — welcome to Wearhouse. How can I help?",
-        "Hello! I'm Lenny, welcome to Wearhouse. What can I help you find today?",
-        "Hey there! Lenny here — welcome to Wearhouse. How can I help you?",
-        "Hi! I'm Lenny, welcome to Wearhouse. How can I help?",
-        "Hello! Welcome to Wearhouse — I'm Lenny. How can I help you today?",
-        "Hey! I'm Lenny, welcome to Wearhouse. What are you looking for?",
-        "Hi there! Lenny here. Welcome to Wearhouse — how can I help?",
-        "Hello! I'm Lenny, welcome to Wearhouse. How can I help you find something?",
-        "Hi! Welcome to Wearhouse. I'm Lenny — how can I help?",
-        "Hey there! I'm Lenny, welcome to Wearhouse. What can I help you with?",
+        "Hi, I'm Lenny — welcome to WEARHOUSE. How can I help?",
+        "Hello! I'm Lenny, welcome to WEARHOUSE. What can I help you find today?",
+        "Hey there! Lenny here — welcome to WEARHOUSE. How can I help you?",
+        "Hi! I'm Lenny, welcome to WEARHOUSE. How can I help?",
+        "Hello! Welcome to WEARHOUSE — I'm Lenny. How can I help you today?",
+        "Hey! I'm Lenny, welcome to WEARHOUSE. What are you looking for?",
+        "Hi there! Lenny here. Welcome to WEARHOUSE — how can I help?",
+        "Hello! I'm Lenny, welcome to WEARHOUSE. How can I help you find something?",
+        "Hi! Welcome to WEARHOUSE. I'm Lenny — how can I help?",
+        "Hey there! I'm Lenny, welcome to WEARHOUSE. What can I help you with?",
         "Hello! Welcome to the chat — I'm Lenny, and I'm here to help with whatever you need. Just type what you're looking for to get started.",
         "Hey there! I'm Lenny. Great to have you here. Tell me what you're after — a colour and item like leather jacket or denim jeans works a treat.",
         "Hi! Lenny here. Welcome in. I'm here to help you find something lovely — try typing something like black jacket or green dress.",

@@ -105,7 +105,16 @@ struct ProfileSettingsView: View {
             do {
                 let usernameTrimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
                 let bioTrimmed = bio.trimmingCharacters(in: .whitespacesAndNewlines)
+                let bioSafe = ProfanityFilter.sanitize(bioTrimmed)
                 let locationTrimmed = location.trimmingCharacters(in: .whitespacesAndNewlines)
+                if ProfanityFilter.maskingWouldChange(bioTrimmed) {
+                    userService.updateAuthToken(UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
+                    _ = try? await userService.recordProfanityUsage(
+                        channel: "profile_bio",
+                        relatedConversationId: nil,
+                        sanitizedSnippet: bioSafe
+                    )
+                }
                 // Only send username if it changed (backend rejects "already taken" when sending current username).
                 let usernameToSend: String? = {
                     let new = usernameTrimmed.isEmpty ? nil : usernameTrimmed.lowercased()
@@ -114,7 +123,7 @@ struct ProfileSettingsView: View {
                     return n
                 }()
                 try await userService.updateProfile(
-                    bio: bioTrimmed.isEmpty ? nil : String(bioTrimmed.prefix(bioMaxLength)),
+                    bio: bioSafe.isEmpty ? nil : String(bioSafe.prefix(bioMaxLength)),
                     username: usernameToSend,
                     location: locationTrimmed.isEmpty ? nil : locationTrimmed
                 )

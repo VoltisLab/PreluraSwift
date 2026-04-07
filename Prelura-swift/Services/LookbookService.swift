@@ -8,6 +8,21 @@
 
 import Foundation
 
+/// Normalizes lookbook post ids for GraphQL `UUID!` variables (e.g. strips `urn:uuid:` or `{}` wrappers).
+enum LookbookPostIdFormatting {
+    static func graphQLUUIDString(from raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = s.lowercased()
+        if lower.hasPrefix("urn:uuid:") {
+            s = String(s.dropFirst("urn:uuid:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if s.count >= 2, s.first == "{", s.last == "}" {
+            s = String(s.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return s
+    }
+}
+
 /// Server lookbook post (matches backend spec).
 struct ServerLookbookPost: Decodable {
     let id: String
@@ -241,7 +256,8 @@ final class LookbookService {
           }
         }
         """
-        let variables: [String: Any] = ["postId": postId]
+        let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
+        let variables: [String: Any] = ["postId": normalized]
         struct Response: Decodable { let lookbookPost: ServerLookbookPost? }
         let response: Response = try await client.execute(
             query: query,
@@ -263,7 +279,8 @@ final class LookbookService {
           }
         }
         """
-        let variables: [String: Any] = ["postId": postId]
+        let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
+        let variables: [String: Any] = ["postId": normalized]
         struct Response: Decodable { let toggleLookbookLike: Payload? }
         struct Payload: Decodable {
             let success: Bool?
@@ -294,7 +311,8 @@ final class LookbookService {
           }
         }
         """
-        let variables: [String: Any] = ["postId": postId]
+        let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
+        let variables: [String: Any] = ["postId": normalized]
         struct Response: Decodable { let lookbookComments: [ServerLookbookComment]? }
         let response: Response = try await client.execute(
             query: query,
@@ -321,7 +339,8 @@ final class LookbookService {
           }
         }
         """
-        let variables: [String: Any] = ["postId": postId, "text": text]
+        let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
+        let variables: [String: Any] = ["postId": normalized, "text": text]
         struct Response: Decodable { let addLookbookComment: Payload? }
         struct Payload: Decodable {
             let success: Bool?

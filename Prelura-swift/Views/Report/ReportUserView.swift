@@ -187,21 +187,31 @@ private struct ReportUserDetailsView: View {
         }
         do {
             fileUploadService.setAuthToken(UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
+            userService.updateAuthToken(UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
             let uploaded: [(url: String, thumbnail: String)] = selectedImageDataList.isEmpty ? [] : (try await fileUploadService.uploadProductImages(selectedImageDataList))
             let imageUrls = uploaded.map { $0.url }
+            let descRaw = description.trimmingCharacters(in: .whitespacesAndNewlines)
+            let reportContent = ProfanityFilter.sanitize(descRaw)
+            if ProfanityFilter.maskingWouldChange(descRaw) {
+                _ = try? await userService.recordProfanityUsage(
+                    channel: isProduct ? "report_product" : "report_account",
+                    relatedConversationId: nil,
+                    sanitizedSnippet: reportContent
+                )
+            }
             let submittedRef: SubmittedReportRef?
             if isProduct, let pid = productId {
                 submittedRef = try await productService.reportProduct(
                     productId: String(pid),
                     reason: reason,
-                    content: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                    content: reportContent,
                     imagesUrl: imageUrls
                 )
             } else {
                 submittedRef = try await userService.reportAccount(
                     username: username,
                     reason: reason,
-                    content: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                    content: reportContent,
                     imagesUrl: imageUrls
                 )
             }

@@ -86,10 +86,7 @@ class FilteredProductsViewModel: ObservableObject {
         Task {
             do {
                 let products = try await fetchProducts(page: 1)
-                var processed = products.excludingVacationModeSellers().excludingSold()
-                if case .recentlyViewed = filterType {
-                    processed = processed.sorted { $0.createdAt > $1.createdAt }
-                }
+                let processed = products.excludingVacationModeSellers().excludingSold()
                 await MainActor.run {
                     self.items = processed
                     self.applyFilters()
@@ -136,10 +133,7 @@ class FilteredProductsViewModel: ObservableObject {
         
         do {
             let products = try await fetchProducts(page: 1)
-            var processed = products.excludingVacationModeSellers().excludingSold()
-            if case .recentlyViewed = filterType {
-                processed = processed.sorted { $0.createdAt > $1.createdAt }
-            }
+            let processed = products.excludingVacationModeSellers().excludingSold()
             await MainActor.run {
                 self.items = processed
                 applyFilters()
@@ -169,13 +163,13 @@ class FilteredProductsViewModel: ObservableObject {
                 maxPrice: 15
             )
         case .recentlyViewed:
-            // Fetch recently viewed products from backend (like Flutter)
             if page == 1 {
-                return try await productService.getRecentlyViewedProducts()
-            } else {
-                // Recently viewed doesn't support pagination, return empty for subsequent pages
-                return []
+                async let featured = productService.getDiscoverFeaturedProducts()
+                async let recent = productService.getRecentlyViewedProducts()
+                let (f, r) = try await (featured, recent)
+                return [Item].mergedDiscoverRecentlyFullList(featured: f, recentlyViewed: r)
             }
+            return []
         case .brandsYouLove:
             // For now, return all products - this would need brand filtering
             return try await productService.getAllProducts(

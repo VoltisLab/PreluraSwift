@@ -54,13 +54,15 @@ class DiscoverViewModel: ObservableObject {
                 async let onSaleTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, discountPrice: true)
                 async let shopBargainsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, maxPrice: 15.0)
                 async let recentlyViewedTask = productService.getRecentlyViewedProducts()
+                async let discoverFeaturedTask = productService.getDiscoverFeaturedProducts()
                 async let recommendedTask = userService.getRecommendedSellers(pageNumber: 1, pageCount: 20)
 
-                let (allProducts, onSaleProducts, shopBargainsProducts, recentlyViewedProducts) = try await (
+                let (allProducts, onSaleProducts, shopBargainsProducts, recentlyViewedProducts, discoverFeatured) = try await (
                     allProductsTask,
                     onSaleTask,
                     shopBargainsTask,
-                    recentlyViewedTask
+                    recentlyViewedTask,
+                    discoverFeaturedTask
                 )
                 let recommended = try? await recommendedTask
 
@@ -78,8 +80,11 @@ class DiscoverViewModel: ObservableObject {
                     return
                 }
                 
-                // Recently viewed - newest first (match full page order)
-                self.recentlyViewedItems = Array(recentlyViewedVisible.sorted { $0.createdAt > $1.createdAt }.prefix(10))
+                // Recently viewed strip: staff-featured first, then user recents (deduped)
+                self.recentlyViewedItems = [Item].mergedDiscoverRecentlyStrip(
+                    featured: discoverFeatured,
+                    recentlyViewed: recentlyViewedVisible
+                )
                 
                 var usedProductIds: Set<UUID> = Set(self.recentlyViewedItems.map { $0.id })
                 
@@ -167,11 +172,12 @@ class DiscoverViewModel: ObservableObject {
     func refreshRecentlyViewedSection() {
         Task {
             do {
-                let recentlyViewedProducts = try await productService.getRecentlyViewedProducts()
-                let recentlyViewedVisible = recentlyViewedProducts.excludingVacationModeSellers()
-                    .sorted { $0.createdAt > $1.createdAt }
+                async let featuredTask = productService.getDiscoverFeaturedProducts()
+                async let recentTask = productService.getRecentlyViewedProducts()
+                let (featured, recent) = try await (featuredTask, recentTask)
+                let merged = [Item].mergedDiscoverRecentlyStrip(featured: featured, recentlyViewed: recent)
                 await MainActor.run {
-                    self.recentlyViewedItems = Array(recentlyViewedVisible.prefix(10))
+                    self.recentlyViewedItems = merged
                 }
             } catch {
                 // Keep existing list on error
@@ -228,12 +234,14 @@ class DiscoverViewModel: ObservableObject {
             async let onSaleTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, discountPrice: true)
             async let shopBargainsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, maxPrice: 15.0)
             async let recentlyViewedTask = productService.getRecentlyViewedProducts()
+            async let discoverFeaturedTask = productService.getDiscoverFeaturedProducts()
 
-            let (allProducts, onSaleProducts, shopBargainsProducts, recentlyViewedProducts) = try await (
+            let (allProducts, onSaleProducts, shopBargainsProducts, recentlyViewedProducts, discoverFeatured) = try await (
                 allProductsTask,
                 onSaleTask,
                 shopBargainsTask,
-                recentlyViewedTask
+                recentlyViewedTask,
+                discoverFeaturedTask
             )
 
             let allVisible = allProducts.excludingVacationModeSellers().excludingSold()
@@ -249,8 +257,10 @@ class DiscoverViewModel: ObservableObject {
                     return
                 }
                 
-                // Recently viewed - newest first (match full page order)
-                self.recentlyViewedItems = Array(recentlyViewedVisible.sorted { $0.createdAt > $1.createdAt }.prefix(10))
+                self.recentlyViewedItems = [Item].mergedDiscoverRecentlyStrip(
+                    featured: discoverFeatured,
+                    recentlyViewed: recentlyViewedVisible
+                )
                 
                 var usedProductIds: Set<UUID> = Set(self.recentlyViewedItems.map { $0.id })
                 

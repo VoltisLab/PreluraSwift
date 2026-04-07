@@ -4,7 +4,7 @@ import SwiftUI
 struct HowToUseWearhouseView: View {
     var body: some View {
         HostedWebArticleView(
-            title: L10n.string("How to use Wearhouse"),
+            title: L10n.string("How to use WEARHOUSE"),
             urlString: Constants.helpHowToUseWearhouseURL
         )
     }

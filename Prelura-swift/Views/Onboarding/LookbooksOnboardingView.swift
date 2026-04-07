@@ -135,7 +135,7 @@ struct LookbooksOnboardingView: View {
     private var topBar: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Wearhouse")
+                Text("WEARHOUSE")
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(2.2)
                     .foregroundStyle(.white.opacity(0.42))

@@ -30,7 +30,7 @@ struct ProfileMenuView: View {
                 menuDivider
                 MenuItemRow(title: L10n.string("Help Centre"), icon: "questionmark.circle.fill", action: { onDismiss(); onSelect(.helpCentre) })
                 menuDivider
-                MenuItemRow(title: L10n.string("About Wearhouse"), icon: "info.circle.fill", action: { onDismiss(); onSelect(.aboutWearhouse) })
+                MenuItemRow(title: L10n.string("About WEARHOUSE"), icon: "info.circle.fill", action: { onDismiss(); onSelect(.aboutWearhouse) })
                 menuDivider
                 MenuItemRow(title: L10n.string("Settings"), icon: "gearshape.fill", action: { onDismiss(); onSelect(.settings) })
                 menuDivider
@@ -224,7 +224,7 @@ struct AboutWearhouseMenuView: View {
     var body: some View {
         List {
             NavigationLink(destination: HowToUseWearhouseView()) {
-                aboutRow(L10n.string("How to use Wearhouse"), icon: "book")
+                aboutRow(L10n.string("How to use WEARHOUSE"), icon: "book")
             }
             NavigationLink(destination: LegalInformationView()) {
                 aboutRow(L10n.string("Legal Information"), icon: "doc.text")
@@ -232,7 +232,7 @@ struct AboutWearhouseMenuView: View {
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("About Wearhouse"))
+        .navigationTitle(L10n.string("About WEARHOUSE"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }

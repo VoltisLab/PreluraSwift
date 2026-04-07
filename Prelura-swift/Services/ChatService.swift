@@ -488,6 +488,7 @@ class ChatService: ObservableObject {
     /// conversationId: backend expects Int; we accept String and pass Int when possible.
     func sendMessage(conversationId: String, message: String, messageUuid: String?) async throws -> Bool {
         let convIdInt = Int(conversationId) ?? 0
+        let messageOut = ProfanityFilter.sanitize(message)
         let mutation = """
         mutation SendMessage($conversationId: Int!, $message: String!, $messageUuid: String) {
           sendMessage(conversationId: $conversationId, message: $message, messageUuid: $messageUuid) {
@@ -496,7 +497,7 @@ class ChatService: ObservableObject {
           }
         }
         """
-        var variables: [String: Any] = ["conversationId": convIdInt, "message": message]
+        var variables: [String: Any] = ["conversationId": convIdInt, "message": messageOut]
         if let uuid = messageUuid { variables["messageUuid"] = uuid }
         let response: SendMessageResponse = try await client.execute(
             query: mutation,

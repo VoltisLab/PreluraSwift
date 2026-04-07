@@ -3,6 +3,7 @@ import SwiftUI
 /// List of in-app notifications (Flutter NotificationsScreen + NotificationsTab).
 struct NotificationsListView: View {
     @EnvironmentObject private var authService: AuthService
+    @EnvironmentObject private var bellUnreadStore: BellUnreadStore
     @Environment(\.dismiss) private var dismiss
     @State private var notifications: [AppNotification] = []
     @State private var isLoading = true
@@ -83,11 +84,19 @@ struct NotificationsListView: View {
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Notifications"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NotificationToolbarBellVisual(hasUnread: bellUnreadStore.hasUnread)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .refreshable {
             await reloadFromStart()
         }
         .onAppear {
             notificationService.updateAuthToken(authService.authToken)
+            bellUnreadStore.scheduleRefresh(authService: authService)
             Task { await reloadFromStart() }
         }
         .onChange(of: authService.authToken) { _, newToken in
@@ -503,5 +512,6 @@ private struct NotificationRowView: View {
     NavigationStack {
         NotificationsListView()
             .environmentObject(AuthService())
+            .environmentObject(BellUnreadStore())
     }
 }

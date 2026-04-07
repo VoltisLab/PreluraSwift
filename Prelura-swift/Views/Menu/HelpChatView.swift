@@ -581,7 +581,8 @@ struct HelpChatView: View {
     }
 
     private func sendMessage() {
-        let text = newMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = newMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = ProfanityFilter.sanitize(raw)
         guard !text.isEmpty else { return }
         if usePersistedThread, let cid = conversationId, Int(cid) != nil {
             let optimistic = SupportChatMessage(id: UUID().uuidString, text: text, isFromUser: true, createdAt: Date())
@@ -589,6 +590,14 @@ struct HelpChatView: View {
             chatMessages.append(optimistic)
             Task {
                 chatService.updateAuthToken(authService.authToken)
+                userService.updateAuthToken(authService.authToken)
+                if ProfanityFilter.maskingWouldChange(raw) {
+                    _ = try? await userService.recordProfanityUsage(
+                        channel: "support_chat",
+                        relatedConversationId: Int(cid),
+                        sanitizedSnippet: text
+                    )
+                }
                 let uuid = UUID().uuidString
                 do {
                     let ok = try await chatService.sendMessage(conversationId: cid, message: text, messageUuid: uuid)

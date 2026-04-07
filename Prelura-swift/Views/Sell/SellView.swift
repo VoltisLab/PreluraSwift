@@ -1972,7 +1972,7 @@ struct PriceInputView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.sm)
 
-                Text(L10n.string("Tip: similar price range is recommended based on similar items sold on Wearhouse."))
+                Text(L10n.string("Tip: similar price range is recommended based on similar items sold on WEARHOUSE."))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.horizontal, Theme.Spacing.md)

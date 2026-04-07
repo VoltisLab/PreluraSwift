@@ -72,10 +72,13 @@ class ProfileViewModel: ObservableObject {
         }
         
         do {
-            // Load user profile and products in parallel for faster display
+            // Load profile and listings in parallel. `viewMe` stays allowed under suspension/ban;
+            // `userProducts` is not — if we `try await` both together, a blocked listings query
+            // prevents applying `viewMe` and the tab shows empty zeros + title "Profile".
             async let userTask = userService.getUser()
             async let productsTask = userService.getUserProducts()
-            let (fetchedUser, products) = try await (userTask, productsTask)
+            let fetchedUser = try await userTask
+            let products = (try? await productsTask) ?? []
             await MainActor.run {
                 self.user = fetchedUser
                 self.userItems = products

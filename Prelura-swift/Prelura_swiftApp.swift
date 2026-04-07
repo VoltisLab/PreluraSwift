@@ -182,16 +182,28 @@ struct AppearanceRootView: View {
             .onReceive(NotificationCenter.default.publisher(for: .wearhouseDeviceTokenDidUpdate)) { _ in
                 registerPushTokenIfNeeded(authService: authService)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .wearhouseAccountRestrictionShouldRefresh)) { _ in
+                Task { await authService.refreshAccountModerationFromServer() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                Task { await authService.refreshAccountModerationFromServer() }
+            }
     }
 
     @ViewBuilder
     private var content: some View {
         let _ = syncThemeScheme()
-        Group {
-            if authService.isAuthenticated || authService.isGuestMode {
-                MainTabView()
-            } else {
-                LoginView()
+        ZStack {
+            Group {
+                if authService.isAuthenticated || authService.isGuestMode {
+                    MainTabView()
+                } else {
+                    LoginView()
+                }
+            }
+            if authService.isAuthenticated, !authService.isGuestMode, authService.isAccountRestricted {
+                AccountRestrictionOverlayView()
+                    .environmentObject(authService)
             }
         }
         .fullScreenCover(
@@ -310,9 +322,15 @@ struct MainTabView: View {
             }
         }
         .onAppear { openInboxChatFromPendingRouterIfNeeded() }
+        .task {
+            await authService.refreshAccountModerationFromServer()
+        }
         .onChange(of: appRouter.pendingInboxChat) { _, _ in openInboxChatFromPendingRouterIfNeeded() }
         .onChange(of: authService.isAuthenticated) { _, authed in
             if authed { openInboxChatFromPendingRouterIfNeeded() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .wearhouseAccountRestrictionShouldRefresh)) { _ in
+            Task { await authService.refreshAccountModerationFromServer() }
         }
     }
 

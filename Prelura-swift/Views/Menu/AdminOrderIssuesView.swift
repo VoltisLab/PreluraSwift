@@ -107,7 +107,7 @@ struct AdminOrderIssuesView: View {
         NavigationStack {
             List {
                 Section {
-                    Text("Choose where to reply. Help chat rows are separate Wearhouse support threads for the buyer and/or seller (only shown if that person has started support). Order chat is the buyer ↔ seller sale thread.")
+                    Text("Choose where to reply. Help chat rows are separate WEARHOUSE support threads for the buyer and/or seller (only shown if that person has started support). Order chat is the buyer ↔ seller sale thread.")
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .listRowBackground(Color.clear)

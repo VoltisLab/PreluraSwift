@@ -39,7 +39,7 @@ struct HomeView: View {
             }
             .background(Theme.Colors.background)
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarHidden(viewModel.isLoading && viewModel.filteredItems.isEmpty)
+            .navigationBarHidden(viewModel.isLoading && viewModel.filteredItems.isEmpty && viewModel.featuredItems.isEmpty)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     WearhouseWordmarkView(style: .toolbar)
@@ -87,6 +87,8 @@ struct HomeView: View {
             }
             .navigationDestination(isPresented: $showNotificationsList) {
                 NotificationsListView()
+                    .environmentObject(authService)
+                    .environmentObject(bellUnreadStore)
             }
             .background(
                 NavigationLink(destination: AIChatView(viewModel: viewModel).environmentObject(authService), isActive: $showAIChat) {
@@ -101,7 +103,7 @@ struct HomeView: View {
 
     @ViewBuilder
     private var homeMainContent: some View {
-        if viewModel.isLoading && viewModel.filteredItems.isEmpty {
+        if viewModel.isLoading && viewModel.filteredItems.isEmpty && viewModel.featuredItems.isEmpty {
             FeedShimmerView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -144,6 +146,7 @@ struct HomeView: View {
                             .padding(.horizontal, Theme.Spacing.md)
                         }
                         categoryFiltersSection
+                        featuredSection
                         productGridSection
                     }
                     .background(
@@ -176,19 +179,8 @@ struct HomeView: View {
         Button {
             showNotificationsList = true
         } label: {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: "bell")
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                if bellUnreadStore.hasUnread {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 8, height: 8)
-                        .offset(x: 4, y: -2)
-                        .allowsHitTesting(false)
-                }
-            }
-            .contentShape(Rectangle())
+            NotificationToolbarBellVisual(hasUnread: bellUnreadStore.hasUnread)
+                .contentShape(Rectangle())
         }
         .buttonStyle(HapticTapButtonStyle())
     }
@@ -211,6 +203,66 @@ struct HomeView: View {
         }
         .padding(.vertical, Theme.Spacing.sm)
     }
+
+    @ViewBuilder
+    private func homeProductCore(item: Item, trackLoadMore: Bool) -> some View {
+        ZStack(alignment: .topLeading) {
+            NavigationLink(value: AppRoute.itemDetail(item)) {
+                HomeItemCard(item: item, onLikeTap: nil, hideLikeButton: true)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .buttonStyle(PlainTappableButtonStyle())
+            VStack(spacing: 0) {
+                Color.clear.frame(height: 28)
+                VStack(spacing: 0) {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: {
+                            if authService.isGuestMode { showGuestSignInPrompt = true }
+                            else { viewModel.toggleLike(productId: item.productId ?? "") }
+                        })
+                        .padding(Theme.Spacing.xs)
+                    }
+                }
+                .aspectRatio(1.0/1.3, contentMode: .fit)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .allowsHitTesting(true)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .id("\(item.id)-\(item.isLiked)-\(item.likeCount)")
+        .onAppear {
+            guard trackLoadMore else { return }
+            if item.id == viewModel.filteredItems.suffix(4).first?.id {
+                viewModel.loadMore()
+            }
+        }
+    }
+
+    // MARK: - Featured (staff-curated)
+    private var featuredSection: some View {
+        Group {
+            if !viewModel.featuredItems.isEmpty && viewModel.searchText.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    Text(L10n.string("Featured"))
+                        .font(Theme.Typography.headline)
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .padding(.horizontal, Theme.Spacing.md)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: Theme.Spacing.sm) {
+                            ForEach(viewModel.featuredItems) { item in
+                                homeProductCore(item: item, trackLoadMore: false)
+                                    .frame(width: 168)
+                            }
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
+                    }
+                }
+                .padding(.bottom, Theme.Spacing.sm)
+            }
+        }
+    }
     
     // MARK: - Product Grid
     private var productGridSection: some View {
@@ -224,41 +276,9 @@ struct HomeView: View {
             pinnedViews: []
         ) {
             ForEach(viewModel.filteredItems) { item in
-                ZStack(alignment: .topLeading) {
-                    NavigationLink(value: AppRoute.itemDetail(item)) {
-                        HomeItemCard(item: item, onLikeTap: nil, hideLikeButton: true)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                    }
-                    .buttonStyle(PlainTappableButtonStyle())
-                    // Like button outside NavigationLink so taps go to button; overlay aligned over image (seller row then image)
-                    VStack(spacing: 0) {
-                        Color.clear.frame(height: 28)
-                        VStack(spacing: 0) {
-                            Spacer()
-                            HStack {
-                                Spacer()
-                                LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: {
-                                    if authService.isGuestMode { showGuestSignInPrompt = true }
-                                    else { viewModel.toggleLike(productId: item.productId ?? "") }
-                                })
-                                .padding(Theme.Spacing.xs)
-                            }
-                        }
-                        .aspectRatio(1.0/1.3, contentMode: .fit)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .allowsHitTesting(true)
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .id("\(item.id)-\(item.isLiked)-\(item.likeCount)")
-                .onAppear {
-                    // Load more when the last few items appear
-                    if item.id == viewModel.filteredItems.suffix(4).first?.id {
-                        viewModel.loadMore()
-                    }
-                }
+                homeProductCore(item: item, trackLoadMore: true)
             }
-            
+
             // Loading indicator at bottom
             if viewModel.isLoadingMore {
                 HStack {
@@ -460,6 +480,7 @@ struct HomeItemCard: View {
 
 #Preview {
     HomeView(tabCoordinator: TabCoordinator())
+        .environmentObject(AuthService())
         .environmentObject(BellUnreadStore())
         .preferredColorScheme(.dark)
 }

@@ -211,6 +211,37 @@ extension Array where Element == Item {
     func excludingSold() -> [Item] {
         filter { !$0.isSold }
     }
+
+    /// Discover “Recently viewed” strip: staff-featured first (server order, max 20), then recents (newest first), deduped.
+    static func mergedDiscoverRecentlyStrip(featured: [Item], recentlyViewed: [Item], maxTotal: Int = 30) -> [Item] {
+        let f = featured.excludingVacationModeSellers().excludingSold()
+        let r = recentlyViewed.excludingVacationModeSellers().excludingSold().sorted { $0.createdAt > $1.createdAt }
+        var seen = Set<UUID>()
+        var out: [Item] = []
+        for item in f.prefix(20) {
+            if seen.insert(item.id).inserted { out.append(item) }
+        }
+        for item in r {
+            guard out.count < maxTotal else { break }
+            if seen.insert(item.id).inserted { out.append(item) }
+        }
+        return out
+    }
+
+    /// Full “Recently viewed” list (see all): featured block then remaining recents, deduped.
+    static func mergedDiscoverRecentlyFullList(featured: [Item], recentlyViewed: [Item]) -> [Item] {
+        let f = featured.excludingVacationModeSellers().excludingSold()
+        let r = recentlyViewed.excludingVacationModeSellers().excludingSold().sorted { $0.createdAt > $1.createdAt }
+        var seen = Set<UUID>()
+        var out: [Item] = []
+        for item in f {
+            if seen.insert(item.id).inserted { out.append(item) }
+        }
+        for item in r {
+            if seen.insert(item.id).inserted { out.append(item) }
+        }
+        return out
+    }
 }
 
 // Sample data

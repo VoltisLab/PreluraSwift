@@ -26,7 +26,7 @@ struct SignupView: View {
                             Text(L10n.string("Create Account"))
                                 .font(Theme.Typography.title)
                                 .foregroundColor(Theme.Colors.authOverVideoText)
-                            Text(L10n.string("Join Wearhouse today"))
+                            Text(L10n.string("Join WEARHOUSE today"))
                                 .font(Theme.Typography.body)
                                 .foregroundColor(Theme.Colors.authOverVideoText)
                         }

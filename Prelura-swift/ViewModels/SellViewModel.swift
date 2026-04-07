@@ -11,6 +11,7 @@ class SellViewModel: ObservableObject {
     private let productService = ProductService()
     private let fileUploadService = FileUploadService()
     private let materialsService = MaterialsService()
+    private let userService = UserService()
 
     /// Submit the full listing: upload images, then create product via GraphQL (matches Flutter createProduct flow).
     func submitListing(
@@ -71,10 +72,23 @@ class SellViewModel: ObservableObject {
                 let parcelSizeEnum = Self.mapParcelSizeToEnum(parcelSize)
 
                 // 5. Create product (optional measurements embedded in description; see ListingDescriptionAttachments)
-                let descriptionForApi = ListingDescriptionAttachments.embedMeasurements(description, measurements: measurements)
+                let titleRaw = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                let descriptionRaw = description.trimmingCharacters(in: .whitespacesAndNewlines)
+                let titleClean = ProfanityFilter.sanitize(titleRaw)
+                let descriptionClean = ProfanityFilter.sanitize(descriptionRaw)
+                let descriptionForApi = ListingDescriptionAttachments.embedMeasurements(descriptionClean, measurements: measurements)
+                if ProfanityFilter.maskingWouldChange(titleRaw) || ProfanityFilter.maskingWouldChange(descriptionRaw) {
+                    userService.updateAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
+                    let snippet = "\(titleClean) — \(descriptionClean)"
+                    _ = try? await userService.recordProfanityUsage(
+                        channel: "sell_listing",
+                        relatedConversationId: nil,
+                        sanitizedSnippet: snippet
+                    )
+                }
                 let styleRaws = StyleSelectionView.normalizedUniqueStyleRaws(styles)
                 _ = try await productService.createProduct(
-                    name: title,
+                    name: titleClean,
                     description: descriptionForApi,
                     price: price,
                     imageUrl: imageUrl,
@@ -160,11 +174,24 @@ class SellViewModel: ObservableObject {
                     imageAction = "UPDATE_INDEX"
                 }
 
-                let descriptionForApi = ListingDescriptionAttachments.embedMeasurements(description, measurements: measurements)
+                let titleRaw = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                let descriptionRaw = description.trimmingCharacters(in: .whitespacesAndNewlines)
+                let titleClean = ProfanityFilter.sanitize(titleRaw)
+                let descriptionClean = ProfanityFilter.sanitize(descriptionRaw)
+                let descriptionForApi = ListingDescriptionAttachments.embedMeasurements(descriptionClean, measurements: measurements)
+                if ProfanityFilter.maskingWouldChange(titleRaw) || ProfanityFilter.maskingWouldChange(descriptionRaw) {
+                    userService.updateAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
+                    let snippet = "\(titleClean) — \(descriptionClean)"
+                    _ = try? await userService.recordProfanityUsage(
+                        channel: "sell_listing_edit",
+                        relatedConversationId: nil,
+                        sanitizedSnippet: snippet
+                    )
+                }
                 let styleRaws = StyleSelectionView.normalizedUniqueStyleRaws(styles)
                 try await productService.updateProduct(
                     productId: productId,
-                    name: title,
+                    name: titleClean,
                     description: descriptionForApi,
                     price: price,
                     categoryId: categoryIdInt,

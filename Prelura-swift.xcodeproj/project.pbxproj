@@ -292,7 +292,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = URLTypes.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Wearhouse;
+				INFOPLIST_KEY_CFBundleDisplayName = "WEARHOUSE";
 				INFOPLIST_KEY_NSContactsUsageDescription = "Wearhouse uses your contacts so you can invite friends to the app.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Wearhouse saves lookbook photos you choose to save to your library.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -344,7 +344,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = URLTypes.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Wearhouse;
+				INFOPLIST_KEY_CFBundleDisplayName = "WEARHOUSE";
 				INFOPLIST_KEY_NSContactsUsageDescription = "Wearhouse uses your contacts so you can invite friends to the app.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Wearhouse saves lookbook photos you choose to save to your library.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;

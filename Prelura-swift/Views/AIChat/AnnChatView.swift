@@ -167,16 +167,25 @@ struct AnnChatView: View {
     }
 
     private func sendMessage() {
-        let raw = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !raw.isEmpty, !isBotThinking else { return }
+        let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sanitized = ProfanityFilter.sanitize(trimmed)
+        guard !sanitized.isEmpty, !isBotThinking else { return }
 
-        let userMessage = ChatMessage(isFromUser: true, text: raw)
+        let userMessage = ChatMessage(isFromUser: true, text: sanitized)
         messages.append(userMessage)
         inputText = ""
         isBotThinking = true
 
         Task {
-            await respondToUserMessage(raw)
+            userService.updateAuthToken(authService.authToken)
+            if ProfanityFilter.maskingWouldChange(trimmed) {
+                _ = try? await userService.recordProfanityUsage(
+                    channel: "ai_chat_ann",
+                    relatedConversationId: nil,
+                    sanitizedSnippet: sanitized
+                )
+            }
+            await respondToUserMessage(sanitized)
             await MainActor.run { isBotThinking = false }
         }
     }

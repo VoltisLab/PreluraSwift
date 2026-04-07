@@ -78,7 +78,7 @@ enum L10n {
         "Vacation Mode": "Λειτουργία Αργίας",
         "Invite Friend": "Προσκάλεσε Φίλο",
         "Help Centre": "Κέντρο Βοήθειας",
-        "About Wearhouse": "Σχετικά με το Wearhouse",
+        "About WEARHOUSE": "Σχετικά με το WEARHOUSE",
         "Admin Dashboard": "Πίνακας Διαχείρισης",
         "Settings": "Ρυθμίσεις",
         "Logout": "Αποσύνδεση",
@@ -117,8 +117,8 @@ enum L10n {
         "Greek": "Ελληνικά",
         "Greek displays the app in Greek.": "Η γλώσσα Ελληνικά εμφανίζει την εφαρμογή στα Ελληνικά.",
 
-        // About Wearhouse
-        "How to use Wearhouse": "Πώς να χρησιμοποιήσετε το Wearhouse",
+        // About WEARHOUSE
+        "How to use WEARHOUSE": "Πώς να χρησιμοποιήσετε το WEARHOUSE",
         "Legal Information": "Νομικές πληροφορίες",
 
         // Help Centre
@@ -139,7 +139,7 @@ enum L10n {
 
         // Menu (navigation)
         "Menu": "Μενού",
-        "© Wearhouse 2026": "© Wearhouse 2026",
+        "© WEARHOUSE 2026": "© WEARHOUSE 2026",
         "© Voltis Labs 2026": "© Voltis Labs 2026",
         "Debug": "Εντοπισμός σφαλμάτων",
 
@@ -253,6 +253,14 @@ enum L10n {
         // Sell
         "Sell an item": "Πώληση προϊόντος",
         "Close": "Κλείσιμο",
+        "Send to": "Αποστολή σε",
+        "Recent": "Πρόσφατα",
+        "Search username": "Αναζήτηση ονόματος χρήστη",
+        "Search results": "Αποτελέσματα αναζήτησης",
+        "No users found": "Δεν βρέθηκαν χρήστες",
+        "No recipients yet": "Δεν υπάρχουν παραλήπτες ακόμα",
+        "Message someone, get followers, or search by username.": "Στείλτε μήνυμα, αποκτήστε ακόλουθους ή αναζητήστε με όνομα χρήστη.",
+        "Sign in to share.": "Συνδεθείτε για κοινοποίηση.",
         "Upload": "Μεταφόρτωση",
         "Upload from drafts": "Μεταφόρτωση από πρόχειρα",
         "Save draft": "Αποθήκευση πρόχειρου",
@@ -313,7 +321,7 @@ enum L10n {
         "No brands match your search.": "Δεν βρέθηκαν μάρκες που ταιριάζουν με την αναζήτησή σας.",
         "Try Cart": "Δοκιμαστικό καλάθι",
         "One bag, many sellers": "Ένα καλάθι, πολλοί πωλητές",
-        "Try Cart lets you add pieces from different shops into a single bag. Keep browsing—your picks stay with you everywhere on Wearhouse.": "Το Δοκιμαστικό καλάθι σάς επιτρέπει να προσθέτετε κομμάτια από διαφορετικά καταστήματα σε ένα καλάθι. Συνεχίστε την περιήγηση—οι επιλογές σας μένουν μαζί σας παντού στο Wearhouse.",
+        "Try Cart lets you add pieces from different shops into a single bag. Keep browsing—your picks stay with you everywhere on WEARHOUSE.": "Το Δοκιμαστικό καλάθι σάς επιτρέπει να προσθέτετε κομμάτια από διαφορετικά καταστήματα σε ένα καλάθι. Συνεχίστε την περιήγηση—οι επιλογές σας μένουν μαζί σας παντού στο WEARHOUSE.",
         "Save time on every haul": "Εξοικονομήστε χρόνο σε κάθε αγορά",
         "No more jumping seller by seller. Search, tap the bag, and build your haul in one flow—with a running total so you always know where you stand.": "Χωρίς άλματα από πωλητή σε πωλητή. Αναζητήστε, πατήστε το καλάθι και χτίστε την αγορά σας σε μία ροή—με τρέχον σύνολο ώστε να ξέρετε πάντα πού βρίσκεστε.",
         "Shop smarter, checkout clearer": "Ψωνίστε πιο έξυπνα, ταμείο πιο καθαρά",
@@ -323,10 +331,11 @@ enum L10n {
         "Skip": "Παράλειψη",
         "Shop All": "Όλα τα προϊόντα",
         "Enter brand name": "Εισάγετε όνομα μάρκας",
-        "Tip: similar price range is recommended based on similar items sold on Wearhouse.": "Συμβουλή: συνιστάται παρόμοιο εύρος τιμών με βάση παρόμοια αντικείμενα που πωλήθηκαν στο Wearhouse.",
+        "Tip: similar price range is recommended based on similar items sold on WEARHOUSE.": "Συμβουλή: συνιστάται παρόμοιο εύρος τιμών με βάση παρόμοια αντικείμενα που πωλήθηκαν στο WEARHOUSE.",
         "Similar sold items": "Παρόμοια πωλημένα αντικείμενα",
 
         // Discover
+        "Featured": "Προτεινόμενα",
         "Recently viewed": "Πρόσφατα προβεβλημένα",
         "See All": "Δείτε όλα",
         "Results": "Αποτελέσματα",
@@ -361,7 +370,7 @@ enum L10n {
 
         // Auth (extra)
         "Create Account": "Δημιουργία λογαριασμού",
-        "Join Wearhouse today": "Γίνε μέλος του Wearhouse σήμερα",
+        "Join WEARHOUSE today": "Γίνε μέλος του WEARHOUSE σήμερα",
         "Email": "Email",
         "First Name": "Όνομα",
         "Last Name": "Επώνυμο",

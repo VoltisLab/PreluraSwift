@@ -37,9 +37,12 @@ struct MenuView: View {
                         .cornerRadius(4)
                 }
             }
+#if DEBUG
+            // Never ship this in Release: "Message delivery test" sends real DMs + pushes to the other participant.
             NavigationLink(destination: DebugMenuView()) {
                 menuRow(L10n.string("Debug"), icon: "ladybug")
             }
+#endif
             if isStaff {
                 NavigationLink(destination: AdminDashboardView()) {
                     menuRow(L10n.string("Admin Dashboard"), icon: "shield.lefthalf.filled")
@@ -79,7 +82,7 @@ struct MenuView: View {
                 menuRow(L10n.string("Help Centre"), icon: "questionmark.circle")
             }
             NavigationLink(destination: AboutWearhouseMenuView()) {
-                menuRow(L10n.string("About Wearhouse"), icon: "info.circle")
+                menuRow(L10n.string("About WEARHOUSE"), icon: "info.circle")
             }
             Button(role: .destructive, action: {
                 showLogoutConfirm = true

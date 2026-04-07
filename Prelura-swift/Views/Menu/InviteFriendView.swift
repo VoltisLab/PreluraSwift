@@ -10,7 +10,7 @@ struct InviteFriendView: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
                 // Intro
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Bring friends to Wearhouse")
+                    Text("Bring friends to WEARHOUSE")
                         .font(Theme.Typography.title3)
                         .foregroundColor(Theme.Colors.primaryText)
                     Text("Share your profile or invite from your contacts.")
@@ -94,7 +94,7 @@ struct InviteFriendView: View {
         let enc = username.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? username
         guard let web = URL(string: "\(Constants.universalLinksAPIBaseURL)/app/u/\(enc)/"),
               let appURL = URL(string: "prelura://user/\(enc)") else { return }
-        let text = "Check out my profile on Wearhouse: \(web.absoluteString)"
+        let text = "Check out my profile on WEARHOUSE: \(web.absoluteString)"
         let av = UIActivityViewController(activityItems: [text, web, appURL], applicationActivities: nil)
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let root = windowScene.windows.first?.rootViewController else { return }

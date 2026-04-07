@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// End-to-end DM test helper: send a probe message and verify it is persisted in the thread.
+/// **Release builds:** entry point is removed from `MenuView` (`#if DEBUG` only). This still sends **real** messages and **push notifications** to the other chat participant — never re-expose without a staff gate.
 struct MessageDeliveryDebugView: View {
     @EnvironmentObject private var authService: AuthService
     @StateObject private var chatService = ChatService()
@@ -109,9 +110,10 @@ struct MessageDeliveryDebugView: View {
         isSending = true
         defer { isSending = false }
 
-        let message = probeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let rawMessage = probeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "DM PROBE \(Date().formatted(date: .omitted, time: .standard))"
             : probeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let message = ProfanityFilter.sanitize(rawMessage)
         let uuid = UUID().uuidString
         await MainActor.run { statusLine = "Sending to conv \(convId)…" }
         do {

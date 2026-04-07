@@ -1,5 +1,14 @@
 import Foundation
 
+private func postAccountRestrictionRefreshIfNeeded(_ errors: [GraphQLErrorResponse]) {
+    for e in errors where e.message.hasPrefix("ACCOUNT_SUSPENDED:") || e.message.hasPrefix("ACCOUNT_BANNED:") {
+        Task { @MainActor in
+            NotificationCenter.default.post(name: .wearhouseAccountRestrictionShouldRefresh, object: nil)
+        }
+        break
+    }
+}
+
 class GraphQLClient {
     private let baseURL: URL
     private let session: URLSession
@@ -69,6 +78,7 @@ class GraphQLClient {
         }
         
         if let errors = graphQLResponse.errors, !errors.isEmpty {
+            postAccountRestrictionRefreshIfNeeded(errors)
             throw GraphQLError.graphQLErrors(errors)
         }
         
@@ -119,6 +129,7 @@ class GraphQLClient {
             throw GraphQLError.decodingError(error)
         }
         if let errors = graphQLResponse.errors, !errors.isEmpty {
+            postAccountRestrictionRefreshIfNeeded(errors)
             throw GraphQLError.graphQLErrors(errors)
         }
         if !(200...299).contains(httpResponse.statusCode) {

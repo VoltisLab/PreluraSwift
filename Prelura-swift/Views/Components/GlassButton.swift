@@ -95,3 +95,54 @@ struct GlassIconView: View {
             .modifier(GlassIconCircleStyle(size: size))
     }
 }
+
+/// Toolbar bell: glass circle + **neutral** bell; only a small dot indicates state (never tints the whole glyph).
+struct NotificationToolbarBellVisual: View {
+    private enum Kind {
+        /// Inbox-style: **red** dot when there are unread notifications.
+        case shopperUnread(Bool)
+        /// Console: **primary** dot when background health monitor is enabled.
+        case consoleMonitorOn(Bool)
+    }
+
+    private let kind: Kind
+
+    init(emphasized: Bool) {
+        self.kind = .consoleMonitorOn(emphasized)
+    }
+
+    init(hasUnread: Bool) {
+        self.kind = .shopperUnread(hasUnread)
+    }
+
+    private var showDot: Bool {
+        switch kind {
+        case .shopperUnread(let u): return u
+        case .consoleMonitorOn(let on): return on
+        }
+    }
+
+    private var dotColor: Color {
+        switch kind {
+        case .shopperUnread: return Color.red
+        case .consoleMonitorOn: return Theme.primaryColor
+        }
+    }
+
+    var body: some View {
+        Image(systemName: "bell")
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(Theme.Colors.primaryText)
+            .modifier(GlassIconCircleStyle(size: 44))
+            // Badge on the glass circle rim (half outside), not inside the bell glyph.
+            .overlay(alignment: .topTrailing) {
+                if showDot {
+                    Circle()
+                        .fill(dotColor)
+                        .frame(width: 10, height: 10)
+                        .offset(x: 4, y: -4)
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+}

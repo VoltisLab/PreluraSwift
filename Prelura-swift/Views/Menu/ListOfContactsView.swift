@@ -12,7 +12,7 @@ struct ListOfContactsView: View {
 
     private let store = CNContactStore()
     private static var inviteMessage: String {
-        "Join me on Wearhouse — buy and sell preloved fashion. \(Constants.inviteFriendsLandingURL)"
+        "Join me on WEARHOUSE — buy and sell preloved fashion. \(Constants.inviteFriendsLandingURL)"
     }
 
     var body: some View {
@@ -48,7 +48,7 @@ struct ListOfContactsView: View {
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .multilineTextAlignment(.center)
-                    Text("to Wearhouse.")
+                    Text("to WEARHOUSE.")
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .multilineTextAlignment(.center)
@@ -72,7 +72,7 @@ struct ListOfContactsView: View {
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.primaryText)
                 .multilineTextAlignment(.center)
-            Text("You can allow access in Settings → Wearhouse → Contacts.")
+            Text("You can allow access in Settings → WEARHOUSE → Contacts.")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
                 .multilineTextAlignment(.center)

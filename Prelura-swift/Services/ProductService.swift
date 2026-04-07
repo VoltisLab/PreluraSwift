@@ -1364,6 +1364,63 @@ extension ProductService {
         return products.compactMap { mapProductToItem(product: $0) }
     }
 
+    func getDiscoverFeaturedProducts() async throws -> [Item] {
+        let query = """
+        query DiscoverFeaturedProducts {
+          discoverFeaturedProducts {
+            id
+            listingCode
+            name
+            description
+            price
+            discountPrice
+            imagesUrl
+            condition
+            createdAt
+            size {
+              id
+              name
+            }
+            brand {
+              id
+              name
+            }
+            customBrand
+            likes
+            views
+            userLiked
+            seller {
+              id
+              username
+              displayName
+              profilePictureUrl
+              isVacationMode
+              isMultibuyEnabled
+              meta
+            }
+            category {
+              id
+              name
+            }
+            color
+            materials { id name }
+            styles
+            style
+            status
+          }
+        }
+        """
+        struct Envelope: Decodable {
+            let discoverFeaturedProducts: [ProductData]?
+        }
+        let response: Envelope = try await client.execute(
+            query: query,
+            variables: nil,
+            responseType: Envelope.self
+        )
+        return (response.discoverFeaturedProducts ?? []).compactMap { mapProductToItem(product: $0) }
+    }
+
     /// Record product view for recently viewed. Call when user opens product detail. Matches backend mutation used by Flutter. Ignores errors so missing/different schema does not break the app.
     func addToRecentlyViewed(productId: Int) async {
         let mutation = """

@@ -64,10 +64,10 @@ struct LookbookEntry: Identifiable {
 
     /// Entry from server (feed). Merges local multi-image URLs and tags when record matches.
     init(from serverPost: ServerLookbookPost, localRecord: LookbookUploadRecord? = nil) {
-        self.serverPostId = serverPost.id
         let tid = serverPost.id.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalized = tid.replacingOccurrences(of: "urn:uuid:", with: "", options: .caseInsensitive)
-        self.id = UUID(uuidString: tid) ?? UUID(uuidString: normalized) ?? UUID()
+        let normalizedId = LookbookPostIdFormatting.graphQLUUIDString(from: tid)
+        self.serverPostId = normalizedId.isEmpty ? tid : normalizedId
+        self.id = UUID(uuidString: normalizedId) ?? UUID(uuidString: tid) ?? UUID()
         self.imageNames = []
         self.documentImagePath = nil
         let serverTrim = serverPost.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -325,6 +325,7 @@ private struct LookbookFeedScreenView: View {
     @State private var commentsEntry: LookbookEntry?
     @State private var fullScreenEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
+    @State private var lookbookLikeSerialByPostId: [String: UInt64] = [:]
     private let productService = ProductService()
 
     var body: some View {
@@ -478,6 +479,9 @@ private struct LookbookFeedScreenView: View {
             onHeartTap: { entry in
                 let apiId = entry.apiPostId
                 guard let i = lookbookEntryIndex(forApiPostId: apiId) else { return }
+                let k = apiId.lowercased()
+                let serial = (lookbookLikeSerialByPostId[k] ?? 0) + 1
+                lookbookLikeSerialByPostId[k] = serial
                 HapticManager.tap()
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
@@ -485,11 +489,14 @@ private struct LookbookFeedScreenView: View {
                     e.likesCount += e.isLiked ? 1 : -1
                     entries[i] = e
                 }
-                Task { await syncLookbookLike(postId: apiId) }
+                Task { await syncLookbookLike(postId: apiId, serial: serial) }
             },
             onImageDoubleTap: { entry in
                 let apiId = entry.apiPostId
                 guard let i = lookbookEntryIndex(forApiPostId: apiId), !entries[i].isLiked else { return }
+                let k2 = apiId.lowercased()
+                let serial = (lookbookLikeSerialByPostId[k2] ?? 0) + 1
+                lookbookLikeSerialByPostId[k2] = serial
                 HapticManager.tap()
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
@@ -497,7 +504,7 @@ private struct LookbookFeedScreenView: View {
                     e.likesCount += 1
                     entries[i] = e
                 }
-                Task { await syncLookbookLike(postId: apiId) }
+                Task { await syncLookbookLike(postId: apiId, serial: serial) }
             },
             onCommentsTap: { entry in commentsEntry = entry },
             onImageTap: { entry in
@@ -511,13 +518,15 @@ private struct LookbookFeedScreenView: View {
         .padding(.bottom, lookbookSpacing)
     }
 
-    private func syncLookbookLike(postId: String) async {
+    private func syncLookbookLike(postId: String, serial: UInt64) async {
+        let key = postId.lowercased()
         do {
             let client = GraphQLClient()
             client.setAuthToken(authService.authToken)
             let service = LookbookService(client: client)
             let result = try await service.toggleLike(postId: postId)
             await MainActor.run {
+                guard lookbookLikeSerialByPostId[key] == serial else { return }
                 guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
                 var entry = entries[idx]
                 entry.isLiked = result.liked
@@ -528,6 +537,7 @@ private struct LookbookFeedScreenView: View {
             return
         } catch {
             await MainActor.run {
+                guard lookbookLikeSerialByPostId[key] == serial else { return }
                 guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
                 var entry = entries[idx]
                 entry.isLiked.toggle()
@@ -584,6 +594,7 @@ private struct LookbookMyItemsScreenView: View {
     @State private var commentsEntry: LookbookEntry?
     @State private var fullScreenEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
+    @State private var lookbookLikeSerialByPostId: [String: UInt64] = [:]
     private let productService = ProductService()
 
     private var myEntries: [LookbookEntry] {
@@ -755,6 +766,9 @@ private struct LookbookMyItemsScreenView: View {
             onHeartTap: { entry in
                 let apiId = entry.apiPostId
                 guard let i = lookbookEntryIndex(forApiPostId: apiId) else { return }
+                let k = apiId.lowercased()
+                let serial = (lookbookLikeSerialByPostId[k] ?? 0) + 1
+                lookbookLikeSerialByPostId[k] = serial
                 HapticManager.tap()
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
@@ -762,11 +776,14 @@ private struct LookbookMyItemsScreenView: View {
                     e.likesCount += e.isLiked ? 1 : -1
                     entries[i] = e
                 }
-                Task { await syncLookbookLike(postId: apiId) }
+                Task { await syncLookbookLike(postId: apiId, serial: serial) }
             },
             onImageDoubleTap: { entry in
                 let apiId = entry.apiPostId
                 guard let i = lookbookEntryIndex(forApiPostId: apiId), !entries[i].isLiked else { return }
+                let k2 = apiId.lowercased()
+                let serial = (lookbookLikeSerialByPostId[k2] ?? 0) + 1
+                lookbookLikeSerialByPostId[k2] = serial
                 HapticManager.tap()
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
@@ -774,7 +791,7 @@ private struct LookbookMyItemsScreenView: View {
                     e.likesCount += 1
                     entries[i] = e
                 }
-                Task { await syncLookbookLike(postId: apiId) }
+                Task { await syncLookbookLike(postId: apiId, serial: serial) }
             },
             onCommentsTap: { entry in commentsEntry = entry },
             onImageTap: { entry in
@@ -788,13 +805,15 @@ private struct LookbookMyItemsScreenView: View {
         .padding(.bottom, lookbookSpacing)
     }
 
-    private func syncLookbookLike(postId: String) async {
+    private func syncLookbookLike(postId: String, serial: UInt64) async {
+        let key = postId.lowercased()
         do {
             let client = GraphQLClient()
             client.setAuthToken(authService.authToken)
             let service = LookbookService(client: client)
             let result = try await service.toggleLike(postId: postId)
             await MainActor.run {
+                guard lookbookLikeSerialByPostId[key] == serial else { return }
                 guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
                 var entry = entries[idx]
                 entry.isLiked = result.liked
@@ -805,6 +824,7 @@ private struct LookbookMyItemsScreenView: View {
             return
         } catch {
             await MainActor.run {
+                guard lookbookLikeSerialByPostId[key] == serial else { return }
                 guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
                 var entry = entries[idx]
                 entry.isLiked.toggle()
@@ -828,6 +848,7 @@ private struct LookbookTopicFeedView: View {
     @State private var commentsEntry: LookbookEntry?
     @State private var fullScreenEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
+    @State private var lookbookLikeSerialByPostId: [String: UInt64] = [:]
     private let productService = ProductService()
 
     private var filteredEntries: [LookbookEntry] {
@@ -941,6 +962,9 @@ private struct LookbookTopicFeedView: View {
             onHeartTap: { entry in
                 let apiId = entry.apiPostId
                 guard let i = lookbookEntryIndex(forApiPostId: apiId) else { return }
+                let k = apiId.lowercased()
+                let serial = (lookbookLikeSerialByPostId[k] ?? 0) + 1
+                lookbookLikeSerialByPostId[k] = serial
                 HapticManager.tap()
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
@@ -948,11 +972,14 @@ private struct LookbookTopicFeedView: View {
                     e.likesCount += e.isLiked ? 1 : -1
                     entries[i] = e
                 }
-                Task { await syncLookbookLike(postId: apiId) }
+                Task { await syncLookbookLike(postId: apiId, serial: serial) }
             },
             onImageDoubleTap: { entry in
                 let apiId = entry.apiPostId
                 guard let i = lookbookEntryIndex(forApiPostId: apiId), !entries[i].isLiked else { return }
+                let k2 = apiId.lowercased()
+                let serial = (lookbookLikeSerialByPostId[k2] ?? 0) + 1
+                lookbookLikeSerialByPostId[k2] = serial
                 HapticManager.tap()
                 withAnimation(.easeInOut(duration: 0.2)) {
                     var e = entries[i]
@@ -960,7 +987,7 @@ private struct LookbookTopicFeedView: View {
                     e.likesCount += 1
                     entries[i] = e
                 }
-                Task { await syncLookbookLike(postId: apiId) }
+                Task { await syncLookbookLike(postId: apiId, serial: serial) }
             },
             onCommentsTap: { entry in commentsEntry = entry },
             onImageTap: { entry in
@@ -1013,13 +1040,15 @@ private struct LookbookTopicFeedView: View {
         }
     }
 
-    private func syncLookbookLike(postId: String) async {
+    private func syncLookbookLike(postId: String, serial: UInt64) async {
+        let key = postId.lowercased()
         do {
             let client = GraphQLClient()
             client.setAuthToken(authService.authToken)
             let service = LookbookService(client: client)
             let result = try await service.toggleLike(postId: postId)
             await MainActor.run {
+                guard lookbookLikeSerialByPostId[key] == serial else { return }
                 guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
                 var entry = entries[idx]
                 entry.isLiked = result.liked
@@ -1030,6 +1059,7 @@ private struct LookbookTopicFeedView: View {
             return
         } catch {
             await MainActor.run {
+                guard lookbookLikeSerialByPostId[key] == serial else { return }
                 guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
                 var entry = entries[idx]
                 entry.isLiked.toggle()
@@ -1689,7 +1719,7 @@ private struct LookbookFeedRowView: View {
         } else if let u = entry.imageUrls.first, !u.isEmpty {
             parts.append(u)
         }
-        parts.append("@\(entry.posterUsername) on Wearhouse")
+        parts.append("@\(entry.posterUsername) on WEARHOUSE")
         return parts.joined(separator: "\n\n")
     }
 
@@ -1772,7 +1802,7 @@ private struct LookbookFeedRowView: View {
         if let c = entry.caption, !c.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             textParts.append(c)
         }
-        textParts.append("— @\(entry.posterUsername) on Wearhouse")
+        textParts.append("— @\(entry.posterUsername) on WEARHOUSE")
         items.append(textParts.joined(separator: "\n"))
         return items
     }
@@ -1783,7 +1813,7 @@ private struct LookbookFeedRowView: View {
         } else if let u = entry.imageUrls.first, !u.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             UIPasteboard.general.string = u
         } else {
-            UIPasteboard.general.string = "@\(entry.posterUsername) — Wearhouse"
+            UIPasteboard.general.string = "@\(entry.posterUsername) — WEARHOUSE"
         }
     }
 
@@ -2009,7 +2039,7 @@ private struct LookbookFeedRowView: View {
             LookbookTaggedProductsSheet(entry: entry, onSelectProduct: onProductTap)
         }
         .sheet(isPresented: $showMutualShareSheet) {
-            LookbookMutualConnectionsShareSheet { user in
+            LookbookSendToShareSheet(excludePosterUsername: entry.posterUsername) { user in
                 shareToChatRecipient = user
             }
             .environmentObject(authService)
@@ -2150,16 +2180,40 @@ private struct LookbookTaggedProductsSheet: View {
     }
 }
 
-// MARK: - Mutual connections (in-app Messages share)
-private struct LookbookMutualConnectionsShareSheet: View {
+// MARK: - Send lookbook post (recent chats, followers, user search)
+private struct LookbookSendToShareSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authService: AuthService
+    /// Omits this username from suggestions (e.g. post author).
+    var excludePosterUsername: String?
     let onPick: (User) -> Void
 
-    @State private var mutuals: [User] = []
+    @State private var recentUsers: [User] = []
+    @State private var followerUsers: [User] = []
     @State private var loading = true
     @State private var errorText: String?
+    @State private var searchQuery: String = ""
+    @State private var searchResults: [User] = []
+    @State private var searchLoading = false
+    @State private var searchTask: Task<Void, Never>?
+
     private let userService = UserService()
+
+    private var meLower: String {
+        (authService.username ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var excludeLower: String {
+        (excludePosterUsername ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// Prelura Support / similar handles must not receive lookbook forwards from any user.
+    private func isBlockedPreluraSupportRecipient(_ user: User) -> Bool {
+        let u = user.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !u.isEmpty else { return false }
+        let compact = u.replacingOccurrences(of: "_", with: "")
+        return compact == "prelurasupport"
+    }
 
     var body: some View {
         NavigationStack {
@@ -2173,52 +2227,99 @@ private struct LookbookMutualConnectionsShareSheet: View {
                         .foregroundColor(Theme.Colors.secondaryText)
                         .multilineTextAlignment(.center)
                         .padding()
-                } else if mutuals.isEmpty {
-                    ContentUnavailableView(
-                        "No mutual connections",
-                        systemImage: "person.2",
-                        description: Text("Only people who follow you and whom you follow appear here.")
-                    )
                 } else {
                     List {
-                        ForEach(mutuals) { user in
-                            Button {
-                                dismiss()
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                    onPick(user)
-                                }
-                            } label: {
-                                HStack(spacing: Theme.Spacing.sm) {
-                                    avatar(for: user)
-                                        .frame(width: 40, height: 40)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(user.displayName)
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundColor(Theme.Colors.primaryText)
-                                        Text("@\(user.username)")
-                                            .font(Theme.Typography.caption)
-                                            .foregroundColor(Theme.Colors.secondaryText)
+                        Section {
+                            TextField(L10n.string("Search username"), text: $searchQuery)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .submitLabel(.search)
+                                .onSubmit { Task { await runSearchNow() } }
+                        }
+                        if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 {
+                            Section(L10n.string("Search results")) {
+                                if searchLoading {
+                                    HStack {
+                                        Spacer()
+                                        ProgressView()
+                                        Spacer()
                                     }
-                                    Spacer(minLength: 0)
+                                } else if searchResults.isEmpty {
+                                    Text(L10n.string("No users found"))
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(Theme.Colors.secondaryText)
+                                } else {
+                                    ForEach(searchResults) { user in
+                                        userRow(user)
+                                    }
                                 }
-                                .padding(.vertical, 4)
                             }
-                            .buttonStyle(PlainTappableButtonStyle())
+                        } else {
+                            if !recentUsers.isEmpty {
+                                Section(L10n.string("Recent")) {
+                                    ForEach(recentUsers) { user in
+                                        userRow(user)
+                                    }
+                                }
+                            }
+                            if !followerUsers.isEmpty {
+                                Section(L10n.string("Followers")) {
+                                    ForEach(followerUsers) { user in
+                                        userRow(user)
+                                    }
+                                }
+                            }
+                            if recentUsers.isEmpty && followerUsers.isEmpty {
+                                ContentUnavailableView(
+                                    L10n.string("No recipients yet"),
+                                    systemImage: "person.crop.circle.badge.questionmark",
+                                    description: Text(L10n.string("Message someone, get followers, or search by username."))
+                                )
+                            }
                         }
                     }
                     .listStyle(.plain)
                 }
             }
             .background(Theme.Colors.background)
-            .navigationTitle("Send to")
+            .navigationTitle(L10n.string("Send to"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L10n.string("Close")) { dismiss() }
                 }
             }
-            .task { await loadMutuals() }
+            .onChange(of: searchQuery) { _, _ in scheduleSearch() }
+            .onDisappear { searchTask?.cancel() }
+            .task { await loadRecipients() }
         }
+    }
+
+    @ViewBuilder
+    private func userRow(_ user: User) -> some View {
+        Button {
+            guard !isBlockedPreluraSupportRecipient(user) else { return }
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                onPick(user)
+            }
+        } label: {
+            HStack(spacing: Theme.Spacing.sm) {
+                avatar(for: user)
+                    .frame(width: 40, height: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(user.displayName)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Theme.Colors.primaryText)
+                    Text("@\(user.username)")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(PlainTappableButtonStyle())
     }
 
     @ViewBuilder
@@ -2245,36 +2346,122 @@ private struct LookbookMutualConnectionsShareSheet: View {
         }
     }
 
-    private func loadMutuals() async {
-        guard let me = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines), !me.isEmpty else {
-            await MainActor.run {
-                loading = false
-                errorText = "Sign in to share."
+    private func scheduleSearch() {
+        searchTask?.cancel()
+        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard q.count >= 2 else {
+            searchResults = []
+            searchLoading = false
+            return
+        }
+        searchLoading = true
+        searchTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            let latest = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard latest.count >= 2 else {
+                searchResults = []
+                searchLoading = false
+                return
             }
+            await runSearch(query: latest)
+        }
+    }
+
+    @MainActor
+    private func runSearchNow() async {
+        let latest = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard latest.count >= 2 else {
+            searchResults = []
+            searchLoading = false
+            return
+        }
+        await runSearch(query: latest)
+    }
+
+    @MainActor
+    private func runSearch(query: String) async {
+        guard query.count >= 2 else {
+            searchResults = []
+            searchLoading = false
             return
         }
         userService.updateAuthToken(authService.authToken)
+        searchLoading = true
         do {
-            async let followersTask = userService.getFollowers(username: me, pageNumber: 1, pageCount: 200)
-            async let followingTask = userService.getFollowing(username: me, pageNumber: 1, pageCount: 200)
-            let (followers, following) = try await (followersTask, followingTask)
-            let followerSet = Set(followers.map { $0.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
-            let mutual = following.filter {
-                followerSet.contains($0.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+            let found = try await userService.searchUsers(search: query)
+            let filtered = found.filter { u in
+                let ul = u.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard !ul.isEmpty else { return false }
+                if isBlockedPreluraSupportRecipient(u) { return false }
+                if ul == meLower { return false }
+                if !excludeLower.isEmpty, ul == excludeLower { return false }
+                return true
             }
-            let sorted = mutual.sorted {
+            searchResults = filtered
+            searchLoading = false
+        } catch {
+            searchResults = []
+            searchLoading = false
+        }
+    }
+
+    @MainActor
+    private func loadRecipients() async {
+        guard let me = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines), !me.isEmpty else {
+            loading = false
+            errorText = L10n.string("Sign in to share.")
+            return
+        }
+        let chat = ChatService()
+        chat.updateAuthToken(authService.authToken)
+        userService.updateAuthToken(authService.authToken)
+        do {
+            async let convsTask = chat.getConversations()
+            async let followersTask = userService.getFollowers(username: me, pageNumber: 1, pageCount: 200)
+            let (convs, followers) = try await (convsTask, followersTask)
+
+            let sortedConvs = convs.sorted { a, b in
+                let da = a.lastMessageTime ?? .distantPast
+                let db = b.lastMessageTime ?? .distantPast
+                return da > db
+            }
+            var recentOrdered: [User] = []
+            var seenRecent = Set<String>()
+            for c in sortedConvs {
+                let u = c.recipient
+                let key = u.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if key.isEmpty || key == meLower { continue }
+                if !excludeLower.isEmpty, key == excludeLower { continue }
+                if isBlockedPreluraSupportRecipient(u) { continue }
+                guard !seenRecent.contains(key) else { continue }
+                seenRecent.insert(key)
+                recentOrdered.append(u)
+                if recentOrdered.count >= 50 { break }
+            }
+
+            let sortedFollowers = followers.sorted {
                 $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
             }
-            await MainActor.run {
-                mutuals = sorted
-                loading = false
-                errorText = nil
+            var followerOrdered: [User] = []
+            var seenFollow = seenRecent
+            for u in sortedFollowers {
+                let key = u.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if key.isEmpty || key == meLower { continue }
+                if !excludeLower.isEmpty, key == excludeLower { continue }
+                if isBlockedPreluraSupportRecipient(u) { continue }
+                guard !seenFollow.contains(key) else { continue }
+                seenFollow.insert(key)
+                followerOrdered.append(u)
             }
+
+            recentUsers = recentOrdered
+            followerUsers = followerOrdered
+            loading = false
+            errorText = nil
         } catch {
-            await MainActor.run {
-                loading = false
-                errorText = error.localizedDescription
-            }
+            loading = false
+            errorText = error.localizedDescription
         }
     }
 }

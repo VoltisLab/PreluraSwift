@@ -25,7 +25,7 @@ struct TryCartOnboardingView: View {
         [
             TryCartPage(
                 titleKey: "One bag, many sellers",
-                bodyKey: "Try Cart lets you add pieces from different shops into a single bag. Keep browsing—your picks stay with you everywhere on Wearhouse.",
+                bodyKey: "Try Cart lets you add pieces from different shops into a single bag. Keep browsing—your picks stay with you everywhere on WEARHOUSE.",
                 heroAsset: "TryCartOnboardBag",
                 accent: Theme.primaryColor,
                 halo: Color(hex: "E8B4FF")
@@ -136,7 +136,7 @@ struct TryCartOnboardingView: View {
     private var topBar: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Wearhouse")
+                Text("WEARHOUSE")
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(2.2)
                     .foregroundStyle(.white.opacity(0.42))

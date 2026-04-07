@@ -18,6 +18,9 @@ class AuthService: ObservableObject {
     @Published var isGuestMode: Bool = false
     /// Set to true after email verification + login so the app shows onboarding then feed.
     @Published var shouldShowOnboardingAfterLogin: Bool = false
+    /// From `viewMe` — full-screen ban / suspension gate when active.
+    @Published private(set) var accountIsBanned: Bool = false
+    @Published private(set) var accountSuspendedUntil: Date?
 
     private static let kGuestMode = "IS_GUEST_MODE"
     private static let kOnboardingCompleted = "ONBOARDING_COMPLETED"
@@ -25,6 +28,7 @@ class AuthService: ObservableObject {
     init(client: GraphQLClient = GraphQLClient()) {
         self.client = client
         loadStoredTokens()
+        Task { await refreshAccountModerationFromServer() }
     }
     
     private func loadStoredTokens() {
@@ -101,6 +105,8 @@ class AuthService: ObservableObject {
             refreshToken: refreshToken,
             username: loginData.user?.username ?? username
         )
+
+        Task { await refreshAccountModerationFromServer() }
         
         // Update other services with new token
         objectWillChange.send()
@@ -287,6 +293,7 @@ class AuthService: ObservableObject {
         username = nil
         isGuestMode = true
         client.setAuthToken(nil)
+        clearAccountModeration()
         UserDefaults.standard.removeObject(forKey: kDeviceTokenKey)
         UserDefaults.standard.removeObject(forKey: kLastFcmTokenSentToBackendKey)
         clearLocalNotificationState()
@@ -355,6 +362,7 @@ class AuthService: ObservableObject {
         username = nil
         isGuestMode = false
         client.setAuthToken(nil)
+        clearAccountModeration()
     }
 
     private func clearLocalNotificationState() {
@@ -365,6 +373,36 @@ class AuthService: ObservableObject {
     
     var isAuthenticated: Bool {
         authToken != nil
+    }
+
+    /// True when the user must see the account restriction screen (banned or suspension still in effect).
+    var isAccountRestricted: Bool {
+        if accountIsBanned { return true }
+        if let end = accountSuspendedUntil, end > Date() { return true }
+        return false
+    }
+
+    func applyAccountModeration(from user: User) {
+        accountIsBanned = user.isBanned
+        accountSuspendedUntil = user.suspendedUntil
+        UserService.shouldSkipProfanityStrikeRecording = user.isStaff
+    }
+
+    func refreshAccountModerationFromServer() async {
+        guard isAuthenticated else {
+            clearAccountModeration()
+            return
+        }
+        let us = UserService()
+        us.updateAuthToken(authToken)
+        guard let u = try? await us.getUser() else { return }
+        applyAccountModeration(from: u)
+    }
+
+    private func clearAccountModeration() {
+        accountIsBanned = false
+        accountSuspendedUntil = nil
+        UserService.shouldSkipProfanityStrikeRecording = false
     }
 
     /// Call after user completes onboarding (e.g. after verify-email flow). Hides onboarding and persists so we don't show again.

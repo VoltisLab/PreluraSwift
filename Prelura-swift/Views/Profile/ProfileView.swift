@@ -74,6 +74,15 @@ struct ProfileView: View {
                     } else {
                         VStack(spacing: 0) {
                             Color.clear.frame(height: 1).id(topId)
+                            if let err = viewModel.errorMessage, !err.isEmpty {
+                                Text(err)
+                                    .font(.footnote)
+                                    .foregroundStyle(Color.red.opacity(0.95))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.vertical, Theme.Spacing.sm)
+                                    .background(Color.red.opacity(0.12))
+                            }
                             profileSection
                             
                             // Bio/Welcome Message

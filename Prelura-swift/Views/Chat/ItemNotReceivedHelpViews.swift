@@ -31,7 +31,7 @@ struct ItemNotReceivedGuidanceHelpView: View {
                 guidanceCard(
                     icon: "exclamationmark.triangle.fill",
                     title: "Delays outside our control",
-                    body: "Severe weather, customs checks (on international routes), industrial action, incorrect or incomplete addresses, access issues (buzzer, gate, safe place), and high-volume events can all delay delivery. Sellers ship through third-party carriers; Wearhouse does not operate the courier network, but we can help investigate once a reasonable time has passed."
+                    body: "Severe weather, customs checks (on international routes), industrial action, incorrect or incomplete addresses, access issues (buzzer, gate, safe place), and high-volume events can all delay delivery. Sellers ship through third-party carriers; WEARHOUSE does not operate the courier network, but we can help investigate once a reasonable time has passed."
                 )
 
                 guidanceCard(
@@ -224,8 +224,8 @@ struct ItemNotReceivedReportHelpView: View {
                 .background(Theme.primaryColor)
                 .clipShape(RoundedRectangle(cornerRadius: 26))
             }
-            .disabled(descriptionTrimmed.isEmpty || isSubmittingIssue)
-            .opacity((descriptionTrimmed.isEmpty || isSubmittingIssue) ? 0.55 : 1.0)
+            .disabled(descriptionRawTrimmed.isEmpty || isSubmittingIssue)
+            .opacity((descriptionRawTrimmed.isEmpty || isSubmittingIssue) ? 0.55 : 1.0)
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
             .background(Theme.Colors.background)
@@ -254,7 +254,7 @@ struct ItemNotReceivedReportHelpView: View {
                     conversationId: supportConversationId ?? conversationId,
                     issueDraft: SupportIssueDraft(
                         selectedOptions: ["Item not received"],
-                        description: descriptionTrimmed,
+                        description: descriptionForSubmit,
                         imageDatas: selectedImageDataList,
                         issueTypeCode: issueTypeCode,
                         issueId: createdIssueId,
@@ -283,8 +283,12 @@ struct ItemNotReceivedReportHelpView: View {
         }
     }
 
-    private var descriptionTrimmed: String {
+    private var descriptionRawTrimmed: String {
         description.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var descriptionForSubmit: String {
+        ProfanityFilter.sanitize(descriptionRawTrimmed)
     }
 
     private func submitReport() async {
@@ -292,7 +296,7 @@ struct ItemNotReceivedReportHelpView: View {
             await MainActor.run { submitError = "Missing order." }
             return
         }
-        guard !descriptionTrimmed.isEmpty else {
+        guard !descriptionRawTrimmed.isEmpty else {
             await MainActor.run { submitError = "Please describe what happened." }
             return
         }
@@ -302,6 +306,14 @@ struct ItemNotReceivedReportHelpView: View {
         }
         userService.updateAuthToken(authService.authToken)
         fileUploadService.setAuthToken(authService.authToken)
+        if ProfanityFilter.maskingWouldChange(descriptionRawTrimmed) {
+            let convInt = conversationId.flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            _ = try? await userService.recordProfanityUsage(
+                channel: "ORDER_ISSUE",
+                relatedConversationId: convInt,
+                sanitizedSnippet: descriptionForSubmit
+            )
+        }
         do {
             let uploadedUrls: [String]
             if selectedImageDataList.isEmpty {
@@ -313,7 +325,7 @@ struct ItemNotReceivedReportHelpView: View {
             let result = try await userService.raiseOrderIssue(
                 orderId: oid,
                 issueType: issueTypeCode,
-                description: descriptionTrimmed,
+                description: descriptionForSubmit,
                 imagesUrl: uploadedUrls,
                 otherIssueDescription: nil
             )
@@ -322,7 +334,7 @@ struct ItemNotReceivedReportHelpView: View {
                     conversationId: String(scid),
                     orderId: oid,
                     issueType: issueTypeCode,
-                    description: descriptionTrimmed,
+                    description: descriptionForSubmit,
                     imageUrls: uploadedUrls,
                     issueId: result.issueId,
                     publicId: result.publicId

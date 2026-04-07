@@ -3013,7 +3013,7 @@ struct ChatDetailView: View {
                     await MainActor.run {
                         if outcome?.insertedSupportThreadMessage == true {
                             profanitySupportInboxBannerText =
-                                "Wearhouse Support sent you a private message about community guidelines. Open Inbox and open the Support conversation to read it."
+                                "WEARHOUSE Support sent you a private message about community guidelines. Open Inbox and open the Support conversation to read it."
                             Task {
                                 try? await Task.sleep(nanoseconds: 12_000_000_000)
                                 await MainActor.run {

@@ -1,10 +1,21 @@
 import Foundation
 import Combine
 
+/// Outcome of `recordProfanityUsage` (support auto-message lives in the **Support** inbox thread, not seller DMs).
+struct RecordProfanityUsageResult: Sendable {
+    /// Server created a new automated Support message (false when debounced or skipped).
+    let insertedSupportThreadMessage: Bool
+    let debounced: Bool
+    let justSuspended: Bool
+}
+
 @MainActor
 class UserService: ObservableObject {
+    /// Synced from `AuthService` after `viewMe`. When true, do not call `recordProfanityUsage` (matches backend staff/superuser exclusion).
+    static var shouldSkipProfanityStrikeRecording: Bool = false
+
     private var client: GraphQLClient
-    
+
     init(client: GraphQLClient? = nil) {
         self.client = client ?? GraphQLClient()
         // Try to load auth token from UserDefaults
@@ -44,6 +55,8 @@ class UserService: ObservableObject {
             isMultibuyEnabled
             isStaff
             isVerified
+            isBanned
+            suspendedUntil
             reviewStats {
               noOfReviews
               rating
@@ -70,19 +83,25 @@ class UserService: ObservableObject {
         let reviewCount = userData.reviewStats?.noOfReviews ?? 0
         let rating = userData.reviewStats?.rating ?? 5.0
         
-        // Convert id to string
+        // Convert id to string + numeric user id for moderation APIs
         let idString: String
+        let userIdInt: Int?
         if let anyCodable = userData.id {
             if let intValue = anyCodable.value as? Int {
                 idString = String(intValue)
+                userIdInt = intValue
             } else if let stringValue = anyCodable.value as? String {
                 idString = stringValue
+                userIdInt = Int(stringValue)
             } else {
                 idString = String(describing: anyCodable.value)
+                userIdInt = nil
             }
         } else {
             idString = ""
+            userIdInt = nil
         }
+        let suspendedParsed = Self.parseBackendDateTime(userData.suspendedUntil)
         
         let phoneDisplay: String? = {
             guard let phone = userData.phone else { return nil }
@@ -106,6 +125,7 @@ class UserService: ObservableObject {
         let payoutBankAccount = PayoutBankAccountDisplay.from(decoded: userData.meta?.value?.payoutBankAccount)
         return User(
             id: UUID(uuidString: idString) ?? UUID(),
+            userId: userIdInt,
             username: userData.username ?? "",
             displayName: userData.displayName ?? "",
             avatarURL: userData.profilePictureUrl,
@@ -125,10 +145,66 @@ class UserService: ObservableObject {
             phoneDisplay: phoneDisplay,
             dateOfBirth: dobDate,
             gender: userData.gender,
-            shippingAddress: parseShippingAddress(userData.shippingAddress),
+            shippingAddress: parseShippingAddress(userData.shippingAddress?.normalizedJSONString),
             postageOptions: postageOptions,
-            payoutBankAccount: payoutBankAccount
+            payoutBankAccount: payoutBankAccount,
+            isBanned: userData.isBanned ?? false,
+            suspendedUntil: suspendedParsed
         )
+    }
+
+    /// Reports masked profanity to the backend (support auto-message + strike counter + possible auto-suspend).
+    /// Returns `nil` when recording is skipped (e.g. staff). Support replies appear in **Inbox → Support**, not in seller chats.
+    func recordProfanityUsage(channel: String, relatedConversationId: Int?, sanitizedSnippet: String) async throws -> RecordProfanityUsageResult? {
+        if Self.shouldSkipProfanityStrikeRecording { return nil }
+        let mutation = """
+        mutation RecordProfanityUsage($channel: String!, $relatedConversationId: Int, $sanitizedSnippet: String) {
+          recordProfanityUsage(channel: $channel, relatedConversationId: $relatedConversationId, sanitizedSnippet: $sanitizedSnippet) {
+            success
+            strikesInWindow
+            justSuspended
+            supportConversationId
+            debounced
+          }
+        }
+        """
+        var vars: [String: Any] = [
+            "channel": channel,
+            "sanitizedSnippet": String(sanitizedSnippet.prefix(500)),
+        ]
+        vars["relatedConversationId"] = relatedConversationId as Any? ?? NSNull()
+        struct Payload: Decodable {
+            let recordProfanityUsage: RecordProfanityUsagePayload?
+        }
+        struct RecordProfanityUsagePayload: Decodable {
+            let success: Bool?
+            let strikesInWindow: Int?
+            let justSuspended: Bool?
+            let supportConversationId: Int?
+            let debounced: Bool?
+        }
+        let env: Payload = try await client.execute(query: mutation, variables: vars, responseType: Payload.self)
+        let p = env.recordProfanityUsage
+        if p?.justSuspended == true {
+            NotificationCenter.default.post(name: .wearhouseAccountRestrictionShouldRefresh, object: nil)
+        }
+        let ok = p?.success != false
+        let debounced = p?.debounced == true
+        let inserted = ok && !debounced && p?.supportConversationId != nil
+        return RecordProfanityUsageResult(
+            insertedSupportThreadMessage: inserted,
+            debounced: debounced,
+            justSuspended: p?.justSuspended == true
+        )
+    }
+
+    private static func parseBackendDateTime(_ raw: String?) -> Date? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = iso.date(from: raw) { return d }
+        iso.formatOptions = [.withInternetDateTime]
+        return iso.date(from: raw)
     }
     
     /// Fetch another user's profile by username (for profile screen: bio, location, stats). Uses backend query getUser(username: String!).
@@ -206,7 +282,9 @@ class UserService: ObservableObject {
             dateOfBirth: nil,
             gender: nil,
             shippingAddress: nil,
-            isFollowing: userData.isFollowing
+            isFollowing: userData.isFollowing,
+            isBanned: false,
+            suspendedUntil: nil
         )
     }
     
@@ -1848,6 +1926,47 @@ struct GetUserByUsernameResponse: Decodable {
     let getUser: UserProfileData?
 }
 
+/// GraphQL `JSONString` fields may be a quoted JSON string or an inline JSON object in the HTTP response.
+struct GraphQLJSONStringOrObject: Decodable {
+    let normalizedJSONString: String?
+
+    private struct DynamicCodingKey: CodingKey, Hashable {
+        var stringValue: String
+        init?(stringValue: String) { self.stringValue = stringValue }
+        var intValue: Int? { nil }
+        init?(intValue: Int) { nil }
+    }
+
+    init(from decoder: Decoder) throws {
+        if let keyed = try? decoder.container(keyedBy: DynamicCodingKey.self) {
+            var dict: [String: Any] = [:]
+            for key in keyed.allKeys {
+                if let s = try? keyed.decode(String.self, forKey: key) {
+                    dict[key.stringValue] = s
+                } else if let i = try? keyed.decode(Int.self, forKey: key) {
+                    dict[key.stringValue] = i
+                } else if let d = try? keyed.decode(Double.self, forKey: key) {
+                    dict[key.stringValue] = d
+                } else if let b = try? keyed.decode(Bool.self, forKey: key) {
+                    dict[key.stringValue] = b
+                }
+            }
+            if JSONSerialization.isValidJSONObject(dict), let data = try? JSONSerialization.data(withJSONObject: dict) {
+                normalizedJSONString = String(data: data, encoding: .utf8)
+            } else {
+                normalizedJSONString = nil
+            }
+            return
+        }
+        let c = try decoder.singleValueContainer()
+        if try c.decodeNil() {
+            normalizedJSONString = nil
+            return
+        }
+        normalizedJSONString = try c.decode(String.self)
+    }
+}
+
 struct UserProfileData: Decodable {
     let id: AnyCodable?
     let username: String?
@@ -1859,7 +1978,7 @@ struct UserProfileData: Decodable {
     let gender: String?
     let dob: String?  // ISO date string from API
     let phone: UserPhoneData?
-    let shippingAddress: String?  // JSONString from API (JSON string)
+    let shippingAddress: GraphQLJSONStringOrObject?
     let location: LocationData?
     let listing: Int?
     let noOfFollowing: Int?
@@ -1869,6 +1988,8 @@ struct UserProfileData: Decodable {
     let isMultibuyEnabled: Bool?
     let isStaff: Bool?
     let isVerified: Bool?
+    let isBanned: Bool?
+    let suspendedUntil: String?
     let reviewStats: ReviewStatsData?
     /// Backend may send meta as object or JSON string; decoded safely so viewMe never fails.
     let meta: SafeMetaDecode?

@@ -202,7 +202,7 @@ struct ItemNotAsDescribedHelpView: View {
                     conversationId: supportConversationId ?? conversationId,
                     issueDraft: SupportIssueDraft(
                         selectedOptions: selectedIssueLabels,
-                        description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                        description: ProfanityFilter.sanitize(description.trimmingCharacters(in: .whitespacesAndNewlines)),
                         imageDatas: selectedImageDataList,
                         issueTypeCode: selectedIssueType,
                         issueId: createdIssueId,
@@ -253,8 +253,17 @@ struct ItemNotAsDescribedHelpView: View {
                 let uploads = try await fileUploadService.uploadProductImages(selectedImageDataList)
                 uploadedUrls = uploads.map(\.url)
             }
-            let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
-            let desc = trimmed.isEmpty ? (selectedIssueLabels.first ?? "Item not as described") : trimmed
+            let rawDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
+            let sanitizedDesc = ProfanityFilter.sanitize(rawDesc)
+            if ProfanityFilter.maskingWouldChange(rawDesc) {
+                let convInt = conversationId.flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                _ = try? await userService.recordProfanityUsage(
+                    channel: "ORDER_ISSUE",
+                    relatedConversationId: convInt,
+                    sanitizedSnippet: sanitizedDesc
+                )
+            }
+            let desc = sanitizedDesc.isEmpty ? (selectedIssueLabels.first ?? "Item not as described") : sanitizedDesc
             let result = try await userService.raiseOrderIssue(
                 orderId: oid,
                 issueType: selectedIssueType,

@@ -35,6 +35,8 @@ struct User: Identifiable, Hashable {
     let postageOptions: SellerPostageOptions?
     /// Payout bank account (from viewMe meta.payoutBankAccount). Shown on Payments screen; masked for display.
     let payoutBankAccount: PayoutBankAccountDisplay?
+    let isBanned: Bool
+    let suspendedUntil: Date?
 
     init(
         id: UUID = UUID(),
@@ -62,7 +64,9 @@ struct User: Identifiable, Hashable {
         shippingAddress: ShippingAddress? = nil,
         isFollowing: Bool? = nil,
         postageOptions: SellerPostageOptions? = nil,
-        payoutBankAccount: PayoutBankAccountDisplay? = nil
+        payoutBankAccount: PayoutBankAccountDisplay? = nil,
+        isBanned: Bool = false,
+        suspendedUntil: Date? = nil
     ) {
         self.id = id
         self.userId = backendUserId
@@ -90,6 +94,8 @@ struct User: Identifiable, Hashable {
         self.isFollowing = isFollowing
         self.postageOptions = postageOptions
         self.payoutBankAccount = payoutBankAccount
+        self.isBanned = isBanned
+        self.suspendedUntil = suspendedUntil
     }
     
     var formattedRating: String {

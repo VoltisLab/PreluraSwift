@@ -31,6 +31,8 @@ extension Notification.Name {
     static let wearhouseSellerEarningsShouldRefresh = Notification.Name("WearhouseSellerEarningsShouldRefresh")
     /// In-app notification list changed (read/delete/refresh) so Home bell badge can update.
     static let wearhouseInAppNotificationsDidChange = Notification.Name("WearhouseInAppNotificationsDidChange")
+    /// GraphQL returned ACCOUNT_SUSPENDED / ACCOUNT_BANNED — refresh `viewMe` moderation flags.
+    static let wearhouseAccountRestrictionShouldRefresh = Notification.Name("WearhouseAccountRestrictionShouldRefresh")
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
@@ -253,7 +255,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                                     NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
                                 }
                             } else {
-                                pushBootstrapLog.warning("User declined notification permission — enable in Settings → Wearhouse → Notifications.")
+                                pushBootstrapLog.warning("User declined notification permission — enable in Settings → WEARHOUSE → Notifications.")
                                 NotificationDebugLog.append(
                                     source: "permission",
                                     message: "User declined notification permission in system prompt",
@@ -263,10 +265,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                         }
                     }
                 case .denied:
-                    pushBootstrapLog.warning("Notifications denied for Wearhouse — enable in Settings → Notifications.")
+                    pushBootstrapLog.warning("Notifications denied for WEARHOUSE — enable in Settings → Notifications.")
                     NotificationDebugLog.append(
                         source: "permission",
-                        message: "Notifications authorization denied (Settings → Wearhouse → Notifications)",
+                        message: "Notifications authorization denied (Settings → WEARHOUSE → Notifications)",
                         isError: true
                     )
                 @unknown default:

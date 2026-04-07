@@ -6,6 +6,8 @@ import Combine
 class HomeViewModel: ObservableObject {
     @Published var allItems: [Item] = []
     @Published var filteredItems: [Item] = []
+    /// Staff-curated Discover featured picks; own section on Home when not searching.
+    @Published var featuredItems: [Item] = []
     @Published var searchText: String = ""
     @Published var selectedCategory: String = "All"
     @Published var isLoading: Bool = false
@@ -29,7 +31,10 @@ class HomeViewModel: ObservableObject {
 
     /// Toggle like for a product and update local state. Applies optimistic update so the heart/count change immediately on tap.
     func toggleLike(productId: String) {
-        guard !productId.isEmpty, let item = allItems.first(where: { $0.productId == productId }) else { return }
+        guard !productId.isEmpty else { return }
+        let item = allItems.first(where: { $0.productId == productId })
+            ?? featuredItems.first(where: { $0.productId == productId })
+        guard let item else { return }
         let newLiked = !item.isLiked
         let newCount = item.likeCount + (newLiked ? 1 : -1)
         let optimistic = item.with(likeCount: max(0, newCount), isLiked: newLiked)
@@ -38,6 +43,9 @@ class HomeViewModel: ObservableObject {
         }
         if let j = filteredItems.firstIndex(where: { $0.productId == productId }) {
             filteredItems[j] = optimistic
+        }
+        if let k = featuredItems.firstIndex(where: { $0.productId == productId }) {
+            featuredItems[k] = optimistic
         }
         Task {
             do {
@@ -51,6 +59,9 @@ class HomeViewModel: ObservableObject {
                     if let j = filteredItems.firstIndex(where: { $0.productId == productId }) {
                         filteredItems[j] = updated
                     }
+                    if let k = featuredItems.firstIndex(where: { $0.productId == productId }) {
+                        featuredItems[k] = updated
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -60,7 +71,18 @@ class HomeViewModel: ObservableObject {
             }
         }
     }
-    
+
+    /// Deduped featured slice for the Home section (max 20, active sellers only).
+    private static func featuredSectionItems(from featured: [Item]) -> [Item] {
+        let f = featured.excludingVacationModeSellers().excludingSold()
+        var seen = Set<UUID>()
+        var out: [Item] = []
+        for item in f.prefix(20) {
+            if seen.insert(item.id).inserted { out.append(item) }
+        }
+        return out
+    }
+
     func loadData() {
         isLoading = true
         errorMessage = nil
@@ -69,15 +91,17 @@ class HomeViewModel: ObservableObject {
         
         Task {
             do {
-                // Use the current selectedCategory value
                 let categoryFilter = selectedCategory == "All" ? nil : selectedCategory
+                async let featuredTask = productService.getDiscoverFeaturedProducts()
                 let products = try await productService.getAllProducts(
                     pageNumber: currentPage,
                     pageCount: pageSize,
                     parentCategory: categoryFilter
                 )
+                let featured = (try? await featuredTask) ?? []
                 await MainActor.run {
                     let visible = products.excludingVacationModeSellers().excludingSold()
+                    self.featuredItems = Self.featuredSectionItems(from: featured)
                     self.allItems = visible
                     self.filteredItems = visible
                     self.isLoading = false
@@ -101,16 +125,19 @@ class HomeViewModel: ObservableObject {
         
         Task {
             do {
+                let categoryFilter = selectedCategory == "All" ? nil : selectedCategory
                 let products = try await productService.getAllProducts(
                     pageNumber: currentPage,
                     pageCount: pageSize,
                     search: searchText.isEmpty ? nil : searchText,
-                    parentCategory: selectedCategory
+                    parentCategory: categoryFilter
                 )
                 await MainActor.run {
-                    let visible = products.excludingVacationModeSellers().excludingSold().excludingSold()
-                    self.allItems.append(contentsOf: visible)
-                    self.filteredItems.append(contentsOf: visible)
+                    let visible = products.excludingVacationModeSellers().excludingSold()
+                    let existing = Set(self.allItems.map(\.id))
+                    let newOnly = visible.filter { !existing.contains($0.id) }
+                    self.allItems.append(contentsOf: newOnly)
+                    self.filteredItems.append(contentsOf: newOnly)
                     self.isLoadingMore = false
                     self.hasMorePages = products.count >= pageSize
                 }
@@ -150,14 +177,18 @@ class HomeViewModel: ObservableObject {
         
         Task {
             do {
+                async let featuredTask = productService.getDiscoverFeaturedProducts()
                 let products = try await productService.getAllProducts(
                     pageNumber: currentPage,
                     pageCount: pageSize,
                     search: search,
                     parentCategory: categoryFilter
                 )
+                let featured = (try? await featuredTask) ?? []
                 await MainActor.run {
                     let visible = products.excludingVacationModeSellers().excludingSold()
+                    let hideFeatured = search.map { !$0.isEmpty } ?? false
+                    self.featuredItems = hideFeatured ? [] : Self.featuredSectionItems(from: featured)
                     self.allItems = visible
                     self.filteredItems = visible
                     self.isLoading = false
@@ -182,15 +213,17 @@ class HomeViewModel: ObservableObject {
         
         Task {
             do {
-                // Use the current selectedCategory value (convert "All" to nil)
                 let categoryFilter = selectedCategory == "All" ? nil : selectedCategory
+                async let featuredTask = productService.getDiscoverFeaturedProducts()
                 let products = try await productService.getAllProducts(
                     pageNumber: currentPage,
                     pageCount: pageSize,
                     parentCategory: categoryFilter
                 )
+                let featured = (try? await featuredTask) ?? []
                 await MainActor.run {
                     let visible = products.excludingVacationModeSellers().excludingSold()
+                    self.featuredItems = Self.featuredSectionItems(from: featured)
                     self.allItems = visible
                     self.filteredItems = visible
                     self.isLoading = false
@@ -220,15 +253,21 @@ class HomeViewModel: ObservableObject {
         }
         
         do {
+            let categoryFilter = selectedCategory == "All" ? nil : selectedCategory
+            async let featuredTask = productService.getDiscoverFeaturedProducts()
             let products = try await productService.getAllProducts(
                 pageNumber: 1,
                 pageCount: pageSize,
                 search: searchText.isEmpty ? nil : searchText,
-                parentCategory: selectedCategory == "All" ? nil : selectedCategory
+                parentCategory: categoryFilter
             )
+            let featured = (try? await featuredTask) ?? []
             
             await MainActor.run {
                 let visible = products.excludingVacationModeSellers().excludingSold()
+                self.featuredItems = searchText.isEmpty
+                    ? Self.featuredSectionItems(from: featured)
+                    : []
                 self.allItems = visible
                 self.filteredItems = visible
                 self.isLoading = false
