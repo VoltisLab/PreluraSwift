@@ -28,6 +28,10 @@ struct LookbookEntry: Identifiable {
     var likesCount: Int
     var commentsCount: Int
     var isLiked: Bool
+    /// Server: opens of tagged products from this post.
+    var productLinkClicks: Int
+    /// Server: “View shop” taps attributed to this post.
+    var shopLinkClicks: Int
     let styles: [String]
     /// Tag positions (0–1) and productIds; from local store when available.
     let tags: [LookbookTagData]?
@@ -41,7 +45,7 @@ struct LookbookEntry: Identifiable {
         return id.uuidString
     }
 
-    init(id: UUID? = nil, serverPostId: String? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, likesCount: Int, commentsCount: Int, isLiked: Bool, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
+    init(id: UUID? = nil, serverPostId: String? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, likesCount: Int, commentsCount: Int, isLiked: Bool, productLinkClicks: Int = 0, shopLinkClicks: Int = 0, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
         self.id = id ?? UUID()
         self.serverPostId = serverPostId
         self.imageNames = imageNames
@@ -57,6 +61,8 @@ struct LookbookEntry: Identifiable {
         self.likesCount = likesCount
         self.commentsCount = commentsCount
         self.isLiked = isLiked
+        self.productLinkClicks = productLinkClicks
+        self.shopLinkClicks = shopLinkClicks
         self.styles = styles
         self.tags = tags
         self.productSnapshots = productSnapshots
@@ -88,6 +94,8 @@ struct LookbookEntry: Identifiable {
         self.likesCount = serverPost.likesCount ?? 0
         self.commentsCount = serverPost.commentsCount ?? 0
         self.isLiked = serverPost.userLiked ?? false
+        self.productLinkClicks = serverPost.productLinkClicks ?? 0
+        self.shopLinkClicks = serverPost.shopLinkClicks ?? 0
         self.styles = localRecord?.styles ?? []
         self.tags = localRecord?.tags
         self.productSnapshots = localRecord?.productSnapshots
@@ -325,6 +333,7 @@ private struct LookbookFeedScreenView: View {
     @State private var commentsEntry: LookbookEntry?
     @State private var fullScreenEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
+    @State private var analyticsEntry: LookbookEntry?
     @State private var lookbookLikeSerialByPostId: [String: UInt64] = [:]
     private let productService = ProductService()
 
@@ -393,12 +402,20 @@ private struct LookbookFeedScreenView: View {
                     entries[idx] = updated
                 }
             }
+            .presentationDetents([.fraction(0.44), .medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(22)
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
         }
         .sheet(isPresented: $showSearchSheet) {
             LookbookSearchSheet(searchText: $searchText, entries: entries)
         }
         .navigationDestination(item: $selectedProductId) { nav in
             LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
+        }
+        .navigationDestination(item: $analyticsEntry) { entry in
+            LookbookAnalyticsView(entry: entry)
+                .environmentObject(authService)
         }
         .onAppear { loadFeedFromServer() }
         .refreshable { await loadFeedFromServerAsync() }
@@ -482,8 +499,7 @@ private struct LookbookFeedScreenView: View {
                 let k = apiId.lowercased()
                 let serial = (lookbookLikeSerialByPostId[k] ?? 0) + 1
                 lookbookLikeSerialByPostId[k] = serial
-                HapticManager.tap()
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
                     var e = entries[i]
                     e.isLiked.toggle()
                     e.likesCount += e.isLiked ? 1 : -1
@@ -497,8 +513,8 @@ private struct LookbookFeedScreenView: View {
                 let k2 = apiId.lowercased()
                 let serial = (lookbookLikeSerialByPostId[k2] ?? 0) + 1
                 lookbookLikeSerialByPostId[k2] = serial
-                HapticManager.tap()
-                withAnimation(.easeInOut(duration: 0.2)) {
+                HapticManager.like()
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
                     var e = entries[i]
                     e.isLiked = true
                     e.likesCount += 1
@@ -512,7 +528,11 @@ private struct LookbookFeedScreenView: View {
                     fullScreenEntry = entry
                 }
             },
-            onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) }
+            onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) },
+            onPostDeleted: { deleted in
+                entries.removeAll { $0.apiPostId.lowercased() == deleted.apiPostId.lowercased() }
+            },
+            onOpenAnalytics: { analyticsEntry = $0 }
         )
         .id(model.id)
         .padding(.bottom, lookbookSpacing)
@@ -594,6 +614,7 @@ private struct LookbookMyItemsScreenView: View {
     @State private var commentsEntry: LookbookEntry?
     @State private var fullScreenEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
+    @State private var analyticsEntry: LookbookEntry?
     @State private var lookbookLikeSerialByPostId: [String: UInt64] = [:]
     private let productService = ProductService()
 
@@ -691,9 +712,17 @@ private struct LookbookMyItemsScreenView: View {
                     entries[idx] = updated
                 }
             }
+            .presentationDetents([.fraction(0.44), .medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(22)
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
         }
         .navigationDestination(item: $selectedProductId) { nav in
             LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
+        }
+        .navigationDestination(item: $analyticsEntry) { entry in
+            LookbookAnalyticsView(entry: entry)
+                .environmentObject(authService)
         }
         .onAppear { loadFeedFromServer() }
         .refreshable { await loadFeedFromServerAsync() }
@@ -769,8 +798,7 @@ private struct LookbookMyItemsScreenView: View {
                 let k = apiId.lowercased()
                 let serial = (lookbookLikeSerialByPostId[k] ?? 0) + 1
                 lookbookLikeSerialByPostId[k] = serial
-                HapticManager.tap()
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
                     var e = entries[i]
                     e.isLiked.toggle()
                     e.likesCount += e.isLiked ? 1 : -1
@@ -784,8 +812,8 @@ private struct LookbookMyItemsScreenView: View {
                 let k2 = apiId.lowercased()
                 let serial = (lookbookLikeSerialByPostId[k2] ?? 0) + 1
                 lookbookLikeSerialByPostId[k2] = serial
-                HapticManager.tap()
-                withAnimation(.easeInOut(duration: 0.2)) {
+                HapticManager.like()
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
                     var e = entries[i]
                     e.isLiked = true
                     e.likesCount += 1
@@ -799,7 +827,11 @@ private struct LookbookMyItemsScreenView: View {
                     fullScreenEntry = entry
                 }
             },
-            onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) }
+            onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) },
+            onPostDeleted: { deleted in
+                entries.removeAll { $0.apiPostId.lowercased() == deleted.apiPostId.lowercased() }
+            },
+            onOpenAnalytics: { analyticsEntry = $0 }
         )
         .id(model.id)
         .padding(.bottom, lookbookSpacing)
@@ -848,6 +880,7 @@ private struct LookbookTopicFeedView: View {
     @State private var commentsEntry: LookbookEntry?
     @State private var fullScreenEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
+    @State private var analyticsEntry: LookbookEntry?
     @State private var lookbookLikeSerialByPostId: [String: UInt64] = [:]
     private let productService = ProductService()
 
@@ -907,9 +940,17 @@ private struct LookbookTopicFeedView: View {
                     entries[idx] = updated
                 }
             }
+            .presentationDetents([.fraction(0.44), .medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(22)
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
         }
         .navigationDestination(item: $selectedProductId) { nav in
             LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
+        }
+        .navigationDestination(item: $analyticsEntry) { entry in
+            LookbookAnalyticsView(entry: entry)
+                .environmentObject(authService)
         }
         .onAppear { loadFeedFromServer() }
         .refreshable { await loadFeedFromServerAsync() }
@@ -965,8 +1006,7 @@ private struct LookbookTopicFeedView: View {
                 let k = apiId.lowercased()
                 let serial = (lookbookLikeSerialByPostId[k] ?? 0) + 1
                 lookbookLikeSerialByPostId[k] = serial
-                HapticManager.tap()
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
                     var e = entries[i]
                     e.isLiked.toggle()
                     e.likesCount += e.isLiked ? 1 : -1
@@ -980,8 +1020,8 @@ private struct LookbookTopicFeedView: View {
                 let k2 = apiId.lowercased()
                 let serial = (lookbookLikeSerialByPostId[k2] ?? 0) + 1
                 lookbookLikeSerialByPostId[k2] = serial
-                HapticManager.tap()
-                withAnimation(.easeInOut(duration: 0.2)) {
+                HapticManager.like()
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
                     var e = entries[i]
                     e.isLiked = true
                     e.likesCount += 1
@@ -995,7 +1035,11 @@ private struct LookbookTopicFeedView: View {
                     fullScreenEntry = entry
                 }
             },
-            onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) }
+            onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) },
+            onPostDeleted: { deleted in
+                entries.removeAll { $0.apiPostId.lowercased() == deleted.apiPostId.lowercased() }
+            },
+            onOpenAnalytics: { analyticsEntry = $0 }
         )
         .id(model.id)
         .padding(.bottom, lookbookSpacing)
@@ -1675,6 +1719,8 @@ private struct LookbookFeedRowView: View {
     let onCommentsTap: (LookbookEntry) -> Void
     let onImageTap: (LookbookEntry) -> Void
     let onProductTap: (String) -> Void
+    let onPostDeleted: ((LookbookEntry) -> Void)?
+    let onOpenAnalytics: ((LookbookEntry) -> Void)?
 
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
@@ -1686,6 +1732,7 @@ private struct LookbookFeedRowView: View {
     @State private var showTaggedProductsSheet = false
     @State private var showMutualShareSheet = false
     @State private var shareToChatRecipient: User?
+    @State private var confirmDeletePost = false
 
     private let iconSize: CGFloat = 20
     private let defaultMediaAspect: CGFloat = LookbookCanonicalAspect.portrait1080x1350.rawValue
@@ -1817,6 +1864,36 @@ private struct LookbookFeedRowView: View {
         }
     }
 
+    private func recordLinkClickIfAuthenticated(kind: String) {
+        guard authService.isAuthenticated else { return }
+        Task {
+            let client = GraphQLClient()
+            client.setAuthToken(authService.authToken)
+            let service = LookbookService(client: client)
+            try? await service.recordLookbookLinkClick(postId: entry.apiPostId, clickType: kind)
+        }
+    }
+
+    private func handleProductTap(_ productId: String) {
+        recordLinkClickIfAuthenticated(kind: "product")
+        onProductTap(productId)
+    }
+
+    private func deletePostIfAuthenticated() {
+        guard authService.isAuthenticated else { return }
+        Task {
+            let client = GraphQLClient()
+            client.setAuthToken(authService.authToken)
+            let service = LookbookService(client: client)
+            do {
+                try await service.deleteLookbookPost(postId: entry.apiPostId)
+                await MainActor.run { onPostDeleted?(entry) }
+            } catch {
+                await MainActor.run { }
+            }
+        }
+    }
+
     /// Height follows each slide’s intrinsic aspect (landscape = short, portrait = tall); no fixed portrait letterbox.
     private var mediaBlock: some View {
         let urls = entry.imageUrls
@@ -1844,7 +1921,7 @@ private struct LookbookFeedRowView: View {
                         showTagOverlay: idx == 0,
                         onDoubleTapLike: { onImageDoubleTap(entry) },
                         onTap: { onImageTap(entry) },
-                        onProductTap: onProductTap,
+                        onProductTap: handleProductTap,
                         onAspectRatioResolved: { r in
                             slideAspects[idx] = r
                         }
@@ -1863,7 +1940,7 @@ private struct LookbookFeedRowView: View {
                 showTagOverlay: true,
                 onDoubleTapLike: { onImageDoubleTap(entry) },
                 onTap: { onImageTap(entry) },
-                onProductTap: onProductTap,
+                onProductTap: handleProductTap,
                 onAspectRatioResolved: { r in
                     mediaAspectRatio = r
                 }
@@ -1886,6 +1963,9 @@ private struct LookbookFeedRowView: View {
             } label: {
                 Label(L10n.string("View shop"), systemImage: "storefront")
             }
+            .simultaneousGesture(TapGesture().onEnded { _ in
+                recordLinkClickIfAuthenticated(kind: "shop")
+            })
             Button {
                 copyPostLink()
             } label: {
@@ -1896,6 +1976,23 @@ private struct LookbookFeedRowView: View {
                     UIPasteboard.general.string = caption
                 } label: {
                     Label(L10n.string("Copy caption"), systemImage: "text.alignleft")
+                }
+            }
+            if isOwnPost {
+                Divider()
+                if onOpenAnalytics != nil {
+                    Button {
+                        onOpenAnalytics?(entry)
+                    } label: {
+                        Label(L10n.string("Analytics"), systemImage: "chart.xyaxis.line")
+                    }
+                }
+                if onPostDeleted != nil {
+                    Button(role: .destructive) {
+                        confirmDeletePost = true
+                    } label: {
+                        Label(L10n.string("Delete post"), systemImage: "trash")
+                    }
                 }
             }
             if !isOwnPost {
@@ -1955,19 +2052,14 @@ private struct LookbookFeedRowView: View {
                 .padding(.top, Theme.Spacing.xs)
             }
 
-            HStack(spacing: Theme.Spacing.md) {
-                Button(action: { onHeartTap(entry) }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: entry.isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: iconSize, weight: entry.isLiked ? .semibold : .regular))
-                            .foregroundColor(entry.isLiked ? Theme.primaryColor : Theme.Colors.primaryText)
-                        Text("\(entry.likesCount)")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainTappableButtonStyle())
+            HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                LikeButtonView(
+                    isLiked: entry.isLiked,
+                    likeCount: entry.likesCount,
+                    action: { onHeartTap(entry) },
+                    onDarkOverlay: false
+                )
+                .id("lb-like-\(entry.apiPostId)-\(entry.isLiked)-\(entry.likesCount)")
 
                 Button(action: { onCommentsTap(entry) }) {
                     HStack(spacing: 4) {
@@ -1997,8 +2089,6 @@ private struct LookbookFeedRowView: View {
                     .buttonStyle(PlainTappableButtonStyle())
                 }
 
-                Spacer(minLength: Theme.Spacing.sm)
-
                 Button(action: openSendForward) {
                     Image(systemName: "paperplane")
                         .font(.system(size: iconSize, weight: .regular))
@@ -2012,6 +2102,8 @@ private struct LookbookFeedRowView: View {
                         .foregroundColor(Theme.Colors.primaryText)
                 }
                 .buttonStyle(PlainTappableButtonStyle())
+
+                Spacer(minLength: Theme.Spacing.sm)
 
                 Button {
                     HapticManager.tap()
@@ -2036,7 +2128,15 @@ private struct LookbookFeedRowView: View {
             LookbookActivityView(activityItems: payload.items)
         }
         .sheet(isPresented: $showTaggedProductsSheet) {
-            LookbookTaggedProductsSheet(entry: entry, onSelectProduct: onProductTap)
+            LookbookTaggedProductsSheet(entry: entry, onSelectProduct: handleProductTap)
+        }
+        .alert(L10n.string("Delete this post?"), isPresented: $confirmDeletePost) {
+            Button(L10n.string("Cancel"), role: .cancel) {}
+            Button(L10n.string("Delete"), role: .destructive) {
+                deletePostIfAuthenticated()
+            }
+        } message: {
+            Text(L10n.string("This cannot be undone."))
         }
         .sheet(isPresented: $showMutualShareSheet) {
             LookbookSendToShareSheet(excludePosterUsername: entry.posterUsername) { user in
@@ -2478,61 +2578,70 @@ struct LookbookCommentsSheet: View {
     @State private var sending = false
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                if loading {
-                    ProgressView().padding(.top, Theme.Spacing.lg)
-                }
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                        ForEach(comments) { c in
-                            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                                Circle()
-                                    .fill(Theme.Colors.secondaryBackground)
-                                    .frame(width: 32, height: 32)
-                                    .overlay(Text(String(c.username.prefix(1)).uppercased())
-                                        .font(.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText))
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(c.username)
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundColor(Theme.Colors.primaryText)
-                                    HashtagColoredText(text: c.text)
-                                }
-                                Spacer()
-                            }
-                            .padding(.horizontal, Theme.Spacing.md)
-                        }
-                    }
-                    .padding(.vertical, Theme.Spacing.md)
-                }
-                HStack(spacing: Theme.Spacing.sm) {
-                    TextField("Add a comment", text: $draft, axis: .vertical)
-                        .lineLimit(1...4)
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.vertical, Theme.Spacing.sm)
-                        .background(Theme.Colors.secondaryBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                    Button(sending ? "..." : "Send") {
-                        sendComment()
-                    }
-                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
+        VStack(spacing: 0) {
+            HStack {
+                Text(L10n.string("Comments"))
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(Theme.Colors.primaryText)
+                Spacer()
+                Button(L10n.string("Done")) { dismiss() }
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundColor(Theme.primaryColor)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.sm)
             }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.xs)
+
+            if loading {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Theme.Spacing.lg)
+            }
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                    ForEach(comments) { c in
+                        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                            Circle()
+                                .fill(Theme.Colors.secondaryBackground)
+                                .frame(width: 32, height: 32)
+                                .overlay(Text(String(c.username.prefix(1)).uppercased())
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Colors.secondaryText))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(c.username)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                HashtagColoredText(text: c.text)
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
+                    }
+                }
+                .padding(.vertical, Theme.Spacing.md)
+            }
+
+            HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
+                TextField(L10n.string("Add a comment"), text: $draft, axis: .vertical)
+                    .lineLimit(1...4)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                Button(sending ? "…" : L10n.string("Send")) {
+                    sendComment()
+                }
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
+                .foregroundColor(Theme.primaryColor)
+                .font(.system(size: 16, weight: .semibold))
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
             .background(Theme.Colors.background)
-            .navigationTitle(L10n.string("Comments"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.string("Done")) { dismiss() }
-                        .foregroundColor(Theme.primaryColor)
-                }
-            }
-            .task { await loadComments() }
         }
+        .background(Theme.Colors.background)
+        .task { await loadComments() }
     }
 
     private func loadComments() async {

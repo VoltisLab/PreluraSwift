@@ -35,6 +35,8 @@ struct ServerLookbookPost: Decodable {
     var likesCount: Int?
     var commentsCount: Int?
     var userLiked: Bool?
+    var productLinkClicks: Int?
+    var shopLinkClicks: Int?
 }
 
 struct ServerLookbookComment: Decodable, Identifiable {
@@ -211,8 +213,8 @@ final class LookbookService {
         let query = """
         query Lookbooks($first: Int) {
           lookbooks(first: $first) {
-            nodes { id imageUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked }
-            edges { node { id imageUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked } }
+            nodes { id imageUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked productLinkClicks shopLinkClicks }
+            edges { node { id imageUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked productLinkClicks shopLinkClicks } }
           }
         }
         """
@@ -253,6 +255,8 @@ final class LookbookService {
             likesCount
             commentsCount
             userLiked
+            productLinkClicks
+            shopLinkClicks
           }
         }
         """
@@ -358,5 +362,69 @@ final class LookbookService {
             throw NSError(domain: "LookbookService", code: -1, userInfo: [NSLocalizedDescriptionKey: response.addLookbookComment?.message ?? "Add comment failed"])
         }
         return (comment, payload.commentsCount ?? 0)
+    }
+
+    func deleteLookbookPost(postId: String) async throws {
+        let query = """
+        mutation DeleteLookbookPost($postId: UUID!) {
+          deleteLookbookPost(postId: $postId) {
+            success
+            message
+          }
+        }
+        """
+        let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
+        let variables: [String: Any] = ["postId": normalized]
+        struct Response: Decodable { let deleteLookbookPost: Payload? }
+        struct Payload: Decodable { let success: Bool?; let message: String? }
+        let response: Response = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "DeleteLookbookPost",
+            responseType: Response.self
+        )
+        guard response.deleteLookbookPost?.success == true else {
+            throw NSError(
+                domain: "LookbookService",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: response.deleteLookbookPost?.message ?? "Delete failed"]
+            )
+        }
+    }
+
+    /// `clickType`: `"product"` (tagged item) or `"shop"` (view shop).
+    func recordLookbookLinkClick(postId: String, clickType: String) async throws {
+        let query = """
+        mutation RecordLookbookLinkClick($postId: UUID!, $clickType: String!) {
+          recordLookbookLinkClick(postId: $postId, clickType: $clickType) {
+            success
+            message
+            productLinkClicks
+            shopLinkClicks
+          }
+        }
+        """
+        let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
+        let variables: [String: Any] = ["postId": normalized, "clickType": clickType]
+        struct Response: Decodable { let recordLookbookLinkClick: Payload? }
+        struct Payload: Decodable {
+            let success: Bool?
+            let message: String?
+            let productLinkClicks: Int?
+            let shopLinkClicks: Int?
+        }
+        let response: Response = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "RecordLookbookLinkClick",
+            responseType: Response.self
+        )
+        guard response.recordLookbookLinkClick?.success == true else {
+            throw NSError(
+                domain: "LookbookService",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: response.recordLookbookLinkClick?.message ?? "Click record failed"]
+            )
+        }
     }
 }
