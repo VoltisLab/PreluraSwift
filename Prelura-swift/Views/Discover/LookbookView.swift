@@ -352,6 +352,7 @@ private struct LookbooksHubBannerRow<Destination: View>: View {
 
 private struct LookbookFeedScreenView: View {
     @EnvironmentObject private var authService: AuthService
+    @Environment(\.dismiss) private var dismiss
     @State private var entries: [LookbookEntry] = []
     @State private var feedLoading = false
     @State private var feedError: String?
@@ -405,17 +406,28 @@ private struct LookbookFeedScreenView: View {
         .animation(.spring(response: 0.38, dampingFraction: 0.86), value: fullScreenEntry?.id)
         .navigationTitle(L10n.string("Feed"))
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.backward")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                }
+                .accessibilityLabel(L10n.string("Back"))
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: Theme.Spacing.sm) {
                     NavigationLink(destination: LookbooksUploadView()) {
-                        GlassIconView(icon: "plus.circle", iconColor: Theme.Colors.primaryText, iconSize: 18)
+                        GlassIconView(icon: "plus.circle", iconColor: Theme.Colors.primaryText, iconSize: 20)
                     }
                     .buttonStyle(HapticTapButtonStyle())
                     GlassIconButton(
                         icon: "magnifyingglass",
                         iconColor: Theme.Colors.primaryText,
-                        iconSize: 18,
+                        iconSize: 20,
                         action: { showSearchSheet = true }
                     )
                 }
@@ -804,7 +816,7 @@ private struct LookbookMyItemsScreenView: View {
                     }
                     .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
                     NavigationLink(destination: LookbooksUploadView()) {
-                        GlassIconView(icon: "plus.circle", iconColor: Theme.Colors.primaryText, iconSize: 18)
+                        GlassIconView(icon: "plus.circle", iconColor: Theme.Colors.primaryText, iconSize: 20)
                     }
                     .buttonStyle(HapticTapButtonStyle())
                 }
@@ -2113,7 +2125,7 @@ private struct LookbookFeedRowView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: iconSize, weight: .medium))
                 .foregroundColor(Theme.Colors.primaryText)
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
@@ -2165,14 +2177,15 @@ private struct LookbookFeedRowView: View {
                     isLiked: entry.isLiked,
                     likeCount: entry.likesCount,
                     action: { onHeartTap(entry) },
-                    onDarkOverlay: false
+                    onDarkOverlay: false,
+                    heartPointSize: iconSize
                 )
                 .id("lb-like-\(entry.apiPostId)-\(entry.isLiked)-\(entry.likesCount)")
 
                 Button(action: { onCommentsTap(entry) }) {
                     HStack(spacing: 4) {
                         Image(systemName: "bubble.right")
-                            .font(.system(size: iconSize, weight: .regular))
+                            .font(.system(size: iconSize, weight: .medium))
                             .foregroundColor(Theme.Colors.primaryText)
                         Text("\(entry.commentsCount)")
                             .font(.system(size: 14, weight: .medium))
@@ -2186,7 +2199,7 @@ private struct LookbookFeedRowView: View {
                     Button { showTaggedProductsSheet = true } label: {
                     HStack(spacing: 4) {
                             Image(systemName: "bag")
-                                .font(.system(size: iconSize, weight: .regular))
+                                .font(.system(size: iconSize, weight: .medium))
                             .foregroundColor(Theme.Colors.primaryText)
                             Text("\(taggedProductCount)")
                                 .font(.system(size: 14, weight: .medium))
@@ -2199,14 +2212,14 @@ private struct LookbookFeedRowView: View {
 
                 Button(action: openSendForward) {
                     Image(systemName: "paperplane")
-                        .font(.system(size: iconSize, weight: .regular))
+                        .font(.system(size: iconSize, weight: .medium))
                         .foregroundColor(Theme.Colors.primaryText)
                 }
                 .buttonStyle(PlainTappableButtonStyle())
 
                 Button { sharePayload = LookbookSharePayload(items: shareItemsForEntry()) } label: {
                     Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: iconSize, weight: .regular))
+                        .font(.system(size: iconSize, weight: .medium))
                         .foregroundColor(Theme.Colors.primaryText)
                 }
                 .buttonStyle(PlainTappableButtonStyle())
@@ -2218,7 +2231,7 @@ private struct LookbookFeedRowView: View {
                     _ = savedLookbookFavorites.toggle(entry: entry, imageUrl: currentDisplayImageURL)
                 } label: {
                     Image(systemName: isPhotoFavorited ? "bookmark.fill" : "bookmark")
-                        .font(.system(size: iconSize, weight: .regular))
+                        .font(.system(size: iconSize, weight: .medium))
                         .foregroundColor(isPhotoFavorited ? Theme.primaryColor : Theme.Colors.primaryText)
                 }
                 .buttonStyle(PlainTappableButtonStyle())

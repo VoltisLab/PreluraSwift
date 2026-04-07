@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct GlassButton: View {
     let title: String
@@ -55,25 +56,28 @@ struct GlassIconButton: View {
     let size: CGFloat
     var iconColor: Color = Theme.primaryColor
     var iconSize: CGFloat = 18
+    var iconWeight: Font.Weight = .medium
 
     init(
         icon: String,
         size: CGFloat = 44,
         iconColor: Color = Theme.primaryColor,
         iconSize: CGFloat = 18,
+        iconWeight: Font.Weight = .medium,
         action: @escaping () -> Void
     ) {
         self.icon = icon
         self.size = size
         self.iconColor = iconColor
         self.iconSize = iconSize
+        self.iconWeight = iconWeight
         self.action = action
     }
 
     var body: some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: iconSize, weight: .semibold))
+                .font(.system(size: iconSize, weight: iconWeight))
                 .foregroundColor(iconColor)
                 .modifier(GlassIconCircleStyle(size: size))
         }
@@ -87,21 +91,20 @@ struct GlassIconView: View {
     var size: CGFloat = 44
     var iconColor: Color = Theme.primaryColor
     var iconSize: CGFloat = 18
+    var iconWeight: Font.Weight = .medium
 
     var body: some View {
         Image(systemName: icon)
-            .font(.system(size: iconSize, weight: .semibold))
+            .font(.system(size: iconSize, weight: iconWeight))
             .foregroundColor(iconColor)
             .modifier(GlassIconCircleStyle(size: size))
     }
 }
 
-/// Toolbar bell: glass circle + **neutral** bell; only a small dot indicates state (never tints the whole glyph).
+/// Toolbar bell: glass circle + **neutral** bell; shopper shows a **red count** badge (like Inbox tab); Console shows a small primary dot when the monitor is on.
 struct NotificationToolbarBellVisual: View {
     private enum Kind {
-        /// Inbox-style: **red** dot when there are unread notifications.
-        case shopperUnread(Bool)
-        /// Console: **primary** dot when background health monitor is enabled.
+        case shopper(unreadCount: Int)
         case consoleMonitorOn(Bool)
     }
 
@@ -111,38 +114,69 @@ struct NotificationToolbarBellVisual: View {
         self.kind = .consoleMonitorOn(emphasized)
     }
 
-    init(hasUnread: Bool) {
-        self.kind = .shopperUnread(hasUnread)
+    /// Bell-eligible unread count from `BellUnreadStore.unreadCount` (0 hides the badge).
+    init(unreadCount: Int) {
+        self.kind = .shopper(unreadCount: max(0, unreadCount))
     }
 
-    private var showDot: Bool {
-        switch kind {
-        case .shopperUnread(let u): return u
-        case .consoleMonitorOn(let on): return on
-        }
-    }
-
-    private var dotColor: Color {
-        switch kind {
-        case .shopperUnread: return Color.red
-        case .consoleMonitorOn: return Theme.primaryColor
-        }
-    }
+    /// Wider than the 44pt glass so the count badge stays inside the bar item (nav chrome clips overflow).
+    private static let toolbarCanvasWidth: CGFloat = 56
+    private static let toolbarCanvasHeight: CGFloat = 52
+    /// Nudge badge onto the bell rim so it meets the glyph (was pinned to outer canvas and looked “floating”).
+    private static let bellBadgeRimNudgeX: CGFloat = -3
+    private static let bellBadgeRimNudgeY: CGFloat = 3
 
     var body: some View {
-        Image(systemName: "bell")
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(Theme.Colors.primaryText)
-            .modifier(GlassIconCircleStyle(size: 44))
-            // Badge on the glass circle rim (half outside), not inside the bell glyph.
-            .overlay(alignment: .topTrailing) {
-                if showDot {
-                    Circle()
-                        .fill(dotColor)
-                        .frame(width: 10, height: 10)
-                        .offset(x: 4, y: -4)
-                        .allowsHitTesting(false)
-                }
+        ZStack {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "bell")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Theme.Colors.primaryText)
+                    .modifier(GlassIconCircleStyle(size: 44))
+                badgeLayer
+                    .offset(x: Self.bellBadgeRimNudgeX, y: Self.bellBadgeRimNudgeY)
             }
+            .frame(width: 44, height: 44)
+        }
+        .frame(width: Self.toolbarCanvasWidth, height: Self.toolbarCanvasHeight)
+    }
+
+    @ViewBuilder
+    private var badgeLayer: some View {
+        switch kind {
+        case .shopper(let count):
+            if count > 0 {
+                shopperUnreadBadge(count: count)
+            }
+        case .consoleMonitorOn(let on):
+            if on {
+                Circle()
+                    .fill(Theme.primaryColor)
+                    .frame(width: 10, height: 10)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.35), lineWidth: 0.75)
+                    )
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// Opaque fill: `Color.red` in toolbar + `glassEffect` can pick up bar vibrancy and look translucent over the bell.
+    private static let opaqueBadgeRed = Color(UIColor(red: 0.96, green: 0.26, blue: 0.21, alpha: 1))
+
+    private func shopperUnreadBadge(count: Int) -> some View {
+        let label = count > 99 ? "99+" : "\(count)"
+        return Text(label)
+            .font(.system(size: label.count >= 3 ? 9 : 10, weight: .bold))
+            .foregroundStyle(.white)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.horizontal, count >= 10 ? 5 : 4)
+            .frame(minWidth: 18, minHeight: 18)
+            .background(Capsule().fill(Self.opaqueBadgeRed))
+            .compositingGroup()
+            .allowsHitTesting(false)
     }
 }

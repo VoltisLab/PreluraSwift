@@ -77,7 +77,7 @@ final class AppRouter: ObservableObject {
         return r
     }
 
-    /// Handle URL (e.g. prelura://product/Ab3xY9k2Mn, https://wearhouse.co.uk/item/Ab3xY9k2Mn, prelura://user/john).
+    /// Handle URL (e.g. prelura://product/Ab3xY9k2Mn, https://mywearhouse.co.uk/item/Ab3xY9k2Mn, prelura://user/john).
     func handle(url: URL) {
         var dest: DeepLinkDestination?
         let scheme = (url.scheme ?? "").lowercased()

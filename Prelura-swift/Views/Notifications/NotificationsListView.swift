@@ -86,7 +86,7 @@ struct NotificationsListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NotificationToolbarBellVisual(hasUnread: bellUnreadStore.hasUnread)
+                NotificationToolbarBellVisual(unreadCount: bellUnreadStore.unreadCount)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }

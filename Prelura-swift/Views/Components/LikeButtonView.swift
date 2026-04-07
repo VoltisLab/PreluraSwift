@@ -8,8 +8,14 @@ struct LikeButtonView: View {
     let action: () -> Void
     /// When true, show on dark overlay (white icon when unliked). When false, use for light backgrounds (red when liked, primaryText when not).
     var onDarkOverlay: Bool = true
+    /// Heart glyph size; match adjacent toolbar/row icons on feeds (e.g. 20).
+    var heartPointSize: CGFloat = 14
 
     private static let minTapSize: CGFloat = 56
+
+    private var likeCountPointSize: CGFloat {
+        heartPointSize <= 14 ? 14 : 15
+    }
 
     var body: some View {
         Button(action: action) {
@@ -28,9 +34,9 @@ struct LikeButtonView: View {
     private var likePillContent: some View {
         HStack(spacing: Theme.Spacing.xs) {
             Image(systemName: isLiked ? "heart.fill" : "heart")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: heartPointSize, weight: .medium))
             Text("\(likeCount)")
-                .font(Theme.Typography.caption)
+                .font(.system(size: likeCountPointSize, weight: .medium))
         }
         .foregroundColor(isLiked ? .red : (onDarkOverlay ? .white : Theme.Colors.primaryText))
         .shadow(color: onDarkOverlay ? .black.opacity(0.4) : .clear, radius: 1, x: 0, y: 1)

@@ -288,8 +288,9 @@ struct MainTabView: View {
             InboxNavigation(tabCoordinator: tabCoordinator, inboxViewModel: inboxViewModel)
                 .environmentObject(tabCoordinator)
                 .environment(\.optionalTabCoordinator, tabCoordinator)
-                .tabItem { Label(L10n.string("Inbox"), systemImage: "envelope") }
-                .badge(inboxViewModel.totalUnreadMessagesCount)
+                .tabItem {
+                    InboxTabBarItemLabel(unreadCount: inboxViewModel.totalUnreadMessagesCount)
+                }
                 .tag(3)
 
             ProfileNavigation(tabCoordinator: tabCoordinator)

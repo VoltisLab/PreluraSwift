@@ -179,7 +179,7 @@ struct HomeView: View {
         Button {
             showNotificationsList = true
         } label: {
-            NotificationToolbarBellVisual(hasUnread: bellUnreadStore.hasUnread)
+            NotificationToolbarBellVisual(unreadCount: bellUnreadStore.unreadCount)
                 .contentShape(Rectangle())
         }
         .buttonStyle(HapticTapButtonStyle())
