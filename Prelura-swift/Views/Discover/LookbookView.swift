@@ -2,13 +2,13 @@
 //  LookbookView.swift
 //  Prelura-swift
 //
-//  Instagram-style feed: full-width images, scrollable, poster, likes/comments (tappable), style filters.
+//  Instagram-style feed: full-width images, scrollable, poster, comments (tappable), style filters.
 //
 
 import SwiftUI
 import Shimmer
 import UIKit
-/// One lookbook post: image(s), poster, likes, comments, styles for filtering. Remote URLs in `imageUrls` (carousel), or legacy document/asset.
+/// One lookbook post: image(s), poster, comments, styles for filtering. Remote URLs in `imageUrls` (carousel), or legacy document/asset.
 /// Optional tags + productSnapshots come from local LookbookFeedStore (merged when post id / URL matches).
 struct LookbookEntry: Identifiable {
     let id: UUID
@@ -27,9 +27,7 @@ struct LookbookEntry: Identifiable {
     /// Remote avatar URL for the poster when the API provides it.
     let posterProfilePictureUrl: String?
     let caption: String?
-    var likesCount: Int
     var commentsCount: Int
-    var isLiked: Bool
     /// Server: opens of tagged products from this post.
     var productLinkClicks: Int
     /// Server: “View shop” taps attributed to this post.
@@ -47,7 +45,12 @@ struct LookbookEntry: Identifiable {
         return id.uuidString
     }
 
-    init(id: UUID? = nil, serverPostId: String? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, thumbnailUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, likesCount: Int, commentsCount: Int, isLiked: Bool, productLinkClicks: Int = 0, shopLinkClicks: Int = 0, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
+    /// Normalized key for matching a row to `entries` and GraphQL (handles `urn:uuid:` / braces / casing).
+    var lookbookPostKey: String {
+        LookbookPostIdFormatting.graphQLUUIDString(from: apiPostId).lowercased()
+    }
+
+    init(id: UUID? = nil, serverPostId: String? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, thumbnailUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, commentsCount: Int, productLinkClicks: Int = 0, shopLinkClicks: Int = 0, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
         self.id = id ?? UUID()
         self.serverPostId = serverPostId
         self.imageNames = imageNames
@@ -61,9 +64,7 @@ struct LookbookEntry: Identifiable {
         self.posterUsername = posterUsername
         self.posterProfilePictureUrl = posterProfilePictureUrl
         self.caption = caption
-        self.likesCount = likesCount
         self.commentsCount = commentsCount
-        self.isLiked = isLiked
         self.productLinkClicks = productLinkClicks
         self.shopLinkClicks = shopLinkClicks
         self.styles = styles
@@ -102,9 +103,7 @@ struct LookbookEntry: Identifiable {
         self.posterUsername = serverPost.username
         self.posterProfilePictureUrl = serverPost.profilePictureUrl
         self.caption = serverPost.caption
-        self.likesCount = serverPost.likesCount ?? 0
         self.commentsCount = serverPost.commentsCount ?? 0
-        self.isLiked = serverPost.userLiked ?? false
         self.productLinkClicks = serverPost.productLinkClicks ?? 0
         self.shopLinkClicks = serverPost.shopLinkClicks ?? 0
         self.styles = localRecord?.styles ?? []
@@ -161,16 +160,24 @@ private enum LookbookCanonicalAspect: CGFloat, CaseIterable {
     }
 }
 
-// MARK: - One feed row per post
+// MARK: - One feed row per post (`LookbookFeedRowModel.id` is stable per post; counts refresh via `entry` updates)
 
 private struct LookbookFeedRowModel: Identifiable {
     let id: String
     let entry: LookbookEntry
 }
 
+/// Stable per-post id for `ForEach` / `.id`. Do **not** bake like or comment counts into this — that recreates the whole row
+/// (and any `UIViewRepresentable` like the heart) on every count change, which breaks taps.
+private func lookbookFeedRowStableId(for entry: LookbookEntry) -> String {
+    let k = entry.lookbookPostKey
+    if !k.isEmpty { return k }
+    return entry.id.uuidString
+}
+
 private func buildLookbookFeedRows(from list: [LookbookEntry]) -> [LookbookFeedRowModel] {
-    list.enumerated().map { i, entry in
-        LookbookFeedRowModel(id: "\(i)-\(entry.id.uuidString)", entry: entry)
+    list.map { entry in
+        LookbookFeedRowModel(id: lookbookFeedRowStableId(for: entry), entry: entry)
     }
 }
 
@@ -356,6 +363,7 @@ private struct LookbookFeedScreenView: View {
     @State private var entries: [LookbookEntry] = []
     @State private var feedLoading = false
     @State private var feedError: String?
+    @State private var feedErrorBannerTitle: String?
     @State private var scrollPosition: String? = lookbookTopId
     @State private var showSearchSheet: Bool = false
     @State private var searchText: String = ""
@@ -363,13 +371,14 @@ private struct LookbookFeedScreenView: View {
     @State private var fullScreenEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
-    @State private var lookbookLikeSerialByPostId: [String: UInt64] = [:]
     private let productService = ProductService()
 
     var body: some View {
         ZStack {
             GeometryReader { geometry in
                 ScrollView {
+                    LookbookScrollImmediateTouchesAnchor()
+                        .frame(width: 0, height: 0)
                     LazyVStack(spacing: 0) {
                         Color.clear.frame(height: 1).id(lookbookTopId)
 
@@ -384,10 +393,11 @@ private struct LookbookFeedScreenView: View {
                         }
                     }
                     .padding(.bottom, Theme.Spacing.xl)
-            }
-            .scrollPosition(id: $scrollPosition, anchor: .top)
-            .scrollContentBackground(.hidden)
-            .background(Theme.Colors.background)
+                }
+                .scrollPosition(id: $scrollPosition, anchor: .top)
+                .scrollContentBackground(.hidden)
+                .background(Theme.Colors.background)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
             if let entry = fullScreenEntry {
@@ -471,10 +481,11 @@ private struct LookbookFeedScreenView: View {
                 entries = []
                 feedLoading = false
                 feedError = nil
+                feedErrorBannerTitle = nil
             }
             return
         }
-        await MainActor.run { feedLoading = true; feedError = nil }
+        await MainActor.run { feedLoading = true; feedError = nil; feedErrorBannerTitle = nil }
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
@@ -488,6 +499,7 @@ private struct LookbookFeedScreenView: View {
                 }
                 feedLoading = false
                 feedError = nil
+                feedErrorBannerTitle = nil
             }
         } catch {
             await MainActor.run {
@@ -495,7 +507,8 @@ private struct LookbookFeedScreenView: View {
                 let isCancelled = (error as? CancellationError) != nil
                     || (error as? URLError)?.code == .cancelled
                     || error.localizedDescription.lowercased().contains("cancelled")
-                feedError = isCancelled ? nil : error.localizedDescription
+                feedError = isCancelled ? nil : L10n.userFacingError(error)
+                feedErrorBannerTitle = isCancelled ? nil : L10n.userFacingErrorBannerTitle(error)
             }
         }
     }
@@ -514,97 +527,31 @@ private struct LookbookFeedScreenView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Theme.Spacing.xl)
             if let err = feedError, !err.isEmpty {
-                Text(err)
-                    .font(.caption)
-                    .foregroundColor(.red)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, Theme.Spacing.xl)
+                FeedNetworkBannerView(message: err, title: feedErrorBannerTitle) {
+                    loadFeedFromServer()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minHeight: max(minHeight, 200))
     }
 
-    private func lookbookEntryIndex(forApiPostId pid: String) -> Int? {
-        let p = pid.lowercased()
-        return entries.firstIndex { $0.apiPostId.lowercased() == p }
-    }
-
     private func lookbookFeedRow(model: LookbookFeedRowModel) -> some View {
         LookbookFeedRowView(
             entry: model.entry,
-            onHeartTap: { entry in
-                let apiId = entry.apiPostId
-                guard let i = lookbookEntryIndex(forApiPostId: apiId) else { return }
-                let k = apiId.lowercased()
-                let serial = (lookbookLikeSerialByPostId[k] ?? 0) + 1
-                lookbookLikeSerialByPostId[k] = serial
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
-                    var e = entries[i]
-                    e.isLiked.toggle()
-                    e.likesCount += e.isLiked ? 1 : -1
-                    entries[i] = e
-                }
-                Task { await syncLookbookLike(postId: apiId, serial: serial) }
-            },
-            onImageDoubleTap: { entry in
-                let apiId = entry.apiPostId
-                guard let i = lookbookEntryIndex(forApiPostId: apiId), !entries[i].isLiked else { return }
-                let k2 = apiId.lowercased()
-                let serial = (lookbookLikeSerialByPostId[k2] ?? 0) + 1
-                lookbookLikeSerialByPostId[k2] = serial
-                HapticManager.like()
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
-                    var e = entries[i]
-                    e.isLiked = true
-                    e.likesCount += 1
-                    entries[i] = e
-                }
-                Task { await syncLookbookLike(postId: apiId, serial: serial) }
-            },
-            onCommentsTap: { entry in commentsEntry = entry },
-            onImageTap: { entry in
+            onCommentsTap: { commentsEntry = $0 },
+            onImageTap: { tapped in
                 withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                    fullScreenEntry = entry
+                    fullScreenEntry = tapped
                 }
             },
             onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) },
             onPostDeleted: { deleted in
-                entries.removeAll { $0.apiPostId.lowercased() == deleted.apiPostId.lowercased() }
+                entries.removeAll { $0.lookbookPostKey == deleted.lookbookPostKey }
             },
             onOpenAnalytics: { analyticsEntry = $0 }
         )
-        .id(model.id)
         .padding(.bottom, lookbookSpacing)
-    }
-
-    private func syncLookbookLike(postId: String, serial: UInt64) async {
-        let key = postId.lowercased()
-        do {
-            let client = GraphQLClient()
-            client.setAuthToken(authService.authToken)
-            let service = LookbookService(client: client)
-            let result = try await service.toggleLike(postId: postId)
-            await MainActor.run {
-                guard lookbookLikeSerialByPostId[key] == serial else { return }
-                guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
-                var entry = entries[idx]
-                entry.isLiked = result.liked
-                entry.likesCount = result.likesCount
-                entries[idx] = entry
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            await MainActor.run {
-                guard lookbookLikeSerialByPostId[key] == serial else { return }
-                guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
-                var entry = entries[idx]
-                entry.isLiked.toggle()
-                entry.likesCount += entry.isLiked ? 1 : -1
-                entries[idx] = entry
-            }
-        }
     }
 }
 
@@ -650,6 +597,7 @@ private struct LookbookMyItemsScreenView: View {
     @State private var entries: [LookbookEntry] = []
     @State private var feedLoading = false
     @State private var feedError: String?
+    @State private var feedErrorBannerTitle: String?
     @State private var useGrid = false
     @State private var commentsEntry: LookbookEntry?
     /// When set, shows a full-screen vertical pager (Instagram/TikTok-style) starting at this post id.
@@ -657,7 +605,6 @@ private struct LookbookMyItemsScreenView: View {
     @State private var immersiveScrollTargetId: UUID?
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
-    @State private var lookbookLikeSerialByPostId: [String: UInt64] = [:]
     private let productService = ProductService()
 
     private var myEntries: [LookbookEntry] {
@@ -677,10 +624,15 @@ private struct LookbookMyItemsScreenView: View {
     @ViewBuilder
     private func immersivePagerPage(entry: LookbookEntry, pageHeight: CGFloat) -> some View {
         ScrollView(.vertical, showsIndicators: true) {
+            LookbookScrollImmediateTouchesAnchor()
+                .frame(width: 0, height: 0)
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 lookbookFeedRow(
-                    model: LookbookFeedRowModel(id: "imm-\(entry.id.uuidString)", entry: entry),
+                    model: LookbookFeedRowModel(
+                        id: "imm-\(lookbookFeedRowStableId(for: entry))",
+                        entry: entry
+                    ),
                     immersive: true
                 )
                 Spacer(minLength: 0)
@@ -712,6 +664,8 @@ private struct LookbookMyItemsScreenView: View {
     @ViewBuilder
     private func immersiveVerticalPager(pageHeight: CGFloat) -> some View {
         ScrollView(.vertical, showsIndicators: false) {
+            LookbookScrollImmediateTouchesAnchor()
+                .frame(width: 0, height: 0)
             VStack(spacing: 0) {
                 ForEach(myEntries) { entry in
                     immersivePagerPage(entry: entry, pageHeight: pageHeight)
@@ -772,6 +726,8 @@ private struct LookbookMyItemsScreenView: View {
                     .background(Theme.Colors.background)
                 } else {
                     ScrollView {
+                        LookbookScrollImmediateTouchesAnchor()
+                            .frame(width: 0, height: 0)
                         LazyVStack(spacing: 0) {
                             ForEach(buildLookbookFeedRows(from: myEntries)) { row in
                                 lookbookFeedRow(model: row)
@@ -861,10 +817,9 @@ private struct LookbookMyItemsScreenView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Theme.Spacing.xl)
             if let err = feedError, !err.isEmpty {
-                Text(err)
-                    .font(.caption)
-                    .foregroundColor(.red)
-                    .multilineTextAlignment(.center)
+                FeedNetworkBannerView(message: err, title: feedErrorBannerTitle) {
+                    loadFeedFromServer()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -877,10 +832,10 @@ private struct LookbookMyItemsScreenView: View {
 
     private func loadFeedFromServerAsync() async {
         guard authService.isAuthenticated else {
-            await MainActor.run { entries = []; feedLoading = false }
+            await MainActor.run { entries = []; feedLoading = false; feedError = nil; feedErrorBannerTitle = nil }
             return
         }
-        await MainActor.run { feedLoading = true; feedError = nil }
+        await MainActor.run { feedLoading = true; feedError = nil; feedErrorBannerTitle = nil }
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
@@ -894,96 +849,35 @@ private struct LookbookMyItemsScreenView: View {
                 }
                 feedLoading = false
                 feedError = nil
+                feedErrorBannerTitle = nil
             }
         } catch {
             await MainActor.run {
                 feedLoading = false
-                feedError = (error as? URLError)?.code == .cancelled ? nil : error.localizedDescription
+                let cancelled = (error as? URLError)?.code == .cancelled
+                feedError = cancelled ? nil : L10n.userFacingError(error)
+                feedErrorBannerTitle = cancelled ? nil : L10n.userFacingErrorBannerTitle(error)
             }
         }
-    }
-
-    private func lookbookEntryIndex(forApiPostId pid: String) -> Int? {
-        let p = pid.lowercased()
-        return entries.firstIndex { $0.apiPostId.lowercased() == p }
     }
 
     private func lookbookFeedRow(model: LookbookFeedRowModel, immersive: Bool = false) -> some View {
         LookbookFeedRowView(
             entry: model.entry,
-            onHeartTap: { entry in
-                let apiId = entry.apiPostId
-                guard let i = lookbookEntryIndex(forApiPostId: apiId) else { return }
-                let k = apiId.lowercased()
-                let serial = (lookbookLikeSerialByPostId[k] ?? 0) + 1
-                lookbookLikeSerialByPostId[k] = serial
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
-                    var e = entries[i]
-                    e.isLiked.toggle()
-                    e.likesCount += e.isLiked ? 1 : -1
-                    entries[i] = e
-                }
-                Task { await syncLookbookLike(postId: apiId, serial: serial) }
-            },
-            onImageDoubleTap: { entry in
-                let apiId = entry.apiPostId
-                guard let i = lookbookEntryIndex(forApiPostId: apiId), !entries[i].isLiked else { return }
-                let k2 = apiId.lowercased()
-                let serial = (lookbookLikeSerialByPostId[k2] ?? 0) + 1
-                lookbookLikeSerialByPostId[k2] = serial
-                HapticManager.like()
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
-                    var e = entries[i]
-                    e.isLiked = true
-                    e.likesCount += 1
-                    entries[i] = e
-                }
-                Task { await syncLookbookLike(postId: apiId, serial: serial) }
-            },
-            onCommentsTap: { entry in commentsEntry = entry },
-            onImageTap: { entry in
+            onCommentsTap: { commentsEntry = $0 },
+            onImageTap: { tapped in
                 guard !immersive else { return }
                 withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                    immersiveFeedInitialPostId = entry.apiPostId
+                    immersiveFeedInitialPostId = tapped.apiPostId
                 }
             },
             onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) },
             onPostDeleted: { deleted in
-                entries.removeAll { $0.apiPostId.lowercased() == deleted.apiPostId.lowercased() }
+                entries.removeAll { $0.lookbookPostKey == deleted.lookbookPostKey }
             },
             onOpenAnalytics: { analyticsEntry = $0 }
         )
-        .id(model.id)
         .padding(.bottom, immersive ? 0 : lookbookSpacing)
-    }
-
-    private func syncLookbookLike(postId: String, serial: UInt64) async {
-        let key = postId.lowercased()
-        do {
-            let client = GraphQLClient()
-            client.setAuthToken(authService.authToken)
-            let service = LookbookService(client: client)
-            let result = try await service.toggleLike(postId: postId)
-            await MainActor.run {
-                guard lookbookLikeSerialByPostId[key] == serial else { return }
-                guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
-                var entry = entries[idx]
-                entry.isLiked = result.liked
-                entry.likesCount = result.likesCount
-                entries[idx] = entry
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            await MainActor.run {
-                guard lookbookLikeSerialByPostId[key] == serial else { return }
-                guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
-                var entry = entries[idx]
-                entry.isLiked.toggle()
-                entry.likesCount += entry.isLiked ? 1 : -1
-                entries[idx] = entry
-            }
-        }
     }
 }
 
@@ -997,11 +891,11 @@ private struct LookbookTopicFeedView: View {
     @State private var entries: [LookbookEntry] = []
     @State private var feedLoading = false
     @State private var feedError: String?
+    @State private var feedErrorBannerTitle: String?
     @State private var commentsEntry: LookbookEntry?
     @State private var fullScreenEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
-    @State private var lookbookLikeSerialByPostId: [String: UInt64] = [:]
     private let productService = ProductService()
 
     private var filteredEntries: [LookbookEntry] {
@@ -1015,23 +909,28 @@ private struct LookbookTopicFeedView: View {
         ZStack {
             Theme.Colors.background.ignoresSafeArea()
 
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    if feedLoading && entries.isEmpty {
-                        LookbookShimmerView()
-                    } else if entries.isEmpty {
-                        topicEmptyPlaceholder(allLoadedEmpty: true)
-                    } else if filteredEntries.isEmpty {
-                        topicEmptyPlaceholder(allLoadedEmpty: false)
-                    } else {
-                        ForEach(buildLookbookFeedRows(from: filteredEntries)) { row in
-                            topicFeedRow(model: row)
+            Group {
+                if feedLoading && entries.isEmpty {
+                    LookbookShimmerView()
+                } else if entries.isEmpty {
+                    topicEmptyPlaceholder(allLoadedEmpty: true)
+                } else if filteredEntries.isEmpty {
+                    topicEmptyPlaceholder(allLoadedEmpty: false)
+                } else {
+                    ScrollView {
+                        LookbookScrollImmediateTouchesAnchor()
+                            .frame(width: 0, height: 0)
+                        LazyVStack(spacing: 0) {
+                            ForEach(buildLookbookFeedRows(from: filteredEntries)) { row in
+                                topicFeedRow(model: row)
+                            }
                         }
+                        .padding(.bottom, Theme.Spacing.xl)
                     }
+                    .scrollContentBackground(.hidden)
+                    .background(Theme.Colors.background)
                 }
-                .padding(.bottom, Theme.Spacing.xl)
             }
-            .scrollContentBackground(.hidden)
 
             if let entry = fullScreenEntry {
                 LookbookTransparentFullscreenOverlay(entry: entry) {
@@ -1101,67 +1000,30 @@ private struct LookbookTopicFeedView: View {
                     .padding(.horizontal, Theme.Spacing.xl)
             }
             if let err = feedError, !err.isEmpty {
-                Text(err)
-                    .font(.caption)
-                    .foregroundColor(.red)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, Theme.Spacing.xl)
+                FeedNetworkBannerView(message: err, title: feedErrorBannerTitle) {
+                    loadFeedFromServer()
+                }
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, Theme.Spacing.xl)
     }
 
-    private func lookbookEntryIndex(forApiPostId pid: String) -> Int? {
-        let p = pid.lowercased()
-        return entries.firstIndex { $0.apiPostId.lowercased() == p }
-    }
-
     private func topicFeedRow(model: LookbookFeedRowModel) -> some View {
         LookbookFeedRowView(
             entry: model.entry,
-            onHeartTap: { entry in
-                let apiId = entry.apiPostId
-                guard let i = lookbookEntryIndex(forApiPostId: apiId) else { return }
-                let k = apiId.lowercased()
-                let serial = (lookbookLikeSerialByPostId[k] ?? 0) + 1
-                lookbookLikeSerialByPostId[k] = serial
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
-                    var e = entries[i]
-                    e.isLiked.toggle()
-                    e.likesCount += e.isLiked ? 1 : -1
-                    entries[i] = e
-                }
-                Task { await syncLookbookLike(postId: apiId, serial: serial) }
-            },
-            onImageDoubleTap: { entry in
-                let apiId = entry.apiPostId
-                guard let i = lookbookEntryIndex(forApiPostId: apiId), !entries[i].isLiked else { return }
-                let k2 = apiId.lowercased()
-                let serial = (lookbookLikeSerialByPostId[k2] ?? 0) + 1
-                lookbookLikeSerialByPostId[k2] = serial
-                HapticManager.like()
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
-                    var e = entries[i]
-                    e.isLiked = true
-                    e.likesCount += 1
-                    entries[i] = e
-                }
-                Task { await syncLookbookLike(postId: apiId, serial: serial) }
-            },
-            onCommentsTap: { entry in commentsEntry = entry },
-            onImageTap: { entry in
+            onCommentsTap: { commentsEntry = $0 },
+            onImageTap: { tapped in
                 withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                    fullScreenEntry = entry
+                    fullScreenEntry = tapped
                 }
             },
             onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) },
             onPostDeleted: { deleted in
-                entries.removeAll { $0.apiPostId.lowercased() == deleted.apiPostId.lowercased() }
+                entries.removeAll { $0.lookbookPostKey == deleted.lookbookPostKey }
             },
             onOpenAnalytics: { analyticsEntry = $0 }
         )
-        .id(model.id)
         .padding(.bottom, lookbookSpacing)
     }
 
@@ -1175,10 +1037,11 @@ private struct LookbookTopicFeedView: View {
                 entries = []
                 feedLoading = false
                 feedError = nil
+                feedErrorBannerTitle = nil
             }
             return
         }
-        await MainActor.run { feedLoading = true; feedError = nil }
+        await MainActor.run { feedLoading = true; feedError = nil; feedErrorBannerTitle = nil }
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
@@ -1192,6 +1055,7 @@ private struct LookbookTopicFeedView: View {
                 }
                 feedLoading = false
                 feedError = nil
+                feedErrorBannerTitle = nil
             }
         } catch {
             await MainActor.run {
@@ -1199,36 +1063,8 @@ private struct LookbookTopicFeedView: View {
                 let isCancelled = (error as? CancellationError) != nil
                     || (error as? URLError)?.code == .cancelled
                     || error.localizedDescription.lowercased().contains("cancelled")
-                feedError = isCancelled ? nil : error.localizedDescription
-            }
-        }
-    }
-
-    private func syncLookbookLike(postId: String, serial: UInt64) async {
-        let key = postId.lowercased()
-        do {
-            let client = GraphQLClient()
-            client.setAuthToken(authService.authToken)
-            let service = LookbookService(client: client)
-            let result = try await service.toggleLike(postId: postId)
-            await MainActor.run {
-                guard lookbookLikeSerialByPostId[key] == serial else { return }
-                guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
-                var entry = entries[idx]
-                entry.isLiked = result.liked
-                entry.likesCount = result.likesCount
-                entries[idx] = entry
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            await MainActor.run {
-                guard lookbookLikeSerialByPostId[key] == serial else { return }
-                guard let idx = lookbookEntryIndex(forApiPostId: postId) else { return }
-                var entry = entries[idx]
-                entry.isLiked.toggle()
-                entry.likesCount += entry.isLiked ? 1 : -1
-                entries[idx] = entry
+                feedError = isCancelled ? nil : L10n.userFacingError(error)
+                feedErrorBannerTitle = isCancelled ? nil : L10n.userFacingErrorBannerTitle(error)
             }
         }
     }
@@ -1523,235 +1359,6 @@ private struct LookbookActivityView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
-// MARK: - Feed image: intrinsic aspect ratio, double-tap like, pinch zoom, bag for tagged products.
-private struct LookbookFeedImage: View {
-    let imageName: String
-    let documentImagePath: String?
-    let imageUrl: String?
-    let tags: [LookbookTagData]?
-    let productSnapshots: [String: LookbookProductSnapshot]?
-    /// When false, tagged pins are hidden (e.g. secondary carousel slides).
-    let showTagOverlay: Bool
-    let onDoubleTapLike: () -> Void
-    let onTap: () -> Void
-    let onProductTap: (String) -> Void
-    /// Width ÷ height from decoded pixels; updates parent layout (no letterboxing to a fixed bucket).
-    var onAspectRatioResolved: ((CGFloat) -> Void)? = nil
-
-    @State private var scale: CGFloat = 1
-    @State private var anchorScale: CGFloat = 1
-    @State private var dragOffset: CGSize = .zero
-    @State private var anchorDragOffset: CGSize = .zero
-    @State private var showTaggedProducts = false
-    @State private var displayAspect: CGFloat = LookbookCanonicalAspect.portrait1080x1350.rawValue
-    @State private var remoteImage: UIImage?
-    @State private var remoteLoading = false
-
-    private let minScale: CGFloat = 1
-    private let maxScale: CGFloat = 4
-    private let thumbSize: CGFloat = 56
-
-    private var hasTaggedProducts: Bool {
-        guard showTagOverlay, let tags = tags, let snapshots = productSnapshots, !tags.isEmpty else { return false }
-        return tags.contains { snapshots[$0.productId] != nil }
-    }
-
-    private var pinchZoomGesture: some Gesture {
-        MagnificationGesture()
-            .onChanged { value in scale = anchorScale * value }
-            .onEnded { _ in
-                scale = min(max(scale, minScale), maxScale)
-                anchorScale = scale
-                if scale <= 1.01 {
-                    dragOffset = .zero
-                    anchorDragOffset = .zero
-                }
-            }
-    }
-
-    /// Only attached when zoomed — a `DragGesture(minimumDistance: 0)` on the feed image otherwise steals scroll drags from the parent `ScrollView`.
-    private var panWhenZoomedGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                dragOffset = CGSize(
-                    width: anchorDragOffset.width + value.translation.width,
-                    height: anchorDragOffset.height + value.translation.height
-                )
-            }
-            .onEnded { _ in
-                anchorDragOffset = dragOffset
-            }
-    }
-
-    private var localUIImage: UIImage? {
-        if let path = documentImagePath,
-           let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appending(path: path),
-           let data = try? Data(contentsOf: url),
-           let ui = UIImage(data: data) { return ui }
-        if !imageName.isEmpty, let ui = UIImage(named: imageName) { return ui }
-        return nil
-    }
-
-    private var filledImageLayer: some View {
-        Group {
-            if let ui = localUIImage {
-                Image(uiImage: ui)
-                    .resizable()
-                    .scaledToFill()
-            } else if let ui = remoteImage {
-                Image(uiImage: ui)
-                    .resizable()
-                    .scaledToFill()
-            } else if imageUrl != nil, let _ = URL(string: imageUrl!) {
-                if remoteLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Theme.Colors.secondaryBackground.opacity(0.5))
-                } else {
-                    Image(systemName: "photo")
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                        .padding(48)
-                }
-            } else if !imageName.isEmpty {
-                Image(imageName)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Image(systemName: "photo")
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundStyle(Theme.Colors.secondaryText)
-                    .padding(48)
-            }
-        }
-    }
-
-    var body: some View {
-        let core = filledImageLayer
-            .scaleEffect(scale)
-            .offset(dragOffset)
-            .frame(maxWidth: .infinity)
-            .aspectRatio(displayAspect, contentMode: .fit)
-            .clipped()
-            .overlay(alignment: .bottomLeading) {
-                if hasTaggedProducts {
-                    Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showTaggedProducts.toggle() } }) {
-                        Image(systemName: "bag")
-                            .font(.system(size: 22, weight: .medium))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.55), radius: 3, x: 0, y: 1)
-                    }
-                    .buttonStyle(PlainTappableButtonStyle())
-                    .padding(Theme.Spacing.sm)
-                }
-            }
-            .overlay {
-                if showTaggedProducts, showTagOverlay, let tags = tags, let snapshots = productSnapshots {
-                    GeometryReader { g in
-                        ForEach(tags.filter { snapshots[$0.productId] != nil }) { tag in
-                            if let snapshot = snapshots[tag.productId] {
-                                let x = g.size.width * tag.x
-                                let y = g.size.height * tag.y
-                                productThumbnail(snapshot: snapshot, onTap: { onProductTap(tag.productId) })
-                                    .position(x: x, y: y)
-                            }
-                        }
-                    }
-                    .allowsHitTesting(true)
-                }
-            }
-            .contentShape(Rectangle())
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onTapGesture(count: 2, perform: onDoubleTapLike)
-            .onTapGesture(perform: onTap)
-            // `highPriorityGesture` steals drags from the parent ScrollView; pinch still works with `simultaneousGesture`.
-            .simultaneousGesture(pinchZoomGesture)
-
-        Group {
-            if scale > 1.01 {
-                core.simultaneousGesture(panWhenZoomedGesture)
-            } else {
-                core
-            }
-        }
-        .onAppear(perform: syncAspectFromLocalIfPossible)
-        .task(id: imageUrl) { await loadRemoteIfNeeded() }
-    }
-
-    private func applyAspect(width: CGFloat, height: CGFloat) {
-        let r = width / max(height, 1)
-        displayAspect = r
-        onAspectRatioResolved?(r)
-    }
-
-    private func syncAspectFromLocalIfPossible() {
-        if let ui = localUIImage {
-            applyAspect(width: ui.size.width, height: ui.size.height)
-        }
-    }
-
-    private func loadRemoteIfNeeded() async {
-        guard let urlString = imageUrl, let url = URL(string: urlString) else {
-            await MainActor.run {
-                remoteImage = nil
-                remoteLoading = false
-            }
-            return
-        }
-        if localUIImage != nil { return }
-        await MainActor.run { remoteLoading = true }
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            guard let ui = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
-            await MainActor.run {
-                remoteImage = ui
-                applyAspect(width: ui.size.width, height: ui.size.height)
-                remoteLoading = false
-            }
-        } catch {
-            await MainActor.run {
-                remoteImage = nil
-                remoteLoading = false
-            }
-        }
-    }
-
-    private func productThumbnail(snapshot: LookbookProductSnapshot, onTap: @escaping () -> Void) -> some View {
-        Button(action: onTap) {
-            VStack(spacing: 2) {
-                Group {
-                    if let urlString = snapshot.imageUrl, let url = URL(string: urlString) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let img): img.resizable().scaledToFill()
-                            default: Color.gray.opacity(0.3)
-                            }
-                        }
-                    } else {
-                        Color.gray.opacity(0.3)
-                    }
-                }
-                .frame(width: thumbSize, height: thumbSize)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                Text(snapshot.title)
-                    .font(.caption2)
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .frame(width: thumbSize + 16)
-            }
-            .padding(6)
-            .background(Theme.Colors.background.opacity(0.95))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.Colors.glassBorder, lineWidth: 1))
-            .shadow(color: .black.opacity(0.2), radius: 6, x: 0, y: 2)
-        }
-        .buttonStyle(PlainTappableButtonStyle())
-    }
-}
-
 // MARK: - Loading shimmer for Lookbooks feed (pills + post card placeholders)
 private struct LookbookShimmerView: View {
     var body: some View {
@@ -1795,47 +1402,58 @@ private struct LookbookFeedOnlyShimmerView: View {
 }
 
 private struct LookbookPostCardShimmer: View {
+    private let mediaAspect: CGFloat = 4 / 5
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Theme.Spacing.sm) {
                 Circle()
                     .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 36, height: 36)
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 100, height: 14)
+                    .frame(width: 40, height: 40)
+                VStack(alignment: .leading, spacing: 6) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(width: 120, height: 14)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(width: 80, height: 11)
+                }
                 Spacer()
             }
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.vertical, 10)
 
             RoundedRectangle(cornerRadius: 0)
                 .fill(Theme.Colors.secondaryBackground)
-                .aspectRatio(1, contentMode: .fit)
+                .aspectRatio(mediaAspect, contentMode: .fit)
                 .frame(maxWidth: .infinity)
 
-            HStack(spacing: Theme.Spacing.lg) {
+            HStack(spacing: Theme.Spacing.md) {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 80, height: 16)
+                    .frame(width: 48, height: 16)
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 70, height: 16)
+                    .frame(width: 24, height: 16)
                 Spacer()
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: 56, height: 16)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: 22, height: 16)
             }
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.vertical, 10)
             Divider().background(Theme.Colors.glassBorder.opacity(0.5)).padding(.leading, Theme.Spacing.md)
         }
         .padding(.bottom, lookbookSpacing)
     }
 }
 
-// MARK: - Feed row: one post; multiple images in a page TabView (carousel).
+// MARK: - Feed row (sandbox-style: full-width 4:5 media, comment / send / save — no like control)
 private struct LookbookFeedRowView: View {
     let entry: LookbookEntry
-    let onHeartTap: (LookbookEntry) -> Void
-    let onImageDoubleTap: (LookbookEntry) -> Void
     let onCommentsTap: (LookbookEntry) -> Void
     let onImageTap: (LookbookEntry) -> Void
     let onProductTap: (String) -> Void
@@ -1844,31 +1462,18 @@ private struct LookbookFeedRowView: View {
 
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
-    @State private var carouselIndex: Int = 0
-    @State private var mediaAspectRatio: CGFloat = LookbookCanonicalAspect.portrait1080x1350.rawValue
-    @State private var slideAspects: [Int: CGFloat] = [:]
-    @State private var showReportSheet = false
+    /// Horizontal page for multi-image posts (paged `ScrollView`, not `TabView` — TabView steals taps on the row below).
+    @State private var carouselScrollId: Int? = 0
     @State private var sharePayload: LookbookSharePayload?
-    @State private var showTaggedProductsSheet = false
     @State private var showMutualShareSheet = false
     @State private var shareToChatRecipient: User?
-    @State private var confirmDeletePost = false
 
-    private let iconSize: CGFloat = 20
-    private let defaultMediaAspect: CGFloat = LookbookCanonicalAspect.portrait1080x1350.rawValue
+    private let actionIconSize: CGFloat = 20
+    private let likeCountSize: CGFloat = 14
+    private let avatarSize: CGFloat = 40
+    /// Edge-to-edge slot; matches debug feed sandbox (~4:5 portrait).
+    private let mediaAspect: CGFloat = 4 / 5
 
-    private var isOwnPost: Bool {
-        guard let me = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !me.isEmpty else { return false }
-        return me == entry.posterUsername.lowercased()
-    }
-
-    private var taggedProductCount: Int {
-        guard let tags = entry.tags, let snaps = entry.productSnapshots else { return 0 }
-        let ids = tags.map(\.productId).filter { snaps[$0] != nil }
-        return Set(ids).count
-    }
-
-    /// Public lookbook URL (Open Graph on server) for rich previews when shared.
     private var lookbookShareURLString: String? {
         let raw = entry.apiPostId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return nil }
@@ -1890,14 +1495,6 @@ private struct LookbookFeedRowView: View {
         return parts.joined(separator: "\n\n")
     }
 
-    private var currentMediaAspect: CGFloat {
-        let urls = entry.imageUrls
-        if urls.count > 1 {
-            return slideAspects[carouselIndex] ?? defaultMediaAspect
-        }
-        return mediaAspectRatio
-    }
-
     private func styleSubtitle(for entry: LookbookEntry) -> String? {
         guard let first = entry.styles.first, !first.isEmpty else { return nil }
         return StyleSelectionView.displayName(for: first)
@@ -1911,12 +1508,15 @@ private struct LookbookFeedRowView: View {
         showMutualShareSheet = true
     }
 
-    /// Image URL for the currently visible carousel slide (or the only image).
+    private var carouselPageIndex: Int {
+        carouselScrollId ?? 0
+    }
+
     private var currentDisplayImageURL: String? {
         let urls = entry.imageUrls
         guard !urls.isEmpty else { return nil }
-        if urls.count > 1, urls.indices.contains(carouselIndex) {
-            return urls[carouselIndex]
+        if urls.count > 1, urls.indices.contains(carouselPageIndex) {
+            return urls[carouselPageIndex]
         }
         return urls.first
     }
@@ -1943,7 +1543,7 @@ private struct LookbookFeedRowView: View {
                 avatarPlaceholder
             }
         }
-        .frame(width: 36, height: 36)
+        .frame(width: avatarSize, height: avatarSize)
         .clipShape(Circle())
     }
 
@@ -1951,9 +1551,9 @@ private struct LookbookFeedRowView: View {
         Circle()
             .fill(Theme.Colors.secondaryBackground)
             .overlay(
-                Text(String(entry.posterUsername.prefix(1)).uppercased())
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Theme.Colors.secondaryText)
+                Image(systemName: "person.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Theme.Colors.tertiaryText)
             )
     }
 
@@ -1974,253 +1574,59 @@ private struct LookbookFeedRowView: View {
         return items
     }
 
-    private func copyPostLink() {
-        if let link = lookbookShareURLString, !link.isEmpty {
-            UIPasteboard.general.string = link
-        } else if let u = entry.imageUrls.first, !u.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            UIPasteboard.general.string = u
-        } else {
-            UIPasteboard.general.string = "@\(entry.posterUsername) — WEARHOUSE"
-        }
-    }
-
-    private func recordLinkClickIfAuthenticated(kind: String) {
-        guard authService.isAuthenticated else { return }
-        Task {
-            let client = GraphQLClient()
-            client.setAuthToken(authService.authToken)
-            let service = LookbookService(client: client)
-            try? await service.recordLookbookLinkClick(postId: entry.apiPostId, clickType: kind)
-        }
-    }
-
-    private func handleProductTap(_ productId: String) {
-        recordLinkClickIfAuthenticated(kind: "product")
-        onProductTap(productId)
-    }
-
-    private func deletePostIfAuthenticated() {
-        guard authService.isAuthenticated else { return }
-        Task {
-            let client = GraphQLClient()
-            client.setAuthToken(authService.authToken)
-            let service = LookbookService(client: client)
-            do {
-                try await service.deleteLookbookPost(postId: entry.apiPostId)
-                await MainActor.run { onPostDeleted?(entry) }
-            } catch {
-                await MainActor.run { }
-            }
-        }
-    }
-
-    /// Height follows each slide’s intrinsic aspect (landscape = short, portrait = tall); no fixed portrait letterbox.
-    private var mediaBlock: some View {
-        let urls = entry.imageUrls
-        return Color.clear
-            .aspectRatio(currentMediaAspect, contentMode: .fit)
-            .overlay {
-                mediaOverlayInner(urls: urls)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-            }
-            .frame(maxWidth: .infinity)
-    }
-
-    @ViewBuilder
-    private func mediaOverlayInner(urls: [String]) -> some View {
-        if urls.count > 1 {
-            TabView(selection: $carouselIndex) {
-                ForEach(Array(urls.enumerated()), id: \.offset) { idx, url in
-                    LookbookFeedImage(
-                        imageName: entry.imageNames.first ?? "",
-                        documentImagePath: idx == 0 ? entry.documentImagePath : nil,
-                        imageUrl: url,
-                        tags: entry.tags,
-                        productSnapshots: entry.productSnapshots,
-                        showTagOverlay: idx == 0,
-                        onDoubleTapLike: { onImageDoubleTap(entry) },
-                        onTap: { onImageTap(entry) },
-                        onProductTap: handleProductTap,
-                        onAspectRatioResolved: { r in
-                            slideAspects[idx] = r
-                        }
-                    )
-                    .tag(idx)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .automatic))
-        } else {
-            LookbookFeedImage(
-                imageName: entry.imageNames.first ?? "",
-                documentImagePath: entry.documentImagePath,
-                imageUrl: urls.first,
-                tags: entry.tags,
-                productSnapshots: entry.productSnapshots,
-                showTagOverlay: true,
-                onDoubleTapLike: { onImageDoubleTap(entry) },
-                onTap: { onImageTap(entry) },
-                onProductTap: handleProductTap,
-                onAspectRatioResolved: { r in
-                    mediaAspectRatio = r
-                }
-            )
-        }
-    }
-
-    private var postOptionsMenu: some View {
-        Menu {
-            Button {
-                sharePayload = LookbookSharePayload(items: shareItemsForEntry())
-            } label: {
-                Label(L10n.string("Share"), systemImage: "square.and.arrow.up")
-            }
-            NavigationLink {
-                UserProfileView(
-                    seller: User(username: entry.posterUsername, displayName: entry.posterUsername),
-                    authService: authService
-                )
-            } label: {
-                Label(L10n.string("View shop"), systemImage: "storefront")
-            }
-            .simultaneousGesture(TapGesture().onEnded { _ in
-                recordLinkClickIfAuthenticated(kind: "shop")
-            })
-            Button {
-                copyPostLink()
-            } label: {
-                Label(L10n.string("Copy link"), systemImage: "link")
-            }
-            if let caption = entry.caption, !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Button {
-                    UIPasteboard.general.string = caption
-                } label: {
-                    Label(L10n.string("Copy caption"), systemImage: "text.alignleft")
-                }
-            }
-            if isOwnPost {
-                Divider()
-                if onOpenAnalytics != nil {
-                    Button {
-                        onOpenAnalytics?(entry)
-                    } label: {
-                        Label(L10n.string("Analytics"), systemImage: "chart.xyaxis.line")
-                    }
-                }
-                if onPostDeleted != nil {
-                    Button(role: .destructive) {
-                        confirmDeletePost = true
-                    } label: {
-                        Label(L10n.string("Delete post"), systemImage: "trash")
-                    }
-                }
-            }
-            if !isOwnPost {
-                Divider()
-                Button {
-                    showReportSheet = true
-                } label: {
-                    Label(L10n.string("Report"), systemImage: "exclamationmark.bubble")
-                }
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: iconSize, weight: .medium))
-                .foregroundColor(Theme.Colors.primaryText)
-                .frame(width: 36, height: 36)
-                .contentShape(Rectangle())
-        }
-    }
-
     var body: some View {
         let styleSub = styleSubtitle(for: entry)
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(alignment: styleSub == nil ? .center : .top, spacing: Theme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
                 posterAvatar
-                if let sub = styleSub {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(entry.posterUsername)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Theme.Colors.primaryText)
-                        Text(sub)
-                            .font(Theme.Typography.caption)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                    }
-                } else {
-                Text(entry.posterUsername)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Theme.Colors.primaryText)
-                }
-                Spacer(minLength: 0)
-                postOptionsMenu
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.top, Theme.Spacing.sm)
-
-            mediaBlock
-                .frame(maxWidth: .infinity)
-
-            if let cap = entry.caption?.trimmingCharacters(in: .whitespacesAndNewlines), !cap.isEmpty {
-                HStack(alignment: .top, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(entry.posterUsername)
                         .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(Theme.Colors.primaryText)
-                    HashtagColoredText(text: cap)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .foregroundStyle(Theme.Colors.primaryText)
+                    if let sub = styleSub {
+                        Text(sub)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
                 }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.xs)
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, 10)
+
+            lookbookSandboxMediaBlock
+                .zIndex(0)
+                .clipped()
+                .clipShape(Rectangle())
 
             HStack(alignment: .center, spacing: Theme.Spacing.md) {
-                LikeButtonView(
-                    isLiked: entry.isLiked,
-                    likeCount: entry.likesCount,
-                    action: { onHeartTap(entry) },
-                    onDarkOverlay: false,
-                    heartPointSize: iconSize
-                )
-                .id("lb-like-\(entry.apiPostId)-\(entry.isLiked)-\(entry.likesCount)")
-
-                Button(action: { onCommentsTap(entry) }) {
+                Button {
+                    HapticManager.tap()
+                    onCommentsTap(entry)
+                } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "bubble.right")
-                            .font(.system(size: iconSize, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryText)
+                            .font(.system(size: actionIconSize, weight: .medium))
+                            .foregroundStyle(Theme.Colors.primaryText)
                         Text("\(entry.commentsCount)")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryText)
+                            .font(.system(size: likeCountSize, weight: .medium))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.Colors.primaryText)
                     }
+                    .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainTappableButtonStyle())
 
-                if taggedProductCount > 0 {
-                    Button { showTaggedProductsSheet = true } label: {
-                    HStack(spacing: 4) {
-                            Image(systemName: "bag")
-                                .font(.system(size: iconSize, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryText)
-                            Text("\(taggedProductCount)")
-                                .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainTappableButtonStyle())
-                }
-
-                Button(action: openSendForward) {
+                Button {
+                    HapticManager.tap()
+                    openSendForward()
+                } label: {
                     Image(systemName: "paperplane")
-                        .font(.system(size: iconSize, weight: .medium))
-                        .foregroundColor(Theme.Colors.primaryText)
-                }
-                .buttonStyle(PlainTappableButtonStyle())
-
-                Button { sharePayload = LookbookSharePayload(items: shareItemsForEntry()) } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: iconSize, weight: .medium))
-                        .foregroundColor(Theme.Colors.primaryText)
+                        .font(.system(size: actionIconSize, weight: .medium))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainTappableButtonStyle())
 
@@ -2231,33 +1637,25 @@ private struct LookbookFeedRowView: View {
                     _ = savedLookbookFavorites.toggle(entry: entry, imageUrl: currentDisplayImageURL)
                 } label: {
                     Image(systemName: isPhotoFavorited ? "bookmark.fill" : "bookmark")
-                        .font(.system(size: iconSize, weight: .medium))
-                        .foregroundColor(isPhotoFavorited ? Theme.primaryColor : Theme.Colors.primaryText)
+                        .font(.system(size: actionIconSize, weight: .medium))
+                        .foregroundStyle(isPhotoFavorited ? Theme.primaryColor : Theme.Colors.primaryText)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainTappableButtonStyle())
             }
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.top, Theme.Spacing.xs)
-            .padding(.bottom, Theme.Spacing.sm)
+            .padding(.vertical, 10)
+            .background(Theme.Colors.background)
+            .zIndex(2)
 
             Rectangle()
-                .fill(Theme.Colors.glassBorder.opacity(0.45))
+                .fill(Theme.Colors.glassBorder.opacity(0.35))
                 .frame(height: 0.5)
                 .padding(.leading, Theme.Spacing.md)
         }
         .sheet(item: $sharePayload) { payload in
             LookbookActivityView(activityItems: payload.items)
-        }
-        .sheet(isPresented: $showTaggedProductsSheet) {
-            LookbookTaggedProductsSheet(entry: entry, onSelectProduct: handleProductTap)
-        }
-        .alert(L10n.string("Delete this post?"), isPresented: $confirmDeletePost) {
-            Button(L10n.string("Cancel"), role: .cancel) {}
-            Button(L10n.string("Delete"), role: .destructive) {
-                deletePostIfAuthenticated()
-            }
-        } message: {
-            Text(L10n.string("This cannot be undone."))
         }
         .sheet(isPresented: $showMutualShareSheet) {
             LookbookSendToShareSheet(excludePosterUsername: entry.posterUsername) { user in
@@ -2276,20 +1674,122 @@ private struct LookbookFeedRowView: View {
                 .environmentObject(authService)
             }
         }
-        .sheet(isPresented: $showReportSheet) {
-            NavigationStack {
-                ReportUserView(username: entry.posterUsername)
-                    .environmentObject(authService)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button(L10n.string("Close")) { showReportSheet = false }
-                        }
-                    }
-            }
+        .onChange(of: entry.id) { _, _ in
+            carouselScrollId = 0
         }
         .onChange(of: entry.imageUrls.count) { _, newCount in
-            if carouselIndex >= newCount { carouselIndex = max(0, newCount - 1) }
+            let idx = carouselPageIndex
+            if newCount == 0 {
+                carouselScrollId = nil
+            } else if idx >= newCount {
+                carouselScrollId = max(0, newCount - 1)
+            }
         }
+    }
+
+    @ViewBuilder
+    private var lookbookSandboxMediaBlock: some View {
+        let urls = dedupeOrderedValidLookbookURLs(entry.imageUrls)
+        if urls.isEmpty {
+            // Local document, bundled name, or empty — `lookbookSandboxSingleMedia` resolves each case.
+            lookbookSandboxSingleMedia(urlString: "", documentPath: entry.documentImagePath)
+        } else if urls.count > 1 {
+            Color.clear
+                .aspectRatio(mediaAspect, contentMode: .fit)
+                .overlay {
+                    GeometryReader { geo in
+                        let w = max(1, geo.size.width)
+                        let h = max(1, geo.size.height)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 0) {
+                                LookbookScrollImmediateTouchesAnchor()
+                                    .frame(width: 0, height: 0)
+                                ForEach(Array(urls.enumerated()), id: \.offset) { idx, urlString in
+                                    lookbookSandboxSingleMedia(
+                                        urlString: urlString,
+                                        documentPath: idx == 0 ? entry.documentImagePath : nil
+                                    )
+                                    .frame(width: w, height: h)
+                                    .clipped()
+                                    .id(idx)
+                                }
+                            }
+                            .scrollTargetLayout()
+                        }
+                        .scrollTargetBehavior(.paging)
+                        .scrollPosition(id: $carouselScrollId, anchor: .leading)
+                        .frame(width: w, height: h)
+                        .clipped()
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .clipped()
+                .clipShape(Rectangle())
+        } else {
+            lookbookSandboxSingleMedia(urlString: urls[0], documentPath: entry.documentImagePath)
+        }
+    }
+
+    @ViewBuilder
+    private func lookbookSandboxSingleMedia(urlString: String, documentPath: String?) -> some View {
+        Group {
+            if let ui = localDocumentUIImage(documentPath) {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFill()
+            } else if let url = URL(string: urlString), !urlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        lookbookSandboxMediaPlaceholder
+                    case .empty:
+                        lookbookSandboxMediaPlaceholder
+                            .overlay { ProgressView().scaleEffect(0.7) }
+                    @unknown default:
+                        lookbookSandboxMediaPlaceholder
+                    }
+                }
+            } else if !entry.imageNames.isEmpty, let ui = UIImage(named: entry.imageNames[0]) {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                lookbookSandboxMediaPlaceholder
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(mediaAspect, contentMode: .fit)
+        .clipped()
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onImageTap(entry)
+        }
+    }
+
+    private func localDocumentUIImage(_ documentPath: String?) -> UIImage? {
+        guard let path = documentPath, !path.isEmpty,
+              let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
+        let url = dir.appending(path: path)
+        guard let data = try? Data(contentsOf: url), let ui = UIImage(data: data) else { return nil }
+        return ui
+    }
+
+    private var lookbookSandboxMediaPlaceholder: some View {
+        Theme.Colors.secondaryBackground
+            .overlay {
+                VStack(spacing: 8) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 32))
+                        .foregroundStyle(Theme.Colors.tertiaryText)
+                    Text(L10n.string("Could not load image"))
+                        .font(.caption)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                }
+            }
     }
 }
 
@@ -2319,83 +1819,6 @@ private struct LookbookProductDetailLoader: View {
                 await MainActor.run { item = loaded; if loaded == nil { failed = true } }
             } catch {
                 await MainActor.run { failed = true }
-            }
-        }
-    }
-}
-
-// MARK: - Tagged products sheet (from feed bag control)
-private struct LookbookTaggedProductRow: Identifiable {
-    let id: String
-    let snapshot: LookbookProductSnapshot
-}
-
-private struct LookbookTaggedProductsSheet: View {
-    let entry: LookbookEntry
-    let onSelectProduct: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    private var rows: [LookbookTaggedProductRow] {
-        guard let tags = entry.tags, let snaps = entry.productSnapshots else { return [] }
-        var seen = Set<String>()
-        var out: [LookbookTaggedProductRow] = []
-        for t in tags {
-            guard let s = snaps[t.productId], seen.insert(t.productId).inserted else { continue }
-            out.append(LookbookTaggedProductRow(id: t.productId, snapshot: s))
-        }
-        return out
-    }
-
-    var body: some View {
-        NavigationStack {
-            List {
-                ForEach(rows) { row in
-                    Button {
-                        dismiss()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                            onSelectProduct(row.id)
-                        }
-                    } label: {
-                        HStack(spacing: Theme.Spacing.sm) {
-                            Group {
-                                if let urlString = row.snapshot.imageUrl, let url = URL(string: urlString) {
-                                    AsyncImage(url: url) { phase in
-                                        switch phase {
-                                        case .success(let img): img.resizable().scaledToFill()
-                                        default: Color.gray.opacity(0.25)
-                                        }
-                                    }
-                                } else {
-                                    Color.gray.opacity(0.25)
-                                }
-                            }
-                            .frame(width: 52, height: 52)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(row.snapshot.title)
-                                    .font(Theme.Typography.subheadline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                    .multilineTextAlignment(.leading)
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    .buttonStyle(PlainTappableButtonStyle())
-                }
-            }
-            .listStyle(.plain)
-            .background(Theme.Colors.background)
-            .scrollContentBackground(.hidden)
-            .navigationTitle(L10n.string("Tagged products"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.string("Done")) { dismiss() }
-                        .foregroundColor(Theme.primaryColor)
-                }
             }
         }
     }
@@ -2682,7 +2105,7 @@ private struct LookbookSendToShareSheet: View {
             errorText = nil
         } catch {
             loading = false
-            errorText = error.localizedDescription
+            errorText = L10n.userFacingError(error)
         }
     }
 }
@@ -2857,7 +2280,7 @@ private struct LookbookSquareGridRemoteImage: View {
 private struct LookbookSquareGridThumbnail: View {
     let entry: LookbookEntry
 
-    /// Same rule as `LookbookFeedRowView.taggedProductCount`: tags with a local product snapshot count as tagged products.
+    /// Tags with a local product snapshot count as tagged products.
     private var taggedProductCount: Int {
         guard let tags = entry.tags, let snaps = entry.productSnapshots else { return 0 }
         let ids = tags.map(\.productId).filter { snaps[$0] != nil }

@@ -19,6 +19,13 @@ enum LookbookPostIdFormatting {
         if s.count >= 2, s.first == "{", s.last == "}" {
             s = String(s.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        // Some APIs return 32 hex chars without dashes; GraphQL UUID! and Swift UUID() need dashed form.
+        let hexOnly = s.filter { $0.isHexDigit }
+        if hexOnly.count == 32, hexOnly.count == s.replacingOccurrences(of: "-", with: "").count {
+            let h = String(hexOnly).lowercased()
+            let dashed = "\(h.prefix(8))-\(h.dropFirst(8).prefix(4))-\(h.dropFirst(12).prefix(4))-\(h.dropFirst(16).prefix(4))-\(h.dropFirst(20))"
+            if UUID(uuidString: dashed) != nil { return dashed }
+        }
         return s
     }
 }
@@ -34,9 +41,7 @@ struct ServerLookbookPost: Decodable {
     /// Poster profile image from `getUser`-style field on the post (optional until backend supports it).
     let profilePictureUrl: String?
     let createdAt: String?
-    var likesCount: Int?
     var commentsCount: Int?
-    var userLiked: Bool?
     var productLinkClicks: Int?
     var shopLinkClicks: Int?
 }
@@ -179,7 +184,7 @@ final class LookbookService {
         let query = """
         mutation CreateLookbook($imageUrl: String!, $caption: String) {
           createLookbook(imageUrl: $imageUrl, caption: $caption) {
-            lookbookPost { id imageUrl thumbnailUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked }
+            lookbookPost { id imageUrl thumbnailUrl caption username profilePictureUrl createdAt commentsCount }
             success
             message
           }
@@ -215,8 +220,8 @@ final class LookbookService {
         let query = """
         query Lookbooks($first: Int) {
           lookbooks(first: $first) {
-            nodes { id imageUrl thumbnailUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked productLinkClicks shopLinkClicks }
-            edges { node { id imageUrl thumbnailUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked productLinkClicks shopLinkClicks } }
+            nodes { id imageUrl thumbnailUrl caption username profilePictureUrl createdAt commentsCount productLinkClicks shopLinkClicks }
+            edges { node { id imageUrl thumbnailUrl caption username profilePictureUrl createdAt commentsCount productLinkClicks shopLinkClicks } }
           }
         }
         """
@@ -255,9 +260,7 @@ final class LookbookService {
             username
             profilePictureUrl
             createdAt
-            likesCount
             commentsCount
-            userLiked
             productLinkClicks
             shopLinkClicks
           }
@@ -273,38 +276,6 @@ final class LookbookService {
             responseType: Response.self
         )
         return response.lookbookPost
-    }
-
-    func toggleLike(postId: String) async throws -> (liked: Bool, likesCount: Int) {
-        let query = """
-        mutation ToggleLookbookLike($postId: UUID!) {
-          toggleLookbookLike(postId: $postId) {
-            success
-            liked
-            likesCount
-            message
-          }
-        }
-        """
-        let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
-        let variables: [String: Any] = ["postId": normalized]
-        struct Response: Decodable { let toggleLookbookLike: Payload? }
-        struct Payload: Decodable {
-            let success: Bool?
-            let liked: Bool?
-            let likesCount: Int?
-            let message: String?
-        }
-        let response: Response = try await client.execute(
-            query: query,
-            variables: variables,
-            operationName: "ToggleLookbookLike",
-            responseType: Response.self
-        )
-        guard let payload = response.toggleLookbookLike, payload.success == true else {
-            throw NSError(domain: "LookbookService", code: -1, userInfo: [NSLocalizedDescriptionKey: response.toggleLookbookLike?.message ?? "Like failed"])
-        }
-        return (payload.liked ?? false, payload.likesCount ?? 0)
     }
 
     func fetchComments(postId: String) async throws -> [ServerLookbookComment] {
