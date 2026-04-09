@@ -36,7 +36,8 @@ struct LoginView: View {
                                     .foregroundColor(Theme.Colors.authOverVideoText)
                                 TextField(L10n.string("Enter your username"), text: $username)
                                     .textFieldStyle(PlainTextFieldStyle())
-                                    .padding(Theme.Spacing.md)
+                                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                                    .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                                     .background(Theme.Colors.secondaryBackground)
                                     .cornerRadius(30)
                                     .foregroundColor(Theme.Colors.primaryText)
@@ -62,7 +63,8 @@ struct LoginView: View {
                                     }
                                     .buttonStyle(PlainTappableButtonStyle())
                                 }
-                                .padding(Theme.Spacing.md)
+                                .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                                .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                                 .background(Theme.Colors.secondaryBackground)
                                 .cornerRadius(30)
                             }

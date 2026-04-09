@@ -24,8 +24,8 @@ struct SellLabeledField: View {
                         Text(placeholder)
                             .font(Theme.Typography.body)
                             .foregroundColor(Theme.Colors.secondaryText)
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .padding(.vertical, Theme.Spacing.md)
+                            .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                            .padding(.vertical, Theme.TextInput.insetVertical)
                     }
                     if highlightHashtags {
                         HashtagHighlightingTextEditor(text: $text)
@@ -35,7 +35,8 @@ struct SellLabeledField: View {
                             .font(Theme.Typography.body)
                             .foregroundColor(Theme.Colors.primaryText)
                             .scrollContentBackground(.hidden)
-                            .padding(Theme.Spacing.sm)
+                            .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                            .padding(.vertical, Theme.TextInput.insetVertical)
                             .frame(minHeight: minLines > 1 ? CGFloat(minLines) * 24 : 44)
                     }
                 }
@@ -45,7 +46,8 @@ struct SellLabeledField: View {
                 TextField(placeholder, text: $text)
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.primaryText)
-                    .padding(Theme.Spacing.md)
+                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                    .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                     .background(Theme.Colors.secondaryBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 30))
             }

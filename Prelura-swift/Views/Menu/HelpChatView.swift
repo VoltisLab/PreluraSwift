@@ -413,8 +413,8 @@ struct HelpChatView: View {
         HStack(spacing: Theme.Spacing.sm) {
             TextField("Type a message...", text: $newMessage)
                 .textFieldStyle(.plain)
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, 12)
+                .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                 .background(Theme.Colors.secondaryBackground)
                 .clipShape(Capsule())
 

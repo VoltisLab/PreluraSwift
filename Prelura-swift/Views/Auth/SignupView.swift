@@ -41,7 +41,8 @@ struct SignupView: View {
                                     .textFieldStyle(PlainTextFieldStyle())
                                     .keyboardType(.emailAddress)
                                     .autocapitalization(.none)
-                                    .padding(Theme.Spacing.md)
+                                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                                    .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                                     .background(Theme.Colors.secondaryBackground)
                                     .cornerRadius(30)
                                     .foregroundColor(Theme.Colors.primaryText)
@@ -52,7 +53,8 @@ struct SignupView: View {
                                     .foregroundColor(Theme.Colors.authOverVideoText)
                                 TextField("Enter your first name", text: $firstName)
                                     .textFieldStyle(PlainTextFieldStyle())
-                                    .padding(Theme.Spacing.md)
+                                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                                    .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                                     .background(Theme.Colors.secondaryBackground)
                                     .cornerRadius(30)
                                     .foregroundColor(Theme.Colors.primaryText)
@@ -63,7 +65,8 @@ struct SignupView: View {
                                     .foregroundColor(Theme.Colors.authOverVideoText)
                                 TextField("Enter your last name", text: $lastName)
                                     .textFieldStyle(PlainTextFieldStyle())
-                                    .padding(Theme.Spacing.md)
+                                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                                    .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                                     .background(Theme.Colors.secondaryBackground)
                                     .cornerRadius(30)
                                     .foregroundColor(Theme.Colors.primaryText)
@@ -89,7 +92,8 @@ struct SignupView: View {
                                             .clipShape(Circle())
                                     }
                                 }
-                                .padding(Theme.Spacing.md)
+                                .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                                .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                                 .background(Theme.Colors.secondaryBackground)
                                 .cornerRadius(30)
                             }
@@ -114,7 +118,8 @@ struct SignupView: View {
                                     }
                                     .buttonStyle(PlainTappableButtonStyle())
                                 }
-                                .padding(Theme.Spacing.md)
+                                .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                                .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                                 .background(Theme.Colors.secondaryBackground)
                                 .cornerRadius(30)
                             }
@@ -139,7 +144,8 @@ struct SignupView: View {
                                     }
                                     .buttonStyle(PlainTappableButtonStyle())
                                 }
-                                .padding(Theme.Spacing.md)
+                                .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                                .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                                 .background(Theme.Colors.secondaryBackground)
                                 .cornerRadius(30)
                             }

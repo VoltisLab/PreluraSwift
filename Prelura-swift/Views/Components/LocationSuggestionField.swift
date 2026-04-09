@@ -55,8 +55,8 @@ struct LocationSuggestionField: View {
                         }
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
+                .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                 .background(Theme.Colors.secondaryBackground)
                 .cornerRadius(cornerRadius)
 

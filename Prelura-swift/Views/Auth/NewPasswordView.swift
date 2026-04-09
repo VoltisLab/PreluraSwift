@@ -29,7 +29,8 @@ struct NewPasswordView: View {
                         TextField("000000", text: $code)
                             .keyboardType(.numberPad)
                             .textFieldStyle(PlainTextFieldStyle())
-                            .padding(Theme.Spacing.md)
+                            .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                            .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                             .background(Theme.Colors.secondaryBackground)
                             .cornerRadius(30)
                             .foregroundColor(Theme.Colors.primaryText)
@@ -55,7 +56,8 @@ struct NewPasswordView: View {
                             }
                             .buttonStyle(PlainTappableButtonStyle())
                         }
-                        .padding(Theme.Spacing.md)
+                        .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                        .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                         .background(Theme.Colors.secondaryBackground)
                         .cornerRadius(30)
                     }
@@ -80,7 +82,8 @@ struct NewPasswordView: View {
                             }
                             .buttonStyle(PlainTappableButtonStyle())
                         }
-                        .padding(Theme.Spacing.md)
+                        .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                        .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                         .background(Theme.Colors.secondaryBackground)
                         .cornerRadius(30)
                     }

@@ -15,7 +15,12 @@ struct HashtagHighlightingTextEditor: UIViewRepresentable {
         tv.font = .preferredFont(forTextStyle: .body)
         tv.adjustsFontForContentSizeCategory = true
         tv.backgroundColor = .clear
-        tv.textContainerInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
+        tv.textContainerInset = UIEdgeInsets(
+            top: Theme.TextInput.insetVertical,
+            left: Theme.TextInput.insetHorizontal,
+            bottom: Theme.TextInput.insetVertical,
+            right: Theme.TextInput.insetHorizontal
+        )
         tv.textContainer.lineFragmentPadding = 0
         tv.text = text
         tv.keyboardDismissMode = .interactive

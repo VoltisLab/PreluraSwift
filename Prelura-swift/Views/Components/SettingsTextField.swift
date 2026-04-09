@@ -40,7 +40,7 @@ struct SettingsTextField: View {
                             .foregroundColor(text.isEmpty ? Theme.Colors.secondaryText : Theme.Colors.primaryText)
                         Spacer()
                     }
-                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
                     .padding(.vertical, verticalPadding)
                 }
                 .buttonStyle(PlainTappableButtonStyle())
@@ -61,7 +61,7 @@ struct SettingsTextField: View {
                                 .focused($isFocused)
                         }
                     }
-                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
                     .padding(.vertical, verticalPadding)
                     Button(action: { passwordVisible.toggle() }) {
                         Image(systemName: passwordVisible ? "eye.slash.fill" : "eye.fill")
@@ -77,7 +77,7 @@ struct SettingsTextField: View {
                     .keyboardType(keyboardType)
                     .textContentType(textContentType)
                     .focused($isFocused)
-                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
                     .padding(.vertical, verticalPadding)
             }
         }
@@ -121,15 +121,15 @@ struct SettingsTextEditor: View {
                 Text(placeholder)
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.secondaryText)
-                    .padding(.horizontal, Theme.Spacing.md + 4)
-                    .padding(.vertical, Theme.Spacing.md + 8)
+                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                    .padding(.vertical, Theme.TextInput.insetVertical + 2)
             }
             TextEditor(text: effectiveBinding)
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.primaryText)
                 .scrollContentBackground(.hidden)
-                .padding(.horizontal, Theme.Spacing.sm)
-                .padding(.vertical, Theme.Spacing.sm)
+                .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                .padding(.vertical, Theme.TextInput.insetVertical)
         }
         .frame(minHeight: minHeight)
         .background(Theme.Colors.secondaryBackground)

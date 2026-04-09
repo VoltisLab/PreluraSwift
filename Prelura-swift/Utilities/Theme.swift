@@ -95,6 +95,13 @@ struct Theme {
         static let xxl: CGFloat = 48
     }
 
+    /// Padding inside `TextField` / `TextEditor` backgrounds so the caret and text do not sit flush on rounded borders (SwiftUI defaults are tight).
+    struct TextInput {
+        static let insetHorizontal: CGFloat = Spacing.md + 8
+        static let insetVertical: CGFloat = Spacing.md
+        static let insetVerticalCompact: CGFloat = Spacing.sm + 6
+    }
+
     /// Standard app bar / custom header layout so top-level icons and back buttons stay in the same position.
     struct AppBar {
         static let horizontalPadding: CGFloat = Spacing.md

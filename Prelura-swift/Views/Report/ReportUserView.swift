@@ -107,6 +107,8 @@ private struct ReportUserDetailsView: View {
             Section {
                 TextEditor(text: $description)
                     .font(Theme.Typography.body)
+                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                    .padding(.vertical, Theme.TextInput.insetVertical)
                     .frame(minHeight: 120)
             } header: {
                 Text("Details")
