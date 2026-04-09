@@ -1075,7 +1075,7 @@ struct ChatDetailView: View {
                 onDismiss: { showCounterOfferSheet = false; counterTargetOffer = nil },
                 useCustomCornerRadius: false
             ) {
-                OfferModalContent(
+                SendOfferFormContent(
                     item: item,
                     listingPrice: nil,
                     onSubmit: { newPrice in
@@ -4381,7 +4381,24 @@ struct MessageBubbleView: View {
         ZStack(alignment: .topLeading) {
             Group {
                 if let lb = lookbookPayload {
-                    lookbookShareBubble(lb)
+                    VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 6) {
+                        lookbookShareBubble(lb)
+                        if isCurrentUser {
+                            Text("Check this out")
+                                .font(Theme.Typography.body)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.vertical, Theme.Spacing.sm)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.85)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .cornerRadius(18)
+                        }
+                    }
                 } else if let mult = emojiMult {
                     Text(message.content.trimmingCharacters(in: .whitespacesAndNewlines))
                         .font(.system(size: baseMessageFontSize * CGFloat(mult)))

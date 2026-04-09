@@ -580,13 +580,13 @@ struct UserProfileView: View {
     }
 
     private var userProfileSortSheet: some View {
-        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false, chromeStyle: .navigationDone) {
             SortSheetContent(selectedSort: $profileSort, onApply: { activeListingsSheet = nil })
         }
     }
 
     private var userProfileFilterSheet: some View {
-        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false, chromeStyle: .navigationDone) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                 Text(L10n.string("Condition"))

@@ -418,52 +418,35 @@ private struct LookbookFeedScreenView: View {
     @State private var showSearchSheet: Bool = false
     @State private var searchText: String = ""
     @State private var commentsEntry: LookbookEntry?
-    @State private var fullScreenEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
     private let productService = ProductService()
 
     var body: some View {
-        ZStack {
-            GeometryReader { geometry in
-                ScrollView {
-                    LookbookScrollImmediateTouchesAnchor()
-                        .frame(width: 0, height: 0)
-                    LazyVStack(spacing: 0) {
-                        Color.clear.frame(height: 1).id(lookbookTopId)
+        GeometryReader { geometry in
+            ScrollView {
+                LookbookScrollImmediateTouchesAnchor()
+                    .frame(width: 0, height: 0)
+                LazyVStack(spacing: 0) {
+                    Color.clear.frame(height: 1).id(lookbookTopId)
 
-                        if feedLoading && entries.isEmpty {
-                            LookbookFeedOnlyShimmerView()
-                        } else if entries.isEmpty {
-                            feedEmptyPlaceholder(minHeight: geometry.size.height - 120)
-                        } else {
-                            ForEach(buildLookbookFeedRows(from: entries)) { row in
-                                lookbookFeedRow(model: row)
-                            }
+                    if feedLoading && entries.isEmpty {
+                        LookbookFeedOnlyShimmerView()
+                    } else if entries.isEmpty {
+                        feedEmptyPlaceholder(minHeight: geometry.size.height - 120)
+                    } else {
+                        ForEach(buildLookbookFeedRows(from: entries)) { row in
+                            lookbookFeedRow(model: row)
                         }
                     }
-                    .padding(.bottom, Theme.Spacing.xl)
                 }
-                .scrollPosition(id: $scrollPosition, anchor: .top)
-                .scrollContentBackground(.hidden)
-                .background(Theme.Colors.background)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.bottom, Theme.Spacing.xl)
             }
-
-            if let entry = fullScreenEntry {
-                LookbookTransparentFullscreenOverlay(entry: entry) {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                        fullScreenEntry = nil
-                    }
-                }
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 0.94, anchor: .center)),
-                    removal: .opacity
-                ))
-                .zIndex(2)
-            }
+            .scrollPosition(id: $scrollPosition, anchor: .top)
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: fullScreenEntry?.id)
         .navigationTitle(L10n.string("Feed"))
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -587,11 +570,6 @@ private struct LookbookFeedScreenView: View {
         LookbookFeedRowView(
             entry: model.entry,
             onCommentsTap: { commentsEntry = $0 },
-            onImageTap: { tapped in
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                    fullScreenEntry = tapped
-                }
-            },
             onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) },
             onPostDeleted: { deleted in
                 entries.removeAll { $0.lookbookPostKey == deleted.lookbookPostKey }
@@ -613,7 +591,6 @@ struct LookbookSinglePostFeedPresentedView: View {
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
     @State private var entries: [LookbookEntry]
     @State private var commentsEntry: LookbookEntry?
-    @State private var fullScreenEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
     private let productService = ProductService()
@@ -626,34 +603,18 @@ struct LookbookSinglePostFeedPresentedView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                ScrollView {
-                    LookbookScrollImmediateTouchesAnchor()
-                        .frame(width: 0, height: 0)
-                    LazyVStack(spacing: 0) {
-                        ForEach(buildLookbookFeedRows(from: entries)) { model in
-                            singlePostRow(model: model)
-                        }
+            ScrollView {
+                LookbookScrollImmediateTouchesAnchor()
+                    .frame(width: 0, height: 0)
+                LazyVStack(spacing: 0) {
+                    ForEach(buildLookbookFeedRows(from: entries)) { model in
+                        singlePostRow(model: model)
                     }
-                    .padding(.bottom, Theme.Spacing.xl)
                 }
-                .scrollContentBackground(.hidden)
-                .background(Theme.Colors.background)
-
-                if let entry = fullScreenEntry {
-                    LookbookTransparentFullscreenOverlay(entry: entry) {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                            fullScreenEntry = nil
-                        }
-                    }
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.94, anchor: .center)),
-                        removal: .opacity
-                    ))
-                    .zIndex(2)
-                }
+                .padding(.bottom, Theme.Spacing.xl)
             }
-            .animation(.spring(response: 0.38, dampingFraction: 0.86), value: fullScreenEntry?.id)
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Feed"))
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
@@ -694,11 +655,6 @@ struct LookbookSinglePostFeedPresentedView: View {
         LookbookFeedRowView(
             entry: model.entry,
             onCommentsTap: { commentsEntry = $0 },
-            onImageTap: { tapped in
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                    fullScreenEntry = tapped
-                }
-            },
             onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) },
             onPostDeleted: { _ in onDismiss() },
             onOpenAnalytics: { analyticsEntry = $0 },
@@ -1018,12 +974,6 @@ private struct LookbookMyItemsScreenView: View {
         LookbookFeedRowView(
             entry: model.entry,
             onCommentsTap: { commentsEntry = $0 },
-            onImageTap: { tapped in
-                guard !immersive else { return }
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                    immersiveFeedInitialPostId = tapped.apiPostId
-                }
-            },
             onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) },
             onPostDeleted: { deleted in
                 entries.removeAll { $0.lookbookPostKey == deleted.lookbookPostKey }
@@ -1049,7 +999,6 @@ private struct LookbookTopicFeedView: View {
     @State private var feedError: String?
     @State private var feedErrorBannerTitle: String?
     @State private var commentsEntry: LookbookEntry?
-    @State private var fullScreenEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
     private let productService = ProductService()
@@ -1064,7 +1013,6 @@ private struct LookbookTopicFeedView: View {
     var body: some View {
         ZStack {
             Theme.Colors.background.ignoresSafeArea()
-
             Group {
                 if feedLoading && entries.isEmpty {
                     LookbookShimmerView()
@@ -1087,21 +1035,7 @@ private struct LookbookTopicFeedView: View {
                     .background(Theme.Colors.background)
                 }
             }
-
-            if let entry = fullScreenEntry {
-                LookbookTransparentFullscreenOverlay(entry: entry) {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                        fullScreenEntry = nil
-                    }
-                }
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 0.94, anchor: .center)),
-                    removal: .opacity
-                ))
-                .zIndex(2)
-            }
         }
-        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: fullScreenEntry?.id)
         .navigationTitle(screenTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -1166,11 +1100,6 @@ private struct LookbookTopicFeedView: View {
         LookbookFeedRowView(
             entry: model.entry,
             onCommentsTap: { commentsEntry = $0 },
-            onImageTap: { tapped in
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                    fullScreenEntry = tapped
-                }
-            },
             onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) },
             onPostDeleted: { deleted in
                 entries.removeAll { $0.lookbookPostKey == deleted.lookbookPostKey }
@@ -1605,6 +1534,62 @@ private struct LookbookPostCardShimmer: View {
     }
 }
 
+// MARK: - Carousel page dots (below media, outside the image)
+/// Maps scroll index to one of five slots when `total > 4` (ends are smaller dots).
+private enum LookbookCarouselDotMapper {
+    static func activeSlot(pageIndex: Int, total: Int) -> Int {
+        precondition(total > 4)
+        if pageIndex <= 0 { return 0 }
+        if pageIndex == 1 { return 1 }
+        if pageIndex >= total - 1 { return 4 }
+        if pageIndex == total - 2 { return 3 }
+        return 2
+    }
+}
+
+private struct LookbookCarouselPageDots: View {
+    let pageIndex: Int
+    let totalPages: Int
+
+    private let dotNormal: CGFloat = 6
+    private let dotEnd: CGFloat = 4
+
+    private var clampedIndex: Int {
+        min(max(pageIndex, 0), max(0, totalPages - 1))
+    }
+
+    var body: some View {
+        Group {
+            if totalPages > 1 {
+                HStack(spacing: 6) {
+                    if totalPages <= 4 {
+                        ForEach(0 ..< totalPages, id: \.self) { i in
+                            dotCircle(active: i == clampedIndex, diameter: dotNormal)
+                        }
+                    } else {
+                        ForEach(0 ..< 5, id: \.self) { slot in
+                            let active = LookbookCarouselDotMapper.activeSlot(pageIndex: clampedIndex, total: totalPages) == slot
+                            let d = (slot == 0 || slot == 4) ? dotEnd : dotNormal
+                            dotCircle(active: active, diameter: d)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, Theme.Spacing.sm)
+                .padding(.bottom, Theme.Spacing.xs)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Image \(clampedIndex + 1) of \(totalPages)")
+            }
+        }
+    }
+
+    private func dotCircle(active: Bool, diameter: CGFloat) -> some View {
+        Circle()
+            .fill(active ? Theme.primaryColor : Theme.Colors.secondaryText.opacity(0.35))
+            .frame(width: diameter, height: diameter)
+    }
+}
+
 // MARK: - Feed post action bar (single layout: like, comment, send, save — used only by `LookbookFeedRowView`)
 private struct LookbookFeedPostActionBar: View {
     let entry: LookbookEntry
@@ -1692,7 +1677,8 @@ private struct LookbookFeedPostActionBar: View {
 /// Remote lookbook image with tap-to-retry on failure (AsyncImage does not reload unless view identity changes).
 private struct LookbookFeedRowRemoteImage: View {
     let url: URL
-    let onSuccessTap: () -> Void
+    /// When nil, the loaded image is not tappable (feed rows: no fullscreen).
+    var onSuccessTap: (() -> Void)? = nil
 
     @State private var reloadNonce = 0
 
@@ -1700,11 +1686,19 @@ private struct LookbookFeedRowRemoteImage: View {
         AsyncImage(url: url) { phase in
             switch phase {
             case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFit()
-                    .contentShape(Rectangle())
-                    .onTapGesture { onSuccessTap() }
+                Group {
+                    if let tap = onSuccessTap {
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .contentShape(Rectangle())
+                            .onTapGesture { tap() }
+                    } else {
+                        image
+                            .resizable()
+                            .scaledToFit()
+                    }
+                }
             case .failure:
                 reloadPrompt
             case .empty:
@@ -1753,7 +1747,6 @@ private struct LookbookFeedRowRemoteImage: View {
 private struct LookbookFeedRowView: View {
     let entry: LookbookEntry
     let onCommentsTap: (LookbookEntry) -> Void
-    let onImageTap: (LookbookEntry) -> Void
     let onProductTap: (String) -> Void
     let onPostDeleted: ((LookbookEntry) -> Void)?
     let onOpenAnalytics: ((LookbookEntry) -> Void)?
@@ -1826,6 +1819,10 @@ private struct LookbookFeedRowView: View {
         return StyleSelectionView.displayName(for: first)
     }
 
+    private var carouselImageURLs: [String] {
+        dedupeOrderedValidLookbookURLs(entry.imageUrls)
+    }
+
     private func openSendForward() {
         guard authService.isAuthenticated else {
             sharePayload = LookbookSharePayload(items: shareItemsForEntry())
@@ -1839,7 +1836,7 @@ private struct LookbookFeedRowView: View {
     }
 
     private var currentDisplayImageURL: String? {
-        let urls = entry.imageUrls
+        let urls = carouselImageURLs
         guard !urls.isEmpty else { return nil }
         if urls.count > 1, urls.indices.contains(carouselPageIndex) {
             return urls[carouselPageIndex]
@@ -1899,7 +1896,7 @@ private struct LookbookFeedRowView: View {
     var body: some View {
         let styleSub = styleSubtitle(for: entry)
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+            HStack(alignment: styleSub == nil ? .center : .top, spacing: Theme.Spacing.sm) {
                 posterAvatar
                 VStack(alignment: .leading, spacing: 2) {
                     Text(entry.posterUsername)
@@ -1920,6 +1917,10 @@ private struct LookbookFeedRowView: View {
                 .zIndex(0)
                 .clipped()
                 .clipShape(Rectangle())
+
+            if carouselImageURLs.count > 1 {
+                LookbookCarouselPageDots(pageIndex: carouselPageIndex, totalPages: carouselImageURLs.count)
+            }
 
             LookbookFeedPostActionBar(
                 entry: entry,
@@ -1973,7 +1974,7 @@ private struct LookbookFeedRowView: View {
 
     @ViewBuilder
     private var lookbookSandboxMediaBlock: some View {
-        let urls = dedupeOrderedValidLookbookURLs(entry.imageUrls)
+        let urls = carouselImageURLs
         Group {
             if urls.isEmpty {
                 // Local document, bundled name, or empty — `lookbookSandboxSingleMedia` resolves each case.
@@ -2029,25 +2030,15 @@ private struct LookbookFeedRowView: View {
         let isCarousel = carouselPageWidth != nil && carouselPageHeight != nil
         Group {
             if let ui = localDocumentUIImage(documentPath) {
-                Button {
-                    onImageTap(entry)
-                } label: {
-                    Image(uiImage: ui)
-                        .resizable()
-                        .scaledToFit()
-                }
-                .buttonStyle(.plain)
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFit()
             } else if let url = URL(string: urlString), !urlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                LookbookFeedRowRemoteImage(url: url, onSuccessTap: { onImageTap(entry) })
+                LookbookFeedRowRemoteImage(url: url)
             } else if !entry.imageNames.isEmpty, let ui = UIImage(named: entry.imageNames[0]) {
-                Button {
-                    onImageTap(entry)
-                } label: {
-                    Image(uiImage: ui)
-                        .resizable()
-                        .scaledToFit()
-                }
-                .buttonStyle(.plain)
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFit()
             } else {
                 lookbookSandboxMediaPlaceholder(fixedCarouselSlot: isCarousel)
             }

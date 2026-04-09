@@ -580,7 +580,7 @@ struct FilteredProductsView: View {
     }
 
     private var filteredProductsSortSheet: some View {
-        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeSheet = nil }, useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeSheet = nil }, useCustomCornerRadius: false, chromeStyle: .navigationDone) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(FilteredProductsSortOption.allCases.enumerated()), id: \.offset) { index, option in
                     Button(action: { viewModel.sortOption = option }) {
@@ -632,7 +632,7 @@ struct FilteredProductsView: View {
     ]
 
     private var stylesSheetContent: some View {
-        OptionsSheet(title: L10n.string("Styles"), onDismiss: { activeSheet = nil }, useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Styles"), onDismiss: { activeSheet = nil }, useCustomCornerRadius: false, chromeStyle: .navigationDone) {
             VStack(alignment: .leading, spacing: 0) {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -682,7 +682,7 @@ struct FilteredProductsView: View {
     }
 
     private var filteredProductsFilterSheet: some View {
-        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeSheet = nil }, useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeSheet = nil }, useCustomCornerRadius: false, chromeStyle: .navigationDone) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                 Text(L10n.string("Condition"))

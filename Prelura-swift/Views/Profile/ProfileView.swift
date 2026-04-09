@@ -715,14 +715,14 @@ struct ProfileView: View {
 
     // MARK: - Sort sheet (same presentation as product Options sheet)
     private var profileSortSheet: some View {
-        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false, chromeStyle: .navigationDone) {
             SortSheetContent(selectedSort: $profileSort, onApply: { activeListingsSheet = nil })
         }
     }
 
     // MARK: - Filter sheet (same presentation as product Options sheet)
     private var profileFilterSheet: some View {
-        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false) {
+        OptionsSheet(title: L10n.string("Filter"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false, chromeStyle: .navigationDone) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                 Text(L10n.string("Condition"))

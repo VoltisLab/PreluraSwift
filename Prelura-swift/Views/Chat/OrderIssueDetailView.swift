@@ -75,7 +75,7 @@ struct OrderIssueDetailView: View {
         card {
             Text(humanReadableIssueType(issue.issueType))
                 .font(Theme.Typography.body)
-                .foregroundColor(Theme.Colors.primaryText)
+                .foregroundColor(Theme.primaryColor)
         }
 
         sectionLabel("Description")
@@ -251,7 +251,7 @@ struct OrderIssueDetailView: View {
                 }
             }
             .padding(Theme.Spacing.md)
-            .background(isSelected ? Theme.primaryColor.opacity(0.12) : Theme.Colors.secondaryBackground)
+            .background(Theme.Colors.background)
             .clipShape(RoundedRectangle(cornerRadius: Self.issueContentCornerRadius))
             .overlay(
                 RoundedRectangle(cornerRadius: Self.issueContentCornerRadius)

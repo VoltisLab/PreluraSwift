@@ -1,8 +1,16 @@
 import SwiftUI
 
-/// Reusable modal sheet with title, close button, and consistent presentation. Use for product options, sort, filter, and similar modals.
+/// How the sheet header dismisses and is laid out. Sort/filter use `.navigationDone` to match Lookbook **Comments** (inline nav title + system drag indicator + **Done**).
+enum OptionsSheetChromeStyle {
+    /// Custom capsule handle, centered title row, trailing × (`GlassIconButton`). Hides the system drag indicator.
+    case handleAndClose
+    /// `NavigationStack` with inline `navigationTitle` and trailing **Done** (same toolbar treatment as `LookbookCommentsSheet`). Shows the system drag indicator.
+    case navigationDone
+}
+
+/// Reusable modal sheet with title and consistent presentation. Use for product options, sort, filter, and similar modals.
 /// For multiple related sheets (sort / filter / search), use one `.sheet(item:)` with an `Identifiable` enum; chaining several `.sheet(isPresented:)` on the same view stacks modals when more than one binding is true.
-/// Matches Sort modal: one colour (Theme.Colors.modalSheetBackground) for nav bar and content area.
+/// Matches Sort modal: one colour (`Theme.Colors.modalSheetBackground`) for nav bar and content area.
 struct OptionsSheet<Content: View>: View {
     let title: String
     let onDismiss: () -> Void
@@ -11,6 +19,7 @@ struct OptionsSheet<Content: View>: View {
     var useCustomCornerRadius: Bool = true
     /// When true (default), a bottom `Spacer` fills the sheet so content stays at the top under `.fraction` detents. Set false with a tight `.height` detent so the sheet only wraps the header + rows (e.g. product Options).
     var fillsAvailableVerticalSpace: Bool = true
+    var chromeStyle: OptionsSheetChromeStyle = .handleAndClose
     @ViewBuilder let content: () -> Content
 
     @State private var selectedDetent: PresentationDetent
@@ -24,6 +33,7 @@ struct OptionsSheet<Content: View>: View {
         detents: [PresentationDetent] = [.fraction(0.58), .large],
         useCustomCornerRadius: Bool = true,
         fillsAvailableVerticalSpace: Bool = true,
+        chromeStyle: OptionsSheetChromeStyle = .handleAndClose,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
@@ -31,11 +41,31 @@ struct OptionsSheet<Content: View>: View {
         self.detents = detents
         self.useCustomCornerRadius = useCustomCornerRadius
         self.fillsAvailableVerticalSpace = fillsAvailableVerticalSpace
+        self.chromeStyle = chromeStyle
         self.content = content
         _selectedDetent = State(initialValue: detents.first ?? .fraction(0.58))
     }
 
     var body: some View {
+        chromeRoot
+            .background(sheetBackground)
+            .presentationDetents(Set(detents), selection: $selectedDetent)
+            .presentationDragIndicator(chromeStyle == .navigationDone ? .visible : .hidden)
+            .presentationBackground(sheetBackground)
+            .modifier(SheetCornerRadiusModifier(apply: useCustomCornerRadius))
+    }
+
+    @ViewBuilder
+    private var chromeRoot: some View {
+        switch chromeStyle {
+        case .handleAndClose:
+            handleAndCloseLayout
+        case .navigationDone:
+            navigationDoneLayout
+        }
+    }
+
+    private var handleAndCloseLayout: some View {
         VStack(spacing: 0) {
             // Custom handle: avoids overlap with a centered title when using the system drag indicator
             // (fixed detents + `presentationBackground` often crowd the stock indicator into the header row).
@@ -75,11 +105,33 @@ struct OptionsSheet<Content: View>: View {
             }
         }
         .padding(.top, Theme.Spacing.sm)
-        .background(sheetBackground)
-        .presentationDetents(Set(detents), selection: $selectedDetent)
-        .presentationDragIndicator(.hidden)
-        .presentationBackground(sheetBackground)
-        .modifier(SheetCornerRadiusModifier(apply: useCustomCornerRadius))
+    }
+
+    /// Matches `LookbookCommentsSheet`: inline title, toolbar **Done** with primary tint (system glass / press animation on supported OS).
+    private var navigationDoneLayout: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                content()
+                    .frame(maxWidth: .infinity, alignment: .top)
+                if fillsAvailableVerticalSpace {
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(sheetBackground)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(sheetBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.string("Done"), action: onDismiss)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Theme.primaryColor)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

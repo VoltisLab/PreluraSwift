@@ -1,29 +1,26 @@
 import SwiftUI
 
-// MARK: - Reusable offer modal content (marketplace + chat)
+// MARK: - Form body (use inside `OptionsSheet` only — no sheet chrome or full-bleed background)
 
-/// Shared offer form: optional product row + chips when item provided, £ input, Clear + Send offer. Use inside OptionsSheet for same look in marketplace and chat.
-struct OfferModalContent: View {
-    /// When non-nil, show product row and -5/-10/-15% chips. When nil, show compact form (title + input + buttons).
+/// Offer form for marketplace item detail and chat counter-offer. Parent supplies `OptionsSheet` surface; this view must not add a second full-screen background.
+struct SendOfferFormContent: View {
     var item: Item?
-    /// For compact form (item == nil): used for 60% min validation. When nil, only value > 0 is required.
     var listingPrice: Double? = nil
     var onSubmit: (Double) -> Void
     var onDismiss: () -> Void
     @Binding var isSubmitting: Bool
-    /// Optional: caller can set to show API/validation errors (e.g. marketplace createOffer failure).
     @Binding var errorMessage: String?
-    /// When showing the compact "item send offer" variant, controls whether the offer text field is
-    /// prefilled with the item's listing price.
     var prefillOfferAmountFromItem: Bool = true
+
     @State private var offerAmount: String = ""
-    @State private var selectedSuggestionPrice: Double? = nil
+    @State private var selectedSuggestionPrice: Double?
     @FocusState private var offerFieldFocused: Bool
 
     private var maxPrice: Double {
         if let item = item { return item.price }
         return listingPrice ?? .infinity
     }
+
     private var fivePercent: Double { maxPrice * 0.95 }
     private var tenPercent: Double { maxPrice * 0.90 }
     private var fifteenPercent: Double { maxPrice * 0.85 }
@@ -39,14 +36,8 @@ struct OfferModalContent: View {
         return true
     }
 
-    private var optionDivider: some View {
-        // Intentionally no separator/divider: design wants a clean modal.
-        EmptyView()
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Top: product (optional) + chips (optional) + price field — tightened spacing
             if let item = item {
                 HStack(alignment: .top, spacing: Theme.Spacing.md) {
                     if let url = item.imageURLs.first, let imageURL = URL(string: url) {
@@ -88,7 +79,6 @@ struct OfferModalContent: View {
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.sm)
-                optionDivider
 
                 HStack(spacing: 8) {
                     suggestionChip(price: fivePercent, discount: "-5%")
@@ -97,10 +87,8 @@ struct OfferModalContent: View {
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.xs)
-                optionDivider
             }
 
-            // Your offer input — minimal top padding for slicker look
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(L10n.string("Your offer"))
                     .font(Theme.Typography.subheadline)
@@ -126,15 +114,16 @@ struct OfferModalContent: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)
                 .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(30)
+                .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 30)
+                    RoundedRectangle(cornerRadius: 30, style: .continuous)
                         .strokeBorder(Theme.Colors.glassBorder, lineWidth: 1)
                 )
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.top, item == nil ? Theme.Spacing.xs : Theme.Spacing.sm)
             .padding(.bottom, Theme.Spacing.xs)
+
             if let err = errorMessage, !err.isEmpty {
                 Text(err)
                     .font(Theme.Typography.caption)
@@ -142,25 +131,21 @@ struct OfferModalContent: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.bottom, Theme.Spacing.xs)
             }
-            optionDivider
 
-            // Clear + Send Offer — tight spacing below the input divider
             VStack(spacing: Theme.Spacing.sm) {
                 BorderGlassButton(L10n.string("Clear")) {
                     offerAmount = ""
                     selectedSuggestionPrice = nil
                     errorMessage = nil
                 }
-                PrimaryGlassButton(L10n.string("Send offer"), icon: "paperplane.fill", isLoading: isSubmitting, action: submitOffer)
-                    .disabled(!canSubmit)
+                PrimaryGlassButton(L10n.string("Send offer"), icon: "paperplane.fill", isEnabled: canSubmit, isLoading: isSubmitting, action: submitOffer)
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.top, Theme.Spacing.sm)
             .padding(.bottom, Theme.Spacing.sm)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(.vertical, Theme.Spacing.sm)
-        .background(Theme.Colors.background)
+        .padding(.vertical, Theme.Spacing.md)
         .onAppear {
             if let item = item {
                 if prefillOfferAmountFromItem {
@@ -205,7 +190,6 @@ struct OfferModalContent: View {
 
     private func suggestionChip(price: Double, discount: String) -> some View {
         let isSelected = selectedSuggestionPrice == price
-        let priceStr = price == floor(price) ? "\(Int(price))" : String(format: "%.2f", price)
         return Button(action: {
             HapticManager.selection()
             offerAmount = price == floor(price) ? "\(Int(price))" : String(format: "%.2f", price)
@@ -213,7 +197,7 @@ struct OfferModalContent: View {
             errorMessage = nil
         }) {
             HStack(spacing: 6) {
-                Text("£\(priceStr)")
+                Text("£\(price == floor(price) ? "\(Int(price))" : String(format: "%.2f", price))")
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
                 Text(discount)
@@ -226,19 +210,18 @@ struct OfferModalContent: View {
             .padding(.horizontal, 12)
             .background(isSelected ? Theme.primaryColor : Color.clear)
             .overlay(
-                RoundedRectangle(cornerRadius: 20)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .strokeBorder(isSelected ? Theme.primaryColor : Theme.Colors.glassBorder, lineWidth: isSelected ? 1.5 : 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
         .buttonStyle(PlainTappableButtonStyle())
     }
 }
 
-// MARK: - Marketplace wrapper (OptionsSheet content: createOffer + navigate to chat)
+// MARK: - Item detail: same pattern as `ProductOptionsSheet` (one sheet root = `OptionsSheet` + content)
 
-/// Send-offer content for OptionsSheet on item detail. Uses OfferModalContent and wires createOffer + navigate to Inbox.
-struct SendOfferSheetContent: View {
+struct SendOfferSheet: View {
     let item: Item
     var onDismiss: () -> Void
 
@@ -250,15 +233,17 @@ struct SendOfferSheetContent: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        OfferModalContent(
-            item: item,
-            listingPrice: nil,
-            onSubmit: { value in submitOffer(value: value) },
-            onDismiss: onDismiss,
-            isSubmitting: $isSubmitting,
-            errorMessage: $errorMessage,
-            prefillOfferAmountFromItem: false
-        )
+        OptionsSheet(title: L10n.string("Send an offer"), onDismiss: onDismiss, useCustomCornerRadius: false) {
+            SendOfferFormContent(
+                item: item,
+                listingPrice: nil,
+                onSubmit: { value in submitOffer(value: value) },
+                onDismiss: onDismiss,
+                isSubmitting: $isSubmitting,
+                errorMessage: $errorMessage,
+                prefillOfferAmountFromItem: false
+            )
+        }
     }
 
     private func submitOffer(value: Double) {
@@ -270,7 +255,6 @@ struct SendOfferSheetContent: View {
             productService.updateAuthToken(authService.authToken)
             chatService.updateAuthToken(authService.authToken)
             do {
-                // Reuse existing conversation for the same product so we don't create duplicate chats.
                 let convs = try await chatService.getConversations()
                 let existing = convs.first { conv in
                     conv.offer?.products?.contains(where: { $0.id == productIdStr }) == true

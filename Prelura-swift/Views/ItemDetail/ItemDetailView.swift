@@ -156,10 +156,8 @@ struct ItemDetailView: View {
             GuestSignInPromptView()
         }
         .sheet(isPresented: $showSendOfferSheet) {
-            OptionsSheet(title: L10n.string("Send an offer"), onDismiss: { showSendOfferSheet = false }, useCustomCornerRadius: false) {
-                SendOfferSheetContent(item: effectiveItem, onDismiss: { showSendOfferSheet = false })
-                    .environmentObject(authService)
-            }
+            SendOfferSheet(item: effectiveItem, onDismiss: { showSendOfferSheet = false })
+                .environmentObject(authService)
         }
         .navigationDestination(isPresented: $showPaymentSheet) {
             PaymentView(products: [effectiveItem], totalPrice: effectiveItem.price)
