@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Network / API error card: red outline, elevated surface, `PrimaryGlassButton` for retry when `onTryAgain` is set.
+/// Network / API error card: same inner surface as chat offer cards (`chatInlineCardBackground`), red accent on icon and border, `PrimaryGlassButton` for retry when `onTryAgain` is set.
 struct FeedNetworkBannerView: View {
     let message: String
     /// Optional short headline (e.g. “Secure connection”) for TLS / branded transport errors.
@@ -19,7 +19,7 @@ struct FeedNetworkBannerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md + 2) {
-            HStack(alignment: .top, spacing: Theme.Spacing.md) {
+            HStack(alignment: .center, spacing: Theme.Spacing.md) {
                 ZStack {
                     Circle()
                         .fill(Theme.Colors.error.opacity(0.2))
@@ -43,6 +43,7 @@ struct FeedNetworkBannerView: View {
                         .foregroundStyle(Theme.Colors.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
                         .lineSpacing(4)
+                        .multilineTextAlignment(.leading)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -65,19 +66,14 @@ struct FeedNetworkBannerView: View {
         .padding(.vertical, Theme.Spacing.lg + 4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Theme.Colors.secondaryBackground)
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Theme.Colors.error.opacity(0.07))
-            }
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(Theme.Colors.chatInlineCardBackground)
         )
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(Theme.Colors.error.opacity(0.88), lineWidth: 1.5)
         )
-        .shadow(color: Color.black.opacity(0.22), radius: 28, x: 0, y: 14)
-        .shadow(color: Theme.Colors.error.opacity(0.14), radius: 10, x: 0, y: 4)
+        .shadow(color: Color.black.opacity(0.18), radius: 20, x: 0, y: 10)
     }
 }
 
