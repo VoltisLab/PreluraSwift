@@ -100,8 +100,10 @@ struct ChatWithSellerView: View {
     let seller: User
     /// When non-nil, chat shows this product at the top (e.g. when starting conversation from product detail).
     var item: Item? = nil
-    /// Prefills the composer when opening the thread (e.g. lookbook share).
+    /// Prefills the composer when opening the thread (e.g. draft text).
     var precomposedMessage: String? = nil
+    /// When set, this text is sent as the first message once the thread id is ready (composer stays empty). Use for lookbook_share JSON so it never appears as a draft.
+    var autoSendMessageOnReady: String? = nil
     let authService: AuthService?
     @State private var resolvedConversation: Conversation?
     @State private var isLoading = true
@@ -110,7 +112,12 @@ struct ChatWithSellerView: View {
     var body: some View {
         Group {
             if let conv = resolvedConversation {
-                ChatDetailView(conversation: conv, item: item, initialComposerText: precomposedMessage)
+                ChatDetailView(
+                    conversation: conv,
+                    item: item,
+                    initialComposerText: precomposedMessage,
+                    autoSendMessageOnReady: autoSendMessageOnReady
+                )
             } else if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -119,7 +126,8 @@ struct ChatWithSellerView: View {
                 ChatDetailView(
                     conversation: Conversation(id: "0", recipient: seller, lastMessage: nil, lastMessageTime: nil, unreadCount: 0),
                     item: item,
-                    initialComposerText: precomposedMessage
+                    initialComposerText: precomposedMessage,
+                    autoSendMessageOnReady: autoSendMessageOnReady
                 )
             }
         }
@@ -229,6 +237,8 @@ struct ChatDetailView: View {
     var isOpenedFromArchive: Bool = false
     /// Optional text to seed the message field (share flows).
     var initialComposerText: String? = nil
+    /// When non-nil, sent automatically after the real conversation id loads (composer is not prefilled with this).
+    var autoSendMessageOnReady: String? = nil
 
     @EnvironmentObject var authService: AuthService
     @Environment(\.optionalTabCoordinator) private var tabCoordinator
@@ -248,6 +258,7 @@ struct ChatDetailView: View {
     @State private var typingKeepaliveTask: Task<Void, Never>?
     @State private var didSendTypingStart = false
     @State private var pendingMessageUUID: String?
+    @State private var didConsumeAutoSendMessage = false
     @State private var showCounterOfferSheet = false
     /// The specific offer card the user tapped to open the counter sheet.
     @State private var counterTargetOffer: OfferInfo?
@@ -479,13 +490,23 @@ struct ChatDetailView: View {
             && !hasLocalOfferHistoryCache(convId: convId)
     }
 
-    init(conversation: Conversation, item: Item? = nil, isOpenedFromArchive: Bool = false, initialComposerText: String? = nil) {
+    init(
+        conversation: Conversation,
+        item: Item? = nil,
+        isOpenedFromArchive: Bool = false,
+        initialComposerText: String? = nil,
+        autoSendMessageOnReady: String? = nil
+    ) {
         self.conversation = conversation
         self.item = item
         self.isOpenedFromArchive = isOpenedFromArchive
         self.initialComposerText = initialComposerText
+        self.autoSendMessageOnReady = autoSendMessageOnReady
         _displayedConversation = State(initialValue: conversation)
-        let seed = initialComposerText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let auto = autoSendMessageOnReady?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let seedRaw = initialComposerText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Do not put auto-send payload in the composer (avoids raw JSON in the text field).
+        let seed = (!auto.isEmpty && auto == seedRaw) ? "" : seedRaw
         _newMessage = State(initialValue: seed)
         // Hydrate from in-memory product cache immediately so the header URL exists on first layout (onAppear ran too late → spinner).
         if let pid = conversation.offer?.products?.first?.id.flatMap({ Int($0) }) {
@@ -500,8 +521,13 @@ struct ChatDetailView: View {
         }
     }
 
-    private var recipientTitle: String {
-        WearhouseSupportBranding.displayTitle(forRecipientUsername: displayedConversation.recipient.username)
+    /// Chat nav bar: raw username for people threads; branded title for WEARHOUSE Support.
+    private var chatToolbarUsernameLabel: String {
+        let u = displayedConversation.recipient.username
+        if WearhouseSupportBranding.isSupportRecipient(username: u) {
+            return WearhouseSupportBranding.displayTitle(forRecipientUsername: u)
+        }
+        return u
     }
 
     private var typingDisplayName: String {
@@ -1012,9 +1038,9 @@ struct ChatDetailView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 NavigationLink(destination: UserProfileView(seller: displayedConversation.recipient, authService: authService)) {
-                    HStack(spacing: Theme.Spacing.sm) {
+                    HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                         chatTitleAvatar(url: displayedConversation.recipient.avatarURL, username: displayedConversation.recipient.username)
-                        Text(recipientTitle)
+                        Text(chatToolbarUsernameLabel)
                             .font(.headline)
                             .foregroundColor(Theme.Colors.primaryText)
                             .lineLimit(1)
@@ -1410,6 +1436,7 @@ struct ChatDetailView: View {
                 } else {
                     self.rebuildTimelineOrder()
                 }
+                self.performPendingAutoSendIfNeeded()
             }
             if let msgs = fetchedMsgs, !msgs.isEmpty {
                 let idsToMarkRead = msgs
@@ -2310,7 +2337,7 @@ struct ChatDetailView: View {
         }
     }
 
-    /// Inline “sold” notice: same card treatment as offer rows (secondary background + border).
+    /// Inline “sold” notice: same card treatment as other in-thread banners (inline card fill + border).
     private var itemSoldPersistentBanner: some View {
         HStack(alignment: .center, spacing: Theme.Spacing.sm) {
             Image(systemName: "tag.slash.fill")
@@ -2324,7 +2351,7 @@ struct ChatDetailView: View {
         }
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.secondaryBackground)
+        .background(Theme.Colors.chatInlineCardBackground)
         .cornerRadius(24)
         .overlay(
             RoundedRectangle(cornerRadius: 24)
@@ -2961,6 +2988,17 @@ struct ChatDetailView: View {
         }
     }
 
+    /// Lookbook share / similar: send structured payload once the thread exists, without showing it in the composer.
+    private func performPendingAutoSendIfNeeded() {
+        guard !didConsumeAutoSendMessage else { return }
+        let payload = autoSendMessageOnReady?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !payload.isEmpty else { return }
+        guard displayedConversation.id != "0" else { return }
+        didConsumeAutoSendMessage = true
+        newMessage = payload
+        sendMessage()
+    }
+
     private func sendMessage() {
         let raw = newMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         let text = ProfanityFilter.sanitize(raw)
@@ -3248,7 +3286,7 @@ struct OfferCardView: View {
         }
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.secondaryBackground)
+        .background(Theme.Colors.chatInlineCardBackground)
         .cornerRadius(24)
         .overlay(
             RoundedRectangle(cornerRadius: 24)
@@ -3448,7 +3486,7 @@ struct OrderConfirmationCardView: View {
         }
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.secondaryBackground)
+        .background(Theme.Colors.chatInlineCardBackground)
         .cornerRadius(24)
         .overlay(
             RoundedRectangle(cornerRadius: 24)
@@ -3620,7 +3658,7 @@ struct SoldConfirmationCardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             ZStack(alignment: .topLeading) {
-                Theme.Colors.secondaryBackground
+                Theme.Colors.chatInlineCardBackground
                 AnimatedPrimaryHorizontalFill(cornerRadius: 24)
                     .opacity(0.85)
             }
@@ -3782,7 +3820,7 @@ private struct OrderCancellationRequestChatCardView: View {
             }
         }
         .padding(Theme.Spacing.md)
-        .background(Theme.Colors.secondaryBackground)
+        .background(Theme.Colors.chatInlineCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
     }
 
@@ -3829,7 +3867,7 @@ private struct OrderCancellationOutcomeChatCardView: View {
             .foregroundColor(Theme.Colors.secondaryText)
             .padding(Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.Colors.secondaryBackground)
+            .background(Theme.Colors.chatInlineCardBackground)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
     }
 }
@@ -3987,7 +4025,7 @@ private struct OrderIssueChatCardView: View {
             }
             .padding(Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.Colors.secondaryBackground)
+            .background(Theme.Colors.chatInlineCardBackground)
             .cornerRadius(24)
             .overlay(
                 RoundedRectangle(cornerRadius: 24)
@@ -4240,7 +4278,7 @@ struct MessageBubbleView: View {
                     endPoint: .bottomTrailing
                 )
                 : LinearGradient(
-                    colors: [Theme.Colors.secondaryBackground, Theme.Colors.secondaryBackground],
+                    colors: [Theme.Colors.chatInlineCardBackground, Theme.Colors.chatInlineCardBackground],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -4318,7 +4356,7 @@ struct MessageBubbleView: View {
                         endPoint: .bottomTrailing
                     )
                     : LinearGradient(
-                        colors: [Theme.Colors.secondaryBackground, Theme.Colors.secondaryBackground],
+                        colors: [Theme.Colors.chatInlineCardBackground, Theme.Colors.chatInlineCardBackground],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )

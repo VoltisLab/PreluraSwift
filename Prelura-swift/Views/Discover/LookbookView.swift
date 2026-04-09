@@ -1903,7 +1903,8 @@ private struct LookbookFeedRowView: View {
                 ChatWithSellerView(
                     seller: user,
                     item: nil,
-                    precomposedMessage: forwardMessageForChat,
+                    precomposedMessage: nil,
+                    autoSendMessageOnReady: forwardMessageForChat,
                     authService: authService
                 )
                 .environmentObject(authService)
@@ -2112,14 +2113,20 @@ private struct LookbookSendToShareSheet: View {
                 } else {
                     List {
                         Section {
-                            TextField(L10n.string("Search username"), text: $searchQuery)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .submitLabel(.search)
-                                .onSubmit { Task { await runSearchNow() } }
+                            DiscoverSearchField(
+                                text: $searchQuery,
+                                placeholder: L10n.string("Search username"),
+                                onSubmit: { Task { await runSearchNow() } },
+                                onChange: { _ in scheduleSearch() },
+                                outerPadding: false,
+                                topPadding: 0
+                            )
+                            .listRowInsets(EdgeInsets(top: Theme.Spacing.sm, leading: Theme.Spacing.md, bottom: Theme.Spacing.sm, trailing: Theme.Spacing.md))
+                            .listRowBackground(Theme.Colors.background)
+                            .listRowSeparator(.hidden)
                         }
                         if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 {
-                            Section(L10n.string("Search results")) {
+                            Section {
                                 if searchLoading {
                                     HStack {
                                         Spacer()
@@ -2135,20 +2142,26 @@ private struct LookbookSendToShareSheet: View {
                                         userRow(user)
                                     }
                                 }
+                            } header: {
+                                sendToSectionHeader(L10n.string("Search results"))
                             }
                         } else {
                             if !recentUsers.isEmpty {
-                                Section(L10n.string("Recent")) {
+                                Section {
                                     ForEach(recentUsers) { user in
                                         userRow(user)
                                     }
+                                } header: {
+                                    sendToSectionHeader(L10n.string("Recent"))
                                 }
                             }
                             if !followerUsers.isEmpty {
-                                Section(L10n.string("Followers")) {
+                                Section {
                                     ForEach(followerUsers) { user in
                                         userRow(user)
                                     }
+                                } header: {
+                                    sendToSectionHeader(L10n.string("Followers"))
                                 }
                             }
                             if recentUsers.isEmpty && followerUsers.isEmpty {
@@ -2166,42 +2179,58 @@ private struct LookbookSendToShareSheet: View {
             .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Send to"))
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Theme.Colors.background, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button(L10n.string("Close")) { dismiss() }
+                        .foregroundStyle(Theme.primaryColor)
                 }
             }
-            .onChange(of: searchQuery) { _, _ in scheduleSearch() }
             .onDisappear { searchTask?.cancel() }
             .task { await loadRecipients() }
         }
     }
 
+    private func sendToSectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(Theme.Typography.caption)
+            .foregroundStyle(Theme.Colors.secondaryText)
+            .textCase(nil)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
+    }
+
     @ViewBuilder
     private func userRow(_ user: User) -> some View {
-        Button {
-            guard !isBlockedPreluraSupportRecipient(user) else { return }
-            dismiss()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                onPick(user)
-            }
-        } label: {
-            HStack(spacing: Theme.Spacing.sm) {
-                avatar(for: user)
-                    .frame(width: 40, height: 40)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(user.displayName)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Theme.Colors.primaryText)
-                    Text("@\(user.username)")
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.secondaryText)
+        let blocked = isBlockedPreluraSupportRecipient(user)
+        HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+            avatar(for: user)
+                .frame(width: 40, height: 40)
+            Text("@\(user.username)")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Theme.Colors.primaryText)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button {
+                guard !blocked else { return }
+                HapticManager.tap()
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    onPick(user)
                 }
-                Spacer(minLength: 0)
+            } label: {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(blocked ? Theme.Colors.tertiaryText : Theme.primaryColor)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            .padding(.vertical, 4)
+            .buttonStyle(.plain)
+            .disabled(blocked)
+            .accessibilityLabel(L10n.string("Send"))
         }
-        .buttonStyle(PlainTappableButtonStyle())
+        .padding(.vertical, 4)
+        .listRowBackground(Theme.Colors.background)
     }
 
     @ViewBuilder
