@@ -200,7 +200,7 @@ struct EmailChangeVerificationView: View {
         if msg.localizedCaseInsensitiveContains("invalid") && (msg.localizedCaseInsensitiveContains("code") || msg.localizedCaseInsensitiveContains("verification")) {
             return L10n.string("Invalid verification code. Please check and try again.")
         }
-        return msg
+        return L10n.userFacingError(error)
     }
 
     private func resendCode() {
@@ -217,7 +217,7 @@ struct EmailChangeVerificationView: View {
             } catch {
                 await MainActor.run {
                     isResending = false
-                    resendMessage = error.localizedDescription
+                    resendMessage = L10n.userFacingError(error)
                 }
             }
         }

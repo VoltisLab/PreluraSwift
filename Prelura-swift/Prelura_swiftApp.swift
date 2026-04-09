@@ -176,6 +176,7 @@ struct AppearanceRootView: View {
             .fullScreenCover(item: $appRouter.pendingItem) { item in
             DeepLinkOverlayView(item: item, onDismiss: { appRouter.clearPending() })
                 .environmentObject(authService)
+                .environmentObject(SavedLookbookFavoritesStore.shared)
             }
             .onAppear { registerPushTokenIfNeeded(authService: authService) }
             .onChange(of: authService.isAuthenticated) { _, _ in registerPushTokenIfNeeded(authService: authService) }

@@ -165,7 +165,7 @@ struct PaymentSettingsView: View {
             }
         } catch {
             await MainActor.run {
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
             }
         }
     }
@@ -178,7 +178,7 @@ struct PaymentSettingsView: View {
             try await userService.deletePaymentMethod(paymentMethodId: id)
             paymentMethod = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 
@@ -191,7 +191,7 @@ struct PaymentSettingsView: View {
             try await userService.clearPayoutBankAccount()
             payoutBankAccount = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 }

@@ -67,7 +67,7 @@ struct VerifyUserView: View {
             } catch {
                 await MainActor.run {
                     status = .failure
-                    errorMessage = error.localizedDescription
+                    errorMessage = L10n.userFacingError(error)
                 }
             }
         }

@@ -83,7 +83,7 @@ struct SellerOrderIssueDetailsView: View {
         } catch {
             await MainActor.run {
                 isOpeningSupport = false
-                supportError = error.localizedDescription
+                supportError = L10n.userFacingError(error)
             }
         }
     }

@@ -128,7 +128,7 @@ struct CancelOrderView: View {
                 dismiss()
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 }

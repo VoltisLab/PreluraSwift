@@ -211,7 +211,7 @@ struct ItemDetailView: View {
                         try await viewModel.deleteProduct(productId: productId)
                         await MainActor.run { dismiss() }
                     } catch {
-                        await MainActor.run { deleteErrorMessage = error.localizedDescription; showDeleteError = true }
+                        await MainActor.run { deleteErrorMessage = L10n.userFacingError(error); showDeleteError = true }
                     }
                 }
             }
@@ -230,7 +230,7 @@ struct ItemDetailView: View {
                         }
                         await MainActor.run { showMarkSoldConfirm = false }
                     } catch {
-                        await MainActor.run { markSoldErrorMessage = error.localizedDescription; showMarkSoldError = true }
+                        await MainActor.run { markSoldErrorMessage = L10n.userFacingError(error); showMarkSoldError = true }
                     }
                 }
             }

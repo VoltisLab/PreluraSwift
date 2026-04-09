@@ -455,7 +455,7 @@ enum AuthError: Error, LocalizedError {
         case .registrationError(let message):
             return message
         case .networkError(let error):
-            return error.localizedDescription
+            return L10n.userFacingError(error)
         }
     }
 }

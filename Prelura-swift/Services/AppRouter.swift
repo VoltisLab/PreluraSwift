@@ -77,6 +77,19 @@ final class AppRouter: ObservableObject {
         return r
     }
 
+    /// Lookbook post id from `https://…/lookbook/{uuid}` on a supported universal-link host (same rules as `handle(url:)`).
+    static func lookbookPostIdIfPresent(in url: URL) -> String? {
+        let scheme = (url.scheme ?? "").lowercased()
+        guard scheme == "http" || scheme == "https" else { return nil }
+        let host = (url.host ?? "").lowercased()
+        guard isHttpsUniversalLinkHost(host) else { return nil }
+        let parts = url.path.split(separator: "/").map(String.init).filter { !$0.isEmpty }
+        guard parts.count >= 2, parts[0].lowercased() == "lookbook" else { return nil }
+        let raw = parts[1]
+        let idStr = (raw.removingPercentEncoding ?? raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        return idStr.isEmpty ? nil : idStr
+    }
+
     /// Handle URL (e.g. prelura://product/Ab3xY9k2Mn, https://mywearhouse.co.uk/item/Ab3xY9k2Mn, prelura://user/john).
     func handle(url: URL) {
         var dest: DeepLinkDestination?
@@ -93,12 +106,8 @@ final class AppRouter: ObservableObject {
                 if !slug.isEmpty {
                     dest = .product(publicSlug: slug)
                 }
-            } else if parts.count >= 2, parts[0].lowercased() == "lookbook" {
-                let raw = parts[1]
-                let idStr = (raw.removingPercentEncoding ?? raw).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !idStr.isEmpty {
-                    dest = .lookbookPost(id: idStr)
-                }
+            } else if let lbId = Self.lookbookPostIdIfPresent(in: url) {
+                dest = .lookbookPost(id: lbId)
             } else if parts.count >= 3, parts[0].lowercased() == "app", parts[1].lowercased() == "u" {
                 let raw = parts[2]
                 let username = (raw.removingPercentEncoding ?? raw).trimmingCharacters(in: .whitespacesAndNewlines)

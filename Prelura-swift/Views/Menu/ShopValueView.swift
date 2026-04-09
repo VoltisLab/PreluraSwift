@@ -115,7 +115,7 @@ struct ShopValueView: View {
             await MainActor.run {
                 // Do not keep stale numbers from a previous successful response.
                 self.earnings = nil
-                self.errorMessage = error.localizedDescription
+                self.errorMessage = L10n.userFacingError(error)
                 self.isLoading = false
             }
         }

@@ -187,6 +187,7 @@ enum L10n {
         "Photo": "Φωτογραφία",
         "Lookbook": "Lookbook",
         "No Lookbook posts yet": "Δεν υπάρχουν δημοσιεύσεις Lookbook ακόμα",
+        "No comments yet": "Δεν υπάρχουν σχόλια ακόμα",
         "Lookbook upload": "Μεταφόρτωση Lookbook",
 
         // Profile (Favourites used from Menu section)
@@ -518,6 +519,10 @@ enum L10n {
         // Network / connection errors
         "Unable to connect. Please check your internet connection.": "Αδυναμία σύνδεσης. Ελέγξτε τη σύνδεσή σας στο διαδίκτυο.",
         "Connection timed out. Please try again.": "Λήξη χρόνου σύνδεσης. Δοκιμάστε ξανά.",
+        "We couldn't complete a secure connection. Please try again shortly.": "Δεν ήταν δυνατή η ασφαλής σύνδεση. Δοκιμάστε ξανά σε λίγο.",
+        "Secure connection": "Ασφαλής σύνδεση",
+        "Try again": "Δοκιμάστε ξανά",
+        "Pull down to refresh": "Σύρετε προς τα κάτω για ανανέωση",
 
         // AI chat – empty results
         "I couldn't find anything matching that. Try different colours or categories.": "Δεν βρήκα τίποτα που να ταιριάζει. Δοκιμάστε άλλα χρώματα ή κατηγορίες.",
@@ -547,8 +552,24 @@ enum L10n {
 
 // MARK: - User-facing error messages
 extension L10n {
-    /// Returns a short, user-friendly message for API/network errors (e.g. connection error).
+
+    /// Short headline for inline error banners when the issue is transport/security (optional UI).
+    static func userFacingErrorBannerTitle(_ error: Error) -> String? {
+        for e in unwindErrorChain(error) {
+            if secureTransportMappedKey(for: e) != nil {
+                return L10n.string("Secure connection")
+            }
+        }
+        return nil
+    }
+
+    /// Returns a short, user-friendly message for API/network errors (never raw TLS/SSL strings in UI).
     static func userFacingError(_ error: Error) -> String {
+        for e in unwindErrorChain(error) {
+            if let key = secureTransportMappedKey(for: e) {
+                return L10n.string(key)
+            }
+        }
         if let urlError = error as? URLError {
             switch urlError.code {
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
@@ -561,6 +582,60 @@ extension L10n {
                 break
             }
         }
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain {
+            switch ns.code {
+            case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost, NSURLErrorDataNotAllowed:
+                return L10n.string("Unable to connect. Please check your internet connection.")
+            case NSURLErrorTimedOut:
+                return L10n.string("Connection timed out. Please try again.")
+            case NSURLErrorCannotConnectToHost, NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed:
+                return L10n.string("Unable to connect. Please check your internet connection.")
+            default:
+                break
+            }
+        }
         return error.localizedDescription
+    }
+
+    private static func unwindErrorChain(_ error: Error) -> [Error] {
+        var out: [Error] = [error]
+        var cur: NSError? = error as NSError
+        var guardDepth = 0
+        while let n = cur, guardDepth < 8, let next = n.userInfo[NSUnderlyingErrorKey] as? NSError {
+            out.append(next)
+            cur = next
+            guardDepth += 1
+        }
+        return out
+    }
+
+    /// Returns localization key for branded secure-transport copy, or nil.
+    private static func secureTransportMappedKey(for error: Error) -> String? {
+        let lower = error.localizedDescription.lowercased()
+        if lower.contains("tls") || lower.contains("ssl") || lower.contains("certificate")
+            || lower.contains("handshake") || lower.contains("server trust")
+        {
+            return "We couldn't complete a secure connection. Please try again shortly."
+        }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+                 .serverCertificateNotYetValid, .clientCertificateRejected, .clientCertificateRequired:
+                return "We couldn't complete a secure connection. Please try again shortly."
+            default:
+                break
+            }
+        }
+        let ns = error as NSError
+        guard ns.domain == NSURLErrorDomain else { return nil }
+        switch ns.code {
+        case NSURLErrorSecureConnectionFailed, NSURLErrorServerCertificateUntrusted,
+             NSURLErrorServerCertificateHasBadDate, NSURLErrorServerCertificateNotYetValid,
+             NSURLErrorClientCertificateRejected, NSURLErrorClientCertificateRequired:
+            return "We couldn't complete a secure connection. Please try again shortly."
+        default:
+            return nil
+        }
     }
 }

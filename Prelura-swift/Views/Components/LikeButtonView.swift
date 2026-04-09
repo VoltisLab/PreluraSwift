@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Shared like button: heart + count. Use on product cards and detail for consistent design.
-/// Tap area is 56×56 pt for easier tapping; the visible pill stays the same size.
+/// Hit target is at least 56×56 pt and expands with the pill so the count remains tappable.
 struct LikeButtonView: View {
     let isLiked: Bool
     let likeCount: Int
@@ -18,17 +18,17 @@ struct LikeButtonView: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            ZStack {
-                Color.clear
-                    .frame(width: Self.minTapSize, height: Self.minTapSize)
-                    .contentShape(Rectangle())
-                likePillContent
-                    .allowsHitTesting(false)
-            }
-            .frame(width: Self.minTapSize, height: Self.minTapSize)
+        Button {
+            HapticManager.like()
+            action()
+        } label: {
+            likePillContent
         }
-        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
+        // Match icon rows in ScrollViews (e.g. Lookbook): plain style + full label hit area.
+        // Default/HapticTap styles have been unreliable next to TabView + LazyVStack.
+        .buttonStyle(PlainTappableButtonStyle())
+        .frame(minWidth: Self.minTapSize, minHeight: Self.minTapSize, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private var likePillContent: some View {

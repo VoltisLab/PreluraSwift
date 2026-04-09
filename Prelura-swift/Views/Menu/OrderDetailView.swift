@@ -1027,7 +1027,7 @@ struct OrderDetailView: View {
                 shippingLabelError = result.message ?? "No label URL"
             }
         } catch {
-            shippingLabelError = error.localizedDescription
+            shippingLabelError = L10n.userFacingError(error)
         }
     }
 
@@ -1056,7 +1056,7 @@ struct OrderDetailView: View {
             }
             await hydrateOrderIfNeeded(force: true)
         } catch {
-            confirmShippingError = error.localizedDescription
+            confirmShippingError = L10n.userFacingError(error)
         }
     }
 
@@ -1077,7 +1077,7 @@ struct OrderDetailView: View {
             await refreshTrackingDetailsIfNeeded()
         } catch {
             await MainActor.run {
-                cancellationActionError = error.localizedDescription
+                cancellationActionError = L10n.userFacingError(error)
             }
         }
         await MainActor.run { cancellationBusy = false }

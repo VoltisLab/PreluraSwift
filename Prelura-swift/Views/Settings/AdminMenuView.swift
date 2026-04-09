@@ -65,7 +65,7 @@ struct AdminMenuView: View {
             } catch {
                 await MainActor.run {
                     isDeletingAll = false
-                    deleteAllResult = error.localizedDescription
+                    deleteAllResult = L10n.userFacingError(error)
                     showResultAlert = true
                 }
             }

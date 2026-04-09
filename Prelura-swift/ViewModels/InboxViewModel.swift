@@ -162,7 +162,7 @@ class InboxViewModel: ObservableObject {
                 if hadConversations { errorMessage = nil }
                 else { errorMessage = nil; conversations = []; archivedConversations = [] }
             } else {
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
                 if hadConversations { } else { conversations = []; archivedConversations = [] }
             }
         }
@@ -207,7 +207,7 @@ class InboxViewModel: ObservableObject {
             removeConversation(id: String(conversationId))
             archivedConversations.removeAll { $0.id == String(conversationId) }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 
@@ -242,7 +242,7 @@ class InboxViewModel: ObservableObject {
             Self.sortConversationsInPlace(&archivedConversations)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 
@@ -264,7 +264,7 @@ class InboxViewModel: ObservableObject {
             Self.sortConversationsInPlace(&conversations)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 

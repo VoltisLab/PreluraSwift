@@ -61,7 +61,7 @@ struct VacationModeView: View {
             await MainActor.run { isOn = user.isVacationMode }
         } catch {
             await MainActor.run {
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
                 isOn = initialIsOn
             }
         }
@@ -82,7 +82,7 @@ struct VacationModeView: View {
         } catch {
             await MainActor.run {
                 isOn = !value
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
                 isUpdating = false
             }
         }

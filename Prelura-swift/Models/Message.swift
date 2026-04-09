@@ -1,5 +1,14 @@
 import Foundation
 
+/// Parsed `lookbook_share` chat payload (JSON in `Message.content`).
+struct LookbookShareChatPayload: Equatable {
+    let url: String
+    let imageURL: String?
+    let thumbnailURL: String?
+    let caption: String?
+    let posterUsername: String
+}
+
 struct Message: Identifiable {
     let id: UUID
     /// Backend message ID (for mark-as-read API).
@@ -86,6 +95,7 @@ struct Message: Identifiable {
                 return approved ? "Order cancellation was approved" : "Order cancellation was declined"
             case "account_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             case "product_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
+            case "lookbook_share": return "Post shared"
             default: break
             }
         }
@@ -174,6 +184,11 @@ struct Message: Identifiable {
                 return approved ? "Order cancellation was approved" : "Order cancellation was declined"
             case "account_report": return Self.humanReadableReportLine(json: json, reportType: type, maxLength: 280)
             case "product_report": return Self.humanReadableReportLine(json: json, reportType: type, maxLength: 280)
+            case "lookbook_share":
+                if let c = json["caption"] as? String, !c.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return c.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                return "Shared a look"
             default: break
             }
         }
@@ -354,6 +369,35 @@ struct Message: Identifiable {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let t = json["type"] as? String else { return false }
         return t == "order_cancellation_outcome"
+    }
+
+    /// JSON chat row from lookbook “Send to…” (`type`: `lookbook_share`).
+    var isLookbookShareContent: Bool {
+        lookbookSharePayload != nil
+    }
+
+    /// Rich lookbook forward: URL + image hints for in-chat preview and universal link open.
+    var lookbookSharePayload: LookbookShareChatPayload? {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (json["type"] as? String) == "lookbook_share" else { return nil }
+        guard let url = (json["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty else { return nil }
+        let posterRaw = (json["poster_username"] as? String) ?? (json["posterUsername"] as? String) ?? ""
+        let poster = posterRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let thumb = ((json["thumbnail_url"] as? String) ?? (json["thumbnailUrl"] as? String))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let img = ((json["image_url"] as? String) ?? (json["imageUrl"] as? String))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let cap = (json["caption"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return LookbookShareChatPayload(
+            url: url,
+            imageURL: img.flatMap { $0.isEmpty ? nil : $0 },
+            thumbnailURL: thumb.flatMap { $0.isEmpty ? nil : $0 },
+            caption: cap.flatMap { $0.isEmpty ? nil : $0 },
+            posterUsername: poster.isEmpty ? "—" : poster
+        )
     }
 }
 

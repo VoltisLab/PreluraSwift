@@ -242,7 +242,7 @@ struct BackgroundReplacerView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    errorMessage = L10n.userFacingError(error)
                     isProcessing = false
                 }
             }

@@ -595,6 +595,43 @@ struct ChatRowView: View {
         }
     }
 
+    /// Inbox line for shared lookbook posts (`type`: `lookbook_share` or legacy/minimal JSON without `type`).
+    fileprivate static func lookbookPostPreviewLine(lastMessageSenderUsername: String?, currentUsername: String?) -> String {
+        if usernamesMatch(lastMessageSenderUsername, currentUsername) {
+            return "You sent a post"
+        }
+        if let sender = lastMessageSenderUsername?.trimmingCharacters(in: .whitespacesAndNewlines), !sender.isEmpty {
+            return "\(sender) sent a post"
+        }
+        return "Post shared"
+    }
+
+    fileprivate static func jsonLooksLikeLookbookSharePayload(_ json: [String: Any]) -> Bool {
+        if (json["type"] as? String) == "lookbook_share" { return true }
+        guard json["type"] == nil else { return false }
+        let hasImage = json["image_url"] != nil || json["imageUrl"] != nil
+            || json["thumbnail_url"] != nil || json["thumbnailUrl"] != nil
+        guard hasImage else { return false }
+        if let u = json["url"] as? String,
+           u.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("http") {
+            return true
+        }
+        if let p = json["poster_username"] as? String, !p.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        if let p = json["posterUsername"] as? String, !p.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        return false
+    }
+
+    /// When `lastMessage` is truncated or malformed JSON but clearly a lookbook share snippet.
+    fileprivate static func rawLooksLikeLookbookShareSnippet(_ trimmed: String) -> Bool {
+        let s = trimmed.lowercased()
+        if s.contains("lookbook_share") { return true }
+        return s.contains("\"image_url\"") && (s.contains("\"url\"") || s.contains("poster_username") || s.contains("posterusername"))
+    }
+
     /// Inbox subtitle: show the latest **chat line** (`lastMessage` from API is the latest plain row). Legacy rows may still be JSON — map those to short labels.
     static func previewText(for raw: String?, conversation: Conversation, currentUsername: String?) -> String? {
         let iSentLastOffer = usernamesMatch(conversation.lastMessageSenderUsername, currentUsername)
@@ -629,40 +666,56 @@ struct ChatRowView: View {
         if trimmed.contains("offer_id") || (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any])?["offer_id"] != nil {
             return iSentLastOffer ? "You sent an offer" : "Offer received"
         }
-        guard let data = trimmed.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = json["type"] as? String else {
+        guard let data = trimmed.data(using: .utf8) else {
             return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
         }
-        switch type {
-        case "order_issue":
-            if usernamesMatch(conversation.lastMessageSenderUsername, currentUsername) {
-                return "You reported an issue"
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if Self.jsonLooksLikeLookbookSharePayload(json) {
+                return Self.lookbookPostPreviewLine(
+                    lastMessageSenderUsername: conversation.lastMessageSenderUsername,
+                    currentUsername: currentUsername
+                )
             }
-            if let sender = conversation.lastMessageSenderUsername?.trimmingCharacters(in: .whitespacesAndNewlines), !sender.isEmpty {
-                return "\(sender) reported an issue"
+            guard let type = json["type"] as? String else {
+                return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
             }
-            return "Issue reported"
-        case "order": return orderPreviewLine(for: conversation)
-        case "offer": return iSentLastOffer ? "You sent an offer" : "Offer received"
-        case "account_report": return Message.humanReadableReportLine(json: json, reportType: type, maxLength: 56)
-        case "product_report": return Message.humanReadableReportLine(json: json, reportType: type, maxLength: 56)
-        case "sold_confirmation":
-            if usernamesMatch(conversation.offer?.products?.first?.seller?.username, currentUsername) {
-                return "You made a sale 🎉"
+            switch type {
+            case "order_issue":
+                if usernamesMatch(conversation.lastMessageSenderUsername, currentUsername) {
+                    return "You reported an issue"
+                }
+                if let sender = conversation.lastMessageSenderUsername?.trimmingCharacters(in: .whitespacesAndNewlines), !sender.isEmpty {
+                    return "\(sender) reported an issue"
+                }
+                return "Issue reported"
+            case "order": return orderPreviewLine(for: conversation)
+            case "offer": return iSentLastOffer ? "You sent an offer" : "Offer received"
+            case "account_report": return Message.humanReadableReportLine(json: json, reportType: type, maxLength: 56)
+            case "product_report": return Message.humanReadableReportLine(json: json, reportType: type, maxLength: 56)
+            case "sold_confirmation":
+                if usernamesMatch(conversation.offer?.products?.first?.seller?.username, currentUsername) {
+                    return "You made a sale 🎉"
+                }
+                return "Order confirmed"
+            case "order_cancellation_request":
+                let bySeller = (json["requested_by_seller"] as? Bool) ?? (json["requestedBySeller"] as? Bool) ?? false
+                if usernamesMatch(conversation.lastMessageSenderUsername, currentUsername) {
+                    return "You requested cancellation"
+                }
+                return bySeller ? "Seller asked to cancel order" : "Buyer asked to cancel order"
+            case "order_cancellation_outcome":
+                let approved = (json["approved"] as? Bool) ?? false
+                return approved ? "Order cancellation was approved" : "Order cancellation was declined"
+            default: return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
             }
-            return "Order confirmed"
-        case "order_cancellation_request":
-            let bySeller = (json["requested_by_seller"] as? Bool) ?? (json["requestedBySeller"] as? Bool) ?? false
-            if usernamesMatch(conversation.lastMessageSenderUsername, currentUsername) {
-                return "You requested cancellation"
-            }
-            return bySeller ? "Seller asked to cancel order" : "Buyer asked to cancel order"
-        case "order_cancellation_outcome":
-            let approved = (json["approved"] as? Bool) ?? false
-            return approved ? "Order cancellation was approved" : "Order cancellation was declined"
-        default: return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
         }
+        if Self.rawLooksLikeLookbookShareSnippet(trimmed) {
+            return Self.lookbookPostPreviewLine(
+                lastMessageSenderUsername: conversation.lastMessageSenderUsername,
+                currentUsername: currentUsername
+            )
+        }
+        return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
     }
 }
 

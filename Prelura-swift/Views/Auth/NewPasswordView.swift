@@ -125,7 +125,7 @@ struct NewPasswordView: View {
                 try await authService.resetPasswordWithCode(email: email, code: code, newPassword: newPassword)
                 await MainActor.run { success = true }
             } catch {
-                await MainActor.run { errorMessage = error.localizedDescription }
+                await MainActor.run { errorMessage = L10n.userFacingError(error) }
             }
             await MainActor.run { isLoading = false }
         }

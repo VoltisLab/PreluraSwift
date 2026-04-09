@@ -220,7 +220,7 @@ struct AdminReportsView: View {
         } catch {
             await MainActor.run {
                 isLoading = false
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
             }
         }
     }
@@ -285,7 +285,7 @@ private struct AdminReportOrderChatLoaderView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    errorMessage = L10n.userFacingError(error)
                     isLoading = false
                 }
             }
@@ -332,7 +332,7 @@ private struct AdminReportProductLoaderView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    errorMessage = L10n.userFacingError(error)
                     isLoading = false
                 }
             }

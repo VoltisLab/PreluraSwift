@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import UIKit
 
 /// Holds peer typing state updated from WebSocket callbacks. Using `ObservableObject` avoids mutating `@State` from
 /// closures that capture `ChatDetailView` by value, which can fail to refresh the typing row.
@@ -758,12 +759,12 @@ struct ChatDetailView: View {
                                 reactionOverlayMessage = message
                             }
                             : nil,
-                        onDoubleTapHeart: displayedConversation.id != "0"
+                        onDoubleTapHeart: displayedConversation.id != "0" && message.lookbookSharePayload == nil
                             ? {
                                 applyChatReaction(message: message, emoji: ChatReactionEmojiUsageStore.doubleTapHeartEmoji)
                             }
                             : nil,
-                        onToggleTimestampVisibility: displayedConversation.id != "0"
+                        onToggleTimestampVisibility: displayedConversation.id != "0" && message.lookbookSharePayload == nil
                             ? {
                                 toggleTimestampVisibility(at: index, message: message)
                             }
@@ -1273,7 +1274,7 @@ struct ChatDetailView: View {
                 await MainActor.run {
                     folderActionError = ChatFolderActionError(
                         title: L10n.string("Archive"),
-                        message: error.localizedDescription
+                        message: L10n.userFacingError(error)
                     )
                 }
             }
@@ -1293,7 +1294,7 @@ struct ChatDetailView: View {
                 await MainActor.run {
                     folderActionError = ChatFolderActionError(
                         title: L10n.string("Restore"),
-                        message: error.localizedDescription
+                        message: L10n.userFacingError(error)
                     )
                 }
             }
@@ -1821,12 +1822,13 @@ struct ChatDetailView: View {
                     rebuildTimelineOrder()
                 }
                 isRespondingToOffer = false
-                let msg = error.localizedDescription
-                if isOfferProductUnavailableMessage(msg) {
+                let raw = error.localizedDescription
+                let friendly = L10n.userFacingError(error)
+                if isOfferProductUnavailableMessage(raw) {
                     setItemSoldBannerVisible(true)
                     offerError = nil
                 } else {
-                    offerError = msg
+                    offerError = friendly
                 }
             }
         }
@@ -1980,12 +1982,13 @@ struct ChatDetailView: View {
                     rebuildTimelineOrder()
                 }
                 isRespondingToOffer = false
-                let msg = error.localizedDescription
-                if isOfferProductUnavailableMessage(msg) {
+                let raw = error.localizedDescription
+                let friendly = L10n.userFacingError(error)
+                if isOfferProductUnavailableMessage(raw) {
                     setItemSoldBannerVisible(true)
                     offerError = nil
                 } else {
-                    offerError = msg
+                    offerError = friendly
                 }
             }
         }
@@ -2019,12 +2022,13 @@ struct ChatDetailView: View {
                 }
             } catch {
                 await MainActor.run {
-                    let msg = error.localizedDescription
-                    if isOfferProductUnavailableMessage(msg) {
+                    let raw = error.localizedDescription
+                    let friendly = L10n.userFacingError(error)
+                    if isOfferProductUnavailableMessage(raw) {
                         setItemSoldBannerVisible(true)
                         offerError = nil
                     } else {
-                        offerError = msg
+                        offerError = friendly
                     }
                 }
             }
@@ -3801,7 +3805,7 @@ private struct OrderCancellationRequestChatCardView: View {
         } catch {
             await MainActor.run {
                 busy = false
-                err = error.localizedDescription
+                err = L10n.userFacingError(error)
             }
         }
     }
@@ -3906,7 +3910,7 @@ private struct SellerOrderProblemOptionsView: View {
         } catch {
             await MainActor.run {
                 isCancelling = false
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
             }
         }
     }
@@ -4060,6 +4064,9 @@ struct MessageBubbleView: View {
     /// Slight scale while the reaction overlay targets this bubble.
     var isReactionTargeted: Bool = false
 
+    @Environment(\.openURL) private var openURL
+    @EnvironmentObject private var appRouter: AppRouter
+
     private var bubbleMaxWidth: CGFloat { UIScreen.main.bounds.width * 0.78 }
     private var baseMessageFontSize: CGFloat { 17 }
     private static let messageAvatarSize: CGFloat = 28
@@ -4185,12 +4192,122 @@ struct MessageBubbleView: View {
         }
     }
 
+    /// Plain chat line with tappable `http(s)://` runs (legacy lookbook shares were plain text).
+    private static func bubbleAttributedStringForLinks(_ string: String, isOutgoing: Bool) -> AttributedString? {
+        let baseUIColor = isOutgoing ? UIColor.white : UIColor(Theme.Colors.primaryText)
+        let linkUIColor = isOutgoing ? UIColor.white.withAlphaComponent(0.95) : UIColor(Theme.primaryColor)
+        let m = NSMutableAttributedString(
+            string: string,
+            attributes: [
+                .foregroundColor: baseUIColor,
+                .font: UIFont.preferredFont(forTextStyle: .body)
+            ]
+        )
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        let ns = string as NSString
+        let full = NSRange(location: 0, length: ns.length)
+        var found = false
+        detector?.enumerateMatches(in: string, options: [], range: full) { match, _, _ in
+            guard let match, match.resultType == .link, let url = match.url else { return }
+            found = true
+            m.addAttribute(.link, value: url, range: match.range)
+            m.addAttribute(.foregroundColor, value: linkUIColor, range: match.range)
+            m.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: match.range)
+        }
+        guard found else { return nil }
+        return AttributedString(m)
+    }
+
     /// Text bubble + rounded background (non–emoji-only).
     @ViewBuilder
     private func standardBubbleLabel(_ bubbleText: String) -> some View {
-        Text(bubbleText)
-            .font(Theme.Typography.body)
-            .foregroundColor(isCurrentUser ? .white : Theme.Colors.primaryText)
+        Group {
+            if let linked = Self.bubbleAttributedStringForLinks(bubbleText, isOutgoing: isCurrentUser) {
+                Text(linked)
+            } else {
+                Text(bubbleText)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(isCurrentUser ? .white : Theme.Colors.primaryText)
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
+        .background(
+            isCurrentUser
+                ? LinearGradient(
+                    colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.85)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                : LinearGradient(
+                    colors: [Theme.Colors.secondaryBackground, Theme.Colors.secondaryBackground],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+        )
+        .cornerRadius(18)
+    }
+
+    private var lookbookSharePreviewWidth: CGFloat { min(bubbleMaxWidth - Theme.Spacing.md * 2, 220) }
+
+    private var lookbookShareImagePlaceholder: some View {
+        Rectangle()
+            .fill(isCurrentUser ? Color.white.opacity(0.15) : Theme.Colors.tertiaryBackground)
+            .overlay {
+                Image(systemName: "photo")
+                    .foregroundStyle(isCurrentUser ? .white.opacity(0.55) : Theme.Colors.secondaryText)
+            }
+    }
+
+    /// Rich card for `lookbook_share` JSON (thumbnail + in-app look overlay — avoids universal-link handoff to another app).
+    @ViewBuilder
+    private func lookbookShareBubble(_ payload: LookbookShareChatPayload) -> some View {
+        let imageStr = payload.thumbnailURL ?? payload.imageURL
+        Button {
+            HapticManager.tap()
+            guard let u = URL(string: payload.url) else { return }
+            if let postId = AppRouter.lookbookPostIdIfPresent(in: u) {
+                Task { @MainActor in
+                    appRouter.pendingItem = DeepLinkDestinationItem(destination: .lookbookPost(id: postId))
+                }
+            } else {
+                openURL(u)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                Group {
+                    if let s = imageStr, !s.isEmpty, let imgURL = URL(string: s) {
+                        AsyncImage(url: imgURL) { phase in
+                            switch phase {
+                            case .success(let img):
+                                img.resizable().scaledToFill()
+                            case .failure, .empty:
+                                lookbookShareImagePlaceholder
+                            @unknown default:
+                                lookbookShareImagePlaceholder
+                            }
+                        }
+                    } else {
+                        lookbookShareImagePlaceholder
+                    }
+                }
+                .frame(width: lookbookSharePreviewWidth, height: lookbookSharePreviewWidth * 5 / 4)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                if let c = payload.caption, !c.isEmpty {
+                    Text(c)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(isCurrentUser ? Color.white : Theme.Colors.primaryText)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(4)
+                }
+                Text("@\(payload.posterUsername) on WEARHOUSE")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isCurrentUser ? Color.white.opacity(0.88) : Theme.Colors.secondaryText)
+                Text("Open look")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(isCurrentUser ? Color.white : Theme.primaryColor)
+            }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
             .background(
@@ -4207,13 +4324,17 @@ struct MessageBubbleView: View {
                     )
             )
             .cornerRadius(18)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     /// Bubble content with reactions on top corners: others → top-leading, yours → top-trailing.
     @ViewBuilder
     private func bubbleWithCornerReactions(
         emojiMult: Double?,
-        bubbleText: String
+        bubbleText: String,
+        lookbookPayload: LookbookShareChatPayload?
     ) -> some View {
         let parts = reactionsPartitioned
         let hasOthers = !parts.others.isEmpty
@@ -4221,7 +4342,9 @@ struct MessageBubbleView: View {
 
         ZStack(alignment: .topLeading) {
             Group {
-                if let mult = emojiMult {
+                if let lb = lookbookPayload {
+                    lookbookShareBubble(lb)
+                } else if let mult = emojiMult {
                     Text(message.content.trimmingCharacters(in: .whitespacesAndNewlines))
                         .font(.system(size: baseMessageFontSize * CGFloat(mult)))
                         .foregroundColor(isCurrentUser ? Theme.primaryColor : Theme.Colors.primaryText)
@@ -4241,7 +4364,7 @@ struct MessageBubbleView: View {
                     .offset(x: Self.reactionOverlayOffsetX, y: -Self.reactionOverlayOffsetY)
             }
         }
-        .frame(maxWidth: emojiMult != nil ? .infinity : bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
+        .frame(maxWidth: (emojiMult != nil || lookbookPayload != nil) ? .infinity : bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
         .background(
             GeometryReader { geo in
                 Color.clear.preference(
@@ -4253,10 +4376,13 @@ struct MessageBubbleView: View {
     }
 
     @ViewBuilder
-    private func bubbleWithTapGestures(emojiMult: Double?, bubbleText: String) -> some View {
-        let padded = bubbleWithCornerReactions(emojiMult: emojiMult, bubbleText: bubbleText)
+    private func bubbleWithTapGestures(emojiMult: Double?, bubbleText: String, lookbookPayload: LookbookShareChatPayload?) -> some View {
+        let padded = bubbleWithCornerReactions(emojiMult: emojiMult, bubbleText: bubbleText, lookbookPayload: lookbookPayload)
             .padding(.top, hasAnyReaction ? 12 : 0)
-        if onDoubleTapHeart != nil, onToggleTimestampVisibility != nil {
+        // Lookbook card: inner `Button` must receive taps — no parent tap/double-tap gestures (they still toggled timestamp / fought the button).
+        if lookbookPayload != nil {
+            padded
+        } else if onDoubleTapHeart != nil, onToggleTimestampVisibility != nil {
             padded.gesture(
                 ExclusiveGesture(
                     TapGesture(count: 2).onEnded { _ in
@@ -4289,6 +4415,7 @@ struct MessageBubbleView: View {
     var body: some View {
         let emojiMult = message.emojiOnlyScaleMultiplier
         let bubbleText = message.displayContentForBubble(isFromCurrentUser: isCurrentUser)
+        let lookPayload = message.lookbookSharePayload
 
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .top, spacing: Theme.Spacing.xs) {
@@ -4304,7 +4431,7 @@ struct MessageBubbleView: View {
                         }
                     }
                 }
-                bubbleWithTapGestures(emojiMult: emojiMult, bubbleText: bubbleText)
+                bubbleWithTapGestures(emojiMult: emojiMult, bubbleText: bubbleText, lookbookPayload: lookPayload)
                 if !isCurrentUser { Spacer(minLength: Self.bubbleSideSpacerMin) }
             }
             if showTimestamp {
@@ -4349,6 +4476,7 @@ struct MessageBubbleView: View {
             lastMessageTime: Date(),
             unreadCount: 0
         ))
+        .environmentObject(AppRouter())
     }
     .preferredColorScheme(.dark)
 }

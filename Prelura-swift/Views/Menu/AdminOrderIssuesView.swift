@@ -557,7 +557,7 @@ struct AdminOrderIssuesView: View {
         } catch {
             await MainActor.run {
                 isSubmittingAction = false
-                actionResultMessage = error.localizedDescription
+                actionResultMessage = L10n.userFacingError(error)
             }
         }
     }
@@ -576,7 +576,7 @@ struct AdminOrderIssuesView: View {
         } catch {
             await MainActor.run {
                 isLoading = false
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
             }
         }
     }
@@ -686,7 +686,7 @@ private struct AdminStaffChatLoaderView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    errorMessage = L10n.userFacingError(error)
                     isLoading = false
                 }
             }

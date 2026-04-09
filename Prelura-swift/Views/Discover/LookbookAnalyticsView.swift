@@ -64,6 +64,7 @@ struct LookbookAnalyticsView: View {
                     .padding(.horizontal, Theme.Spacing.md)
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Theme.Spacing.md) {
+                    analyticsTile(title: L10n.string("Likes"), value: model.likesCount, symbol: "heart.fill", tint: .pink)
                     analyticsTile(title: L10n.string("Comments"), value: model.commentsCount, symbol: "bubble.right.fill", tint: .cyan)
                     analyticsTile(title: L10n.string("Product opens"), value: model.productLinkClicks, symbol: "bag.fill", tint: Theme.primaryColor)
                     analyticsTile(title: L10n.string("Shop opens"), value: model.shopLinkClicks, symbol: "storefront.fill", tint: .orange)
@@ -188,6 +189,8 @@ struct LookbookAnalyticsView: View {
             }
             await MainActor.run {
                 var next = entry
+                next.likesCount = post.likesCount ?? next.likesCount
+                next.isLiked = post.userLiked ?? next.isLiked
                 next.commentsCount = post.commentsCount ?? next.commentsCount
                 next.productLinkClicks = post.productLinkClicks ?? next.productLinkClicks
                 next.shopLinkClicks = post.shopLinkClicks ?? next.shopLinkClicks

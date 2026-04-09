@@ -113,7 +113,7 @@ struct BlocklistView: View {
         do {
             users = try await userService.getBlockedUsers(pageNumber: 1, pageCount: pageCount, search: searchText.isEmpty ? nil : searchText)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
         isLoading = false
     }
@@ -123,7 +123,7 @@ struct BlocklistView: View {
             try await userService.unblockUser(userId: userId)
             await load()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 }

@@ -51,7 +51,7 @@ class NotificationSettingsViewModel: ObservableObject {
         do {
             preference = try await service.getNotificationPreference()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 
@@ -80,7 +80,7 @@ class NotificationSettingsViewModel: ObservableObject {
                 NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
             await load()
         }
     }
@@ -97,7 +97,7 @@ class NotificationSettingsViewModel: ObservableObject {
                 NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
             await load()
         }
     }

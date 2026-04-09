@@ -203,7 +203,7 @@ struct AdminDashboardView: View {
                 await MainActor.run {
                     isDeletingOrders = false
                     ordersConfirmCount = nil
-                    ordersResult = error.localizedDescription
+                    ordersResult = L10n.userFacingError(error)
                     showOrdersResult = true
                 }
             }
@@ -246,7 +246,7 @@ struct AdminDashboardView: View {
                 await MainActor.run {
                     isDeletingMessages = false
                     messagesConfirmCount = nil
-                    messagesResult = error.localizedDescription
+                    messagesResult = L10n.userFacingError(error)
                     showMessagesResult = true
                 }
             }
@@ -300,7 +300,7 @@ struct AdminDashboardView: View {
             } catch {
                 await MainActor.run {
                     isDeletingNotifications = false
-                    notificationsResult = error.localizedDescription
+                    notificationsResult = L10n.userFacingError(error)
                     showNotificationsResult = true
                 }
             }
@@ -421,7 +421,7 @@ private struct DeleteUserSheet: View {
             } catch {
                 await MainActor.run {
                     isDeleting = false
-                    errorMessage = error.localizedDescription
+                    errorMessage = L10n.userFacingError(error)
                 }
             }
         }

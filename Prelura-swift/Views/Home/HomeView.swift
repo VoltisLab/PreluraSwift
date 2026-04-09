@@ -130,21 +130,6 @@ struct HomeView: View {
                             .padding(.vertical, Theme.Spacing.xs)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        if let err = viewModel.errorMessage, !err.isEmpty {
-                            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundColor(.orange)
-                                Text(err)
-                                    .font(Theme.Typography.caption)
-                                    .foregroundColor(Theme.Colors.secondaryText)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(Theme.Spacing.md)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.orange.opacity(0.12))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .padding(.horizontal, Theme.Spacing.md)
-                        }
                         categoryFiltersSection
                         featuredSection
                         productGridSection
@@ -160,6 +145,16 @@ struct HomeView: View {
                 }
                 .coordinateSpace(name: homeScrollSpace)
                 .scrollPosition(id: $scrollPosition, anchor: .top)
+                .overlay(alignment: .center) {
+                    if let err = viewModel.errorMessage, !err.isEmpty {
+                        FeedNetworkBannerView(message: err, title: viewModel.errorBannerTitle) {
+                            Task { await viewModel.refreshAsync() }
+                        }
+                        .padding(.horizontal, Theme.Spacing.lg)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .center)))
+                    }
+                }
+                .animation(.spring(response: 0.38, dampingFraction: 0.86), value: viewModel.errorMessage)
                 .onAppear {
                     tabCoordinator.reportAtTop(tab: 0, isAtTop: true)
                     tabCoordinator.registerScrollToTop(tab: 0) {

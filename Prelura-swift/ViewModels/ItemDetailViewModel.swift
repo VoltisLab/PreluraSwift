@@ -54,7 +54,7 @@ class ItemDetailViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.isLoadingSimilar = false
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = L10n.userFacingError(error)
                 }
             }
         }
@@ -81,7 +81,7 @@ class ItemDetailViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.isLoadingMember = false
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = L10n.userFacingError(error)
                 }
             }
         }
@@ -130,7 +130,7 @@ class ItemDetailViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     // Keep optimistic state so the heart doesn't flip back
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = L10n.userFacingError(error)
                 }
             }
         }

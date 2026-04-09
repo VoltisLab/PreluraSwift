@@ -232,7 +232,7 @@ struct SignupView: View {
                 }
             } catch {
                 isLoading = false
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
             }
         }
     }

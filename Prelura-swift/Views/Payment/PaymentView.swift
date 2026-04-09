@@ -514,7 +514,7 @@ struct PaymentView: View {
         do {
             currentUser = try await userService.getUser(username: nil)
         } catch {
-            await MainActor.run { errorMessage = error.localizedDescription }
+            await MainActor.run { errorMessage = L10n.userFacingError(error) }
         }
     }
 
@@ -528,7 +528,7 @@ struct PaymentView: View {
                 errorMessage = nil
             }
         } catch {
-            await MainActor.run { errorMessage = error.localizedDescription }
+            await MainActor.run { errorMessage = L10n.userFacingError(error) }
         }
     }
 
@@ -704,7 +704,7 @@ struct PaymentView: View {
                 }
             } catch {
                 NSLog("[PAY_DEBUG] payByCard error: %@", error.localizedDescription)
-                await MainActor.run { errorMessage = error.localizedDescription }
+                await MainActor.run { errorMessage = L10n.userFacingError(error) }
             }
         }
     }

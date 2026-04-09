@@ -240,7 +240,7 @@ private struct OrderTrackingCodeHelpView: View {
         } catch {
             await MainActor.run {
                 loading = false
-                loadError = error.localizedDescription
+                loadError = L10n.userFacingError(error)
             }
         }
     }

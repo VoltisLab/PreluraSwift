@@ -100,7 +100,7 @@ struct ResetPasswordView: View {
             try await userService.passwordChange(currentPassword: currentPassword, newPassword: newPassword)
             showSuccess = true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 }

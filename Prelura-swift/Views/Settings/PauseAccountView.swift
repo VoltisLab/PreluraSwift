@@ -79,7 +79,7 @@ struct PauseAccountView: View {
             try await userService.archiveAccount(password: password)
             showSuccess = true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 }

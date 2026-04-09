@@ -77,7 +77,7 @@ struct AdminAllOrdersView: View {
         } catch {
             await MainActor.run {
                 isLoading = false
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
             }
         }
     }
@@ -156,7 +156,7 @@ struct AdminOrderAdminDetailView: View {
         } catch {
             await MainActor.run {
                 isLoading = false
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
             }
         }
     }
@@ -176,7 +176,7 @@ struct AdminOrderAdminDetailView: View {
         } catch {
             await MainActor.run {
                 isMarkingDelivered = false
-                banner = error.localizedDescription
+                banner = L10n.userFacingError(error)
             }
         }
     }

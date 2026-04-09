@@ -297,7 +297,7 @@ struct SendOfferSheetContent: View {
                     }
                 }
             } catch {
-                await MainActor.run { errorMessage = error.localizedDescription }
+                await MainActor.run { errorMessage = L10n.userFacingError(error) }
             }
         }
     }

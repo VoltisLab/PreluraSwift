@@ -76,6 +76,38 @@ struct DebugMenuView: View {
                         Text("Profile cards, and components")
                     }
                 }
+                NavigationLink(destination: FeedNetworkBannerDebugView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "wifi.exclamationmark")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Feed network banner")
+                    }
+                }
+                NavigationLink(destination: NetworkErrorPresentationDebugView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "lock.trianglebadge.exclamationmark")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Network error mapping (TLS)")
+                    }
+                }
+                NavigationLink(destination: DebugLookbookFeedSandboxView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "rectangle.stack")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Lookbook feed sandbox")
+                    }
+                }
+                NavigationLink(destination: DebugLikeButtonOnlyView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "heart")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Like button only")
+                    }
+                }
                 NavigationLink(destination: GlassMaterialsView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "drop.fill")

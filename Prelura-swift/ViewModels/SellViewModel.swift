@@ -112,7 +112,7 @@ class SellViewModel: ObservableObject {
                 submissionSuccess = false
             } catch {
                 isSubmitting = false
-                submissionError = (error as NSError).localizedDescription
+                submissionError = L10n.userFacingError(error)
             }
         }
     }
@@ -215,7 +215,7 @@ class SellViewModel: ObservableObject {
                 submissionSuccess = false
             } catch {
                 isSubmitting = false
-                submissionError = (error as NSError).localizedDescription
+                submissionError = L10n.userFacingError(error)
             }
         }
     }

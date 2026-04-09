@@ -352,7 +352,7 @@ struct ItemNotReceivedReportHelpView: View {
         } catch {
             await MainActor.run {
                 isSubmittingIssue = false
-                submitError = error.localizedDescription
+                submitError = L10n.userFacingError(error)
             }
         }
     }

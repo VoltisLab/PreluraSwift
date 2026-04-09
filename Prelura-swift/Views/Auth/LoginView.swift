@@ -166,8 +166,7 @@ struct LoginView: View {
                 isLoading = false
             } catch {
                 isLoading = false
-                let msg = error.localizedDescription
-                errorMessage = msg
+                errorMessage = L10n.userFacingError(error)
                 // Do not auto-open verify screen: user stays on login and can tap "Enter verification code" if needed
             }
         }

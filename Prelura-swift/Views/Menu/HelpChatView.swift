@@ -497,7 +497,7 @@ struct HelpChatView: View {
         } catch {
             await MainActor.run {
                 isLoadingMessages = false
-                loadMessagesError = error.localizedDescription
+                loadMessagesError = L10n.userFacingError(error)
             }
         }
     }
@@ -610,7 +610,7 @@ struct HelpChatView: View {
                 } catch {
                     await MainActor.run {
                         chatMessages.removeAll { $0.id == optimistic.id }
-                        loadMessagesError = error.localizedDescription
+                        loadMessagesError = L10n.userFacingError(error)
                     }
                 }
             }

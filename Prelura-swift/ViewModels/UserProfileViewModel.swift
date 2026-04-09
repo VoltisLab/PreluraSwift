@@ -69,7 +69,7 @@ class UserProfileViewModel: ObservableObject {
         } catch {
             await MainActor.run {
                 self.isLoading = false
-                self.errorMessage = error.localizedDescription
+                self.errorMessage = L10n.userFacingError(error)
             }
         }
     }
@@ -85,7 +85,7 @@ class UserProfileViewModel: ObservableObject {
         } catch {
             await MainActor.run {
                 self.isLoading = false
-                self.errorMessage = error.localizedDescription
+                self.errorMessage = L10n.userFacingError(error)
             }
         }
     }
@@ -118,7 +118,7 @@ class UserProfileViewModel: ObservableObject {
             isFollowing = wasFollowing
             displayedFollowersCount += wasFollowing ? 1 : -1
             if displayedFollowersCount < 0 { displayedFollowersCount = 0 }
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 

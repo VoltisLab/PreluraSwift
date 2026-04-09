@@ -113,7 +113,7 @@ struct DeepLinkOverlayView: View {
             }
         case .lookbookPost:
             if let entry = resolvedLookbookEntry {
-                LookbookTransparentFullscreenOverlay(entry: entry, onDismiss: onDismiss)
+                LookbookSinglePostFeedPresentedView(entry: entry, onDismiss: onDismiss)
             } else {
                 deepLinkErrorView(message: loadError ?? "Lookbook not found")
             }
@@ -181,7 +181,7 @@ struct DeepLinkOverlayView: View {
                 }
             } catch {
                 await MainActor.run {
-                    loadError = error.localizedDescription
+                    loadError = L10n.userFacingError(error)
                     isLoading = false
                 }
             }
@@ -194,7 +194,7 @@ struct DeepLinkOverlayView: View {
                 }
             } catch {
                 await MainActor.run {
-                    loadError = error.localizedDescription
+                    loadError = L10n.userFacingError(error)
                     isLoading = false
                 }
             }
@@ -223,14 +223,18 @@ struct DeepLinkOverlayView: View {
                     }
                     return
                 }
-                let entry = LookbookEntry(from: post, localRecord: nil)
+                let localRecords = LookbookFeedStore.load()
+                let entry = LookbookEntry(
+                    from: post,
+                    localRecord: localRecords.first { r in r.id == post.id || r.imagePath == post.imageUrl }
+                )
                 await MainActor.run {
                     resolvedLookbookEntry = entry
                     isLoading = false
                 }
             } catch {
                 await MainActor.run {
-                    loadError = error.localizedDescription
+                    loadError = L10n.userFacingError(error)
                     isLoading = false
                 }
             }

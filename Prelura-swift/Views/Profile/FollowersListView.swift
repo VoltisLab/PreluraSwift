@@ -110,7 +110,7 @@ struct FollowersListView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    errorMessage = L10n.userFacingError(error)
                     users = []
                     isLoading = false
                 }

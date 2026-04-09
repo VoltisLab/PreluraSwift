@@ -13,6 +13,8 @@ class HomeViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var isLoadingMore: Bool = false
     @Published var errorMessage: String?
+    /// Short banner headline for TLS / secure transport (see `L10n.userFacingErrorBannerTitle`).
+    @Published var errorBannerTitle: String?
     @Published var hasMorePages: Bool = true
     /// When AI search mapped a colour alias (e.g. "camo" → "Green"), show this hint.
     @Published var searchClosestMatchHint: String?
@@ -20,6 +22,16 @@ class HomeViewModel: ObservableObject {
     private let productService = ProductService()
     private var currentPage = 1
     private let pageSize = 20
+
+    private func clearNetworkError() {
+        errorMessage = nil
+        errorBannerTitle = nil
+    }
+
+    private func setNetworkError(_ error: Error) {
+        errorMessage = L10n.userFacingError(error)
+        errorBannerTitle = L10n.userFacingErrorBannerTitle(error)
+    }
 
     func updateAuthToken(_ token: String?) {
         productService.updateAuthToken(token)
@@ -66,7 +78,7 @@ class HomeViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     // Keep optimistic state so the heart doesn't flip back; surface error for user
-                    errorMessage = L10n.userFacingError(error)
+                    setNetworkError(error)
                 }
             }
         }
@@ -85,7 +97,7 @@ class HomeViewModel: ObservableObject {
 
     func loadData() {
         isLoading = true
-        errorMessage = nil
+        clearNetworkError()
         currentPage = 1
         hasMorePages = true
         
@@ -110,7 +122,7 @@ class HomeViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.isLoading = false
-                    self.errorMessage = L10n.userFacingError(error)
+                    self.setNetworkError(error)
                     print("❌ Error loading products: \(error.localizedDescription)")
                 }
             }
@@ -172,7 +184,7 @@ class HomeViewModel: ObservableObject {
         currentPage = 1
         hasMorePages = true
         isLoading = true
-        errorMessage = nil
+        clearNetworkError()
         let categoryFilter = (category == "All" || category == nil) ? nil : category
         
         Task {
@@ -197,7 +209,7 @@ class HomeViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.isLoading = false
-                    self.errorMessage = L10n.userFacingError(error)
+                    self.setNetworkError(error)
                 }
             }
         }
@@ -209,7 +221,7 @@ class HomeViewModel: ObservableObject {
         currentPage = 1
         hasMorePages = true
         isLoading = true
-        errorMessage = nil
+        clearNetworkError()
         
         Task {
             do {
@@ -232,7 +244,7 @@ class HomeViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.isLoading = false
-                    self.errorMessage = L10n.userFacingError(error)
+                    self.setNetworkError(error)
                     print("❌ Error filtering by category '\(category)': \(error.localizedDescription)")
                 }
             }
@@ -249,7 +261,7 @@ class HomeViewModel: ObservableObject {
             currentPage = 1
             hasMorePages = true
             isLoading = true
-            errorMessage = nil
+            clearNetworkError()
         }
         
         do {
@@ -276,7 +288,7 @@ class HomeViewModel: ObservableObject {
         } catch {
             await MainActor.run {
                 self.isLoading = false
-                self.errorMessage = L10n.userFacingError(error)
+                self.setNetworkError(error)
             }
         }
     }

@@ -158,7 +158,7 @@ struct ListOfContactsView: View {
             } catch {
                 await MainActor.run {
                     authorizationStatus = .denied
-                    errorMessage = error.localizedDescription
+                    errorMessage = L10n.userFacingError(error)
                 }
             }
         }
@@ -187,7 +187,7 @@ struct ListOfContactsView: View {
         } catch {
             await MainActor.run {
                 contacts = []
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
             }
         }
     }

@@ -200,7 +200,7 @@ struct EmailVerificationCodeView: View {
         if msg.localizedCaseInsensitiveContains("invalid") && (msg.localizedCaseInsensitiveContains("code") || msg.localizedCaseInsensitiveContains("verification")) {
             return "Invalid verification code. Please check and try again."
         }
-        return msg
+        return L10n.userFacingError(error)
     }
 
     /// Resend: use emailForResend if provided, else resendEmailInput. Calls API when we have a valid email.
@@ -228,7 +228,7 @@ struct EmailVerificationCodeView: View {
             } catch {
                 await MainActor.run {
                     isResending = false
-                    resendMessage = error.localizedDescription
+                    resendMessage = L10n.userFacingError(error)
                 }
             }
         }

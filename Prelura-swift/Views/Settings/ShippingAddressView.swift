@@ -149,7 +149,7 @@ struct ShippingAddressView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    errorMessage = L10n.userFacingError(error)
                     isLoading = false
                 }
             }
@@ -180,7 +180,7 @@ struct ShippingAddressView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    errorMessage = L10n.userFacingError(error)
                     isSaving = false
                 }
             }

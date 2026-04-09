@@ -112,7 +112,7 @@ struct ForgotPasswordView: View {
                 try await authService.requestPasswordReset(email: e)
                 await MainActor.run { showEmailSent = true }
             } catch {
-                await MainActor.run { errorMessage = error.localizedDescription }
+                await MainActor.run { errorMessage = L10n.userFacingError(error) }
             }
             await MainActor.run { isLoading = false }
         }

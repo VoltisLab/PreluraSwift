@@ -223,7 +223,7 @@ private struct ReportUserDetailsView: View {
         } catch {
             await MainActor.run {
                 isSubmitting = false
-                errorMessage = error.localizedDescription
+                errorMessage = L10n.userFacingError(error)
             }
         }
     }

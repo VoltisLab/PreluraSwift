@@ -160,7 +160,7 @@ struct PostageSettingsView: View {
                 }
             }
         } catch {
-            await MainActor.run { errorMessage = error.localizedDescription }
+            await MainActor.run { errorMessage = L10n.userFacingError(error) }
         }
     }
 
@@ -193,7 +193,7 @@ struct PostageSettingsView: View {
                     showSuccess = true
                 }
             } catch {
-                await MainActor.run { errorMessage = error.localizedDescription }
+                await MainActor.run { errorMessage = L10n.userFacingError(error) }
             }
         }
     }

@@ -27,6 +27,8 @@ struct LookbookEntry: Identifiable {
     /// Remote avatar URL for the poster when the API provides it.
     let posterProfilePictureUrl: String?
     let caption: String?
+    var likesCount: Int
+    var isLiked: Bool
     var commentsCount: Int
     /// Server: opens of tagged products from this post.
     var productLinkClicks: Int
@@ -50,7 +52,7 @@ struct LookbookEntry: Identifiable {
         LookbookPostIdFormatting.graphQLUUIDString(from: apiPostId).lowercased()
     }
 
-    init(id: UUID? = nil, serverPostId: String? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, thumbnailUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, commentsCount: Int, productLinkClicks: Int = 0, shopLinkClicks: Int = 0, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
+    init(id: UUID? = nil, serverPostId: String? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, thumbnailUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, likesCount: Int = 0, isLiked: Bool = false, commentsCount: Int, productLinkClicks: Int = 0, shopLinkClicks: Int = 0, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
         self.id = id ?? UUID()
         self.serverPostId = serverPostId
         self.imageNames = imageNames
@@ -64,6 +66,8 @@ struct LookbookEntry: Identifiable {
         self.posterUsername = posterUsername
         self.posterProfilePictureUrl = posterProfilePictureUrl
         self.caption = caption
+        self.likesCount = likesCount
+        self.isLiked = isLiked
         self.commentsCount = commentsCount
         self.productLinkClicks = productLinkClicks
         self.shopLinkClicks = shopLinkClicks
@@ -103,6 +107,8 @@ struct LookbookEntry: Identifiable {
         self.posterUsername = serverPost.username
         self.posterProfilePictureUrl = serverPost.profilePictureUrl
         self.caption = serverPost.caption
+        self.likesCount = serverPost.likesCount ?? 0
+        self.isLiked = serverPost.userLiked ?? false
         self.commentsCount = serverPost.commentsCount ?? 0
         self.productLinkClicks = serverPost.productLinkClicks ?? 0
         self.shopLinkClicks = serverPost.shopLinkClicks ?? 0
@@ -178,6 +184,50 @@ private func lookbookFeedRowStableId(for entry: LookbookEntry) -> String {
 private func buildLookbookFeedRows(from list: [LookbookEntry]) -> [LookbookFeedRowModel] {
     list.map { entry in
         LookbookFeedRowModel(id: lookbookFeedRowStableId(for: entry), entry: entry)
+    }
+}
+
+/// Server like toggle with optimistic UI. Keeps `LikeButtonView` as the only tap target (no extra wrappers).
+private func handleLookbookFeedLikeTap(_ tapped: LookbookEntry, authService: AuthService, entries: Binding<[LookbookEntry]>) {
+    guard authService.isAuthenticated else { return }
+    let key = tapped.lookbookPostKey
+    guard let idx = entries.wrappedValue.firstIndex(where: { $0.lookbookPostKey == key }) else { return }
+    let prevLiked = entries.wrappedValue[idx].isLiked
+    let prevCount = entries.wrappedValue[idx].likesCount
+    var row = entries.wrappedValue[idx]
+    row.isLiked.toggle()
+    row.likesCount = max(0, prevCount + (row.isLiked ? 1 : -1))
+    entries.wrappedValue[idx] = row
+
+    let postId = tapped.apiPostId
+    let token = authService.authToken
+    Task {
+        let client = GraphQLClient()
+        client.setAuthToken(token)
+        let service = LookbookService(client: client)
+        service.setAuthToken(token)
+        do {
+            let result = try await service.toggleLike(postId: postId)
+            await MainActor.run {
+                var arr = entries.wrappedValue
+                guard let i = arr.firstIndex(where: { $0.lookbookPostKey == key }) else { return }
+                var u = arr[i]
+                u.isLiked = result.liked
+                u.likesCount = result.likesCount
+                arr[i] = u
+                entries.wrappedValue = arr
+            }
+        } catch {
+            await MainActor.run {
+                var arr = entries.wrappedValue
+                guard let i = arr.firstIndex(where: { $0.lookbookPostKey == key }) else { return }
+                var u = arr[i]
+                u.isLiked = prevLiked
+                u.likesCount = prevCount
+                arr[i] = u
+                entries.wrappedValue = arr
+            }
+        }
     }
 }
 
@@ -549,7 +599,118 @@ private struct LookbookFeedScreenView: View {
             onPostDeleted: { deleted in
                 entries.removeAll { $0.lookbookPostKey == deleted.lookbookPostKey }
             },
-            onOpenAnalytics: { analyticsEntry = $0 }
+            onOpenAnalytics: { analyticsEntry = $0 },
+            onLikeTap: { tapped in
+                handleLookbookFeedLikeTap(tapped, authService: authService, entries: $entries)
+            }
+        )
+        .padding(.bottom, lookbookSpacing)
+    }
+}
+
+// MARK: - Single post (deep link / chat) — full Feed row UI, isolated
+
+/// One lookbook post with the same chrome as the main Feed (like, comment, send, save, tags), not the image-only lightbox.
+struct LookbookSinglePostFeedPresentedView: View {
+    @EnvironmentObject private var authService: AuthService
+    @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
+    @State private var entries: [LookbookEntry]
+    @State private var commentsEntry: LookbookEntry?
+    @State private var fullScreenEntry: LookbookEntry?
+    @State private var selectedProductId: ProductIdNavigator?
+    @State private var analyticsEntry: LookbookEntry?
+    private let productService = ProductService()
+    let onDismiss: () -> Void
+
+    init(entry: LookbookEntry, onDismiss: @escaping () -> Void) {
+        _entries = State(initialValue: [entry])
+        self.onDismiss = onDismiss
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                ScrollView {
+                    LookbookScrollImmediateTouchesAnchor()
+                        .frame(width: 0, height: 0)
+                    LazyVStack(spacing: 0) {
+                        ForEach(buildLookbookFeedRows(from: entries)) { model in
+                            singlePostRow(model: model)
+                        }
+                    }
+                    .padding(.bottom, Theme.Spacing.xl)
+                }
+                .scrollContentBackground(.hidden)
+                .background(Theme.Colors.background)
+
+                if let entry = fullScreenEntry {
+                    LookbookTransparentFullscreenOverlay(entry: entry) {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                            fullScreenEntry = nil
+                        }
+                    }
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.94, anchor: .center)),
+                        removal: .opacity
+                    ))
+                    .zIndex(2)
+                }
+            }
+            .animation(.spring(response: 0.38, dampingFraction: 0.86), value: fullScreenEntry?.id)
+            .navigationTitle(L10n.string("Feed"))
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "chevron.backward")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(Theme.Colors.primaryText)
+                    }
+                    .accessibilityLabel(L10n.string("Back"))
+                }
+            }
+            .sheet(item: $commentsEntry) { entry in
+                LookbookCommentsSheet(entry: entry) { newCount in
+                    let key = entry.apiPostId.lowercased()
+                    if let idx = entries.firstIndex(where: { $0.apiPostId.lowercased() == key }) {
+                        var updated = entries[idx]
+                        updated.commentsCount = newCount
+                        entries[idx] = updated
+                    }
+                }
+                .presentationDetents([.fraction(0.44), .medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(22)
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            }
+            .navigationDestination(item: $selectedProductId) { nav in
+                LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
+            }
+            .navigationDestination(item: $analyticsEntry) { entry in
+                LookbookAnalyticsView(entry: entry)
+                    .environmentObject(authService)
+            }
+        }
+    }
+
+    private func singlePostRow(model: LookbookFeedRowModel) -> some View {
+        LookbookFeedRowView(
+            entry: model.entry,
+            onCommentsTap: { commentsEntry = $0 },
+            onImageTap: { tapped in
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                    fullScreenEntry = tapped
+                }
+            },
+            onProductTap: { productId in selectedProductId = ProductIdNavigator(id: productId) },
+            onPostDeleted: { _ in onDismiss() },
+            onOpenAnalytics: { analyticsEntry = $0 },
+            onLikeTap: { tapped in
+                handleLookbookFeedLikeTap(tapped, authService: authService, entries: $entries)
+            }
         )
         .padding(.bottom, lookbookSpacing)
     }
@@ -875,7 +1036,10 @@ private struct LookbookMyItemsScreenView: View {
             onPostDeleted: { deleted in
                 entries.removeAll { $0.lookbookPostKey == deleted.lookbookPostKey }
             },
-            onOpenAnalytics: { analyticsEntry = $0 }
+            onOpenAnalytics: { analyticsEntry = $0 },
+            onLikeTap: { tapped in
+                handleLookbookFeedLikeTap(tapped, authService: authService, entries: $entries)
+            }
         )
         .padding(.bottom, immersive ? 0 : lookbookSpacing)
     }
@@ -1022,7 +1186,10 @@ private struct LookbookTopicFeedView: View {
             onPostDeleted: { deleted in
                 entries.removeAll { $0.lookbookPostKey == deleted.lookbookPostKey }
             },
-            onOpenAnalytics: { analyticsEntry = $0 }
+            onOpenAnalytics: { analyticsEntry = $0 },
+            onLikeTap: { tapped in
+                handleLookbookFeedLikeTap(tapped, authService: authService, entries: $entries)
+            }
         )
         .padding(.bottom, lookbookSpacing)
     }
@@ -1451,7 +1618,7 @@ private struct LookbookPostCardShimmer: View {
     }
 }
 
-// MARK: - Feed row (sandbox-style: full-width 4:5 media, comment / send / save — no like control)
+// MARK: - Feed row (sandbox-style: full-width 4:5 media, like / comment / send, save trailing)
 private struct LookbookFeedRowView: View {
     let entry: LookbookEntry
     let onCommentsTap: (LookbookEntry) -> Void
@@ -1459,6 +1626,7 @@ private struct LookbookFeedRowView: View {
     let onProductTap: (String) -> Void
     let onPostDeleted: ((LookbookEntry) -> Void)?
     let onOpenAnalytics: ((LookbookEntry) -> Void)?
+    let onLikeTap: (LookbookEntry) -> Void
 
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
@@ -1493,6 +1661,35 @@ private struct LookbookFeedRowView: View {
         }
         parts.append("@\(entry.posterUsername) on WEARHOUSE")
         return parts.joined(separator: "\n\n")
+    }
+
+    /// Structured chat payload so the thread can show a thumbnail + tappable universal link (plain text URLs are not linkified in `Text`).
+    private var forwardMessageForChat: String {
+        if let json = forwardMessagePayloadJSONString { return json }
+        return forwardMessageText
+    }
+
+    private var forwardMessagePayloadJSONString: String? {
+        guard let link = lookbookShareURLString, !link.isEmpty else { return nil }
+        let imageURL = currentDisplayImageURL ?? entry.imageUrls.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let thumbFromEntry = entry.thumbnailUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let thumb: String? = {
+            if let t = thumbFromEntry, !t.isEmpty { return t }
+            if let full = imageURL, !full.isEmpty, let derived = LookbookCDNThumbnailURL.urlString(forFullImageURL: full) { return derived }
+            return nil
+        }()
+        var dict: [String: Any] = [
+            "type": "lookbook_share",
+            "url": link,
+            "poster_username": entry.posterUsername
+        ]
+        if let t = thumb, !t.isEmpty { dict["thumbnail_url"] = t }
+        if let i = imageURL, !i.isEmpty { dict["image_url"] = i }
+        if let c = entry.caption?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty { dict["caption"] = c }
+        guard JSONSerialization.isValidJSONObject(dict),
+              let data = try? JSONSerialization.data(withJSONObject: dict, options: []),
+              let s = String(data: data, encoding: .utf8) else { return nil }
+        return s
     }
 
     private func styleSubtitle(for entry: LookbookEntry) -> String? {
@@ -1600,6 +1797,14 @@ private struct LookbookFeedRowView: View {
                 .clipShape(Rectangle())
 
             HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                LikeButtonView(
+                    isLiked: entry.isLiked,
+                    likeCount: entry.likesCount,
+                    action: { onLikeTap(entry) },
+                    onDarkOverlay: false,
+                    heartPointSize: 20
+                )
+
                 Button {
                     HapticManager.tap()
                     onCommentsTap(entry)
@@ -1636,10 +1841,11 @@ private struct LookbookFeedRowView: View {
                     HapticManager.tap()
                     _ = savedLookbookFavorites.toggle(entry: entry, imageUrl: currentDisplayImageURL)
                 } label: {
-                    Image(systemName: isPhotoFavorited ? "bookmark.fill" : "bookmark")
+                    // Circle variant reads closer to heart/bubble/paperplane weight than the tall `bookmark` ribbon.
+                    Image(systemName: isPhotoFavorited ? "bookmark.circle.fill" : "bookmark.circle")
                         .font(.system(size: actionIconSize, weight: .medium))
                         .foregroundStyle(isPhotoFavorited ? Theme.primaryColor : Theme.Colors.primaryText)
-                        .frame(minWidth: 44, minHeight: 44)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainTappableButtonStyle())
@@ -1668,7 +1874,7 @@ private struct LookbookFeedRowView: View {
                 ChatWithSellerView(
                     seller: user,
                     item: nil,
-                    precomposedMessage: forwardMessageText,
+                    precomposedMessage: forwardMessageForChat,
                     authService: authService
                 )
                 .environmentObject(authService)
@@ -2549,11 +2755,21 @@ struct LookbookSearchSheet: View {
 }
 
 extension LookbookEntry: Equatable {
-    static func == (lhs: LookbookEntry, rhs: LookbookEntry) -> Bool { lhs.id == rhs.id }
+    static func == (lhs: LookbookEntry, rhs: LookbookEntry) -> Bool {
+        lhs.id == rhs.id
+            && lhs.likesCount == rhs.likesCount
+            && lhs.isLiked == rhs.isLiked
+            && lhs.commentsCount == rhs.commentsCount
+    }
 }
 
 extension LookbookEntry: Hashable {
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(likesCount)
+        hasher.combine(isLiked)
+        hasher.combine(commentsCount)
+    }
 }
 
 #if DEBUG

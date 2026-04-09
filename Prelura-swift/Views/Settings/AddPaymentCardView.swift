@@ -163,7 +163,7 @@ struct AddPaymentCardView: View {
                 try await userService.addPaymentMethod(paymentMethodId: paymentMethodId)
                 await MainActor.run { showSuccess = true }
             } catch {
-                await MainActor.run { errorMessage = error.localizedDescription }
+                await MainActor.run { errorMessage = L10n.userFacingError(error) }
             }
         }
     }

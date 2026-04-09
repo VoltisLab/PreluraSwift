@@ -77,7 +77,7 @@ struct DeleteAccountView: View {
             try await userService.deleteAccount(password: password)
             await authService.logout()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         }
     }
 }
