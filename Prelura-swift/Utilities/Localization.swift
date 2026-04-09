@@ -196,6 +196,8 @@ enum L10n {
         "Delete this comment?": "Διαγραφή αυτού του σχολίου;",
         "This will remove your comment and any replies under it.": "Θα αφαιρεθεί το σχόλιό σας και τυχόν απαντήσεις κάτω από αυτό.",
         "Lookbook upload": "Μεταφόρτωση Lookbook",
+        "Tap to reload": "Πατήστε για επανάφόρτωση",
+        "tag products": "Επισήμανση προϊόντων",
 
         // Profile (Favourites used from Menu section)
         "Listings": "Αγγελίες",

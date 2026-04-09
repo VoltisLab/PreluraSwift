@@ -1,5 +1,20 @@
 import SwiftUI
 
+/// Short labels for like/comment counts on lookbook feed rows so wide numbers do not clip the action bar.
+enum LookbookFeedEngagementCountFormatting {
+    static func short(_ n: Int) -> String {
+        if n < 1000 { return "\(n)" }
+        if n >= 1_000_000 {
+            let m = Double(n) / 1_000_000.0
+            let s = m >= 10 ? String(format: "%.0fM", m) : String(format: "%.1fM", m)
+            return s.replacingOccurrences(of: ".0M", with: "M")
+        }
+        let k = Double(n) / 1000.0
+        let s = k >= 100 ? String(format: "%.0fk", k) : String(format: "%.1fk", k)
+        return s.replacingOccurrences(of: ".0k", with: "k")
+    }
+}
+
 /// Shared like button: heart + count. Use on product cards and detail for consistent design.
 /// Hit target is at least 56×56 pt and expands with the pill so the count remains tappable.
 struct LikeButtonView: View {
@@ -10,6 +25,8 @@ struct LikeButtonView: View {
     var onDarkOverlay: Bool = true
     /// Heart glyph size; match adjacent toolbar/row icons on feeds (e.g. 20).
     var heartPointSize: CGFloat = 14
+    /// When set, replaces `\(likeCount)` so wide counts do not blow out feed toolbars (e.g. "12.4k").
+    var likeCountFormatting: ((Int) -> String)? = nil
 
     private static let minTapSize: CGFloat = 56
 
@@ -31,11 +48,16 @@ struct LikeButtonView: View {
         .contentShape(Rectangle())
     }
 
+    private var displayedLikeCount: String {
+        if let format = likeCountFormatting { return format(likeCount) }
+        return "\(likeCount)"
+    }
+
     private var likePillContent: some View {
         HStack(spacing: Theme.Spacing.xs) {
             Image(systemName: isLiked ? "heart.fill" : "heart")
                 .font(.system(size: heartPointSize, weight: .medium))
-            Text("\(likeCount)")
+            Text(displayedLikeCount)
                 .font(.system(size: likeCountPointSize, weight: .medium))
         }
         .foregroundColor(isLiked ? .red : (onDarkOverlay ? .white : Theme.Colors.primaryText))

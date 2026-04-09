@@ -23,7 +23,8 @@ struct NotificationTypeMatrixDebugView: View {
         ("USER / PROFILE / FOLLOW", "User profile"),
         ("CONVERSATION / MESSAGE / CHAT / OFFER", "Chat thread"),
         ("ORDER", "Order chat (if conversation_id) or order details"),
-        ("ORDER_ISSUE", "Help chat (if conversation_id) or order details")
+        ("ORDER_ISSUE", "Help chat (if conversation_id) or order details"),
+        ("LOOKBOOK", "Lookbook post (FCM); bell list uses model_group Lookbook")
     ]
 
     var body: some View {

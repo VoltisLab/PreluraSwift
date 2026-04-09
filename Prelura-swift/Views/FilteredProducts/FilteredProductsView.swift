@@ -151,6 +151,9 @@ struct FilteredProductsView: View {
                     }
                 )
             }
+            // Header chrome lives outside this ScrollView; system scroll content margins would stack with
+            // the grid's horizontal padding and make products look more inset than search/filter (Shop All).
+            .contentMargins(.horizontal, 0, for: .scrollContent)
             .coordinateSpace(name: productsScrollSpace)
             .refreshable {
                 await viewModel.refreshAsync()
@@ -570,10 +573,9 @@ struct FilteredProductsView: View {
         .allowsHitTesting(true)
     }
 
+    /// Same hairline as `ContentDivider` (1 device pixel) so sort/filter sheets match profile and forms.
     private var optionDivider: some View {
-        Rectangle()
-            .fill(Theme.Colors.glassBorder)
-            .frame(height: 0.5)
+        ContentDivider()
             .padding(.horizontal, Theme.Spacing.md)
     }
 

@@ -194,6 +194,7 @@ struct MyFavouritesView: View {
                         .padding()
                 }
             }
+            .contentMargins(.horizontal, 0, for: .scrollContent)
         }
     }
 

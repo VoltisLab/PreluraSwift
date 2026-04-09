@@ -795,6 +795,7 @@ private struct LookbookMyItemsScreenView: View {
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: pageHeight)
         }
         .frame(maxWidth: .infinity, minHeight: pageHeight, maxHeight: pageHeight)
+        .clipped()
         .id(entry.id)
     }
 
@@ -1459,7 +1460,6 @@ struct LookbookTransparentFullscreenOverlay: View {
                             imageName: entry.imageNames.first ?? "",
                             imageUrl: url
                         )
-                        .padding(.horizontal, Theme.Spacing.md)
                         .tag(idx)
                     }
                     if entry.imageUrls.isEmpty {
@@ -1468,14 +1468,12 @@ struct LookbookTransparentFullscreenOverlay: View {
                             imageName: entry.imageNames.first ?? "",
                             imageUrl: nil
                         )
-                        .padding(.horizontal, Theme.Spacing.md)
                         .tag(0)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: entry.imageUrls.count > 1 ? .automatic : .never))
                 .frame(maxHeight: UIScreen.main.bounds.height * 0.78)
             }
-            .allowsHitTesting(true)
 
             VStack {
                 HStack {
@@ -1495,6 +1493,7 @@ struct LookbookTransparentFullscreenOverlay: View {
                 Spacer()
             }
         }
+        .allowsHitTesting(true)
     }
 }
 
@@ -1687,11 +1686,70 @@ private struct LookbookFeedPostActionBar: View {
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, 10)
         .background(Theme.Colors.background)
-        .zIndex(2)
     }
 }
 
-// MARK: - Feed row (sandbox-style: full-width 4:5 media, like / comment / send, save trailing)
+/// Remote lookbook image with tap-to-retry on failure (AsyncImage does not reload unless view identity changes).
+private struct LookbookFeedRowRemoteImage: View {
+    let url: URL
+    let onSuccessTap: () -> Void
+
+    @State private var reloadNonce = 0
+
+    var body: some View {
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case .success(let image):
+                image
+                    .resizable()
+                    .scaledToFit()
+                    .contentShape(Rectangle())
+                    .onTapGesture { onSuccessTap() }
+            case .failure:
+                reloadPrompt
+            case .empty:
+                ZStack {
+                    Theme.Colors.secondaryBackground
+                    ProgressView()
+                        .scaleEffect(0.85)
+                }
+            @unknown default:
+                reloadPrompt
+            }
+        }
+        .id("\(url.absoluteString)-\(reloadNonce)")
+    }
+
+    private var reloadPrompt: some View {
+        Button {
+            HapticManager.tap()
+            reloadNonce += 1
+        } label: {
+            VStack(spacing: 10) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .font(.system(size: 36))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Theme.Colors.secondaryText)
+                Text(L10n.string("Could not load image"))
+                    .font(Theme.Typography.subheadline)
+                    .foregroundStyle(Theme.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                Text(L10n.string("Tap to reload"))
+                    .font(Theme.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Theme.primaryColor)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Theme.Spacing.lg)
+            .padding(.horizontal, Theme.Spacing.sm)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.string("Could not load image"))
+        .accessibilityHint(L10n.string("Tap to reload"))
+    }
+}
+
+// MARK: - Feed row (full-width media: natural aspect, no crop; like / comment / send, save trailing)
 private struct LookbookFeedRowView: View {
     let entry: LookbookEntry
     let onCommentsTap: (LookbookEntry) -> Void
@@ -1710,8 +1768,8 @@ private struct LookbookFeedRowView: View {
     @State private var shareToChatRecipient: User?
 
     private let avatarSize: CGFloat = 40
-    /// Edge-to-edge slot; matches debug feed sandbox (~4:5 portrait).
-    private let mediaAspect: CGFloat = 4 / 5
+    /// Carousel pages share one height so horizontal paging stays aligned (portrait-leaning ratio).
+    private let carouselSlotAspect: CGFloat = 4 / 5
 
     private var lookbookShareURLString: String? {
         let raw = entry.apiPostId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1871,12 +1929,14 @@ private struct LookbookFeedRowView: View {
                 onSendTap: { openSendForward() }
             )
             .environmentObject(savedLookbookFavorites)
+            .zIndex(20)
 
             Rectangle()
                 .fill(Theme.Colors.glassBorder.opacity(0.35))
                 .frame(height: 0.5)
                 .padding(.leading, Theme.Spacing.md)
         }
+        .background(Theme.Colors.background)
         .sheet(item: $sharePayload) { payload in
             LookbookActivityView(activityItems: payload.items)
         }
@@ -1920,7 +1980,7 @@ private struct LookbookFeedRowView: View {
                 lookbookSandboxSingleMedia(urlString: "", documentPath: entry.documentImagePath)
             } else if urls.count > 1 {
                 Color.clear
-                    .aspectRatio(mediaAspect, contentMode: .fit)
+                    .aspectRatio(carouselSlotAspect, contentMode: .fit)
                     .overlay {
                         GeometryReader { geo in
                             let w = max(1, geo.size.width)
@@ -1932,7 +1992,9 @@ private struct LookbookFeedRowView: View {
                                     ForEach(Array(urls.enumerated()), id: \.offset) { idx, urlString in
                                         lookbookSandboxSingleMedia(
                                             urlString: urlString,
-                                            documentPath: idx == 0 ? entry.documentImagePath : nil
+                                            documentPath: idx == 0 ? entry.documentImagePath : nil,
+                                            carouselPageWidth: w,
+                                            carouselPageHeight: h
                                         )
                                         .frame(width: w, height: h)
                                         .clipped()
@@ -1958,43 +2020,43 @@ private struct LookbookFeedRowView: View {
     }
 
     @ViewBuilder
-    private func lookbookSandboxSingleMedia(urlString: String, documentPath: String?) -> some View {
+    private func lookbookSandboxSingleMedia(
+        urlString: String,
+        documentPath: String?,
+        carouselPageWidth: CGFloat? = nil,
+        carouselPageHeight: CGFloat? = nil
+    ) -> some View {
+        let isCarousel = carouselPageWidth != nil && carouselPageHeight != nil
         Group {
             if let ui = localDocumentUIImage(documentPath) {
-                Image(uiImage: ui)
-                    .resizable()
-                    .scaledToFill()
-            } else if let url = URL(string: urlString), !urlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        lookbookSandboxMediaPlaceholder
-                    case .empty:
-                        lookbookSandboxMediaPlaceholder
-                            .overlay { ProgressView().scaleEffect(0.7) }
-                    @unknown default:
-                        lookbookSandboxMediaPlaceholder
-                    }
+                Button {
+                    onImageTap(entry)
+                } label: {
+                    Image(uiImage: ui)
+                        .resizable()
+                        .scaledToFit()
                 }
+                .buttonStyle(.plain)
+            } else if let url = URL(string: urlString), !urlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                LookbookFeedRowRemoteImage(url: url, onSuccessTap: { onImageTap(entry) })
             } else if !entry.imageNames.isEmpty, let ui = UIImage(named: entry.imageNames[0]) {
-                Image(uiImage: ui)
-                    .resizable()
-                    .scaledToFill()
+                Button {
+                    onImageTap(entry)
+                } label: {
+                    Image(uiImage: ui)
+                        .resizable()
+                        .scaledToFit()
+                }
+                .buttonStyle(.plain)
             } else {
-                lookbookSandboxMediaPlaceholder
+                lookbookSandboxMediaPlaceholder(fixedCarouselSlot: isCarousel)
             }
         }
         .frame(maxWidth: .infinity)
-        .aspectRatio(mediaAspect, contentMode: .fit)
+        .modifier(LookbookFeedMediaFrameModifier(carouselW: carouselPageWidth, carouselH: carouselPageHeight))
+        .background(Theme.Colors.background)
         .clipped()
         .contentShape(Rectangle())
-        .onTapGesture {
-            onImageTap(entry)
-        }
     }
 
     private func localDocumentUIImage(_ documentPath: String?) -> UIImage? {
@@ -2005,8 +2067,9 @@ private struct LookbookFeedRowView: View {
         return ui
     }
 
-    private var lookbookSandboxMediaPlaceholder: some View {
-        Theme.Colors.secondaryBackground
+    @ViewBuilder
+    private func lookbookSandboxMediaPlaceholder(fixedCarouselSlot: Bool) -> some View {
+        let base = Theme.Colors.secondaryBackground
             .overlay {
                 VStack(spacing: 8) {
                     Image(systemName: "photo")
@@ -2017,6 +2080,27 @@ private struct LookbookFeedRowView: View {
                         .foregroundStyle(Theme.Colors.secondaryText)
                 }
             }
+            .frame(maxWidth: .infinity)
+        if fixedCarouselSlot {
+            base.aspectRatio(4 / 5, contentMode: .fit)
+        } else {
+            base.frame(minHeight: 200)
+        }
+    }
+}
+
+/// Single-image posts use natural height; carousel pages use a fixed `w×h` slot with letterboxing via `scaledToFit`.
+private struct LookbookFeedMediaFrameModifier: ViewModifier {
+    var carouselW: CGFloat?
+    var carouselH: CGFloat?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let w = carouselW, let h = carouselH {
+            content.frame(width: w, height: h)
+        } else {
+            content
+        }
     }
 }
 
@@ -2610,7 +2694,8 @@ struct LookbookCommentsSheet: View {
     private func lookbookCommentRow(_ row: LookbookCommentThreadRow) -> some View {
         let c = row.comment
         let timeStr = LookbookCommentTimeFormatting.shortRelative(iso: c.createdAt)
-        let indent = Theme.Spacing.md + CGFloat(row.depth) * 18
+        let effectiveDepth = min(row.depth, 2)
+        let indent = Theme.Spacing.md + CGFloat(effectiveDepth) * 18
         let liked = c.userLiked ?? false
         let likeCount = c.likesCount ?? 0
         let busyLike = togglingLikeCommentId == c.id
@@ -2619,8 +2704,9 @@ struct LookbookCommentsSheet: View {
             LookbookCommentAvatar(profilePictureUrl: c.profilePictureUrl, username: c.username, size: 32)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                    // Same text style size as comment body (`HashtagColoredText` uses subheadline); weight distinguishes name.
                     Text(c.username)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(Theme.Typography.body.weight(.semibold))
                         .foregroundColor(Theme.Colors.primaryText)
                         .lineLimit(1)
                     Spacer(minLength: Theme.Spacing.sm)
@@ -2733,9 +2819,21 @@ struct LookbookCommentsSheet: View {
     }
 
     private func sendComment() {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+
         let parentId = replyParent?.id
+        // Reply text is stored as typed; parent author is notified by the server from `parent_comment_id` (no @mention injected).
+        if let parent = replyParent {
+            let pu = parent.username.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !pu.isEmpty else { return }
+            let mentionPrefix = "@\(pu) "
+            if text.lowercased().hasPrefix(mentionPrefix.lowercased()) {
+                text = String(text.dropFirst(mentionPrefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard !text.isEmpty else { return }
+        }
+
         sending = true
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
@@ -2916,19 +3014,37 @@ private struct LookbookEntryThumbnail: View {
 
 private struct HashtagColoredText: View {
     let text: String
+    @EnvironmentObject private var appRouter: AppRouter
 
     private var attributed: AttributedString {
         var result = AttributedString(text)
-        let pattern = "#\\w+"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return result }
         let ns = text as NSString
-        let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
-        for match in matches {
-            if let range = Range(match.range, in: result) {
+        let full = NSRange(location: 0, length: ns.length)
+
+        if let regex = try? NSRegularExpression(pattern: "#\\w+") {
+            for match in regex.matches(in: text, range: full) {
+                guard let range = Range(match.range, in: result) else { continue }
                 result[range].foregroundColor = Theme.primaryColor
                 result[range].font = Theme.Typography.subheadline.weight(.semibold)
             }
         }
+
+        if let regex = try? NSRegularExpression(pattern: "@[A-Za-z0-9_]+") {
+            for match in regex.matches(in: text, range: full) {
+                guard let range = Range(match.range, in: result) else { continue }
+                let token = ns.substring(with: match.range)
+                let username = String(token.dropFirst())
+                if !username.isEmpty {
+                    let enc = username.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? username
+                    if let url = URL(string: "prelura://user/\(enc)") {
+                        result[range].link = url
+                    }
+                }
+                result[range].foregroundColor = Theme.primaryColor
+                result[range].font = Theme.Typography.subheadline.weight(.semibold)
+            }
+        }
+
         return result
     }
 
@@ -2937,6 +3053,15 @@ private struct HashtagColoredText: View {
             .font(Theme.Typography.subheadline)
             .foregroundColor(Theme.Colors.primaryText)
             .lineLimit(nil)
+            .environment(\.openURL, OpenURLAction { url in
+                if url.scheme?.lowercased() == "prelura",
+                   let host = url.host?.lowercased(),
+                   host == "user" || host == "profile" {
+                    appRouter.handle(url: url)
+                    return .handled
+                }
+                return .systemAction
+            })
     }
 }
 

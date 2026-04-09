@@ -167,45 +167,51 @@ struct DebugLookbookFeedSandboxView: View {
 
     @ViewBuilder
     private func sandboxActionBar(index: Int, row: DebugSandboxFeedRow) -> some View {
-        HStack(alignment: .center, spacing: Theme.Spacing.md) {
-            Button {
-                HapticManager.tap()
-                commentDraft = ""
-                commentSheetTarget = CommentSheetTarget(id: row.id)
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "bubble.right")
+        HStack(alignment: .center, spacing: 0) {
+            HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                LikeButtonView(
+                    isLiked: row.liked,
+                    likeCount: row.likeCount,
+                    action: { toggleLike(at: index) },
+                    onDarkOverlay: false,
+                    heartPointSize: 20,
+                    likeCountFormatting: LookbookFeedEngagementCountFormatting.short
+                )
+
+                Button {
+                    HapticManager.tap()
+                    commentDraft = ""
+                    commentSheetTarget = CommentSheetTarget(id: row.id)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bubble.right")
+                            .font(.system(size: actionIconSize, weight: .medium))
+                            .foregroundStyle(Theme.Colors.primaryText)
+                        Text(LookbookFeedEngagementCountFormatting.short(row.commentsCount))
+                            .font(.system(size: likeCountSize, weight: .medium))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.Colors.primaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    HapticManager.tap()
+                } label: {
+                    Image(systemName: "paperplane")
                         .font(.system(size: actionIconSize, weight: .medium))
                         .foregroundStyle(Theme.Colors.primaryText)
-                    Text("\(row.commentsCount)")
-                        .font(.system(size: likeCountSize, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.Colors.primaryText)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-
-            Button {
-                HapticManager.tap()
-            } label: {
-                Image(systemName: "paperplane")
-                    .font(.system(size: actionIconSize, weight: .medium))
-                    .foregroundStyle(Theme.Colors.primaryText)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
 
             Spacer(minLength: Theme.Spacing.sm)
-
-            LikeButtonView(
-                isLiked: row.liked,
-                likeCount: row.likeCount,
-                action: { toggleLike(at: index) },
-                onDarkOverlay: false,
-                heartPointSize: 20
-            )
 
             Button {
                 HapticManager.tap()
@@ -219,6 +225,7 @@ struct DebugLookbookFeedSandboxView: View {
             }
             .buttonStyle(.plain)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder

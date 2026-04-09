@@ -219,6 +219,7 @@ struct NotificationDestinationView: View {
     @State private var resolvedItem: Item?
     @State private var resolvedUser: User?
     @State private var resolvedConversation: Conversation?
+    @State private var resolvedLookbookEntry: LookbookEntry?
     @State private var isLoading = true
     @State private var loadError: String?
 
@@ -264,12 +265,16 @@ struct NotificationDestinationView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.Colors.background)
-        } else if modelGroup == "Product", let item = resolvedItem {
+        } else if modelGroupKey == "product", let item = resolvedItem {
             ItemDetailView(item: item, authService: authService)
-        } else if modelGroup == "UserProfile", let user = resolvedUser {
+        } else if modelGroupKey == "userprofile", let user = resolvedUser {
             UserProfileView(seller: user, authService: authService)
-        } else if (modelGroup == "Chat" || modelGroup == "Offer" || modelGroup == "Order"), let conv = resolvedConversation {
+        } else if (modelGroupKey == "chat" || modelGroupKey == "offer" || modelGroupKey == "order"), let conv = resolvedConversation {
             ChatDetailView(conversation: conv)
+        } else if modelGroupKey == "lookbook", let entry = resolvedLookbookEntry {
+            NotificationLookbookDeepLinkHost(entry: entry)
+                .environmentObject(authService)
+                .environmentObject(SavedLookbookFavoritesStore.shared)
         } else if let err = loadError {
             VStack(spacing: Theme.Spacing.md) {
                 Text(err)
@@ -284,13 +289,13 @@ struct NotificationDestinationView: View {
         }
     }
 
-    private var modelGroup: String {
-        (notification.modelGroup ?? "").trimmingCharacters(in: .whitespaces)
+    private var modelGroupKey: String {
+        (notification.modelGroup ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     private func resolve() async {
-        switch modelGroup {
-        case "Product":
+        switch modelGroupKey {
+        case "product":
             guard let modelId = notification.modelId, let productId = Int(modelId) else {
                 await MainActor.run { loadError = "Invalid product"; isLoading = false }
                 return
@@ -305,7 +310,7 @@ struct NotificationDestinationView: View {
             } catch {
                 await MainActor.run { loadError = L10n.userFacingError(error); isLoading = false }
             }
-        case "UserProfile":
+        case "userprofile":
             guard let username = notification.sender?.username, !username.isEmpty else {
                 await MainActor.run { loadError = "Unknown user"; isLoading = false }
                 return
@@ -319,7 +324,7 @@ struct NotificationDestinationView: View {
             } catch {
                 await MainActor.run { loadError = L10n.userFacingError(error); isLoading = false }
             }
-        case "Chat", "Offer", "Order":
+        case "chat", "offer", "order":
             let convId = notification.meta?["conversation_id"] ?? ""
             let username = notification.sender?.username ?? ""
             let avatarUrl = notification.sender?.profilePictureUrl
@@ -365,9 +370,52 @@ struct NotificationDestinationView: View {
                     isLoading = false
                 }
             }
+        case "lookbook":
+            guard let postId = notification.modelId?.trimmingCharacters(in: .whitespacesAndNewlines), !postId.isEmpty else {
+                await MainActor.run { loadError = "Invalid lookbook"; isLoading = false }
+                return
+            }
+            do {
+                let client = GraphQLClient()
+                if let token = authService.authToken {
+                    client.setAuthToken(token)
+                }
+                let service = LookbookService(client: client)
+                guard let post = try await service.fetchLookbookPost(postId: postId) else {
+                    await MainActor.run {
+                        loadError = "Lookbook not found"
+                        isLoading = false
+                    }
+                    return
+                }
+                let localRecords = LookbookFeedStore.load()
+                let entry = LookbookEntry(
+                    from: post,
+                    localRecord: localRecords.first { r in r.id == post.id || r.imagePath == post.imageUrl }
+                )
+                await MainActor.run {
+                    resolvedLookbookEntry = entry
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    loadError = L10n.userFacingError(error)
+                    isLoading = false
+                }
+            }
         default:
             await MainActor.run { loadError = "Unknown notification type"; isLoading = false }
         }
+    }
+}
+
+/// Presents the same lookbook post UI as push/deep link, with back popping the notifications stack.
+private struct NotificationLookbookDeepLinkHost: View {
+    let entry: LookbookEntry
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        LookbookSinglePostFeedPresentedView(entry: entry, onDismiss: { dismiss() })
     }
 }
 

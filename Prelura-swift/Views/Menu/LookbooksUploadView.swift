@@ -276,59 +276,60 @@ struct LookbooksUploadView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Upload banner: full width, placeholder or selected image
-                    PhotosPicker(
-                        selection: $selectedItems,
-                        maxSelectionCount: Self.maxPhotosPerPost,
-                        matching: .images,
-                        photoLibrary: .shared()
-                    ) {
-                        Group {
-                            if selectedImages.count == 1, let image = selectedImages.first {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(maxWidth: .infinity)
-                            } else if selectedImages.count > 1 {
-                                TabView {
-                                    ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, image in
-                                        Image(uiImage: image)
-                                            .resizable()
-                                            .scaledToFit()
-                                            .frame(maxWidth: .infinity)
+        GeometryReader { screenGeo in
+            let photoPickerMinHeight = max(220, screenGeo.size.height * 0.5)
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Upload banner: full width, placeholder or selected image (~half screen tall)
+                        PhotosPicker(
+                            selection: $selectedItems,
+                            maxSelectionCount: Self.maxPhotosPerPost,
+                            matching: .images,
+                            photoLibrary: .shared()
+                        ) {
+                            Group {
+                                if selectedImages.count == 1, let image = selectedImages.first {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(maxWidth: .infinity)
+                                } else if selectedImages.count > 1 {
+                                    TabView {
+                                        ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, image in
+                                            Image(uiImage: image)
+                                                .resizable()
+                                                .scaledToFit()
+                                                .frame(maxWidth: .infinity)
+                                        }
                                     }
+                                    .tabViewStyle(.page(indexDisplayMode: .automatic))
+                                    .frame(minHeight: photoPickerMinHeight)
+                                } else {
+                                    VStack(spacing: Theme.Spacing.md) {
+                                        Image(systemName: "photo.badge.plus")
+                                            .font(.system(size: 44))
+                                            .foregroundStyle(Theme.Colors.secondaryText)
+                                        Text("Tap to choose photos")
+                                            .font(Theme.Typography.body)
+                                            .foregroundColor(Theme.Colors.secondaryText)
+                                        Text("Up to \(Self.maxPhotosPerPost) — shows as one carousel post")
+                                            .font(Theme.Typography.caption)
+                                            .foregroundColor(Theme.Colors.secondaryText)
+                                    }
+                                    .frame(maxWidth: .infinity, minHeight: photoPickerMinHeight)
+                                    .background(Theme.Colors.secondaryBackground)
                                 }
-                                .tabViewStyle(.page(indexDisplayMode: .automatic))
-                                .frame(minHeight: 220)
-                            } else {
-                                VStack(spacing: Theme.Spacing.md) {
-                                    Image(systemName: "photo.badge.plus")
-                                        .font(.system(size: 44))
-                                        .foregroundStyle(Theme.Colors.secondaryText)
-                                    Text("Tap to choose photos")
-                                        .font(Theme.Typography.body)
-                                        .foregroundColor(Theme.Colors.secondaryText)
-                                    Text("Up to \(Self.maxPhotosPerPost) — shows as one carousel post")
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .frame(minHeight: 200)
-                                .background(Theme.Colors.secondaryBackground)
                             }
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: photoPickerMinHeight)
+                            .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 200)
-                        .contentShape(Rectangle())
-                    }
-                    .onChange(of: selectedItems) { _, newValue in
-                        Task { await loadImages(from: newValue) }
-                    }
+                        .onChange(of: selectedItems) { _, newValue in
+                            Task { await loadImages(from: newValue) }
+                        }
 
-                    if !selectedImages.isEmpty {
+                        if !selectedImages.isEmpty {
                         // Tagged products (shown after returning from Tag screen)
                         if !taggedProductItems.isEmpty {
                             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -396,30 +397,32 @@ struct LookbooksUploadView: View {
                         .padding(.top, Theme.Spacing.md)
                     }
 
-                    Color.clear.frame(height: 24)
+                        Color.clear.frame(height: 24)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
-            }
-            .scrollDismissesKeyboard(.interactively)
+                .scrollDismissesKeyboard(.interactively)
 
-            if case .failed(let msg) = uploadState {
-                Text(msg)
-                    .font(.caption)
-                    .foregroundColor(.red)
-                    .padding(.horizontal, Theme.Spacing.md)
-            }
+                if case .failed(let msg) = uploadState {
+                    Text(msg)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .padding(.horizontal, Theme.Spacing.md)
+                }
 
-            PrimaryButtonBar {
-                VStack(spacing: Theme.Spacing.sm) {
-                    PrimaryGlassButton(
-                        "Upload",
-                        isEnabled: !selectedImages.isEmpty && !uploadState.uploading,
-                        isLoading: uploadState.uploading,
-                        action: uploadImage
-                    )
-                    BorderGlassButton("Tag", isEnabled: !selectedImages.isEmpty, action: { showTagScreen = true })
+                PrimaryButtonBar {
+                    VStack(spacing: Theme.Spacing.sm) {
+                        PrimaryGlassButton(
+                            "Upload",
+                            isEnabled: !selectedImages.isEmpty && !uploadState.uploading,
+                            isLoading: uploadState.uploading,
+                            action: uploadImage
+                        )
+                        BorderGlassButton(L10n.string("tag products"), isEnabled: !selectedImages.isEmpty, action: { showTagScreen = true })
+                    }
                 }
             }
+            .frame(width: screenGeo.size.width, height: screenGeo.size.height)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
@@ -1100,6 +1103,45 @@ struct LookbookTagProductsView: View {
 
 // MARK: - Product search sheet
 
+/// Removes the default navigation bar bottom hairline on the product picker sheet so the separator does not look overly heavy.
+private struct ProductSearchSheetNavigationBarHairlineHidden: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController {
+        HairlineHiddenHostController()
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+
+    private final class HairlineHiddenHostController: UIViewController {
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            suppressHairlineIfNeeded()
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            suppressHairlineIfNeeded()
+        }
+
+        private func suppressHairlineIfNeeded() {
+            guard let nav = navigationController else { return }
+            let appearance = UINavigationBarAppearance()
+            appearance.configureWithOpaqueBackground()
+            if Theme.effectiveColorScheme == .dark {
+                appearance.backgroundColor = UIColor(red: 12 / 255, green: 12 / 255, blue: 12 / 255, alpha: 1)
+            } else {
+                appearance.backgroundColor = .systemBackground
+            }
+            appearance.shadowColor = .clear
+            appearance.shadowImage = UIImage()
+            appearance.titleTextAttributes = [.foregroundColor: UIColor.label]
+            appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.label]
+            nav.navigationBar.standardAppearance = appearance
+            nav.navigationBar.scrollEdgeAppearance = appearance
+            nav.navigationBar.compactAppearance = appearance
+        }
+    }
+}
+
 struct ProductSearchSheet: View {
     let productService: ProductService
     let authService: AuthService
@@ -1195,6 +1237,9 @@ struct ProductSearchSheet: View {
                     runSearch()
                 }
             }
+            .toolbarBackground(Theme.Colors.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .background(ProductSearchSheetNavigationBarHairlineHidden())
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)

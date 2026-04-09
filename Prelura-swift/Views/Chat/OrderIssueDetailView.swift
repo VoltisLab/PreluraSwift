@@ -255,7 +255,10 @@ struct OrderIssueDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: Self.issueContentCornerRadius))
             .overlay(
                 RoundedRectangle(cornerRadius: Self.issueContentCornerRadius)
-                    .stroke(isSelected ? Theme.primaryColor : Color.clear, lineWidth: isSelected ? 2 : 0)
+                    .stroke(
+                        isSelected ? Theme.primaryColor : Theme.Colors.glassBorder,
+                        lineWidth: isSelected ? 2 : 1
+                    )
             )
         }
         .buttonStyle(.plain)
@@ -281,7 +284,10 @@ struct OrderIssueDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: Self.issueContentCornerRadius))
             .overlay(
                 RoundedRectangle(cornerRadius: Self.issueContentCornerRadius)
-                    .stroke(selected == value ? Theme.primaryColor : Color.clear, lineWidth: selected == value ? 2 : 0)
+                    .stroke(
+                        selected == value ? Theme.primaryColor : Theme.Colors.glassBorder,
+                        lineWidth: selected == value ? 2 : 1
+                    )
             )
         }
         .buttonStyle(.plain)

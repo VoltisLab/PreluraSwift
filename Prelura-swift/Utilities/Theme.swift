@@ -14,9 +14,9 @@ struct Theme {
             effectiveColorScheme == .dark ? Color(hex: "0C0C0C") : Color(uiColor: UIColor.systemBackground)
         }
 
-        /// Dedicated modal sheet surface in dark mode.
+        /// Dedicated modal sheet surface in dark mode (comments, sort/filter sheets; aligns with menu card grey).
         static var modalSheetBackground: Color {
-            effectiveColorScheme == .dark ? Color(hex: "1C1C1C") : Color(uiColor: UIColor.systemBackground)
+            effectiveColorScheme == .dark ? Color(hex: "1C1C1E") : Color(uiColor: UIColor.systemBackground)
         }
 
         static var secondaryBackground: Color {
@@ -25,6 +25,11 @@ struct Theme {
 
         static var tertiaryBackground: Color {
             Color(uiColor: UIColor.tertiarySystemBackground)
+        }
+
+        /// Inline cards on the chat thread (e.g. order-issue banner): dark mode sits just above `background` (#0C0C0C) so it is barely distinct; light mode matches grouped surfaces.
+        static var chatInlineCardBackground: Color {
+            effectiveColorScheme == .dark ? Color(hex: "111111") : Color(uiColor: UIColor.secondarySystemBackground)
         }
 
         // Text colors
