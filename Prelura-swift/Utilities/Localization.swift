@@ -532,6 +532,7 @@ enum L10n {
         "Secure connection": "Ασφαλής σύνδεση",
         "Try again": "Δοκιμάστε ξανά",
         "Pull down to refresh": "Σύρετε προς τα κάτω για ανανέωση",
+        "Something went wrong. Please try again.": "Κάτι πήγε στραβά. Δοκιμάστε ξανά.",
 
         // AI chat – empty results
         "I couldn't find anything matching that. Try different colours or categories.": "Δεν βρήκα τίποτα που να ταιριάζει. Δοκιμάστε άλλα χρώματα ή κατηγορίες.",
@@ -562,8 +563,25 @@ enum L10n {
 // MARK: - User-facing error messages
 extension L10n {
 
+    /// Pull-to-refresh and navigation often cancel in-flight URLSession work; never show that as an error banner.
+    static func isCancellationLikeError(_ error: Error) -> Bool {
+        for e in unwindErrorChain(error) {
+            if e is CancellationError { return true }
+            if let url = e as? URLError, url.code == .cancelled { return true }
+            let ns = e as NSError
+            if ns.code == NSURLErrorCancelled { return true }
+        }
+        let desc = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if desc == "cancelled" || desc == "canceled" { return true }
+        if desc == "operation cancelled" || desc == "operation canceled" { return true }
+        if desc.hasPrefix("cancelled") && desc.count <= 48 { return true }
+        if desc.hasPrefix("canceled") && desc.count <= 48 { return true }
+        return false
+    }
+
     /// Short headline for inline error banners when the issue is transport/security (optional UI).
     static func userFacingErrorBannerTitle(_ error: Error) -> String? {
+        if isCancellationLikeError(error) { return nil }
         for e in unwindErrorChain(error) {
             if secureTransportMappedKey(for: e) != nil {
                 return L10n.string("Secure connection")
@@ -573,7 +591,14 @@ extension L10n {
     }
 
     /// Returns a short, user-friendly message for API/network errors (never raw TLS/SSL strings in UI).
+    /// Cancellation and superseded refresh tasks return an empty string so callers can hide banners without showing internal messages.
     static func userFacingError(_ error: Error) -> String {
+        if isCancellationLikeError(error) {
+            return ""
+        }
+        if let graphQLMapped = userFacingMessageForGraphQLError(error) {
+            return graphQLMapped
+        }
         for e in unwindErrorChain(error) {
             if let key = secureTransportMappedKey(for: e) {
                 return L10n.string(key)
@@ -581,6 +606,8 @@ extension L10n {
         }
         if let urlError = error as? URLError {
             switch urlError.code {
+            case .cancelled:
+                return ""
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
                 return L10n.string("Unable to connect. Please check your internet connection.")
             case .timedOut:
@@ -594,6 +621,8 @@ extension L10n {
         let ns = error as NSError
         if ns.domain == NSURLErrorDomain {
             switch ns.code {
+            case NSURLErrorCancelled:
+                return ""
             case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost, NSURLErrorDataNotAllowed:
                 return L10n.string("Unable to connect. Please check your internet connection.")
             case NSURLErrorTimedOut:
@@ -604,7 +633,37 @@ extension L10n {
                 break
             }
         }
-        return error.localizedDescription
+        return L10n.string("Something went wrong. Please try again.")
+    }
+
+    /// Avoid exposing decoding paths, HTTP codes, and GraphQL plumbing in production UI.
+    private static func userFacingMessageForGraphQLError(_ error: Error) -> String? {
+        guard let gq = error as? GraphQLError else { return nil }
+        switch gq {
+        case .noData:
+            return L10n.string("Something went wrong. Please try again.")
+        case .decodingError:
+            return L10n.string("Something went wrong. Please try again.")
+        case .httpError:
+            return L10n.string("Something went wrong. Please try again.")
+        case .networkError(let message):
+            let lower = message.lowercased()
+            if lower.contains("cancel") { return "" }
+            if lower.contains("tls") || lower.contains("ssl") || lower.contains("certificate") {
+                return L10n.string("We couldn't complete a secure connection. Please try again shortly.")
+            }
+            return L10n.string("Unable to connect. Please check your internet connection.")
+        case .graphQLErrors(let errors):
+            guard let raw = errors.first?.message.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+                return L10n.string("Something went wrong. Please try again.")
+            }
+            let lower = raw.lowercased()
+            if lower.contains("variable") && lower.contains("$") { return L10n.string("Something went wrong. Please try again.") }
+            if lower.contains("syntax") || (lower.contains("graphql") && lower.contains("error")) {
+                return L10n.string("Something went wrong. Please try again.")
+            }
+            return raw
+        }
     }
 
     private static func unwindErrorChain(_ error: Error) -> [Error] {

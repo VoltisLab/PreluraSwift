@@ -65,7 +65,7 @@ struct UserProfileView: View {
                         }
                     }
                 }
-                if let message = viewModel.errorMessage, !viewModel.items.isEmpty {
+                if let message = viewModel.errorMessage, !message.isEmpty, !viewModel.items.isEmpty {
                     Text(message)
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)

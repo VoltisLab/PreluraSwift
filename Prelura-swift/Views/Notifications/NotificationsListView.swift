@@ -20,7 +20,7 @@ struct NotificationsListView: View {
             if isLoading && notifications.isEmpty && errorMessage == nil {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let err = errorMessage, notifications.isEmpty {
+            } else if let err = errorMessage, !err.isEmpty, notifications.isEmpty {
                 VStack(spacing: Theme.Spacing.md) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 48))

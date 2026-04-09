@@ -17,7 +17,7 @@ struct AdminAllOrdersView: View {
             if isLoading && rows.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage, rows.isEmpty {
+            } else if let errorMessage, !errorMessage.isEmpty, rows.isEmpty {
                 Text(errorMessage)
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.error)
@@ -106,7 +106,7 @@ struct AdminOrderAdminDetailView: View {
         Group {
             if isLoading {
                 ProgressView()
-            } else if let errorMessage, order == nil {
+            } else if let errorMessage, !errorMessage.isEmpty, order == nil {
                 Text(errorMessage)
                     .foregroundColor(Theme.Colors.error)
                     .padding()

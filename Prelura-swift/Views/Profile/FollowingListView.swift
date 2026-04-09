@@ -15,7 +15,7 @@ struct FollowingListView: View {
             if isLoading && users.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if users.isEmpty && errorMessage == nil {
+            } else if users.isEmpty && (errorMessage == nil || errorMessage?.isEmpty == true) {
                 VStack(spacing: Theme.Spacing.md) {
                     Image(systemName: "person.2")
                         .font(.system(size: 48))
@@ -25,7 +25,7 @@ struct FollowingListView: View {
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = errorMessage {
+            } else if let error = errorMessage, !error.isEmpty {
                 VStack(spacing: Theme.Spacing.md) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 48))

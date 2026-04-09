@@ -22,7 +22,7 @@ struct AdminOrderIssuesView: View {
             if isLoading && issues.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage, issues.isEmpty {
+            } else if let errorMessage, !errorMessage.isEmpty, issues.isEmpty {
                 Text(errorMessage)
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.error)

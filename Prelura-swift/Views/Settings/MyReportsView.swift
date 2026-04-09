@@ -37,7 +37,7 @@ struct MyReportsView: View {
                 if isLoading && reports.isEmpty {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let errorMessage, reports.isEmpty {
+                } else if let errorMessage, !errorMessage.isEmpty, reports.isEmpty {
                     Text(errorMessage)
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.error)

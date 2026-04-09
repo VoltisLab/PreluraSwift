@@ -27,7 +27,7 @@ struct SearchMembersView: View {
                 } else if isLoading && members.isEmpty {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = errorMessage {
+                } else if let error = errorMessage, !error.isEmpty {
                     errorView(message: error)
                 } else if members.isEmpty {
                     emptyResultsView

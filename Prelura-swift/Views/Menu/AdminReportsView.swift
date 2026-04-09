@@ -29,7 +29,7 @@ struct AdminReportsView: View {
 
     var body: some View {
         VStack(spacing: Theme.Spacing.xs) {
-            if !(isLoading && reports.isEmpty) && !(errorMessage != nil && reports.isEmpty) {
+            if !(isLoading && reports.isEmpty) && !((errorMessage.map { !$0.isEmpty } ?? false) && reports.isEmpty) {
                 filterPills
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.top, Theme.Spacing.xs)
@@ -37,7 +37,7 @@ struct AdminReportsView: View {
             Group {
             if isLoading && reports.isEmpty {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage, reports.isEmpty {
+            } else if let errorMessage, !errorMessage.isEmpty, reports.isEmpty {
                 Text(errorMessage)
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.error)
