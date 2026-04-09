@@ -37,6 +37,8 @@ struct OrderDetailView: View {
     @State private var cancellationActionError: String?
     @State private var showMultibuyProblemProductPicker = false
     @State private var orderHelpProductContext: OrderProductSummary?
+    @State private var showLeaveFeedbackSheet = false
+    @State private var leaveFeedbackRefreshToken = UUID()
 
     init(order: Order, isSeller: Bool? = nil, suppressBuyerHelpAndCancelActions: Bool = false) {
         self.order = order
@@ -91,6 +93,8 @@ struct OrderDetailView: View {
                         headerSection
                         processingCard
                         productCard
+                        sellerPayoutNoticeIfNeeded
+                        leaveFeedbackSectionIfNeeded
                         if effectiveOrder.otherParty != nil {
                             sectionLabel(otherPartySectionTitle)
                             outlinedPartyCard
@@ -285,6 +289,85 @@ struct OrderDetailView: View {
         .navigationDestination(item: $orderHelpProductContext) { product in
             OrderHelpView(orderId: effectiveOrder.id, conversationId: "", helpContextProduct: product)
         }
+        .sheet(isPresented: $showLeaveFeedbackSheet) {
+            if let oid = Int(effectiveOrder.id),
+               let sid = effectiveOrder.otherParty?.userId {
+                LeaveOrderFeedbackSheet(
+                    orderId: oid,
+                    sellerUserId: sid,
+                    onFinished: {
+                        showLeaveFeedbackSheet = false
+                        leaveFeedbackRefreshToken = UUID()
+                        Task { await hydrateOrderIfNeeded(force: true) }
+                    }
+                )
+                .environmentObject(authService)
+                .id(leaveFeedbackRefreshToken)
+            } else {
+                Text("Unable to open feedback for this order.")
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .padding()
+            }
+        }
+    }
+
+    /// Buyer: mark delivered and no review yet — primary CTA to complete the order.
+    @ViewBuilder
+    private var leaveFeedbackSectionIfNeeded: some View {
+        if shouldShowLeaveFeedback {
+            Button {
+                showLeaveFeedbackSheet = true
+            } label: {
+                HStack {
+                    Image(systemName: "star.bubble")
+                    Text("Leave feedback")
+                }
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.primaryColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Theme.Spacing.md)
+                .background(Theme.Colors.secondaryBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+            }
+            .buttonStyle(PlainTappableButtonStyle())
+        }
+    }
+
+    @ViewBuilder
+    private var sellerPayoutNoticeIfNeeded: some View {
+        if isSeller == true, orderStatusUppercased == "DELIVERED" {
+            if effectiveOrder.hasOpenOrderIssue {
+                Text("Payment is on hold while a buyer issue is open.")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Theme.Spacing.md)
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+            } else {
+                Text("Payment is released after the buyer leaves feedback, or automatically 3 days after delivery if they do not.")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Theme.Spacing.md)
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+            }
+        }
+    }
+
+    private var orderStatusUppercased: String {
+        effectiveOrder.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
+    private var shouldShowLeaveFeedback: Bool {
+        guard isSeller == false else { return false }
+        let st = effectiveOrder.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard st == "DELIVERED" else { return false }
+        guard !effectiveOrder.buyerHasLeftReview else { return false }
+        guard !effectiveOrder.hasOpenOrderIssue else { return false }
+        return effectiveOrder.otherParty?.userId != nil && Int(effectiveOrder.id) != nil
     }
 
     private func sectionLabel(_ title: String) -> some View {
@@ -346,7 +429,8 @@ struct OrderDetailView: View {
         switch effectiveOrder.status {
         case "CONFIRMED": return 20
         case "SHIPPED": return 65
-        case "DELIVERED": return 100
+        case "DELIVERED": return 95
+        case "COMPLETED": return 100
         case "CANCELLED", "REFUNDED": return 0
         default: return 25
         }
@@ -1120,6 +1204,97 @@ struct OrderDetailView: View {
             await MainActor.run {
                 hydratedOrder = found
                 Self.orderSnapshotCache[order.id] = found
+            }
+        }
+    }
+}
+
+/// Buyer rates seller after delivery; backend completes the order and moves payout out of the delivered bucket.
+private struct LeaveOrderFeedbackSheet: View {
+    let orderId: Int
+    let sellerUserId: Int
+    var onFinished: () -> Void
+
+    @EnvironmentObject var authService: AuthService
+    @Environment(\.dismiss) private var dismiss
+    @State private var rating = 5
+    @State private var comment = ""
+    @State private var busy = false
+    @State private var errorMessage: String?
+
+    private let userService = UserService()
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack {
+                        Text("Rating")
+                        Spacer()
+                        Picker("Rating", selection: $rating) {
+                            ForEach(1...5, id: \.self) { n in
+                                Text("\(n) stars").tag(n)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    TextField("Comment (optional)", text: $comment, axis: .vertical)
+                        .lineLimit(3...6)
+                } footer: {
+                    Text("Submitting completes your order and releases payment to the seller, unless the order is on hold.")
+                        .font(Theme.Typography.caption)
+                }
+
+                if let errorMessage, !errorMessage.isEmpty {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundColor(Theme.Colors.error)
+                            .font(Theme.Typography.caption)
+                    }
+                }
+            }
+            .navigationTitle("Leave feedback")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(busy)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if busy {
+                        ProgressView()
+                    } else {
+                        Button("Submit") { Task { await submit() } }
+                    }
+                }
+            }
+        }
+    }
+
+    private func submit() async {
+        await MainActor.run {
+            busy = true
+            errorMessage = nil
+        }
+        userService.updateAuthToken(authService.authToken)
+        do {
+            try await userService.rateUser(
+                comment: comment.trimmingCharacters(in: .whitespacesAndNewlines),
+                orderId: orderId,
+                rating: rating,
+                userId: sellerUserId
+            )
+            await MainActor.run {
+                busy = false
+                dismiss()
+                onFinished()
+            }
+        } catch {
+            await MainActor.run {
+                busy = false
+                errorMessage = L10n.userFacingError(error)
             }
         }
     }

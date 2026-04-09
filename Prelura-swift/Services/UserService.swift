@@ -1058,6 +1058,7 @@ class UserService: ObservableObject {
             status
             resolution
             returnPostagePaidBy
+            sellerSupportConversationId
             createdAt
             order { id seller { username } }
             raisedBy { username }
@@ -1078,6 +1079,27 @@ class UserService: ObservableObject {
             responseType: Payload.self
         )
         return response.orderCase
+    }
+
+    /// Buyer who raised the issue withdraws it, accepts the sale, and completes the order when already delivered.
+    func withdrawOrderCase(issueId: Int) async throws -> (success: Bool, message: String?) {
+        let mutation = """
+        mutation WithdrawOrderCase($issueId: Int!) {
+          withdrawOrderCase(issueId: $issueId) {
+            success
+            message
+          }
+        }
+        """
+        struct Row: Decodable { let success: Bool?; let message: String? }
+        struct Payload: Decodable { let withdrawOrderCase: Row? }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["issueId": issueId],
+            responseType: Payload.self
+        )
+        let row = response.withdrawOrderCase
+        return (row?.success ?? false, row?.message)
     }
 
     /// Seller resolves a buyer-raised order issue (refund with/without return; return postage when applicable).
@@ -1483,6 +1505,9 @@ class UserService: ObservableObject {
             trackingNumber
             trackingUrl
             buyerOrderCountWithSeller
+            deliveredAt
+            buyerHasLeftReview
+            hasOpenOrderIssue
             cancelledOrder { status requestedBySeller }
             user { id username displayName profilePictureUrl }
             products {
@@ -1525,6 +1550,9 @@ class UserService: ObservableObject {
             let trackingNumber: String?
             let trackingUrl: String?
             let buyerOrderCountWithSeller: Int?
+            let deliveredAt: DateStringOrTimestamp?
+            let buyerHasLeftReview: Bool?
+            let hasOpenOrderIssue: Bool?
             let cancelledOrder: CancelledOrderRow?
             let user: OrderUserRow?
             let products: [OrderProductRow]?
@@ -1669,7 +1697,10 @@ class UserService: ObservableObject {
                 trackingNumber: row.trackingNumber,
                 trackingUrl: row.trackingUrl,
                 buyerOrderCountWithSeller: row.buyerOrderCountWithSeller,
-                cancellation: cancellation
+                cancellation: cancellation,
+                buyerHasLeftReview: row.buyerHasLeftReview ?? false,
+                hasOpenOrderIssue: row.hasOpenOrderIssue ?? false,
+                deliveredAt: row.deliveredAt?.date
             )
         }
         let total = response.userOrdersTotalNumber?.intValue ?? 0
@@ -2494,13 +2525,15 @@ struct OrderIssueDetails: Decodable, Identifiable {
     let status: String?
     let resolution: String?
     let returnPostagePaidBy: String?
+    /// Set when the seller has opened Help and support for this issue (thread id).
+    let sellerSupportConversationId: Int?
     /// Backend sends ISO8601 strings; `GraphQLClient` does not set `dateDecodingStrategy`, so keep as `String`.
     let createdAt: String?
     let order: OrderRef?
     let raisedBy: RaisedByRef?
 
     private enum CodingKeys: String, CodingKey {
-        case id, publicId, issueType, description, imagesUrl, otherIssueDescription, status, resolution, returnPostagePaidBy, createdAt, order, raisedBy
+        case id, publicId, issueType, description, imagesUrl, otherIssueDescription, status, resolution, returnPostagePaidBy, sellerSupportConversationId, createdAt, order, raisedBy
     }
 
     init(from decoder: Decoder) throws {
@@ -2524,6 +2557,7 @@ struct OrderIssueDetails: Decodable, Identifiable {
         status = try c.decodeIfPresent(String.self, forKey: .status)
         resolution = try c.decodeIfPresent(String.self, forKey: .resolution)
         returnPostagePaidBy = try c.decodeIfPresent(String.self, forKey: .returnPostagePaidBy)
+        sellerSupportConversationId = try c.decodeIfPresent(Int.self, forKey: .sellerSupportConversationId)
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
         order = try c.decodeIfPresent(OrderRef.self, forKey: .order)
         raisedBy = try c.decodeIfPresent(RaisedByRef.self, forKey: .raisedBy)
@@ -2555,6 +2589,52 @@ struct Order: Identifiable {
     let buyerOrderCountWithSeller: Int?
     /// When present, buyer/seller cancellation request flow (PENDING needs counterparty action).
     let cancellation: OrderCancellationSummary?
+    /// From `userOrders`: buyer submitted a review (or auto-review after feedback window).
+    let buyerHasLeftReview: Bool
+    /// From `userOrders`: PENDING order issue — feedback and payout pause.
+    let hasOpenOrderIssue: Bool
+    /// When the order first reached DELIVERED (server); used for feedback window messaging.
+    let deliveredAt: Date?
+
+    init(
+        id: String,
+        publicId: String?,
+        priceTotal: String,
+        discountPrice: String?,
+        status: String,
+        createdAt: Date,
+        otherParty: User?,
+        products: [OrderProductSummary],
+        shippingAddress: ShippingAddress?,
+        shipmentService: String?,
+        deliveryDate: Date?,
+        trackingNumber: String?,
+        trackingUrl: String?,
+        buyerOrderCountWithSeller: Int?,
+        cancellation: OrderCancellationSummary?,
+        buyerHasLeftReview: Bool = false,
+        hasOpenOrderIssue: Bool = false,
+        deliveredAt: Date? = nil
+    ) {
+        self.id = id
+        self.publicId = publicId
+        self.priceTotal = priceTotal
+        self.discountPrice = discountPrice
+        self.status = status
+        self.createdAt = createdAt
+        self.otherParty = otherParty
+        self.products = products
+        self.shippingAddress = shippingAddress
+        self.shipmentService = shipmentService
+        self.deliveryDate = deliveryDate
+        self.trackingNumber = trackingNumber
+        self.trackingUrl = trackingUrl
+        self.buyerOrderCountWithSeller = buyerOrderCountWithSeller
+        self.cancellation = cancellation
+        self.buyerHasLeftReview = buyerHasLeftReview
+        self.hasOpenOrderIssue = hasOpenOrderIssue
+        self.deliveredAt = deliveredAt
+    }
 
     /// Order ID for display: prefers backend `publicId` (e.g. PR23DG2DF3). Falls back when navigating from chat before hydration.
     var displayOrderId: String {

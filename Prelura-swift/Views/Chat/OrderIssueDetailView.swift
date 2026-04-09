@@ -22,6 +22,16 @@ struct OrderIssueDetailView: View {
     @State private var confirmRefundWithoutReturn = false
     /// Which refund path the seller has focused (drives checkmark + border on the two banners).
     @State private var selectedRefundPath: SelectedRefundPath = .none
+    @State private var supportConversationId: String?
+    @State private var navigateToHelpChat = false
+    @State private var isOpeningSupport = false
+    @State private var supportOpenError: String?
+    @State private var sellerSupportSingleUserMessageMode = false
+    /// True between tapping Help and support and `load()` finishing (hides entry immediately).
+    @State private var sellerSupportEntryUsedOptimistic = false
+    @State private var showWithdrawConfirm = false
+    @State private var isWithdrawing = false
+    @State private var withdrawFeedback: String?
 
     private let userService = UserService()
 
@@ -59,6 +69,25 @@ struct OrderIssueDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .task { await load() }
+        .confirmationDialog(
+            "Withdraw this report?",
+            isPresented: $showWithdrawConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Accept order and withdraw report", role: .destructive) {
+                Task { await withdrawReport() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "You will not be able to open another report for this order. If delivery was already confirmed, the sale will be marked complete."
+            )
+        }
+        .onChange(of: navigateToHelpChat) { _, isActive in
+            if !isActive {
+                Task { await load() }
+            }
+        }
         .alert("Refund without return?", isPresented: $confirmRefundWithoutReturn) {
             Button("Cancel", role: .cancel) {}
             Button("Confirm") {
@@ -67,10 +96,40 @@ struct OrderIssueDetailView: View {
         } message: {
             Text("The buyer will be refunded and keeps the item.")
         }
+        .background(
+            NavigationLink(
+                destination: HelpChatView(
+                    orderId: issue?.order?.id,
+                    conversationId: supportConversationId,
+                    issueDraft: nil,
+                    isAdminSupportThread: false,
+                    customerUsername: nil,
+                    sellerOrderIssueSupportSingleUserMessage: sellerSupportSingleUserMessageMode
+                ),
+                isActive: $navigateToHelpChat
+            ) { EmptyView() }
+                .hidden()
+        )
     }
 
     @ViewBuilder
     private func issueBody(_ issue: OrderIssueDetails) -> some View {
+        if let formatted = Self.formatReportDate(issue.createdAt) {
+            sectionLabel("Report date and time")
+            card {
+                Text(formatted)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+            }
+        }
+
+        sectionLabel("Status")
+        card {
+            Text(humanReadableStatus(issue))
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.primaryText)
+        }
+
         sectionLabel("Issue type")
         card {
             Text(humanReadableIssueType(issue.issueType))
@@ -130,6 +189,34 @@ struct OrderIssueDetailView: View {
             Text(resolutionFeedback)
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
+        }
+
+        if let withdrawFeedback, !withdrawFeedback.isEmpty {
+            Text(withdrawFeedback)
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+        }
+
+        if isCurrentUserReporter(issue), isIssuePending(issue) {
+            Button {
+                showWithdrawConfirm = true
+            } label: {
+                HStack {
+                    if isWithdrawing {
+                        ProgressView()
+                            .tint(.white)
+                    }
+                    Text("Cancel report and accept order")
+                        .font(Theme.Typography.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Spacing.md)
+                .background(isWithdrawing ? Theme.Colors.tertiaryBackground : Theme.primaryColor)
+                .foregroundColor(.white)
+                .clipShape(RoundedRectangle(cornerRadius: Self.issueContentCornerRadius))
+            }
+            .buttonStyle(.plain)
+            .disabled(isWithdrawing || isSubmittingResolution)
         }
 
         if isCurrentUserSeller(issue), isIssuePending(issue) {
@@ -228,6 +315,47 @@ struct OrderIssueDetailView: View {
             }
             .padding(.top, Theme.Spacing.xs)
         }
+
+        if sellerSupportEntryAvailable(issue) {
+            Button {
+                Task { await openSellerSupportChat(issueId: issue.id) }
+            } label: {
+                HStack {
+                    if isOpeningSupport {
+                        ProgressView()
+                            .padding(.trailing, 6)
+                    }
+                    Text("Help and support")
+                }
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
+            }
+            .buttonStyle(.plain)
+            .disabled(isOpeningSupport || isSubmittingResolution)
+            .padding(.top, Theme.Spacing.md)
+        } else {
+            Text("You've already contacted support for this issue. Continue the conversation in Messages.")
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.top, Theme.Spacing.md)
+        }
+
+        if let supportOpenError, !supportOpenError.isEmpty {
+            Text(supportOpenError)
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.error)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, Theme.Spacing.xs)
+        }
+    }
+
+    private func sellerSupportEntryAvailable(_ issue: OrderIssueDetails) -> Bool {
+        if sellerSupportEntryUsedOptimistic { return false }
+        return issue.sellerSupportConversationId == nil
     }
 
     private func resolutionActionButton(title: String, subtitle: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
@@ -320,6 +448,68 @@ struct OrderIssueDetailView: View {
         return me == sellerName
     }
 
+    private func isCurrentUserReporter(_ issue: OrderIssueDetails) -> Bool {
+        let me = (authService.username ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let reporter = (issue.raisedBy?.username ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !me.isEmpty, !reporter.isEmpty else { return false }
+        return me == reporter
+    }
+
+    private func humanReadableStatus(_ issue: OrderIssueDetails) -> String {
+        let s = (issue.status ?? "").uppercased()
+        switch s {
+        case "PENDING": return "Pending — under review"
+        case "WITHDRAWN": return "Withdrawn — buyer accepted the order"
+        case "DECLINED": return "Declined"
+        case "RESOLVED": return "Resolved"
+        default:
+            return s.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    private static func formatReportDate(_ iso: String?) -> String? {
+        guard let iso, !iso.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let trimmed = iso.trimmingCharacters(in: .whitespacesAndNewlines)
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        let date = f1.date(from: trimmed) ?? f2.date(from: trimmed)
+        guard let date else { return trimmed }
+        let out = DateFormatter()
+        out.dateStyle = .medium
+        out.timeStyle = .short
+        return out.string(from: date)
+    }
+
+    private func withdrawReport() async {
+        guard let id = issue?.id else { return }
+        await MainActor.run {
+            isWithdrawing = true
+            withdrawFeedback = nil
+        }
+        userService.updateAuthToken(authService.authToken)
+        do {
+            let result = try await userService.withdrawOrderCase(issueId: id)
+            await MainActor.run {
+                isWithdrawing = false
+                if result.success {
+                    withdrawFeedback = result.message
+                } else {
+                    withdrawFeedback = result.message ?? "Could not withdraw this report."
+                }
+            }
+            if result.success {
+                await load()
+            }
+        } catch {
+            await MainActor.run {
+                isWithdrawing = false
+                withdrawFeedback = L10n.userFacingError(error)
+            }
+        }
+    }
+
     private func resolutionSummary(for issue: OrderIssueDetails) -> String {
         let res = issue.resolution ?? ""
         if res == Self.refundWithoutReturn {
@@ -384,6 +574,9 @@ struct OrderIssueDetailView: View {
                 issue = result
                 isLoading = false
                 if issue == nil { errorMessage = "Issue not found" }
+                if result?.sellerSupportConversationId != nil {
+                    sellerSupportEntryUsedOptimistic = true
+                }
                 if let i = issue, !isIssuePending(i) {
                     showReturnPostageSection = false
                     selectedReturnPostagePayer = nil
@@ -394,6 +587,30 @@ struct OrderIssueDetailView: View {
             await MainActor.run {
                 isLoading = false
                 errorMessage = L10n.userFacingError(error)
+            }
+        }
+    }
+
+    private func openSellerSupportChat(issueId: Int) async {
+        await MainActor.run {
+            isOpeningSupport = true
+            supportOpenError = nil
+        }
+        userService.updateAuthToken(authService.authToken)
+        do {
+            let cid = try await userService.ensureSellerOrderIssueSupportThread(issueId: issueId)
+            await MainActor.run {
+                supportConversationId = String(cid)
+                sellerSupportSingleUserMessageMode = true
+                sellerSupportEntryUsedOptimistic = true
+                isOpeningSupport = false
+                navigateToHelpChat = true
+            }
+            await load()
+        } catch {
+            await MainActor.run {
+                isOpeningSupport = false
+                supportOpenError = L10n.userFacingError(error)
             }
         }
     }

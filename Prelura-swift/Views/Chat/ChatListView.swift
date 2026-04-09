@@ -589,7 +589,8 @@ struct ChatRowView: View {
         switch st {
         case "CONFIRMED": return "Order confirmed"
         case "SHIPPED": return "Shipped"
-        case "DELIVERED": return "Completed"
+        case "DELIVERED": return "Delivered"
+        case "COMPLETED": return "Completed"
         case "CANCELLED", "REFUNDED": return "Cancelled"
         default: return "Order update"
         }

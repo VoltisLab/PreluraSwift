@@ -2262,7 +2262,8 @@ struct ChatDetailView: View {
         switch status {
         case "CONFIRMED": return "Confirmed"
         case "SHIPPED": return "Shipped"
-        case "DELIVERED": return "Completed"
+        case "DELIVERED": return "Delivered"
+        case "COMPLETED": return "Completed"
         case "CANCELLED": return "Cancelled"
         case "REFUNDED": return "Refunded"
         default: return status
@@ -3427,7 +3428,8 @@ struct OrderConfirmationCardView: View {
         switch status {
         case "CONFIRMED": return "Confirmed"
         case "SHIPPED": return "Shipped"
-        case "DELIVERED": return "Completed"
+        case "DELIVERED": return "Delivered"
+        case "COMPLETED": return "Completed"
         case "CANCELLED": return "Cancelled"
         case "REFUNDED": return "Refunded"
         default: return status

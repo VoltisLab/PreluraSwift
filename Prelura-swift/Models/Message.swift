@@ -99,6 +99,9 @@ struct Message: Identifiable {
             default: break
             }
         }
+        if content.count <= 50 {
+            return content
+        }
         return String(content.prefix(50)) + "..."
     }
 
