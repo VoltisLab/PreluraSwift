@@ -193,6 +193,8 @@ enum L10n {
         "Send": "Αποστολή",
         "Reply": "Απάντηση",
         "Replying to": "Απάντηση σε",
+        "Delete this comment?": "Διαγραφή αυτού του σχολίου;",
+        "This will remove your comment and any replies under it.": "Θα αφαιρεθεί το σχόλιό σας και τυχόν απαντήσεις κάτω από αυτό.",
         "Lookbook upload": "Μεταφόρτωση Lookbook",
 
         // Profile (Favourites used from Menu section)

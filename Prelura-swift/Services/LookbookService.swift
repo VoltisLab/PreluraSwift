@@ -55,6 +55,21 @@ struct ServerLookbookComment: Decodable, Identifiable {
     let createdAt: String?
     let profilePictureUrl: String?
     let parentCommentId: String?
+    let likesCount: Int?
+    let userLiked: Bool?
+
+    func withLikeUpdate(likesCount: Int, userLiked: Bool) -> ServerLookbookComment {
+        ServerLookbookComment(
+            id: id,
+            username: username,
+            text: text,
+            createdAt: createdAt,
+            profilePictureUrl: profilePictureUrl,
+            parentCommentId: parentCommentId,
+            likesCount: likesCount,
+            userLiked: userLiked
+        )
+    }
 }
 
 struct CreateLookbookResponse: Decodable {
@@ -326,6 +341,8 @@ final class LookbookService {
             createdAt
             profilePictureUrl
             parentCommentId
+            likesCount
+            userLiked
           }
         }
         """
@@ -355,6 +372,8 @@ final class LookbookService {
               createdAt
               profilePictureUrl
               parentCommentId
+              likesCount
+              userLiked
             }
           }
         }
@@ -383,6 +402,76 @@ final class LookbookService {
             throw NSError(domain: "LookbookService", code: -1, userInfo: [NSLocalizedDescriptionKey: response.addLookbookComment?.message ?? "Add comment failed"])
         }
         return (comment, payload.commentsCount ?? 0)
+    }
+
+    func toggleCommentLike(commentId: String) async throws -> (liked: Bool, likesCount: Int) {
+        let query = """
+        mutation ToggleLookbookCommentLike($commentId: UUID!) {
+          toggleLookbookCommentLike(commentId: $commentId) {
+            success
+            message
+            liked
+            likesCount
+          }
+        }
+        """
+        let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: commentId)
+        let variables: [String: Any] = ["commentId": normalized]
+        struct Response: Decodable { let toggleLookbookCommentLike: Payload? }
+        struct Payload: Decodable {
+            let success: Bool?
+            let message: String?
+            let liked: Bool?
+            let likesCount: Int?
+        }
+        let response: Response = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "ToggleLookbookCommentLike",
+            responseType: Response.self
+        )
+        guard let payload = response.toggleLookbookCommentLike, payload.success == true else {
+            throw NSError(
+                domain: "LookbookService",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: response.toggleLookbookCommentLike?.message ?? "Like failed"]
+            )
+        }
+        return (payload.liked ?? false, payload.likesCount ?? 0)
+    }
+
+    func deleteComment(commentId: String) async throws -> Int {
+        let query = """
+        mutation DeleteLookbookComment($commentId: UUID!) {
+          deleteLookbookComment(commentId: $commentId) {
+            success
+            message
+            commentsCount
+          }
+        }
+        """
+        let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: commentId)
+        let variables: [String: Any] = ["commentId": normalized]
+        struct Response: Decodable { let deleteLookbookComment: Payload? }
+        struct Payload: Decodable {
+            let success: Bool?
+            let message: String?
+            let commentsCount: Int?
+        }
+        let response: Response = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "DeleteLookbookComment",
+            responseType: Response.self
+        )
+        guard let payload = response.deleteLookbookComment, payload.success == true else {
+            throw NSError(
+                domain: "LookbookService",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: response.deleteLookbookComment?.message ?? "Delete failed"]
+            )
+        }
+        return payload.commentsCount ?? 0
     }
 
     func deleteLookbookPost(postId: String) async throws {

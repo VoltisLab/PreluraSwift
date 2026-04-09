@@ -502,10 +502,7 @@ private struct LookbookFeedScreenView: View {
                     entries[idx] = updated
                 }
             }
-            .presentationDetents([.fraction(0.44), .medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationCornerRadius(22)
-            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            .lookbookCommentsPresentationChrome()
         }
         .sheet(isPresented: $showSearchSheet) {
             LookbookSearchSheet(searchText: $searchText, entries: entries)
@@ -681,10 +678,7 @@ struct LookbookSinglePostFeedPresentedView: View {
                         entries[idx] = updated
                     }
                 }
-                .presentationDetents([.fraction(0.44), .medium, .large])
-                .presentationDragIndicator(.visible)
-                .presentationCornerRadius(22)
-                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .lookbookCommentsPresentationChrome()
             }
             .navigationDestination(item: $selectedProductId) { nav in
                 LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
@@ -948,10 +942,7 @@ private struct LookbookMyItemsScreenView: View {
                     entries[idx] = updated
                 }
             }
-            .presentationDetents([.fraction(0.44), .medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationCornerRadius(22)
-            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            .lookbookCommentsPresentationChrome()
         }
         .navigationDestination(item: $selectedProductId) { nav in
             LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
@@ -1123,10 +1114,7 @@ private struct LookbookTopicFeedView: View {
                     entries[idx] = updated
                 }
             }
-            .presentationDetents([.fraction(0.44), .medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationCornerRadius(22)
-            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            .lookbookCommentsPresentationChrome()
         }
         .navigationDestination(item: $selectedProductId) { nav in
             LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
@@ -2377,7 +2365,17 @@ private struct LookbookSendToShareSheet: View {
     }
 }
 
-// MARK: - Comments sheet
+// MARK: - Comments sheet presentation (match OptionsSheet / sort–filter modal surface)
+private extension View {
+    func lookbookCommentsPresentationChrome() -> some View {
+        presentationDetents([.fraction(0.44), .medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(22)
+            .presentationBackground(Theme.Colors.modalSheetBackground)
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+    }
+}
+
 private enum LookbookCommentTimeFormatting {
     private static let isoFrac: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -2407,22 +2405,16 @@ private enum LookbookCommentTimeFormatting {
 private struct LookbookCommentThreadRow: Identifiable {
     let id: String
     let comment: ServerLookbookComment
-    let isReply: Bool
+    let depth: Int
 }
 
+/// Nested replies: depth-first under each root (supports reply-to-reply).
 private func lookbookThreadedCommentRows(from comments: [ServerLookbookComment]) -> [LookbookCommentThreadRow] {
     func compareCreated(_ a: String?, _ b: String?) -> Bool {
         let da = LookbookCommentTimeFormatting.parsedDate(from: a ?? "") ?? .distantPast
         let db = LookbookCommentTimeFormatting.parsedDate(from: b ?? "") ?? .distantPast
         return da < db
     }
-
-    let parents = comments
-        .filter {
-            let p = $0.parentCommentId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return p.isEmpty
-        }
-        .sorted { compareCreated($0.createdAt, $1.createdAt) }
 
     var byParent: [String: [ServerLookbookComment]] = [:]
     for c in comments {
@@ -2434,14 +2426,24 @@ private func lookbookThreadedCommentRows(from comments: [ServerLookbookComment])
         byParent[k]?.sort { compareCreated($0.createdAt, $1.createdAt) }
     }
 
-    var out: [LookbookCommentThreadRow] = []
-    for p in parents {
-        out.append(LookbookCommentThreadRow(id: p.id, comment: p, isReply: false))
-        for r in byParent[p.id] ?? [] {
-            out.append(LookbookCommentThreadRow(id: r.id, comment: r, isReply: true))
+    func walk(parentId: String?, depth: Int) -> [LookbookCommentThreadRow] {
+        let nodes: [ServerLookbookComment]
+        if parentId == nil {
+            nodes = comments
+                .filter { ($0.parentCommentId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty }
+                .sorted { compareCreated($0.createdAt, $1.createdAt) }
+        } else {
+            nodes = byParent[parentId!] ?? []
         }
+        var out: [LookbookCommentThreadRow] = []
+        for n in nodes {
+            out.append(LookbookCommentThreadRow(id: n.id, comment: n, depth: depth))
+            out.append(contentsOf: walk(parentId: n.id, depth: depth + 1))
+        }
+        return out
     }
-    return out
+
+    return walk(parentId: nil, depth: 0)
 }
 
 private struct LookbookCommentAvatar: View {
@@ -2490,6 +2492,11 @@ struct LookbookCommentsSheet: View {
     @State private var loading = false
     @State private var sending = false
     @State private var replyParent: ServerLookbookComment?
+    @State private var togglingLikeCommentId: String?
+    @State private var deleteConfirmFor: ServerLookbookComment?
+    @State private var deletingCommentId: String?
+
+    private let sheetBg = Theme.Colors.modalSheetBackground
 
     private var threadedRows: [LookbookCommentThreadRow] {
         lookbookThreadedCommentRows(from: comments)
@@ -2535,7 +2542,7 @@ struct LookbookCommentsSheet: View {
                     }
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.xs)
-                    .background(Theme.Colors.secondaryBackground.opacity(0.5))
+                    .background(Theme.Colors.secondaryBackground.opacity(0.45))
                 }
 
                 HStack(alignment: .center, spacing: Theme.Spacing.sm) {
@@ -2555,25 +2562,59 @@ struct LookbookCommentsSheet: View {
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.sm)
-                .background(Theme.Colors.background)
+                .background(sheetBg)
             }
-            .background(Theme.Colors.background)
+            .background(sheetBg)
             .navigationTitle(L10n.string("Comments"))
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(sheetBg, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L10n.string("Done")) { dismiss() }
                         .fontWeight(.semibold)
+                        .foregroundStyle(Theme.primaryColor)
                 }
+            }
+            .confirmationDialog(
+                L10n.string("Delete this comment?"),
+                isPresented: Binding(
+                    get: { deleteConfirmFor != nil },
+                    set: { if !$0 { deleteConfirmFor = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button(L10n.string("Delete"), role: .destructive) {
+                    if let c = deleteConfirmFor {
+                        Task { await deleteComment(c) }
+                    }
+                    deleteConfirmFor = nil
+                }
+                Button(L10n.string("Cancel"), role: .cancel) {
+                    deleteConfirmFor = nil
+                }
+            } message: {
+                Text(L10n.string("This will remove your comment and any replies under it."))
             }
             .task { await loadComments() }
         }
+    }
+
+    private func isMine(_ c: ServerLookbookComment) -> Bool {
+        guard let me = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !me.isEmpty else {
+            return false
+        }
+        return c.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == me
     }
 
     @ViewBuilder
     private func lookbookCommentRow(_ row: LookbookCommentThreadRow) -> some View {
         let c = row.comment
         let timeStr = LookbookCommentTimeFormatting.shortRelative(iso: c.createdAt)
+        let indent = Theme.Spacing.md + CGFloat(row.depth) * 18
+        let liked = c.userLiked ?? false
+        let likeCount = c.likesCount ?? 0
+        let busyLike = togglingLikeCommentId == c.id
+
         HStack(alignment: .top, spacing: Theme.Spacing.sm) {
             LookbookCommentAvatar(profilePictureUrl: c.profilePictureUrl, username: c.username, size: 32)
             VStack(alignment: .leading, spacing: 4) {
@@ -2591,7 +2632,7 @@ struct LookbookCommentsSheet: View {
                     }
                 }
                 HashtagColoredText(text: c.text)
-                if !row.isReply {
+                HStack(alignment: .center, spacing: Theme.Spacing.md) {
                     Button {
                         replyParent = c
                     } label: {
@@ -2600,12 +2641,46 @@ struct LookbookCommentsSheet: View {
                             .foregroundColor(Theme.primaryColor)
                     }
                     .buttonStyle(.plain)
-                    .padding(.top, 2)
+
+                    Button {
+                        Task { await toggleLike(c) }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if busyLike {
+                                ProgressView()
+                                    .scaleEffect(0.78)
+                            } else {
+                                Image(systemName: liked ? "heart.fill" : "heart")
+                                    .font(.system(size: 14, weight: .semibold))
+                                if likeCount > 0 {
+                                    Text("\(likeCount)")
+                                        .font(.system(size: 13, weight: .medium))
+                                }
+                            }
+                        }
+                        .foregroundColor(liked ? Theme.primaryColor : Theme.Colors.secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busyLike || !authService.isAuthenticated)
+
+                    if isMine(c) {
+                        Button {
+                            deleteConfirmFor = c
+                        } label: {
+                            Text(L10n.string("Delete"))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(Theme.Colors.error)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(deletingCommentId == c.id)
+                    }
+                    Spacer(minLength: 0)
                 }
+                .padding(.top, 2)
             }
             Spacer(minLength: 0)
         }
-        .padding(.leading, Theme.Spacing.md + (row.isReply ? 24 : 0))
+        .padding(.leading, indent)
         .padding(.trailing, Theme.Spacing.md)
     }
 
@@ -2618,6 +2693,42 @@ struct LookbookCommentsSheet: View {
         if let loaded = try? await service.fetchComments(postId: entry.apiPostId) {
             comments = loaded
             onCountChanged?(loaded.count)
+        }
+    }
+
+    private func toggleLike(_ c: ServerLookbookComment) async {
+        guard authService.isAuthenticated else { return }
+        let id = c.id
+        await MainActor.run { togglingLikeCommentId = id }
+        let client = GraphQLClient()
+        client.setAuthToken(authService.authToken)
+        let service = LookbookService(client: client)
+        do {
+            let result = try await service.toggleCommentLike(commentId: id)
+            await MainActor.run {
+                if let idx = comments.firstIndex(where: { $0.id == id }) {
+                    let cur = comments[idx]
+                    comments[idx] = cur.withLikeUpdate(likesCount: result.likesCount, userLiked: result.liked)
+                }
+                togglingLikeCommentId = nil
+            }
+        } catch {
+            await MainActor.run { togglingLikeCommentId = nil }
+        }
+    }
+
+    private func deleteComment(_ c: ServerLookbookComment) async {
+        let id = c.id
+        await MainActor.run { deletingCommentId = id }
+        let client = GraphQLClient()
+        client.setAuthToken(authService.authToken)
+        let service = LookbookService(client: client)
+        do {
+            _ = try await service.deleteComment(commentId: id)
+            await MainActor.run { deletingCommentId = nil }
+            await loadComments()
+        } catch {
+            await MainActor.run { deletingCommentId = nil }
         }
     }
 
