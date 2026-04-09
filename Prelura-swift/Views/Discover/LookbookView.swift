@@ -1618,6 +1618,91 @@ private struct LookbookPostCardShimmer: View {
     }
 }
 
+// MARK: - Feed post action bar (single layout: like, comment, send, save — used only by `LookbookFeedRowView`)
+private struct LookbookFeedPostActionBar: View {
+    let entry: LookbookEntry
+    let currentDisplayImageURL: String?
+    let onLikeTap: () -> Void
+    let onCommentsTap: () -> Void
+    let onSendTap: () -> Void
+
+    @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
+
+    private let actionIconSize: CGFloat = 20
+    private let likeCountSize: CGFloat = 14
+
+    private var isSaved: Bool {
+        savedLookbookFavorites.isSaved(postId: entry.apiPostId)
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 0) {
+            HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                LikeButtonView(
+                    isLiked: entry.isLiked,
+                    likeCount: entry.likesCount,
+                    action: onLikeTap,
+                    onDarkOverlay: false,
+                    heartPointSize: 20,
+                    likeCountFormatting: LookbookFeedEngagementCountFormatting.short
+                )
+
+                Button {
+                    HapticManager.tap()
+                    onCommentsTap()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bubble.right")
+                            .font(.system(size: actionIconSize, weight: .medium))
+                            .foregroundStyle(Theme.Colors.primaryText)
+                        Text(LookbookFeedEngagementCountFormatting.short(entry.commentsCount))
+                            .font(.system(size: likeCountSize, weight: .medium))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.Colors.primaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainTappableButtonStyle())
+
+                Button {
+                    HapticManager.tap()
+                    onSendTap()
+                } label: {
+                    Image(systemName: "paperplane")
+                        .font(.system(size: actionIconSize, weight: .medium))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainTappableButtonStyle())
+            }
+
+            Spacer(minLength: Theme.Spacing.sm)
+
+            Button {
+                HapticManager.tap()
+                _ = savedLookbookFavorites.toggle(entry: entry, imageUrl: currentDisplayImageURL)
+            } label: {
+                Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                    .font(.system(size: actionIconSize, weight: .medium))
+                    .foregroundStyle(isSaved ? Theme.primaryColor : Theme.Colors.primaryText)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainTappableButtonStyle())
+            .accessibilityLabel(isSaved ? L10n.string("Saved") : L10n.string("Save"))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, 10)
+        .background(Theme.Colors.background)
+        .zIndex(2)
+    }
+}
+
 // MARK: - Feed row (sandbox-style: full-width 4:5 media, like / comment / send, save trailing)
 private struct LookbookFeedRowView: View {
     let entry: LookbookEntry
@@ -1636,8 +1721,6 @@ private struct LookbookFeedRowView: View {
     @State private var showMutualShareSheet = false
     @State private var shareToChatRecipient: User?
 
-    private let actionIconSize: CGFloat = 20
-    private let likeCountSize: CGFloat = 14
     private let avatarSize: CGFloat = 40
     /// Edge-to-edge slot; matches debug feed sandbox (~4:5 portrait).
     private let mediaAspect: CGFloat = 4 / 5
@@ -1718,10 +1801,6 @@ private struct LookbookFeedRowView: View {
         return urls.first
     }
 
-    private var isPhotoFavorited: Bool {
-        savedLookbookFavorites.isSaved(postId: entry.apiPostId)
-    }
-
     private var posterAvatar: some View {
         let trimmed = entry.posterProfilePictureUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return Group {
@@ -1796,64 +1875,14 @@ private struct LookbookFeedRowView: View {
                 .clipped()
                 .clipShape(Rectangle())
 
-            HStack(alignment: .center, spacing: Theme.Spacing.md) {
-                LikeButtonView(
-                    isLiked: entry.isLiked,
-                    likeCount: entry.likesCount,
-                    action: { onLikeTap(entry) },
-                    onDarkOverlay: false,
-                    heartPointSize: 20
-                )
-
-                Button {
-                    HapticManager.tap()
-                    onCommentsTap(entry)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "bubble.right")
-                            .font(.system(size: actionIconSize, weight: .medium))
-                            .foregroundStyle(Theme.Colors.primaryText)
-                        Text("\(entry.commentsCount)")
-                            .font(.system(size: likeCountSize, weight: .medium))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.Colors.primaryText)
-                    }
-                    .frame(minHeight: 44)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainTappableButtonStyle())
-
-                Button {
-                    HapticManager.tap()
-                    openSendForward()
-                } label: {
-                    Image(systemName: "paperplane")
-                        .font(.system(size: actionIconSize, weight: .medium))
-                        .foregroundStyle(Theme.Colors.primaryText)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainTappableButtonStyle())
-
-                Spacer(minLength: Theme.Spacing.sm)
-
-                Button {
-                    HapticManager.tap()
-                    _ = savedLookbookFavorites.toggle(entry: entry, imageUrl: currentDisplayImageURL)
-                } label: {
-                    // Circle variant reads closer to heart/bubble/paperplane weight than the tall `bookmark` ribbon.
-                    Image(systemName: isPhotoFavorited ? "bookmark.circle.fill" : "bookmark.circle")
-                        .font(.system(size: actionIconSize, weight: .medium))
-                        .foregroundStyle(isPhotoFavorited ? Theme.primaryColor : Theme.Colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainTappableButtonStyle())
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, 10)
-            .background(Theme.Colors.background)
-            .zIndex(2)
+            LookbookFeedPostActionBar(
+                entry: entry,
+                currentDisplayImageURL: currentDisplayImageURL,
+                onLikeTap: { onLikeTap(entry) },
+                onCommentsTap: { onCommentsTap(entry) },
+                onSendTap: { openSendForward() }
+            )
+            .environmentObject(savedLookbookFavorites)
 
             Rectangle()
                 .fill(Theme.Colors.glassBorder.opacity(0.35))
@@ -1896,44 +1925,47 @@ private struct LookbookFeedRowView: View {
     @ViewBuilder
     private var lookbookSandboxMediaBlock: some View {
         let urls = dedupeOrderedValidLookbookURLs(entry.imageUrls)
-        if urls.isEmpty {
-            // Local document, bundled name, or empty — `lookbookSandboxSingleMedia` resolves each case.
-            lookbookSandboxSingleMedia(urlString: "", documentPath: entry.documentImagePath)
-        } else if urls.count > 1 {
-            Color.clear
-                .aspectRatio(mediaAspect, contentMode: .fit)
-                .overlay {
-                    GeometryReader { geo in
-                        let w = max(1, geo.size.width)
-                        let h = max(1, geo.size.height)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 0) {
-                                LookbookScrollImmediateTouchesAnchor()
-                                    .frame(width: 0, height: 0)
-                                ForEach(Array(urls.enumerated()), id: \.offset) { idx, urlString in
-                                    lookbookSandboxSingleMedia(
-                                        urlString: urlString,
-                                        documentPath: idx == 0 ? entry.documentImagePath : nil
-                                    )
-                                    .frame(width: w, height: h)
-                                    .clipped()
-                                    .id(idx)
+        Group {
+            if urls.isEmpty {
+                // Local document, bundled name, or empty — `lookbookSandboxSingleMedia` resolves each case.
+                lookbookSandboxSingleMedia(urlString: "", documentPath: entry.documentImagePath)
+            } else if urls.count > 1 {
+                Color.clear
+                    .aspectRatio(mediaAspect, contentMode: .fit)
+                    .overlay {
+                        GeometryReader { geo in
+                            let w = max(1, geo.size.width)
+                            let h = max(1, geo.size.height)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 0) {
+                                    LookbookScrollImmediateTouchesAnchor()
+                                        .frame(width: 0, height: 0)
+                                    ForEach(Array(urls.enumerated()), id: \.offset) { idx, urlString in
+                                        lookbookSandboxSingleMedia(
+                                            urlString: urlString,
+                                            documentPath: idx == 0 ? entry.documentImagePath : nil
+                                        )
+                                        .frame(width: w, height: h)
+                                        .clipped()
+                                        .id(idx)
+                                    }
                                 }
+                                .scrollTargetLayout()
                             }
-                            .scrollTargetLayout()
+                            .scrollTargetBehavior(.paging)
+                            .scrollPosition(id: $carouselScrollId, anchor: .leading)
+                            .frame(width: w, height: h)
+                            .clipped()
                         }
-                        .scrollTargetBehavior(.paging)
-                        .scrollPosition(id: $carouselScrollId, anchor: .leading)
-                        .frame(width: w, height: h)
-                        .clipped()
                     }
-                }
-                .frame(maxWidth: .infinity)
-                .clipped()
-                .clipShape(Rectangle())
-        } else {
-            lookbookSandboxSingleMedia(urlString: urls[0], documentPath: entry.documentImagePath)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    .clipShape(Rectangle())
+            } else {
+                lookbookSandboxSingleMedia(urlString: urls[0], documentPath: entry.documentImagePath)
+            }
         }
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -2317,6 +2349,108 @@ private struct LookbookSendToShareSheet: View {
 }
 
 // MARK: - Comments sheet
+private enum LookbookCommentTimeFormatting {
+    private static let isoFrac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    static func parsedDate(from iso: String) -> Date? {
+        if let d = isoFrac.date(from: iso) { return d }
+        return isoPlain.date(from: iso)
+    }
+
+    static func shortRelative(iso: String?) -> String {
+        guard let iso, !iso.isEmpty, let date = parsedDate(from: iso) else { return "" }
+        let rel = RelativeDateTimeFormatter()
+        rel.unitsStyle = .abbreviated
+        return rel.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+private struct LookbookCommentThreadRow: Identifiable {
+    let id: String
+    let comment: ServerLookbookComment
+    let isReply: Bool
+}
+
+private func lookbookThreadedCommentRows(from comments: [ServerLookbookComment]) -> [LookbookCommentThreadRow] {
+    func compareCreated(_ a: String?, _ b: String?) -> Bool {
+        let da = LookbookCommentTimeFormatting.parsedDate(from: a ?? "") ?? .distantPast
+        let db = LookbookCommentTimeFormatting.parsedDate(from: b ?? "") ?? .distantPast
+        return da < db
+    }
+
+    let parents = comments
+        .filter {
+            let p = $0.parentCommentId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return p.isEmpty
+        }
+        .sorted { compareCreated($0.createdAt, $1.createdAt) }
+
+    var byParent: [String: [ServerLookbookComment]] = [:]
+    for c in comments {
+        let pid = c.parentCommentId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !pid.isEmpty else { continue }
+        byParent[pid, default: []].append(c)
+    }
+    for k in byParent.keys {
+        byParent[k]?.sort { compareCreated($0.createdAt, $1.createdAt) }
+    }
+
+    var out: [LookbookCommentThreadRow] = []
+    for p in parents {
+        out.append(LookbookCommentThreadRow(id: p.id, comment: p, isReply: false))
+        for r in byParent[p.id] ?? [] {
+            out.append(LookbookCommentThreadRow(id: r.id, comment: r, isReply: true))
+        }
+    }
+    return out
+}
+
+private struct LookbookCommentAvatar: View {
+    let profilePictureUrl: String?
+    let username: String
+    var size: CGFloat = 32
+
+    var body: some View {
+        let trimmed = profilePictureUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        Group {
+            if let url = URL(string: trimmed), !trimmed.isEmpty {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFill()
+                    default:
+                        placeholder
+                    }
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+    }
+
+    private var placeholder: some View {
+        Circle()
+            .fill(Theme.Colors.secondaryBackground)
+            .overlay(
+                Text(String(username.prefix(1)).uppercased())
+                    .font(.system(size: max(10, size * 0.34), weight: .semibold))
+                    .foregroundColor(Theme.Colors.secondaryText)
+            )
+    }
+}
+
 struct LookbookCommentsSheet: View {
     let entry: LookbookEntry
     var onCountChanged: ((Int) -> Void)? = nil
@@ -2326,72 +2460,124 @@ struct LookbookCommentsSheet: View {
     @State private var draft: String = ""
     @State private var loading = false
     @State private var sending = false
+    @State private var replyParent: ServerLookbookComment?
+
+    private var threadedRows: [LookbookCommentThreadRow] {
+        lookbookThreadedCommentRows(from: comments)
+    }
 
     var body: some View {
+        NavigationStack {
             VStack(spacing: 0) {
-            HStack {
-                Text(L10n.string("Comments"))
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Theme.Colors.primaryText)
-                Spacer()
-                Button(L10n.string("Done")) { dismiss() }
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Theme.primaryColor)
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.top, Theme.Spacing.sm)
-            .padding(.bottom, Theme.Spacing.xs)
-
                 if loading {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, Theme.Spacing.lg)
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, Theme.Spacing.lg)
                 }
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                        ForEach(comments) { c in
-                            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                                Circle()
-                                    .fill(Theme.Colors.secondaryBackground)
-                                    .frame(width: 32, height: 32)
-                                    .overlay(Text(String(c.username.prefix(1)).uppercased())
-                                        .font(.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText))
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(c.username)
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundColor(Theme.Colors.primaryText)
-                                    HashtagColoredText(text: c.text)
-                                }
-                                Spacer()
-                            }
-                            .padding(.horizontal, Theme.Spacing.md)
+                        if threadedRows.isEmpty, !loading {
+                            Text(L10n.string("No comments yet"))
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.top, Theme.Spacing.xl)
+                        }
+                        ForEach(threadedRows) { row in
+                            lookbookCommentRow(row)
                         }
                     }
                     .padding(.vertical, Theme.Spacing.md)
                 }
 
-            HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
-                TextField(L10n.string("Add a comment"), text: $draft, axis: .vertical)
+                if let parent = replyParent {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        (Text(L10n.string("Replying to")) + Text(" @\(parent.username)"))
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Button(L10n.string("Cancel")) {
+                            replyParent = nil
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Theme.primaryColor)
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.xs)
+                    .background(Theme.Colors.secondaryBackground.opacity(0.5))
+                }
+
+                HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                    TextField(L10n.string("Add a comment"), text: $draft, axis: .vertical)
                         .lineLimit(1...4)
                         .padding(.horizontal, Theme.Spacing.md)
                         .padding(.vertical, Theme.Spacing.sm)
                         .background(Theme.Colors.secondaryBackground)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
-                Button(sending ? "…" : L10n.string("Send")) {
+                    Button(sending ? "…" : L10n.string("Send")) {
                         sendComment()
                     }
                     .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
                     .foregroundColor(Theme.primaryColor)
-                .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
+                    .fixedSize()
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.sm)
+                .background(Theme.Colors.background)
+            }
             .background(Theme.Colors.background)
-        }
-        .background(Theme.Colors.background)
+            .navigationTitle(L10n.string("Comments"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.string("Done")) { dismiss() }
+                        .fontWeight(.semibold)
+                }
+            }
             .task { await loadComments() }
+        }
+    }
+
+    @ViewBuilder
+    private func lookbookCommentRow(_ row: LookbookCommentThreadRow) -> some View {
+        let c = row.comment
+        let timeStr = LookbookCommentTimeFormatting.shortRelative(iso: c.createdAt)
+        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+            LookbookCommentAvatar(profilePictureUrl: c.profilePictureUrl, username: c.username, size: 32)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                    Text(c.username)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .lineLimit(1)
+                    Spacer(minLength: Theme.Spacing.sm)
+                    if !timeStr.isEmpty {
+                        Text(timeStr)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+                HashtagColoredText(text: c.text)
+                if !row.isReply {
+                    Button {
+                        replyParent = c
+                    } label: {
+                        Text(L10n.string("Reply"))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Theme.primaryColor)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, Theme.Spacing.md + (row.isReply ? 24 : 0))
+        .padding(.trailing, Theme.Spacing.md)
     }
 
     private func loadComments() async {
@@ -2409,15 +2595,17 @@ struct LookbookCommentsSheet: View {
     private func sendComment() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let parentId = replyParent?.id
         sending = true
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
         Task {
             do {
-                let result = try await service.addComment(postId: entry.apiPostId, text: text)
+                let result = try await service.addComment(postId: entry.apiPostId, text: text, parentCommentId: parentId)
                 await MainActor.run {
                     draft = ""
+                    replyParent = nil
                     comments.append(result.comment)
                     onCountChanged?(result.commentsCount)
                     sending = false

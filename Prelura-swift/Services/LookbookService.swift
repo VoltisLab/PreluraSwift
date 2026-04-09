@@ -53,6 +53,8 @@ struct ServerLookbookComment: Decodable, Identifiable {
     let username: String
     let text: String
     let createdAt: String?
+    let profilePictureUrl: String?
+    let parentCommentId: String?
 }
 
 struct CreateLookbookResponse: Decodable {
@@ -322,6 +324,8 @@ final class LookbookService {
             username
             text
             createdAt
+            profilePictureUrl
+            parentCommentId
           }
         }
         """
@@ -337,10 +341,10 @@ final class LookbookService {
         return response.lookbookComments ?? []
     }
 
-    func addComment(postId: String, text: String) async throws -> (comment: ServerLookbookComment, commentsCount: Int) {
+    func addComment(postId: String, text: String, parentCommentId: String? = nil) async throws -> (comment: ServerLookbookComment, commentsCount: Int) {
         let query = """
-        mutation AddLookbookComment($postId: UUID!, $text: String!) {
-          addLookbookComment(postId: $postId, text: $text) {
+        mutation AddLookbookComment($postId: UUID!, $text: String!, $parentCommentId: UUID) {
+          addLookbookComment(postId: $postId, text: $text, parentCommentId: $parentCommentId) {
             success
             message
             commentsCount
@@ -349,12 +353,19 @@ final class LookbookService {
               username
               text
               createdAt
+              profilePictureUrl
+              parentCommentId
             }
           }
         }
         """
         let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
-        let variables: [String: Any] = ["postId": normalized, "text": text]
+        var variables: [String: Any] = ["postId": normalized, "text": text]
+        if let rawParent = parentCommentId?.trimmingCharacters(in: .whitespacesAndNewlines), !rawParent.isEmpty {
+            variables["parentCommentId"] = LookbookPostIdFormatting.graphQLUUIDString(from: rawParent)
+        } else {
+            variables["parentCommentId"] = NSNull()
+        }
         struct Response: Decodable { let addLookbookComment: Payload? }
         struct Payload: Decodable {
             let success: Bool?

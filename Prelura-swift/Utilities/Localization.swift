@@ -188,6 +188,11 @@ enum L10n {
         "Lookbook": "Lookbook",
         "No Lookbook posts yet": "Δεν υπάρχουν δημοσιεύσεις Lookbook ακόμα",
         "No comments yet": "Δεν υπάρχουν σχόλια ακόμα",
+        "Comments": "Σχόλια",
+        "Add a comment": "Πρόσθεσε σχόλιο",
+        "Send": "Αποστολή",
+        "Reply": "Απάντηση",
+        "Replying to": "Απάντηση σε",
         "Lookbook upload": "Μεταφόρτωση Lookbook",
 
         // Profile (Favourites used from Menu section)
