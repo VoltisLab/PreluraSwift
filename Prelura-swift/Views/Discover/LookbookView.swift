@@ -166,6 +166,9 @@ private enum LookbookCanonicalAspect: CGFloat, CaseIterable {
     }
 }
 
+/// `AsyncImage` has no intrinsic size in `.empty`; without this, feed rows in a `LazyVStack` collapse to a thin strip (spinner only).
+private let lookbookFeedAsyncImagePlaceholderAspect: CGFloat = LookbookCanonicalAspect.portrait1080x1350.rawValue
+
 // MARK: - One feed row per post (`LookbookFeedRowModel.id` is stable per post; counts refresh via `entry` updates)
 
 private struct LookbookFeedRowModel: Identifiable {
@@ -1485,7 +1488,7 @@ private struct LookbookFeedOnlyShimmerView: View {
 }
 
 private struct LookbookPostCardShimmer: View {
-    private let mediaAspect: CGFloat = 4 / 5
+    private let mediaAspect: CGFloat = lookbookFeedAsyncImagePlaceholderAspect
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1683,33 +1686,38 @@ private struct LookbookFeedRowRemoteImage: View {
     @State private var reloadNonce = 0
 
     var body: some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image):
-                Group {
-                    if let tap = onSuccessTap {
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .contentShape(Rectangle())
-                            .onTapGesture { tap() }
-                    } else {
-                        image
-                            .resizable()
-                            .scaledToFit()
+        ZStack {
+            Color.clear
+                .aspectRatio(lookbookFeedAsyncImagePlaceholderAspect, contentMode: .fit)
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    Group {
+                        if let tap = onSuccessTap {
+                            image
+                                .resizable()
+                                .scaledToFit()
+                                .contentShape(Rectangle())
+                                .onTapGesture { tap() }
+                        } else {
+                            image
+                                .resizable()
+                                .scaledToFit()
+                        }
                     }
+                case .failure:
+                    reloadPrompt
+                case .empty:
+                    ZStack {
+                        Theme.Colors.secondaryBackground
+                        ProgressView()
+                            .scaleEffect(0.85)
+                    }
+                @unknown default:
+                    reloadPrompt
                 }
-            case .failure:
-                reloadPrompt
-            case .empty:
-                ZStack {
-                    Theme.Colors.secondaryBackground
-                    ProgressView()
-                        .scaleEffect(0.85)
-                }
-            @unknown default:
-                reloadPrompt
             }
+            .frame(maxWidth: .infinity)
         }
         .id("\(url.absoluteString)-\(reloadNonce)")
     }
@@ -1762,7 +1770,7 @@ private struct LookbookFeedRowView: View {
 
     private let avatarSize: CGFloat = 40
     /// Carousel pages share one height so horizontal paging stays aligned (portrait-leaning ratio).
-    private let carouselSlotAspect: CGFloat = 4 / 5
+    private let carouselSlotAspect: CGFloat = lookbookFeedAsyncImagePlaceholderAspect
 
     private var lookbookShareURLString: String? {
         let raw = entry.apiPostId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2073,7 +2081,7 @@ private struct LookbookFeedRowView: View {
             }
             .frame(maxWidth: .infinity)
         if fixedCarouselSlot {
-            base.aspectRatio(4 / 5, contentMode: .fit)
+            base.aspectRatio(lookbookFeedAsyncImagePlaceholderAspect, contentMode: .fit)
         } else {
             base.frame(minHeight: 200)
         }
