@@ -120,6 +120,16 @@ struct LookbookEntry: Identifiable {
 
 /// Vertical rhythm between major feed blocks (slightly looser than before).
 private let lookbookSpacing: CGFloat = 16
+
+/// Shared 3-column lookbook grid (Feed + My items).
+private enum LookbookThreeColumnGrid {
+    static let gutter: CGFloat = 2
+    static let columns: [GridItem] = [
+        GridItem(.flexible(), spacing: gutter),
+        GridItem(.flexible(), spacing: gutter),
+        GridItem(.flexible(), spacing: gutter)
+    ]
+}
 /// Horizontal gap between carousel thumbnails (was `sm`; nudge wider).
 private let lookbookThumbInterItem: CGFloat = Theme.Spacing.sm + 4
 private let lookbookTopId = "lookbook_top"
@@ -275,6 +285,13 @@ struct LookbookView: View {
                 ) {
                     LookbookMyItemsScreenView()
                 }
+                LookbooksHubBannerRow(
+                    kind: .createPost,
+                    title: L10n.string("Create a post"),
+                    subtitle: L10n.string("Upload photos, crop your look, and share it with followers.")
+                ) {
+                    LookbooksUploadView()
+                }
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.lg)
@@ -317,13 +334,14 @@ struct LookbookView: View {
 }
 
 private enum LookbookHubBannerKind {
-    case feed, explore, myItems
+    case feed, explore, myItems, createPost
 
     fileprivate var symbol: String {
         switch self {
         case .feed: return "rectangle.stack"
         case .explore: return "sparkles.rectangle.stack"
         case .myItems: return "person.crop.square"
+        case .createPost: return "plus.circle.fill"
         }
     }
 
@@ -332,6 +350,7 @@ private enum LookbookHubBannerKind {
         case .feed: return Theme.primaryColor
         case .explore: return Color(red: 0.58, green: 0.38, blue: 0.98)
         case .myItems: return Color(red: 0.98, green: 0.48, blue: 0.42)
+        case .createPost: return Color(red: 0.35, green: 0.78, blue: 0.52)
         }
     }
 }
@@ -423,33 +442,94 @@ private struct LookbookFeedScreenView: View {
     @State private var commentsEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
+    @State private var useGrid = false
+    @State private var immersiveFeedInitialPostId: String?
+    @State private var immersiveScrollTargetId: UUID?
     private let productService = ProductService()
 
     var body: some View {
         GeometryReader { geometry in
-            ScrollView {
-                LookbookScrollImmediateTouchesAnchor()
-                    .frame(width: 0, height: 0)
-                LazyVStack(spacing: 0) {
-                    Color.clear.frame(height: 1).id(lookbookTopId)
-
+            ZStack(alignment: .bottomTrailing) {
+                Group {
                     if feedLoading && entries.isEmpty {
                         LookbookFeedOnlyShimmerView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if entries.isEmpty {
                         feedEmptyPlaceholder(minHeight: geometry.size.height - 120)
-                    } else {
-                        ForEach(buildLookbookFeedRows(from: entries)) { row in
-                            lookbookFeedRow(model: row)
+                    } else if useGrid {
+                        ScrollView {
+                            LazyVGrid(columns: LookbookThreeColumnGrid.columns, spacing: LookbookThreeColumnGrid.gutter) {
+                                ForEach(entries) { entry in
+                                    Button {
+                                        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                                            immersiveFeedInitialPostId = entry.apiPostId
+                                        }
+                                    } label: {
+                                        LookbookSquareGridThumbnail(entry: entry)
+                                            .padding(1)
+                                            .background(Theme.Colors.background)
+                                            .aspectRatio(1, contentMode: .fit)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(2)
                         }
+                        .scrollContentBackground(.hidden)
+                        .background(Theme.Colors.background)
+                    } else {
+                        ScrollView {
+                            LookbookScrollImmediateTouchesAnchor()
+                                .frame(width: 0, height: 0)
+                            LazyVStack(spacing: 0) {
+                                Color.clear.frame(height: 1).id(lookbookTopId)
+                                ForEach(buildLookbookFeedRows(from: entries)) { row in
+                                    lookbookFeedRow(model: row)
+                                }
+                            }
+                            .padding(.bottom, Theme.Spacing.xl)
+                        }
+                        .scrollPosition(id: $scrollPosition, anchor: .top)
+                        .scrollContentBackground(.hidden)
+                        .background(Theme.Colors.background)
                     }
                 }
-                .padding(.bottom, Theme.Spacing.xl)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if immersiveFeedInitialPostId != nil {
+                    GeometryReader { geo in
+                        let pageHeight = geo.size.height
+                        ZStack(alignment: .topTrailing) {
+                            Theme.Colors.background.ignoresSafeArea()
+                            feedImmersiveVerticalPager(pageHeight: pageHeight)
+                            feedImmersiveDismissButton
+                        }
+                    }
+                    .ignoresSafeArea()
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .center)),
+                        removal: .opacity
+                    ))
+                    .zIndex(2)
+                }
+
+                if !entries.isEmpty {
+                    GlassIconButton(
+                        icon: useGrid ? "list.bullet" : "square.grid.3x3",
+                        iconColor: Theme.Colors.primaryText,
+                        iconSize: 20,
+                        action: { useGrid.toggle() }
+                    )
+                    .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
+                    .padding(.trailing, Theme.Spacing.md)
+                    .padding(.bottom, Theme.Spacing.lg)
+                    .zIndex(1)
+                }
             }
-            .scrollPosition(id: $scrollPosition, anchor: .top)
-            .scrollContentBackground(.hidden)
-            .background(Theme.Colors.background)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: immersiveFeedInitialPostId)
         .navigationTitle(L10n.string("Feed"))
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -569,7 +649,81 @@ private struct LookbookFeedScreenView: View {
         .frame(minHeight: max(minHeight, 200))
     }
 
-    private func lookbookFeedRow(model: LookbookFeedRowModel) -> some View {
+    @ViewBuilder
+    private func feedImmersivePagerPage(entry: LookbookEntry, pageHeight: CGFloat) -> some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            LookbookScrollImmediateTouchesAnchor()
+                .frame(width: 0, height: 0)
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                lookbookFeedRow(
+                    model: LookbookFeedRowModel(
+                        id: "imm-\(lookbookFeedRowStableId(for: entry))",
+                        entry: entry
+                    ),
+                    immersive: true
+                )
+                Spacer(minLength: 0)
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: pageHeight)
+        }
+        .frame(maxWidth: .infinity, minHeight: pageHeight, maxHeight: pageHeight)
+        .clipped()
+        .id(entry.id)
+    }
+
+    private var feedImmersiveDismissButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                immersiveFeedInitialPostId = nil
+                immersiveScrollTargetId = nil
+            }
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Theme.Colors.primaryText)
+                .frame(width: 40, height: 40)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 12)
+        .padding(.trailing, 12)
+    }
+
+    private func feedImmersiveVerticalPager(pageHeight: CGFloat) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LookbookScrollImmediateTouchesAnchor()
+                .frame(width: 0, height: 0)
+            VStack(spacing: 0) {
+                ForEach(entries) { entry in
+                    feedImmersivePagerPage(entry: entry, pageHeight: pageHeight)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $immersiveScrollTargetId, anchor: .center)
+        .task(id: immersiveFeedInitialPostId) {
+            guard let pid = immersiveFeedInitialPostId else {
+                await MainActor.run { immersiveScrollTargetId = nil }
+                return
+            }
+            await Task.yield()
+            await Task.yield()
+            await MainActor.run {
+                immersiveScrollTargetId = entries.first { $0.apiPostId.lowercased() == pid.lowercased() }?.id
+                    ?? entries.first?.id
+            }
+        }
+        .onChange(of: entries.count) { _, newCount in
+            if newCount == 0 {
+                immersiveFeedInitialPostId = nil
+                immersiveScrollTargetId = nil
+            }
+        }
+    }
+
+    private func lookbookFeedRow(model: LookbookFeedRowModel, immersive: Bool = false) -> some View {
         LookbookFeedRowView(
             entry: model.entry,
             onCommentsTap: { commentsEntry = $0 },
@@ -582,7 +736,7 @@ private struct LookbookFeedScreenView: View {
                 handleLookbookFeedLikeTap(tapped, authService: authService, entries: $entries)
             }
         )
-        .padding(.bottom, lookbookSpacing)
+        .padding(.bottom, immersive ? 0 : lookbookSpacing)
     }
 }
 
@@ -726,14 +880,6 @@ private struct LookbookMyItemsScreenView: View {
         return entries.filter { $0.posterUsername.lowercased() == me }
     }
 
-    /// Profile grid: small spacing between cells; page background matches the main Feed (`Theme.Colors.background`).
-    private static let gridGutter: CGFloat = 2
-    private static let gridColumns: [GridItem] = [
-        GridItem(.flexible(), spacing: gridGutter),
-        GridItem(.flexible(), spacing: gridGutter),
-        GridItem(.flexible(), spacing: gridGutter)
-    ]
-
     /// One fullscreen page: full-width media like the main feed; inner scroll only when the post is taller than the viewport (centers short posts).
     @ViewBuilder
     private func immersivePagerPage(entry: LookbookEntry, pageHeight: CGFloat) -> some View {
@@ -819,7 +965,7 @@ private struct LookbookMyItemsScreenView: View {
                     myItemsEmpty
                 } else if useGrid {
                     ScrollView {
-                        LazyVGrid(columns: Self.gridColumns, spacing: Self.gridGutter) {
+                        LazyVGrid(columns: LookbookThreeColumnGrid.columns, spacing: LookbookThreeColumnGrid.gutter) {
                             ForEach(myEntries) { entry in
                                 Button {
                                     withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
@@ -1686,38 +1832,40 @@ private struct LookbookFeedRowRemoteImage: View {
     @State private var reloadNonce = 0
 
     var body: some View {
-        ZStack {
-            Color.clear
-                .aspectRatio(lookbookFeedAsyncImagePlaceholderAspect, contentMode: .fit)
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    Group {
-                        if let tap = onSuccessTap {
-                            image
-                                .resizable()
-                                .scaledToFit()
-                                .contentShape(Rectangle())
-                                .onTapGesture { tap() }
-                        } else {
-                            image
-                                .resizable()
-                                .scaledToFit()
-                        }
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case .success(let image):
+                Group {
+                    if let tap = onSuccessTap {
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .contentShape(Rectangle())
+                            .onTapGesture { tap() }
+                    } else {
+                        image
+                            .resizable()
+                            .scaledToFit()
                     }
-                case .failure:
-                    reloadPrompt
-                case .empty:
-                    ZStack {
-                        Theme.Colors.secondaryBackground
-                        ProgressView()
-                            .scaleEffect(0.85)
-                    }
-                @unknown default:
-                    reloadPrompt
                 }
+                .frame(maxWidth: .infinity)
+            case .failure:
+                reloadPrompt
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(lookbookFeedAsyncImagePlaceholderAspect, contentMode: .fit)
+            case .empty:
+                ZStack {
+                    Theme.Colors.secondaryBackground
+                    ProgressView()
+                        .scaleEffect(0.85)
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(lookbookFeedAsyncImagePlaceholderAspect, contentMode: .fit)
+            @unknown default:
+                reloadPrompt
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(lookbookFeedAsyncImagePlaceholderAspect, contentMode: .fit)
             }
-            .frame(maxWidth: .infinity)
         }
         .id("\(url.absoluteString)-\(reloadNonce)")
     }

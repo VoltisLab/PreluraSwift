@@ -196,6 +196,10 @@ enum L10n {
         "Delete this comment?": "Διαγραφή αυτού του σχολίου;",
         "This will remove your comment and any replies under it.": "Θα αφαιρεθεί το σχόλιό σας και τυχόν απαντήσεις κάτω από αυτό.",
         "Lookbook upload": "Μεταφόρτωση Lookbook",
+        "Create a post": "Δημιουργία δημοσίευσης",
+        "Upload photos, crop your look, and share it with followers.": "Ανέβασε φωτογραφίες, κόψε το look σου και μοιράσου το με τους ακόλουθούς σου.",
+        "List view": "Προβολή λίστας",
+        "Grid view": "Προβολή πλέγματος",
         "Tap to reload": "Πατήστε για επανάφόρτωση",
         "tag products": "Επισήμανση προϊόντων",
 
