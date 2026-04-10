@@ -197,6 +197,8 @@ enum L10n {
         "This will remove your comment and any replies under it.": "Θα αφαιρεθεί το σχόλιό σας και τυχόν απαντήσεις κάτω από αυτό.",
         "Lookbook upload": "Μεταφόρτωση Lookbook",
         "Create a post": "Δημιουργία δημοσίευσης",
+        "Style studio": "Στούντιο στυλ",
+        "Create, browse, and show off your looks—all in one place.": "Δημιούργησε, βρες έμπνευση και δείξε τα looks σου—όλα σε ένα μέρος.",
         "Upload photos, crop your look, and share it with followers.": "Ανέβασε φωτογραφίες, κόψε το look σου και μοιράσου το με τους ακόλουθούς σου.",
         "List view": "Προβολή λίστας",
         "Grid view": "Προβολή πλέγματος",

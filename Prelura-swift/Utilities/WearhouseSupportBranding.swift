@@ -23,7 +23,7 @@ enum WearhouseSupportBranding {
     /// Navigation bar + inbox title (human-readable).
     static func displayTitle(forRecipientUsername username: String) -> String {
         if isSupportRecipient(username: username) {
-            return "WEARHOUSE Support"
+            return "Support Chat"
         }
         return username.trimmingCharacters(in: .whitespacesAndNewlines)
     }

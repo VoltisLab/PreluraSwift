@@ -523,7 +523,7 @@ struct ChatDetailView: View {
         }
     }
 
-    /// Chat nav bar: raw username for people threads; branded title for WEARHOUSE Support.
+    /// Chat nav bar: raw username for people threads; branded title for Support Chat.
     private var chatToolbarUsernameLabel: String {
         let u = displayedConversation.recipient.username
         if WearhouseSupportBranding.isSupportRecipient(username: u) {
@@ -3061,7 +3061,7 @@ struct ChatDetailView: View {
                     await MainActor.run {
                         if outcome?.insertedSupportThreadMessage == true {
                             profanitySupportInboxBannerText =
-                                "WEARHOUSE Support sent you a private message about community guidelines. Open Inbox and open the Support conversation to read it."
+                                "Support Chat sent you a private message about community guidelines. Open Inbox and open the Support conversation to read it."
                             Task {
                                 try? await Task.sleep(nanoseconds: 12_000_000_000)
                                 await MainActor.run {
