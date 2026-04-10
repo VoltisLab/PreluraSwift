@@ -2,12 +2,12 @@
 //  SplashView.swift
 //  Prelura-swift
 //
-//  Splash: black background, WH monogram SVG then WEARHOUSE sub-mark (staggered fade/scale); "by Voltis Labs" at bottom.
+//  Splash: black background, WH.svg then WEARHOUSE.svg (staggered fade/scale); "by Voltis Labs" at bottom.
 //
 
 import SwiftUI
 
-/// Splash screen: centered Wearhouse mark from asset SVGs (main WH, then sub wordmark).
+/// Splash screen: `WearhouseSplashMain` = WH.svg, `WearhouseSplashSub` = WEARHOUSE.svg (vector colours from assets).
 struct SplashView: View {
     var onFinish: () -> Void
 
@@ -21,35 +21,25 @@ struct SplashView: View {
         case exiting
     }
 
-    /// First beat: WH monogram (matches prior single-logo in duration).
     private let mainInDuration: Double = 0.6
-    /// Pause before sub-mark animates in.
     private let subStagger: Double = 0.18
-    /// Second beat: WEARHOUSE sub-logo.
     private let subInDuration: Double = 0.55
     private let holdDuration: Double = 1.2
     private let logoOutDuration: Double = 0.5
 
-    /// Horizontal cap for the WH monogram (vector scales down proportionally).
-    private let splashMarkMaxWidth: CGFloat = 215.6 * 1.1 // +10% from prior 215.6
+    /// `WH.svg` viewBox (137×73).
+    private let whViewBoxSize: CGSize = CGSize(width: 137, height: 73)
+    /// `WEARHOUSE.svg` viewBox (323×26).
+    private let wearhouseViewBoxSize: CGSize = CGSize(width: 323, height: 26)
 
-    /// `WearhouseSplashMain.svg` viewBox (409×218).
-    private let whMonogramViewBoxSize: CGSize = CGSize(width: 409, height: 218)
-    /// `WearhouseSplashSub.svg` viewBox (246×22).
-    private let subWordmarkViewBoxSize: CGSize = CGSize(width: 246, height: 22)
+    /// Cap for the WH mark width.
+    private let splashWHMaxWidth: CGFloat = 100
 
-    /// Rendered WH height at `splashMarkMaxWidth` (fit, same aspect as viewBox).
-    private var splashMainRenderedHeight: CGFloat {
-        splashMarkMaxWidth * (whMonogramViewBoxSize.height / whMonogramViewBoxSize.width)
-    }
+    /// WEARHOUSE wordmark width cap — **not** derived from `splashWHMaxWidth` so resizing the monogram does not shrink the wordmark.
+    private let splashWordmarkMaxWidth: CGFloat = 228
 
-    /// WEARHOUSE sub-mark: **height = WH height ÷ 10** (WH : sub = 10 : 1).
-    private var splashSubMarkMaxHeight: CGFloat {
-        splashMainRenderedHeight / 10
-    }
-
-    /// Vertical gap between monogram and sub-logo (~proportion of combined Figma frame).
-    private let splashMarkToSubSpacing: CGFloat = 36
+    /// Vertical gap between WH and wordmark.
+    private let splashMarkToSubSpacing: CGFloat = 28
 
     var body: some View {
         ZStack {
@@ -63,10 +53,10 @@ struct SplashView: View {
                         .resizable()
                         .renderingMode(.original)
                         .aspectRatio(
-                            whMonogramViewBoxSize.width / whMonogramViewBoxSize.height,
+                            whViewBoxSize.width / whViewBoxSize.height,
                             contentMode: .fit
                         )
-                        .frame(maxWidth: splashMarkMaxWidth)
+                        .frame(maxWidth: splashWHMaxWidth)
                         .scaleEffect(mainScale)
                         .opacity(mainOpacity)
 
@@ -74,10 +64,10 @@ struct SplashView: View {
                         .resizable()
                         .renderingMode(.original)
                         .aspectRatio(
-                            subWordmarkViewBoxSize.width / subWordmarkViewBoxSize.height,
+                            wearhouseViewBoxSize.width / wearhouseViewBoxSize.height,
                             contentMode: .fit
                         )
-                        .frame(maxHeight: splashSubMarkMaxHeight)
+                        .frame(maxWidth: splashWordmarkMaxWidth)
                         .scaleEffect(subScale)
                         .opacity(subOpacity)
                 }

@@ -1,21 +1,19 @@
 import SwiftUI
 
-/// Appearance: theme (System / Light / Dark) only.
-struct AppearanceMenuView: View {
+/// Debug menu copy of **Settings → Appearance → Theme** (system / light / dark) to compare behaviour outside the normal settings stack.
+struct DebugAppearanceThemeView: View {
     @AppStorage(kAppearanceMode) private var appearanceMode: String = "system"
 
-    private var themeOptions: [(id: String, title: String)] {
-        [
-            ("system", L10n.string("Use System Settings")),
-            ("light", L10n.string("Light")),
-            ("dark", L10n.string("Dark"))
-        ]
-    }
+    private let options: [(id: String, title: String)] = [
+        ("system", "Use System Settings"),
+        ("light", "Light"),
+        ("dark", "Dark")
+    ]
 
     var body: some View {
         List {
             Section {
-                ForEach(themeOptions, id: \.id) { option in
+                ForEach(options, id: \.id) { option in
                     Button {
                         appearanceMode = option.id
                     } label: {
@@ -33,14 +31,15 @@ struct AppearanceMenuView: View {
                     .buttonStyle(PlainTappableButtonStyle())
                 }
             } header: {
-                Text(L10n.string("Theme"))
+                Text("Theme (debug copy)")
             } footer: {
-                Text(L10n.string("Light and Dark apply to all screens, components, and elements. System follows your device setting."))
+                Text("Same keys as Settings → Appearance. Use this to compare behaviour outside the normal settings stack.")
+                    .font(Theme.Typography.caption)
             }
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("Appearance"))
+        .navigationTitle("Debug: Theme")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }

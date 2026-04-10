@@ -841,7 +841,7 @@ struct DiscoverItemCard: View {
                     
                     // Product Image - fixed size; retries once on failure to avoid stuck placeholders
                     RetryAsyncImage(
-                        url: item.imageURLs.first.flatMap { URL(string: $0) },
+                        url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
                         width: imageWidth,
                         height: imageHeight,
                         cornerRadius: 8,

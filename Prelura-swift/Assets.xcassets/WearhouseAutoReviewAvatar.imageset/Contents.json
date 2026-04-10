@@ -1,8 +1,9 @@
 {
   "images" : [
     {
-      "filename" : "preview.png",
-      "idiom" : "universal"
+      "filename" : "WearhouseAutoReviewAvatar.png",
+      "idiom" : "universal",
+      "scale" : "1x"
     }
   ],
   "info" : {

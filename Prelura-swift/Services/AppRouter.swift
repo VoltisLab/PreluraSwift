@@ -56,7 +56,7 @@ final class AppRouter: ObservableObject {
 
     /// Single path segment on marketing hosts only — avoid treating site routes as usernames.
     private static let reservedProfilePathSegments: Set<String> = [
-        "item", "join", "app", "terms", "privacy", "login", "sell", "cart", "checkout",
+        "item", "join", "app", "profile", "terms", "privacy", "login", "sell", "cart", "checkout",
         "discover", "lookbook", "api", "graphql", "admin", "static", "assets", "_next", "help",
         "support", "about", "contact", "blog", "legal", "cookies", "sitemap", "robots.txt",
         "download", "invite", "internal", "ws", "media", "register", "signin", "signup",
@@ -105,6 +105,12 @@ final class AppRouter: ObservableObject {
                 let slug = (raw.removingPercentEncoding ?? raw).trimmingCharacters(in: .whitespacesAndNewlines)
                 if !slug.isEmpty {
                     dest = .product(publicSlug: slug)
+                }
+            } else if parts.count >= 2, parts[0].lowercased() == "profile" {
+                let raw = parts[1]
+                let username = (raw.removingPercentEncoding ?? raw).trimmingCharacters(in: .whitespacesAndNewlines)
+                if Self.looksLikePublicUsernameSegment(raw) {
+                    dest = .user(username: username)
                 }
             } else if let lbId = Self.lookbookPostIdIfPresent(in: url) {
                 dest = .lookbookPost(id: lbId)

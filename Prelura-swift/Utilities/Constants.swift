@@ -54,12 +54,22 @@ struct Constants {
     /// Discover uses “trusted” vendor copy; there is **no** dedicated native “badge” settings screen—web article should state real eligibility from your business rules.
     static var helpArticleTrustedSellerURL: String { "\(publicWebsiteBaseURL)/help/trusted-seller" }
     
-    /// Django-served universal link that opens the app when installed (`/join/` is in `apple-app-site-association`).
+    /// Backend API / legacy universal-link host (`/app/u/*`, `/join/` on API). **Do not** use for user-visible share copy—use `publicWebsiteBaseURL` and helpers below.
     static let universalLinksAPIBaseURL = "https://prelura.voltislabs.uk"
-    /// Used when inviting contacts (share sheet / SMS).
-    static let inviteFriendsLandingURL = "https://prelura.voltislabs.uk/join/"
-    /// Product and lookbook share links (`/item/…`, `/lookbook/…`). Uses the **API host** so iOS can load `/.well-known/apple-app-site-association` and open the app. (`mywearhouse.co.uk` does not serve AASA yet; legal/help URLs still use `publicWebsiteBaseURL`.)
-    static var publicWebItemLinkBaseURL: String { universalLinksAPIBaseURL }
+
+    /// Public profile URL for sharing, QR, and web (`/profile/{username}` on the consumer site).
+    static func profileShareWebURL(forUsername username: String) -> URL? {
+        let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let enc = trimmed.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? trimmed
+        return URL(string: "\(publicWebsiteBaseURL)/profile/\(enc)")
+    }
+
+    /// Invite landing (SMS / contacts share). Consumer domain only.
+    static var inviteFriendsLandingURL: String { "\(publicWebsiteBaseURL)/join/" }
+
+    /// Product and lookbook share links (`/item/…`, `/lookbook/…`) on the public site.
+    static var publicWebItemLinkBaseURL: String { publicWebsiteBaseURL }
     
     // API Configuration
     static let apiTimeout: TimeInterval = 60.0

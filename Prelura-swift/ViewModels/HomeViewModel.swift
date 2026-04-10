@@ -110,14 +110,16 @@ class HomeViewModel: ObservableObject {
                     pageCount: pageSize,
                     parentCategory: categoryFilter
                 )
-                let featured = (try? await featuredTask) ?? []
+                let visible = products.excludingVacationModeSellers().excludingSold()
                 await MainActor.run {
-                    let visible = products.excludingVacationModeSellers().excludingSold()
-                    self.featuredItems = Self.featuredSectionItems(from: featured)
                     self.allItems = visible
                     self.filteredItems = visible
                     self.isLoading = false
                     self.hasMorePages = products.count >= pageSize
+                }
+                let featured = (try? await featuredTask) ?? []
+                await MainActor.run {
+                    self.featuredItems = Self.featuredSectionItems(from: featured)
                 }
             } catch {
                 await MainActor.run {
@@ -189,22 +191,41 @@ class HomeViewModel: ObservableObject {
         
         Task {
             do {
-                async let featuredTask = productService.getDiscoverFeaturedProducts()
-                let products = try await productService.getAllProducts(
-                    pageNumber: currentPage,
-                    pageCount: pageSize,
-                    search: search,
-                    parentCategory: categoryFilter
-                )
-                let featured = (try? await featuredTask) ?? []
-                await MainActor.run {
+                let hideFeatured = search.map { !$0.isEmpty } ?? false
+                if hideFeatured {
+                    let products = try await productService.getAllProducts(
+                        pageNumber: currentPage,
+                        pageCount: pageSize,
+                        search: search,
+                        parentCategory: categoryFilter
+                    )
                     let visible = products.excludingVacationModeSellers().excludingSold()
-                    let hideFeatured = search.map { !$0.isEmpty } ?? false
-                    self.featuredItems = hideFeatured ? [] : Self.featuredSectionItems(from: featured)
-                    self.allItems = visible
-                    self.filteredItems = visible
-                    self.isLoading = false
-                    self.hasMorePages = products.count >= pageSize
+                    await MainActor.run {
+                        self.featuredItems = []
+                        self.allItems = visible
+                        self.filteredItems = visible
+                        self.isLoading = false
+                        self.hasMorePages = products.count >= pageSize
+                    }
+                } else {
+                    async let featuredTask = productService.getDiscoverFeaturedProducts()
+                    let products = try await productService.getAllProducts(
+                        pageNumber: currentPage,
+                        pageCount: pageSize,
+                        search: search,
+                        parentCategory: categoryFilter
+                    )
+                    let visible = products.excludingVacationModeSellers().excludingSold()
+                    await MainActor.run {
+                        self.allItems = visible
+                        self.filteredItems = visible
+                        self.isLoading = false
+                        self.hasMorePages = products.count >= pageSize
+                    }
+                    let featured = (try? await featuredTask) ?? []
+                    await MainActor.run {
+                        self.featuredItems = Self.featuredSectionItems(from: featured)
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -232,14 +253,16 @@ class HomeViewModel: ObservableObject {
                     pageCount: pageSize,
                     parentCategory: categoryFilter
                 )
-                let featured = (try? await featuredTask) ?? []
+                let visible = products.excludingVacationModeSellers().excludingSold()
                 await MainActor.run {
-                    let visible = products.excludingVacationModeSellers().excludingSold()
-                    self.featuredItems = Self.featuredSectionItems(from: featured)
                     self.allItems = visible
                     self.filteredItems = visible
                     self.isLoading = false
                     self.hasMorePages = products.count >= pageSize
+                }
+                let featured = (try? await featuredTask) ?? []
+                await MainActor.run {
+                    self.featuredItems = Self.featuredSectionItems(from: featured)
                 }
             } catch {
                 await MainActor.run {
@@ -266,24 +289,41 @@ class HomeViewModel: ObservableObject {
         
         do {
             let categoryFilter = selectedCategory == "All" ? nil : selectedCategory
-            async let featuredTask = productService.getDiscoverFeaturedProducts()
-            let products = try await productService.getAllProducts(
-                pageNumber: 1,
-                pageCount: pageSize,
-                search: searchText.isEmpty ? nil : searchText,
-                parentCategory: categoryFilter
-            )
-            let featured = (try? await featuredTask) ?? []
-            
-            await MainActor.run {
+            let search = searchText.isEmpty ? nil : searchText
+            if search != nil {
+                let products = try await productService.getAllProducts(
+                    pageNumber: 1,
+                    pageCount: pageSize,
+                    search: search,
+                    parentCategory: categoryFilter
+                )
                 let visible = products.excludingVacationModeSellers().excludingSold()
-                self.featuredItems = searchText.isEmpty
-                    ? Self.featuredSectionItems(from: featured)
-                    : []
-                self.allItems = visible
-                self.filteredItems = visible
-                self.isLoading = false
-                self.hasMorePages = products.count >= pageSize
+                await MainActor.run {
+                    self.featuredItems = []
+                    self.allItems = visible
+                    self.filteredItems = visible
+                    self.isLoading = false
+                    self.hasMorePages = products.count >= pageSize
+                }
+            } else {
+                async let featuredTask = productService.getDiscoverFeaturedProducts()
+                let products = try await productService.getAllProducts(
+                    pageNumber: 1,
+                    pageCount: pageSize,
+                    search: nil,
+                    parentCategory: categoryFilter
+                )
+                let visible = products.excludingVacationModeSellers().excludingSold()
+                await MainActor.run {
+                    self.allItems = visible
+                    self.filteredItems = visible
+                    self.isLoading = false
+                    self.hasMorePages = products.count >= pageSize
+                }
+                let featured = (try? await featuredTask) ?? []
+                await MainActor.run {
+                    self.featuredItems = Self.featuredSectionItems(from: featured)
+                }
             }
         } catch {
             await MainActor.run {

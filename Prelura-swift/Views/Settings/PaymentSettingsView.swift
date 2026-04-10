@@ -109,10 +109,12 @@ struct PaymentSettingsView: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                         }
                     }
-                    Section {
-                        NavigationLink(destination: AddBankAccountView(onSaved: { Task { await load() } })) {
-                            Label("Add Bank Account", systemImage: "building.columns")
-                                .foregroundColor(Theme.Colors.primaryText)
+                    if payoutBankAccount == nil {
+                        Section {
+                            NavigationLink(destination: AddBankAccountView(onSaved: { Task { await load() } })) {
+                                Label("Add Bank Account", systemImage: "building.columns")
+                                    .foregroundColor(Theme.Colors.primaryText)
+                            }
                         }
                     }
                     if let err = errorMessage {

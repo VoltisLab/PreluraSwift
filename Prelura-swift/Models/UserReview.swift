@@ -9,4 +9,11 @@ struct UserReview: Identifiable {
     let dateCreated: Date
     let reviewerUsername: String
     let reviewerProfilePictureUrl: String?
+
+    /// Platform automatic review (post-sale, etc.): show as **Wearhouse** with brand avatar, not the backend reviewer row.
+    var isPlatformAutomaticReview: Bool {
+        if isAutoReview { return true }
+        let t = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.caseInsensitiveCompare("Sale completed successfully") == .orderedSame
+    }
 }

@@ -348,6 +348,7 @@ struct LookbooksUploadView: View {
                                         .resizable()
                                         .scaledToFit()
                                         .frame(maxWidth: .infinity)
+                                        .frame(minHeight: photoPickerMinHeight)
                                 } else if selectedImages.count > 1 {
                                     TabView {
                                         ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, image in
@@ -472,7 +473,7 @@ struct LookbooksUploadView: View {
                             isLoading: uploadState.uploading,
                             action: uploadImage
                         )
-                        BorderGlassButton(L10n.string("tag products"), isEnabled: !selectedImages.isEmpty, action: { showTagScreen = true })
+                        BorderGlassButton(L10n.string("Tag products"), isEnabled: !selectedImages.isEmpty, action: { showTagScreen = true })
                     }
                 }
             }
@@ -780,7 +781,7 @@ private struct LookbookUploadCropShellView: View {
                 Color.clear.frame(width: 56)
             }
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.vertical, Theme.Spacing.xs)
             .background(Theme.Colors.background)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -814,12 +815,15 @@ private struct LookbookUploadCropShellView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                 }
             }
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.vertical, Theme.Spacing.xs)
             .background(Theme.Colors.background)
 
-            LookbookAspectCropRepresentable(image: image, preset: preset, onCropped: onApplyCropped)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
+            GeometryReader { geo in
+                LookbookAspectCropRepresentable(image: image, preset: preset, onCropped: onApplyCropped)
+                    .frame(width: geo.size.width, height: geo.size.height)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black)
 
             PrimaryGlassButton(totalImages > 1 && imageIndex < totalImages ? "Next" : "Use photo") {
                 NotificationCenter.default.post(name: .lookbookAspectCropExportRequested, object: nil)
@@ -828,6 +832,7 @@ private struct LookbookUploadCropShellView: View {
             .padding(.vertical, Theme.Spacing.md)
             .background(Theme.Colors.background)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
     }
 }
@@ -888,7 +893,8 @@ private final class LookbookAspectCropViewController: UIViewController, UIScroll
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.showsVerticalScrollIndicator = false
         scrollView.clipsToBounds = true
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        // Use frame-based layout in `layoutCropArea`; `false` here without constraints breaks sizing in SwiftUI-hosted VCs.
+        scrollView.translatesAutoresizingMaskIntoConstraints = true
         view.addSubview(scrollView)
         imageView.contentMode = .scaleToFill
         imageView.isUserInteractionEnabled = false
@@ -935,6 +941,10 @@ private final class LookbookAspectCropViewController: UIViewController, UIScroll
         let offsetX = max(0, (w - cw) * 0.5)
         let offsetY = max(0, (h - ch) * 0.5)
         scrollView.contentOffset = CGPoint(x: offsetX, y: offsetY)
+        scrollView.layer.cornerCurve = .continuous
+        scrollView.layer.cornerRadius = 8
+        scrollView.layer.borderWidth = 1 / max(view.traitCollection.displayScale, 1)
+        scrollView.layer.borderColor = UIColor.white.withAlphaComponent(0.22).cgColor
     }
 
     @objc private func exportRequested() {

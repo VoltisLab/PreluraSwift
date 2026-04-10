@@ -1,8 +1,14 @@
+import PhotosUI
 import SwiftUI
 
 /// Profile details: username, bio, location only. Same UI pattern as Account Settings (ScrollView + SettingsTextField/Editor + PrimaryButtonBar).
 /// Load from UserService.getUser(); save via UserService.updateProfile(bio:username:location:).
 struct ProfileSettingsView: View {
+    private static let profilePhotoSize: CGFloat = 88
+
+    @EnvironmentObject private var authService: AuthService
+    @StateObject private var photoVM = ProfileViewModel()
+
     @State private var username: String = ""
     @State private var bio: String = ""
     @State private var location: String = ""
@@ -15,6 +21,9 @@ struct ProfileSettingsView: View {
     @State private var showSuccess = false
     @FocusState private var focusedField: Field?
     @State private var loadedUser: User?
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var profileImage: UIImage?
+    @State private var showShareProfileSheet = false
 
     private let userService = UserService()
 
@@ -24,6 +33,8 @@ struct ProfileSettingsView: View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                    profilePhotoHeader
+
                     SettingsTextField(
                         placeholder: L10n.string("Username"),
                         text: $username,
@@ -65,12 +76,144 @@ struct ProfileSettingsView: View {
         }
         .navigationTitle(L10n.string("Profile"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showShareProfileSheet = true
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                }
+                .accessibilityLabel(L10n.string("Share profile"))
+            }
+        }
         .toolbar(.hidden, for: .tabBar)
-        .onAppear(perform: loadUser)
+        .onAppear {
+            userService.updateAuthToken(authService.authToken)
+            photoVM.updateAuthToken(authService.authToken)
+            loadUser()
+        }
+        .sheet(isPresented: $showShareProfileSheet) {
+            ShareProfileLinkSheet()
+                .environmentObject(authService)
+        }
+        .onChange(of: photoVM.isUploadingProfilePhoto) { _, isUploading in
+            if !isUploading, photoVM.profilePhotoUploadError == nil {
+                refreshLoadedUserAfterPhoto()
+            }
+        }
         .alert(L10n.string("Saved"), isPresented: $showSuccess) {
             Button("OK", role: .cancel) { }
         } message: {
             Text(L10n.string("Your profile has been updated."))
+        }
+        .alert(L10n.string("Profile photo"), isPresented: Binding(
+            get: { photoVM.profilePhotoUploadError != nil },
+            set: { if !$0 { photoVM.profilePhotoUploadError = nil } }
+        )) {
+            Button("OK") { photoVM.profilePhotoUploadError = nil }
+        } message: {
+            if let err = photoVM.profilePhotoUploadError {
+                Text(err)
+            }
+        }
+    }
+
+    private var profilePhotoHeader: some View {
+        HStack {
+            Spacer(minLength: 0)
+            PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                ZStack {
+                    if let profileImage {
+                        Image(uiImage: profileImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                            .clipShape(Circle())
+                    } else if let urlString = loadedUser?.avatarURL, !urlString.isEmpty, let url = URL(string: urlString) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .empty:
+                                Circle()
+                                    .fill(Theme.Colors.secondaryBackground)
+                                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                                    .overlay { ProgressView() }
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                                    .clipShape(Circle())
+                            case .failure:
+                                profilePhotoPlaceholder
+                            @unknown default:
+                                profilePhotoPlaceholder
+                            }
+                        }
+                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                        .clipShape(Circle())
+                    } else {
+                        profilePhotoPlaceholder
+                    }
+                }
+                .overlay {
+                    if photoVM.isUploadingProfilePhoto {
+                        ProgressView()
+                            .tint(.white)
+                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                            .background(Color.black.opacity(0.4))
+                            .clipShape(Circle())
+                    }
+                }
+                .overlay(
+                    Circle()
+                        .stroke(Theme.Colors.profileRingBorder, lineWidth: 2.5)
+                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                )
+            }
+            .buttonStyle(.plain)
+            .onChange(of: selectedPhoto) { _, newItem in
+                Task {
+                    guard let newItem,
+                          let data = try? await newItem.loadTransferable(type: Data.self),
+                          let image = UIImage(data: data) else { return }
+                    await MainActor.run {
+                        profileImage = image
+                        photoVM.uploadProfileImage(image, authToken: authService.authToken)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.bottom, Theme.Spacing.sm)
+    }
+
+    private var profilePhotoPlaceholder: some View {
+        Circle()
+            .fill(Theme.Colors.secondaryBackground)
+            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+            .overlay(
+                Image(systemName: "person.fill")
+                    .font(.system(size: 40))
+                    .foregroundStyle(Theme.Colors.tertiaryText)
+            )
+    }
+
+    /// Refreshes `loadedUser` from the server without overwriting unsaved edits to username / bio / location fields.
+    private func refreshLoadedUserAfterPhoto() {
+        Task {
+            do {
+                let user = try await userService.getUser()
+                await MainActor.run {
+                    loadedUser = user
+                    profileImage = nil
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = L10n.userFacingError(error)
+                }
+            }
         }
     }
 
@@ -86,6 +229,7 @@ struct ProfileSettingsView: View {
                     username = user.username
                     bio = String((user.bio ?? "").prefix(bioMaxLength))
                     location = user.location ?? ""
+                    profileImage = nil
                     isLoading = false
                 }
             } catch {

@@ -1,9 +1,9 @@
 import SwiftUI
-import UIKit
 
 /// Invite a friend — redesigned: one intro, three equal-weight actions in a single list style.
 struct InviteFriendView: View {
     @EnvironmentObject private var authService: AuthService
+    @State private var showShareProfileSheet = false
 
     var body: some View {
         ScrollView {
@@ -31,7 +31,7 @@ struct InviteFriendView: View {
                     }
                     .buttonStyle(PlainTappableButtonStyle())
 
-                    Button(action: { shareProfileLink() }) {
+                    Button(action: { showShareProfileSheet = true }) {
                         inviteRow(
                             icon: "link",
                             title: "Share profile link",
@@ -58,6 +58,10 @@ struct InviteFriendView: View {
         .navigationTitle("Invite a friend")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .sheet(isPresented: $showShareProfileSheet) {
+            ShareProfileLinkSheet()
+                .environmentObject(authService)
+        }
     }
 
     private func inviteRow(
@@ -89,22 +93,4 @@ struct InviteFriendView: View {
         .cornerRadius(Theme.Glass.cornerRadius)
     }
 
-    private func shareProfileLink() {
-        guard let username = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty else { return }
-        let enc = username.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? username
-        guard let web = URL(string: "\(Constants.universalLinksAPIBaseURL)/app/u/\(enc)/"),
-              let appURL = URL(string: "prelura://user/\(enc)") else { return }
-        let text = "Check out my profile on WEARHOUSE: \(web.absoluteString)"
-        let av = UIActivityViewController(activityItems: [text, web, appURL], applicationActivities: nil)
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let root = windowScene.windows.first?.rootViewController else { return }
-        var top = root
-        while let presented = top.presentedViewController { top = presented }
-        if let pop = av.popoverPresentationController {
-            pop.sourceView = top.view
-            pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
-            pop.permittedArrowDirections = []
-        }
-        top.present(av, animated: true)
-    }
 }

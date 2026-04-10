@@ -12,6 +12,14 @@ struct DebugMenuView: View {
                 Text("Info")
             }
             Section {
+                NavigationLink(destination: DebugAppearanceThemeView()) {
+                    HStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "paintbrush")
+                            .font(.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text("Theme (Appearance copy)")
+                    }
+                }
                 NavigationLink(destination: PushDiagnosticsView()) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "bell.badge")

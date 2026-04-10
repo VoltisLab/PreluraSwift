@@ -14,6 +14,30 @@ struct ReviewsView: View {
     @State private var errorMessage: String?
     @State private var selectedFilter: ReviewFilter = .all
 
+    /// Shown for platform automatic reviews (replaces backend reviewer username in the row).
+    private static let platformReviewerDisplayName = "Wearhouse"
+
+    private var memberReviews: [UserReview] {
+        reviews.filter { !$0.isPlatformAutomaticReview }
+    }
+
+    private var automaticReviews: [UserReview] {
+        reviews.filter { $0.isPlatformAutomaticReview }
+    }
+
+    private var displayedReviews: [UserReview] {
+        switch selectedFilter {
+        case .all: return reviews
+        case .fromMembers: return memberReviews
+        case .automatic: return automaticReviews
+        }
+    }
+
+    private func averageRating(for list: [UserReview]) -> Double {
+        guard !list.isEmpty else { return 0 }
+        return Double(list.map(\.rating).reduce(0, +)) / Double(list.count)
+    }
+
     enum ReviewFilter: String, CaseIterable {
         case all = "All"
         case fromMembers = "From members"
@@ -38,9 +62,15 @@ struct ReviewsView: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, Theme.Spacing.xl)
+                        } else if displayedReviews.isEmpty {
+                            Text(L10n.string("No reviews in this category"))
+                                .font(Theme.Typography.body)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, Theme.Spacing.xl)
                         } else {
                             LazyVStack(spacing: 0) {
-                                ForEach(reviews) { review in
+                                ForEach(displayedReviews) { review in
                                     reviewCard(review)
                                     ContentDivider()
                                         .padding(.leading, Theme.Spacing.md + 35 + 16)
@@ -83,24 +113,24 @@ struct ReviewsView: View {
             }
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 HStack {
-                    Text(L10n.string("Member reviews (%@)").replacingOccurrences(of: "%@", with: "\(totalNumber)"))
+                    Text(L10n.string("Member reviews (%@)").replacingOccurrences(of: "%@", with: "\(memberReviews.count)"))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.primaryText)
                     Spacer()
-                    Text("\(String(format: "%.1f", rating))")
+                    Text(String(format: "%.1f", averageRating(for: memberReviews)))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
-                    StarRatingView(rating: 1, size: 12)
+                    StarRatingView(rating: averageRating(for: memberReviews), size: 12)
                 }
                 HStack {
-                    Text(L10n.string("Automatic reviews (0)"))
+                    Text(L10n.string("Automatic reviews (%@)").replacingOccurrences(of: "%@", with: "\(automaticReviews.count)"))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.primaryText)
                     Spacer()
-                    Text("5.0")
+                    Text(String(format: "%.1f", averageRating(for: automaticReviews)))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
-                    StarRatingView(rating: 1, size: 12)
+                    StarRatingView(rating: averageRating(for: automaticReviews), size: 12)
                 }
             }
             .padding(.top, Theme.Spacing.sm)
@@ -141,7 +171,7 @@ struct ReviewsView: View {
             avatarView(review)
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 HStack {
-                    Text(review.reviewerUsername.isEmpty ? "User" : review.reviewerUsername)
+                    Text(review.isPlatformAutomaticReview ? Self.platformReviewerDisplayName : (review.reviewerUsername.isEmpty ? "User" : review.reviewerUsername))
                         .font(Theme.Typography.headline)
                         .fontWeight(.bold)
                         .foregroundColor(Theme.Colors.primaryText)
@@ -162,7 +192,14 @@ struct ReviewsView: View {
 
     private func avatarView(_ review: UserReview) -> some View {
         Group {
-            if let urlString = review.reviewerProfilePictureUrl, !urlString.isEmpty, let url = URL(string: urlString) {
+            if review.isPlatformAutomaticReview {
+                Image("WearhouseAutoReviewAvatar")
+                    .resizable()
+                    .renderingMode(.original)
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 35, height: 35)
+                    .clipShape(Circle())
+            } else if let urlString = review.reviewerProfilePictureUrl, !urlString.isEmpty, let url = URL(string: urlString) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):

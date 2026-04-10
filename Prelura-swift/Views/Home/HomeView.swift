@@ -381,7 +381,7 @@ struct HomeItemCard: View {
                     
                     // Product Image - fixed size container; retries once on load failure (e.g. in chat)
                     RetryAsyncImage(
-                        url: item.imageURLs.first.flatMap { URL(string: $0) },
+                        url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
                         width: imageWidth,
                         height: imageHeight,
                         cornerRadius: 8,

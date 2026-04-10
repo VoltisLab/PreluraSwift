@@ -77,6 +77,12 @@ enum L10n {
         "Off": "Ανενεργό",
         "Vacation Mode": "Λειτουργία Αργίας",
         "Invite Friend": "Προσκάλεσε Φίλο",
+        "Share profile": "Κοινοποίηση προφίλ",
+        "Couldn't load profile": "Δεν ήταν δυνατή η φόρτωση του προφίλ",
+        "Profile link": "Σύνδεσμος προφίλ",
+        "Copy link": "Αντιγραφή συνδέσμου",
+        "Link copied": "Ο σύνδεσμος αντιγράφηκε",
+        "Sign in to share your profile.": "Συνδεθείτε για να κοινοποιήσετε το προφίλ σας.",
         "Help Centre": "Κέντρο Βοήθειας",
         "About WEARHOUSE": "Σχετικά με το WEARHOUSE",
         "Admin Dashboard": "Πίνακας Διαχείρισης",
@@ -109,7 +115,6 @@ enum L10n {
         "Light": "Φωτεινή",
         "Dark": "Σκούρα",
         "Light and Dark apply to all screens, components, and elements. System follows your device setting.": "Φωτεινή και σκούρα ισχύουν σε όλες τις οθόνες. Το σύστημα ακολουθεί τη ρύθμιση της συσκευής σας.",
-        "App Icon": "Εικονίδιο εφαρμογής",
         "Primary Logo": "Κύριο λογότυπο",
         "Gradient Logo": "Λογότυπο με ντεγκραντέ",
         "Gradient 3D Logo": "Λογότυπο 3D με ντεγκραντέ",
@@ -211,7 +216,7 @@ enum L10n {
         "List view": "Προβολή λίστας",
         "Grid view": "Προβολή πλέγματος",
         "Tap to reload": "Πατήστε για επανάφόρτωση",
-        "tag products": "Επισήμανση προϊόντων",
+        "Tag products": "Επισήμανση προϊόντων",
 
         // Profile (Favourites used from Menu section)
         "Listings": "Αγγελίες",
@@ -468,8 +473,9 @@ enum L10n {
 
         // Reviews
         "No reviews yet": "Δεν υπάρχουν ακόμα κριτικές",
+        "No reviews in this category": "Δεν υπάρχουν κριτικές σε αυτή την κατηγορία",
         "Member reviews (%@)": "Κριτικές μελών (%@)",
-        "Automatic reviews (0)": "Αυτόματες κριτικές (0)",
+        "Automatic reviews (%@)": "Αυτόματες κριτικές (%@)",
         "How reviews work": "Πώς λειτουργούν οι κριτικές",
 
         // Followers / Following (Following key already in Profile section)

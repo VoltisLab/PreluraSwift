@@ -160,7 +160,6 @@ struct AppearanceRootView: View {
             .tint(Theme.primaryColor)
             .onAppear {
                 syncThemeScheme()
-                AlternateAppIconChoice.syncStoredPreferenceWithSystem()
                 if appLanguage != "en" && appLanguage != "el" {
                     appLanguage = "en"
                 }
