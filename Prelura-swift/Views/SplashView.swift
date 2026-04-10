@@ -49,7 +49,7 @@ struct SplashView: View {
     }
 
     /// Vertical gap between monogram and sub-logo (~proportion of combined Figma frame).
-    private let splashMarkToSubSpacing: CGFloat = 26
+    private let splashMarkToSubSpacing: CGFloat = 36
 
     var body: some View {
         ZStack {
