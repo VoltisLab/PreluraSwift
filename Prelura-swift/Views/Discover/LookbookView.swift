@@ -255,47 +255,60 @@ private struct ProductIdNavigator: Identifiable, Hashable {
     let id: String
 }
 
-/// Lookbooks entry: create post, Feed, Explore, or My items (onboarding on first open).
-/// Hub uses a hero layout (full-width cards, ambient gradients). To revert to the compact list, restore the prior `LookbooksHubBannerRow` stack from git history.
+/// Lookbooks entry: create post, Feed, Explore, My items, Settings (onboarding on first open).
+/// Hub uses a compact grid; icon tiles use brand primary while pressed.
 struct LookbookView: View {
     @EnvironmentObject private var authService: AuthService
     @State private var showLookbooksOnboarding = false
     @State private var didScheduleLookbooksOnboarding = false
 
+    private let hubGridSpacing: CGFloat = 12
+    private var hubGridColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: hubGridSpacing),
+            GridItem(.flexible(), spacing: hubGridSpacing)
+        ]
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                LookbookHubHeroHeader()
-                VStack(spacing: Theme.Spacing.md + 4) {
-                    LookbooksHubHeroCard(
-                        kind: .createPost,
-                        title: L10n.string("Create a post"),
-                        subtitle: L10n.string("Upload photos, crop your look, and share it with followers.")
-                    ) {
-                        LookbooksUploadView()
-                    }
-                    LookbooksHubHeroCard(
-                        kind: .feed,
-                        title: L10n.string("Feed"),
-                        subtitle: L10n.string("Latest looks from people you follow and the community.")
-                    ) {
-                        LookbookFeedScreenView()
-                    }
-                    LookbooksHubHeroCard(
-                        kind: .explore,
-                        title: L10n.string("Explore"),
-                        subtitle: L10n.string("Browse by style, communities, and editorial picks.")
-                    ) {
-                        LookbookExploreScreenView()
-                    }
-                    LookbooksHubHeroCard(
-                        kind: .myItems,
-                        title: L10n.string("My items"),
-                        subtitle: L10n.string("Your uploads — switch between feed and a 3-column grid.")
-                    ) {
-                        LookbookMyItemsScreenView()
-                    }
+            LazyVGrid(columns: hubGridColumns, spacing: hubGridSpacing) {
+                LookbookHubGridTile(
+                    kind: .createPost,
+                    title: L10n.string("Create a post"),
+                    subtitle: L10n.string("Upload photos, crop your look, and share it with followers.")
+                ) {
+                    LookbooksUploadView()
                 }
+                LookbookHubGridTile(
+                    kind: .feed,
+                    title: L10n.string("Feed"),
+                    subtitle: L10n.string("Latest looks from people you follow and the community.")
+                ) {
+                    LookbookFeedScreenView()
+                }
+                LookbookHubGridTile(
+                    kind: .explore,
+                    title: L10n.string("Explore"),
+                    subtitle: L10n.string("Browse by style, communities, and editorial picks.")
+                ) {
+                    LookbookExploreScreenView()
+                }
+                LookbookHubGridTile(
+                    kind: .myItems,
+                    title: L10n.string("My items"),
+                    subtitle: L10n.string("Your uploads — switch between feed and a 3-column grid.")
+                ) {
+                    LookbookMyItemsScreenView()
+                }
+                LookbookHubGridTile(
+                    kind: .settings,
+                    title: L10n.string("Settings"),
+                    subtitle: L10n.string("Profile, account, notifications, and more.")
+                ) {
+                    SettingsMenuView()
+                }
+                .gridCellColumns(2)
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.lg)
@@ -338,7 +351,7 @@ struct LookbookView: View {
 }
 
 private enum LookbookHubBannerKind {
-    case feed, explore, myItems, createPost
+    case feed, explore, myItems, createPost, settings
 
     fileprivate var symbol: String {
         switch self {
@@ -346,70 +359,35 @@ private enum LookbookHubBannerKind {
         case .explore: return "sparkles.rectangle.stack"
         case .myItems: return "person.crop.square"
         case .createPost: return "plus.circle.fill"
+        case .settings: return "gearshape.fill"
         }
     }
 
+    /// Tile idle accent; while pressed, icons use `Theme.primaryColor`.
     fileprivate var accent: Color {
         switch self {
         case .feed: return Theme.primaryColor
         case .explore: return Color(red: 0.58, green: 0.38, blue: 0.98)
         case .myItems: return Color(red: 0.98, green: 0.48, blue: 0.42)
         case .createPost: return Color(red: 0.35, green: 0.78, blue: 0.52)
-        }
-    }
-
-    /// Second hue for ambient glows behind each card.
-    fileprivate var glowCompanion: Color {
-        switch self {
-        case .feed: return Color(red: 0.42, green: 0.18, blue: 0.62)
-        case .explore: return Color(red: 0.32, green: 0.52, blue: 0.95)
-        case .myItems: return Color(red: 0.92, green: 0.32, blue: 0.38)
-        case .createPost: return Color(red: 0.18, green: 0.55, blue: 0.48)
+        case .settings: return Color(red: 0.48, green: 0.48, blue: 0.52)
         }
     }
 }
 
-// MARK: - Lookbook hub hero (landing)
+// MARK: - Lookbook hub grid
 
-private struct LookbookHubHeroHeader: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(spacing: Theme.Spacing.sm) {
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.45)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: 36, height: 5)
-                Capsule()
-                    .fill(Theme.Colors.glassBorder.opacity(0.5))
-                    .frame(width: 14, height: 5)
-            }
-            Text(L10n.string("Style studio"))
-                .font(Theme.Typography.title2)
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Theme.Colors.primaryText, Theme.Colors.primaryText.opacity(0.82)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-            Text(L10n.string("Create, browse, and show off your looks—all in one place."))
-                .font(Theme.Typography.subheadline)
-                .foregroundColor(Theme.Colors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, Theme.Spacing.xs)
+private struct LookbookHubTilePressStyle: ButtonStyle {
+    let kind: LookbookHubBannerKind
+    let title: String
+    let subtitle: String
+
+    func makeBody(configuration: Configuration) -> some View {
+        LookbookHubGridTileLabel(kind: kind, title: title, subtitle: subtitle, isPressed: configuration.isPressed)
     }
 }
 
-private struct LookbooksHubHeroCard<Destination: View>: View {
-    private let corner: CGFloat = 22
-
+private struct LookbookHubGridTile<Destination: View>: View {
     let kind: LookbookHubBannerKind
     let title: String
     let subtitle: String
@@ -417,152 +395,104 @@ private struct LookbooksHubHeroCard<Destination: View>: View {
 
     var body: some View {
         NavigationLink(destination: destination()) {
-            ZStack {
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .fill(Theme.Colors.secondaryBackground)
-
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                kind.accent.opacity(0.14),
-                                kind.glowCompanion.opacity(0.08),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-
-                // Ambient light orbs (full-bleed within card)
-                Circle()
-                    .fill(kind.accent.opacity(0.42))
-                    .frame(width: 200, height: 200)
-                    .blur(radius: 52)
-                    .offset(x: 118, y: -58)
-                Circle()
-                    .fill(kind.glowCompanion.opacity(0.38))
-                    .frame(width: 160, height: 160)
-                    .blur(radius: 44)
-                    .offset(x: -108, y: 52)
-
-                // Soft top highlight
-                LinearGradient(
-                    colors: [.white.opacity(0.11), .clear],
-                    startPoint: .top,
-                    endPoint: UnitPoint(x: 0.5, y: 0.55)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-                .allowsHitTesting(false)
-
-                // Large watermark — same SF Symbol as the icon, editorial feel
-                Image(systemName: kind.symbol)
-                    .font(.system(size: 84, weight: .ultraLight))
-                    .foregroundStyle(.white.opacity(0.045))
-                    .rotationEffect(.degrees(-10))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                    .padding(.trailing, 4)
-                    .allowsHitTesting(false)
-
-                VStack(spacing: 0) {
-                    HStack(alignment: .center, spacing: Theme.Spacing.md + 2) {
-                        lookbookHubGradientIcon(kind: kind)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(title)
-                                .font(Theme.Typography.headline)
-                                .foregroundColor(Theme.Colors.primaryText)
-                            Text(subtitle)
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(Theme.Colors.secondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .lineSpacing(2)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        ZStack {
-                            Circle()
-                                .fill(Theme.Colors.glassBackground)
-                            Circle()
-                                .strokeBorder(Theme.Colors.glassBorder.opacity(0.45), lineWidth: 0.5)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(Theme.Colors.secondaryText)
-                        }
-                        .frame(width: 38, height: 38)
-                    }
-                    .padding(.horizontal, Theme.Spacing.md + 6)
-                    .padding(.top, Theme.Spacing.lg)
-                    .padding(.bottom, Theme.Spacing.md)
-
-                    LinearGradient(
-                        colors: [
-                            kind.accent.opacity(0),
-                            kind.accent.opacity(0.65),
-                            kind.glowCompanion.opacity(0.5),
-                            kind.accent.opacity(0)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .frame(height: 3)
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.bottom, 10)
-                }
-                .frame(maxWidth: .infinity, minHeight: 138, alignment: .top)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [.white.opacity(0.2), kind.accent.opacity(0.4), .white.opacity(0.06)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            )
-            .shadow(color: kind.accent.opacity(0.18), radius: 18, x: 0, y: 10)
+            Color.clear
+                .frame(maxWidth: .infinity, minHeight: 1)
+                .accessibilityHidden(true)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LookbookHubTilePressStyle(kind: kind, title: title, subtitle: subtitle))
         .accessibilityLabel("\(title). \(subtitle)")
     }
+}
 
-    @ViewBuilder
-    private func lookbookHubGradientIcon(kind: LookbookHubBannerKind) -> some View {
+private struct LookbookHubGridTileLabel: View {
+    let kind: LookbookHubBannerKind
+    let title: String
+    let subtitle: String
+    var isPressed: Bool
+
+    private let corner: CGFloat = 16
+    private let iconBox: CGFloat = 44
+    private let iconGlyph: CGFloat = 20
+
+    private var effectiveAccent: Color {
+        isPressed ? Theme.primaryColor : kind.accent
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .top) {
+                lookbookHubIcon
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.tertiaryText)
+                    .padding(.top, 4)
+            }
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.Colors.primaryText)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            Text(subtitle)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(Theme.Colors.secondaryText)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.md + 2)
+        .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .fill(Theme.Colors.secondaryBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .strokeBorder(
+                    isPressed ? Theme.primaryColor : Theme.Colors.glassBorder,
+                    lineWidth: isPressed ? 2 : 1
+                )
+        )
+        .shadow(color: Color.black.opacity(isPressed ? 0.12 : 0.06), radius: isPressed ? 10 : 6, x: 0, y: isPressed ? 5 : 3)
+        .animation(.easeOut(duration: 0.16), value: isPressed)
+    }
+
+    private var lookbookHubIcon: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
-                            kind.accent.opacity(0.65),
-                            kind.accent.opacity(0.22),
-                            Theme.Colors.tertiaryBackground.opacity(0.9)
+                            effectiveAccent.opacity(0.72),
+                            effectiveAccent.opacity(0.28),
+                            Theme.Colors.tertiaryBackground.opacity(0.95)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
-                        colors: [.white.opacity(0.45), kind.accent.opacity(0.35)],
+                        colors: [.white.opacity(0.42), effectiveAccent.opacity(0.45)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
                     lineWidth: 1
                 )
             Image(systemName: kind.symbol)
-                .font(.system(size: 22, weight: .semibold))
+                .font(.system(size: iconGlyph, weight: .semibold))
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [.white, .white.opacity(0.85)],
+                        colors: [.white, .white.opacity(0.88)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
-                .shadow(color: kind.accent.opacity(0.55), radius: 8, x: 0, y: 3)
+                .shadow(color: effectiveAccent.opacity(0.45), radius: 6, x: 0, y: 2)
         }
-        .frame(width: 58, height: 58)
+        .frame(width: iconBox, height: iconBox)
     }
 }
 
