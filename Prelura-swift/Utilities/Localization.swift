@@ -228,6 +228,7 @@ enum L10n {
         "Followers": "Οπαδοί",
         "Follower": "Οπαδός",
         "Retro": "Ρετρό",
+        "This is where to shop vintage finds.": "Εδώ αγοράζετε επιλεγμένα vintage κομμάτια.",
         "Reviews": "Κριτικές",
         "Location": "Τοποθεσία",
         "N/A": "Μ/Δ",

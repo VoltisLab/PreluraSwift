@@ -144,10 +144,10 @@ struct DiscoverView: View {
                 HStack(spacing: Theme.Spacing.sm) {
                     Image(systemName: "square.grid.2x2.fill")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Theme.primaryColor)
+                        .foregroundStyle(Theme.Colors.primaryText)
                     Text(L10n.string("Shop Categories"))
                         .font(Theme.Typography.headline)
-                        .foregroundStyle(Theme.primaryColor)
+                        .foregroundStyle(Theme.Colors.primaryText)
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, 14)

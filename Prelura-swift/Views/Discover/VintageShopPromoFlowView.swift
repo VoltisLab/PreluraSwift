@@ -158,6 +158,12 @@ private struct VintageShopPromoLandingPage: View {
                         .frame(maxWidth: .infinity)
                         .padding(.bottom, 12)
                     Spacer(minLength: Theme.Spacing.lg)
+                    Text(L10n.string("This is where to shop vintage finds."))
+                        .font(Theme.Typography.subheadline)
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, Theme.Spacing.lg)
+                        .padding(.bottom, Theme.Spacing.md)
                     GlassEffectContainer(spacing: 0) {
                         Button(action: {
                             HapticManager.primaryAction()
