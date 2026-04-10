@@ -2,7 +2,7 @@
 //  SplashView.swift
 //  Prelura-swift
 //
-//  Splash: black background, WH.svg then WEARHOUSE.svg (staggered fade/scale); "by Voltis Labs" at bottom.
+//  Splash: white (light) / black (dark) background, WH.svg then WEARHOUSE.svg; "by Voltis Labs" at bottom.
 //
 
 import SwiftUI
@@ -10,6 +10,8 @@ import SwiftUI
 /// Splash screen: `WearhouseSplashMain` = WH.svg, `WearhouseSplashSub` = WEARHOUSE.svg (vector colours from assets).
 struct SplashView: View {
     var onFinish: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var phase: Phase = .hidden
     @State private var footerVisible = false
@@ -39,11 +41,19 @@ struct SplashView: View {
     private let splashWordmarkMaxWidth: CGFloat = 228
 
     /// Vertical gap between WH and wordmark.
-    private let splashMarkToSubSpacing: CGFloat = 28
+    private let splashMarkToSubSpacing: CGFloat = 42
+
+    private var splashBackground: Color {
+        colorScheme == .light ? .white : .black
+    }
+
+    private var splashFooterColor: Color {
+        colorScheme == .light ? Color.black.opacity(0.55) : Color.white.opacity(0.7)
+    }
 
     var body: some View {
         ZStack {
-            Color.black
+            splashBackground
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -74,7 +84,7 @@ struct SplashView: View {
                 Spacer()
                 Text("by Voltis Labs")
                     .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(splashFooterColor)
                     .opacity(footerVisible ? 1 : 0)
                     .scaleEffect(footerVisible ? 1 : 0.92)
                     .padding(.bottom, 32)
