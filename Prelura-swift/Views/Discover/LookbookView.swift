@@ -584,12 +584,15 @@ private struct LookbookFeedScreenView: View {
                 }
 
                 if !entries.isEmpty {
-                    GlassIconButton(
-                        icon: useGrid ? "list.bullet" : "square.grid.3x3",
-                        iconColor: Theme.Colors.primaryText,
-                        iconSize: 20,
-                        action: { useGrid.toggle() }
-                    )
+                    Button {
+                        HapticManager.selection()
+                        useGrid.toggle()
+                    } label: {
+                        Image(systemName: useGrid ? "list.bullet" : "square.grid.3x3")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(Theme.Colors.primaryText)
+                    }
+                    .buttonStyle(.plain)
                     .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
                     .padding(.trailing, Theme.Spacing.md)
                     .padding(.bottom, Theme.Spacing.lg)
@@ -616,15 +619,20 @@ private struct LookbookFeedScreenView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: Theme.Spacing.sm) {
                     NavigationLink(destination: LookbooksUploadView()) {
-                        GlassIconView(icon: "plus.circle", iconColor: Theme.Colors.primaryText, iconSize: 20)
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(Theme.Colors.primaryText)
                     }
                     .buttonStyle(HapticTapButtonStyle())
-                    GlassIconButton(
-                        icon: "magnifyingglass",
-                        iconColor: Theme.Colors.primaryText,
-                        iconSize: 20,
-                        action: { showSearchSheet = true }
-                    )
+                    Button {
+                        HapticManager.selection()
+                        showSearchSheet = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(Theme.Colors.primaryText)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -1094,15 +1102,19 @@ private struct LookbookMyItemsScreenView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: Theme.Spacing.sm) {
                     Button {
+                        HapticManager.selection()
                         useGrid.toggle()
                     } label: {
                         Image(systemName: useGrid ? "list.bullet" : "square.grid.3x3")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryText)
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(Theme.Colors.primaryText)
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
                     NavigationLink(destination: LookbooksUploadView()) {
-                        GlassIconView(icon: "plus.circle", iconColor: Theme.Colors.primaryText, iconSize: 20)
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(Theme.Colors.primaryText)
                     }
                     .buttonStyle(HapticTapButtonStyle())
                 }

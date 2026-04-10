@@ -132,7 +132,8 @@ struct NotificationToolbarBellVisual: View {
                 Image(systemName: "bell")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(Theme.Colors.primaryText)
-                    .modifier(GlassIconCircleStyle(size: 44))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
                 badgeLayer
                     .offset(x: Self.bellBadgeRimNudgeX, y: Self.bellBadgeRimNudgeY)
             }

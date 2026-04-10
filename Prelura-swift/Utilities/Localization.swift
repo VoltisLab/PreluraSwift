@@ -227,6 +227,7 @@ enum L10n {
         "Following": "Ακόλουθοι",
         "Followers": "Οπαδοί",
         "Follower": "Οπαδός",
+        "Retro": "Ρετρό",
         "Reviews": "Κριτικές",
         "Location": "Τοποθεσία",
         "N/A": "Μ/Δ",

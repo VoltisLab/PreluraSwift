@@ -33,6 +33,39 @@ enum VintageShopBannerGradient {
     }
 }
 
+// MARK: - Banner foreground (base + animated RETRO layer)
+
+private enum VintageShopRetroLabelMotion {
+    /// Horizontal nudge in points (a few pixels on all densities).
+    static let offsetPoints: CGFloat = 3
+    /// One leg of the back-and-forth; full cycle ≈ 2× this.
+    static let halfPeriodSeconds: Double = 3.5
+}
+
+/// WH + WEARHOUSE from `DiscoverVintageBannerForeground`; pixel “RETRO” from `DiscoverVintageBannerRetro` with a slow horizontal drift.
+struct VintageShopBannerForegroundStack: View {
+    @State private var retroShiftRight = false
+
+    var body: some View {
+        ZStack {
+            Image("DiscoverVintageBannerForeground")
+                .resizable()
+                .scaledToFit()
+            Image("DiscoverVintageBannerRetro")
+                .resizable()
+                .scaledToFit()
+                .offset(x: retroShiftRight ? VintageShopRetroLabelMotion.offsetPoints : -VintageShopRetroLabelMotion.offsetPoints)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isImage)
+        .onAppear {
+            withAnimation(.easeInOut(duration: VintageShopRetroLabelMotion.halfPeriodSeconds).repeatForever(autoreverses: true)) {
+                retroShiftRight = true
+            }
+        }
+    }
+}
+
 // MARK: - Reusable layers
 
 struct VintageShopAnimatedBackground: View {
@@ -59,9 +92,7 @@ struct VintageShopDiscoverBannerStrip: View {
             .overlay {
                 ZStack {
                     VintageShopAnimatedBackground()
-                    Image("DiscoverVintageBannerForeground")
-                        .resizable()
-                        .scaledToFit()
+                    VintageShopBannerForegroundStack()
                         .padding(.vertical, 8)
                         .padding(.horizontal, 14)
                 }
@@ -86,7 +117,7 @@ struct VintageShopPromoFlowView: View {
             VintageShopPromoLandingPage(onContinue: { path.append(VintageShopPromoRoute.shop) })
                 .navigationDestination(for: VintageShopPromoRoute.self) { _ in
                     FilteredProductsView(
-                        title: L10n.string("Shop All"),
+                        title: L10n.string("Retro"),
                         filterType: .shopAllVintageLocked,
                         authService: authService,
                         offersAllowed: false
@@ -96,14 +127,14 @@ struct VintageShopPromoFlowView: View {
                 .toolbarBackground(.hidden, for: .navigationBar)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        GlassIconButton(
-                            icon: "xmark",
-                            size: 40,
-                            iconColor: .white,
-                            iconSize: 15,
-                            iconWeight: .semibold,
-                            action: { dismiss() }
-                        )
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .tint(.white)
+                        .buttonStyle(.plain)
                         .accessibilityLabel(L10n.string("Close"))
                     }
                 }
@@ -121,9 +152,7 @@ private struct VintageShopPromoLandingPage: View {
             GeometryReader { geo in
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
-                    Image("DiscoverVintageBannerForeground")
-                        .resizable()
-                        .scaledToFit()
+                    VintageShopBannerForegroundStack()
                         .frame(maxWidth: geo.size.width - Theme.Spacing.lg * 2)
                         .frame(maxHeight: geo.size.height * 0.46)
                         .frame(maxWidth: .infinity)

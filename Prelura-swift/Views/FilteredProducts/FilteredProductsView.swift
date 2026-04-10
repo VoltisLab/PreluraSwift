@@ -187,35 +187,6 @@ struct FilteredProductsView: View {
             )
             .padding(.trailing, Theme.Spacing.sm)
 
-            // Vintage Shop All: style is fixed server-side; show non-editable label.
-            if case .shopAllVintageLocked = filterType {
-                HStack(spacing: Theme.Spacing.sm) {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                    Text(L10n.string("Style"))
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                    Text(StyleSelectionView.displayName(for: "VINTAGE"))
-                        .font(Theme.Typography.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(Theme.primaryColor)
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.vertical, Theme.Spacing.sm)
-                        .background(
-                            RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
-                                .fill(Theme.primaryColor.opacity(0.15))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
-                                .strokeBorder(Theme.primaryColor.opacity(0.35), lineWidth: 1)
-                        )
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.xs)
-                .padding(.bottom, Theme.Spacing.xs)
-            }
-
             // Shop by style: pill tags under search bar for style filters
             if case .shopByStyle = filterType {
                 ScrollView(.horizontal, showsIndicators: false) {
