@@ -16,6 +16,7 @@ struct DiscoverView: View {
     @State private var tryCartVisibleCount: Int = 0
     @State private var tryCartHoldTicks: Int = 0
     @State private var tryCartTimer: Timer?
+    @State private var showVintagePromoFullScreen: Bool = false
 
     private static let categories = ["Women", "Men"]
     private static let tryCartText = "Try Cart"
@@ -85,6 +86,10 @@ struct DiscoverView: View {
         .fullScreenCover(isPresented: $showGuestSignInPrompt) {
             GuestSignInPromptView()
         }
+        .fullScreenCover(isPresented: $showVintagePromoFullScreen) {
+            VintageShopPromoFlowView()
+                .environmentObject(authService)
+        }
     }
 
     @ViewBuilder
@@ -134,6 +139,7 @@ struct DiscoverView: View {
             .padding(.bottom, 2)
             brandFiltersSection
             tryCartBanner
+            vintageShopBanner
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: Theme.Spacing.sm) {
                     Image(systemName: "square.grid.2x2.fill")
@@ -235,6 +241,17 @@ struct DiscoverView: View {
         }
         .buttonStyle(PlainTappableButtonStyle())
         .padding(.vertical, Theme.Spacing.sm)
+    }
+
+    /// Full-bleed animated strip → full-screen promo (same art + Continue) → Shop All (Vintage locked).
+    private var vintageShopBanner: some View {
+        Button {
+            showVintagePromoFullScreen = true
+        } label: {
+            VintageShopDiscoverBannerStrip()
+        }
+        .buttonStyle(PlainTappableButtonStyle())
+        .padding(.bottom, Theme.Spacing.xs)
     }
 
     private func startTryCartTypewriterTimer() {

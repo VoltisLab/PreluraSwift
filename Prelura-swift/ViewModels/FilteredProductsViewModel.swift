@@ -203,6 +203,16 @@ class FilteredProductsViewModel: ObservableObject {
                 parentCategory: selectedParentCategory,
                 categoryId: selectedCategoryId
             )
+        case .shopAllVintageLocked:
+            let query = searchText.trimmingCharacters(in: .whitespaces)
+            return try await productService.getAllProducts(
+                pageNumber: page,
+                pageCount: pageSize,
+                search: query.isEmpty ? nil : query,
+                parentCategory: selectedParentCategory,
+                categoryId: selectedCategoryId,
+                style: "VINTAGE"
+            )
         case .shopByStyle:
             let query = searchText.trimmingCharacters(in: .whitespaces)
             return try await productService.getAllProducts(
@@ -342,6 +352,8 @@ class FilteredProductsViewModel: ObservableObject {
         var result = items
         if case .tryCartSearch = filterType {
             // Server already filtered by searchText; only apply sort/filters here
+        } else if case .shopAllVintageLocked = filterType {
+            // Server applies Vintage + search + category; only sort/condition/price here
         } else if !searchText.isEmpty {
             result = result.filter {
                 $0.title.localizedCaseInsensitiveContains(searchText) ||

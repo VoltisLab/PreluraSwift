@@ -11,8 +11,20 @@ enum ProductFilterType: Equatable {
     case byParentCategory(categoryName: String)
     /// Try Cart: free search, add to bag only (offers disabled).
     case tryCartSearch
+    /// Shop All with Try Cart behavior but **style locked to Vintage**; gender pills only (All, Women, Men).
+    case shopAllVintageLocked
     /// Shop by style: style filter via toolbar "Styles" modal (no category pills).
     case shopByStyle
+}
+
+extension ProductFilterType {
+    /// Shop All flows that use the floating bag, debounced search, and category pills row 1.
+    var isShopAllWithBag: Bool {
+        switch self {
+        case .tryCartSearch, .shopAllVintageLocked: return true
+        default: return false
+        }
+    }
 }
 
 /// One active modal (sort / filter / styles). Avoids stacking multiple `.sheet` presentations.
@@ -51,7 +63,7 @@ struct FilteredProductsView: View {
 
     /// Try Cart (or explicit flag): floating bag + pass `shopAllBag` into item detail for optional toolbar cart mode.
     private var tryCartShoppingEnabled: Bool {
-        showAddToBag ?? (filterType == .tryCartSearch)
+        showAddToBag ?? filterType.isShopAllWithBag
     }
 
     init(title: String, filterType: ProductFilterType, authService: AuthService? = nil, offersAllowed: Bool = true, showAddToBag: Bool? = nil) {
@@ -60,7 +72,7 @@ struct FilteredProductsView: View {
         self.offersAllowed = offersAllowed
         self.showAddToBag = showAddToBag
         _viewModel = StateObject(wrappedValue: FilteredProductsViewModel(filterType: filterType, authService: authService))
-        let bagModeDefault = showAddToBag ?? (filterType == .tryCartSearch)
+        let bagModeDefault = showAddToBag ?? filterType.isShopAllWithBag
         _shopAllBagToolbarActive = State(initialValue: bagModeDefault)
     }
 
@@ -175,6 +187,35 @@ struct FilteredProductsView: View {
             )
             .padding(.trailing, Theme.Spacing.sm)
 
+            // Vintage Shop All: style is fixed server-side; show non-editable label.
+            if case .shopAllVintageLocked = filterType {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                    Text(L10n.string("Style"))
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                    Text(StyleSelectionView.displayName(for: "VINTAGE"))
+                        .font(Theme.Typography.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Theme.primaryColor)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.sm)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
+                                .fill(Theme.primaryColor.opacity(0.15))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.Glass.tagCornerRadius)
+                                .strokeBorder(Theme.primaryColor.opacity(0.35), lineWidth: 1)
+                        )
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.xs)
+                .padding(.bottom, Theme.Spacing.xs)
+            }
+
             // Shop by style: pill tags under search bar for style filters
             if case .shopByStyle = filterType {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -206,8 +247,8 @@ struct FilteredProductsView: View {
                 .padding(.vertical, Theme.Spacing.sm)
             }
 
-            // Shop All only: Row 1 = All + main categories (Women, Men, Boys, Girls, Toddlers).
-            if case .tryCartSearch = filterType {
+            // Shop All: Row 1 = category pills. Full hierarchy (rows 2–3) only for standard Try Cart Shop All.
+            if filterType.isShopAllWithBag {
                 VStack(alignment: .leading, spacing: 0) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: Theme.Spacing.sm) {
@@ -221,25 +262,40 @@ struct FilteredProductsView: View {
                                     }
                                 }
                             )
-                            ForEach(["Women", "Men", "Boys", "Girls", "Toddlers"], id: \.self) { category in
-                                PillTag(
-                                    title: L10n.string(category),
-                                    isSelected: viewModel.selectedParentCategory == category,
-                                    accentWhenUnselected: true,
-                                    action: {
-                                        withAnimation(.easeInOut(duration: 0.25)) {
-                                            viewModel.selectShopAllMain(category)
+                            if case .tryCartSearch = filterType {
+                                ForEach(["Women", "Men", "Boys", "Girls", "Toddlers"], id: \.self) { category in
+                                    PillTag(
+                                        title: L10n.string(category),
+                                        isSelected: viewModel.selectedParentCategory == category,
+                                        accentWhenUnselected: true,
+                                        action: {
+                                            withAnimation(.easeInOut(duration: 0.25)) {
+                                                viewModel.selectShopAllMain(category)
+                                            }
                                         }
-                                    }
-                                )
+                                    )
+                                }
+                            } else if case .shopAllVintageLocked = filterType {
+                                ForEach(["Women", "Men"], id: \.self) { category in
+                                    PillTag(
+                                        title: L10n.string(category),
+                                        isSelected: viewModel.selectedParentCategory == category,
+                                        accentWhenUnselected: true,
+                                        action: {
+                                            withAnimation(.easeInOut(duration: 0.25)) {
+                                                viewModel.selectShopAllMain(category)
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
                         .padding(.horizontal, Theme.Spacing.md)
                     }
                     .padding(.vertical, Theme.Spacing.sm)
 
-                    // Row 2: subcategories (slide in/out when a main is selected)
-                    if viewModel.selectedParentCategory != nil {
+                    // Row 2: subcategories (Try Cart Shop All only)
+                    if case .tryCartSearch = filterType, viewModel.selectedParentCategory != nil {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: Theme.Spacing.sm) {
                                 ForEach(viewModel.shopAllSubCategories, id: \.id) { sub in
@@ -264,8 +320,10 @@ struct FilteredProductsView: View {
                         ))
                     }
 
-                    // Row 3: sub-subcategories (slide in/out when a sub with children is selected)
-                    if viewModel.selectedSubCategory != nil && !viewModel.shopAllSubSubCategories.isEmpty {
+                    // Row 3: sub-subcategories (Try Cart Shop All only)
+                    if case .tryCartSearch = filterType,
+                       viewModel.selectedSubCategory != nil,
+                       !viewModel.shopAllSubSubCategories.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: Theme.Spacing.sm) {
                                 ForEach(viewModel.shopAllSubSubCategories, id: \.id) { subSub in
@@ -418,7 +476,7 @@ struct FilteredProductsView: View {
             scheduleTryCartOnboardingIfNeeded()
         }
         .onChange(of: viewModel.searchText) { _, _ in
-            if case .tryCartSearch = filterType {
+            if filterType.isShopAllWithBag {
                 tryCartSearchTask?.cancel()
                 tryCartSearchTask = Task {
                     try? await Task.sleep(nanoseconds: 400_000_000)
@@ -450,7 +508,7 @@ struct FilteredProductsView: View {
             }
         }
         .onChange(of: viewModel.selectedParentCategory) { _, _ in
-            if case .tryCartSearch = filterType {
+            if filterType.isShopAllWithBag {
                 viewModel.loadData()
             }
         }

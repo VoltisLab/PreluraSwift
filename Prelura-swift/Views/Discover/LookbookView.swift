@@ -1984,6 +1984,8 @@ private struct LookbookFeedRowView: View {
     @State private var sharePayload: LookbookSharePayload?
     @State private var showMutualShareSheet = false
     @State private var shareToChatRecipient: User?
+    @State private var showDeletePostConfirm = false
+    @State private var deletePostErrorMessage: String?
 
     private let avatarSize: CGFloat = 40
     /// Carousel pages share one height so horizontal paging stays aligned (portrait-leaning ratio).
@@ -2054,6 +2056,28 @@ private struct LookbookFeedRowView: View {
             return
         }
         showMutualShareSheet = true
+    }
+
+    private var isCurrentUserPost: Bool {
+        guard let u = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines), !u.isEmpty else { return false }
+        return u.caseInsensitiveCompare(entry.posterUsername.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+    }
+
+    private func performDeletePost() {
+        Task { @MainActor in
+            guard authService.isAuthenticated, onPostDeleted != nil else { return }
+            let token = authService.authToken
+            let client = GraphQLClient()
+            client.setAuthToken(token)
+            let service = LookbookService(client: client)
+            service.setAuthToken(token)
+            do {
+                try await service.deleteLookbookPost(postId: entry.apiPostId)
+                onPostDeleted?(entry)
+            } catch {
+                deletePostErrorMessage = L10n.userFacingError(error)
+            }
+        }
     }
 
     private var carouselPageIndex: Int {
@@ -2134,6 +2158,7 @@ private struct LookbookFeedRowView: View {
                     }
                 }
                 Spacer(minLength: 0)
+                lookbookFeedPostOptionsMenu
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, 10)
@@ -2195,6 +2220,67 @@ private struct LookbookFeedRowView: View {
                 carouselScrollId = max(0, newCount - 1)
             }
         }
+        .alert(L10n.string("Delete this post?"), isPresented: $showDeletePostConfirm) {
+            Button(L10n.string("Cancel"), role: .cancel) {}
+            Button(L10n.string("Delete"), role: .destructive) {
+                performDeletePost()
+            }
+        } message: {
+            Text(L10n.string("This cannot be undone."))
+        }
+        .alert(L10n.string("Error"), isPresented: Binding(
+            get: { deletePostErrorMessage != nil },
+            set: { if !$0 { deletePostErrorMessage = nil } }
+        )) {
+            Button(L10n.string("OK"), role: .cancel) { deletePostErrorMessage = nil }
+        } message: {
+            Text(deletePostErrorMessage ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var lookbookFeedPostOptionsMenu: some View {
+        Menu {
+            Button {
+                HapticManager.tap()
+                sharePayload = LookbookSharePayload(items: shareItemsForEntry())
+            } label: {
+                Label(L10n.string("Share"), systemImage: "square.and.arrow.up")
+            }
+            if let link = lookbookShareURLString, !link.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button {
+                    HapticManager.tap()
+                    UIPasteboard.general.string = link
+                } label: {
+                    Label(L10n.string("Copy link"), systemImage: "link")
+                }
+            }
+            if isCurrentUserPost, let onOpenAnalytics {
+                Button {
+                    HapticManager.tap()
+                    onOpenAnalytics(entry)
+                } label: {
+                    Label(L10n.string("Analytics"), systemImage: "chart.bar")
+                }
+            }
+            if isCurrentUserPost, onPostDeleted != nil {
+                Button(role: .destructive) {
+                    HapticManager.tap()
+                    showDeletePostConfirm = true
+                } label: {
+                    Label(L10n.string("Delete"), systemImage: "trash")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Theme.Colors.primaryText)
+                .rotationEffect(.degrees(90))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .menuActionDismissBehavior(.automatic)
+        .accessibilityLabel(L10n.string("More options"))
     }
 
     @ViewBuilder

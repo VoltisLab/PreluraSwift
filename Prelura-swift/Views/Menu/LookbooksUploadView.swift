@@ -516,30 +516,46 @@ struct LookbooksUploadView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .fullScreenCover(isPresented: $showCropFlow) {
-            if cropQueueIndex < rawPickerImages.count {
-                LookbookUploadCropShellView(
-                    image: rawPickerImages[cropQueueIndex],
-                    imageIndex: cropQueueIndex + 1,
-                    totalImages: rawPickerImages.count,
-                    preset: $cropPreset,
-                    onCancel: cancelCropFlow,
-                    onApplyCropped: { cropped in
-                        cropAccumulated.append(cropped)
-                        if cropQueueIndex + 1 < rawPickerImages.count {
-                            cropQueueIndex += 1
-                        } else {
-                            selectedImages = cropAccumulated
-                            cropAccumulated = []
-                            cropQueueIndex = 0
-                            rawPickerImages = []
-                            showCropFlow = false
-                            tagSessionId = UUID().uuidString
-                            taggedTags = []
-                            taggedProductItems = []
+            Group {
+                if !rawPickerImages.isEmpty, cropQueueIndex < rawPickerImages.count {
+                    LookbookUploadCropShellView(
+                        image: rawPickerImages[cropQueueIndex],
+                        imageIndex: cropQueueIndex + 1,
+                        totalImages: rawPickerImages.count,
+                        preset: $cropPreset,
+                        onCancel: cancelCropFlow,
+                        onApplyCropped: { cropped in
+                            cropAccumulated.append(cropped)
+                            if cropQueueIndex + 1 < rawPickerImages.count {
+                                cropQueueIndex += 1
+                            } else {
+                                selectedImages = cropAccumulated
+                                cropAccumulated = []
+                                cropQueueIndex = 0
+                                rawPickerImages = []
+                                showCropFlow = false
+                                tagSessionId = UUID().uuidString
+                                taggedTags = []
+                                taggedProductItems = []
+                            }
+                        }
+                    )
+                    .id(cropQueueIndex)
+                } else {
+                    // Defensive: avoids an empty cover if state is momentarily inconsistent.
+                    ZStack {
+                        Theme.Colors.background.ignoresSafeArea()
+                        ProgressView()
+                            .tint(Theme.Colors.primaryText)
+                    }
+                    .onAppear {
+                        DispatchQueue.main.async {
+                            if rawPickerImages.isEmpty || cropQueueIndex >= rawPickerImages.count {
+                                showCropFlow = false
+                            }
                         }
                     }
-                )
-                .id(cropQueueIndex)
+                }
             }
         }
         .fullScreenCover(isPresented: $showTagScreen) {
@@ -633,6 +649,13 @@ struct LookbooksUploadView: View {
     private func loadImages(from items: [PhotosPickerItem]) async {
         guard !items.isEmpty else {
             await MainActor.run {
+                // PhotosPicker often clears `selection` right after a pick (or when the sheet dismisses).
+                // That fires this path with `[]` and was wiping `rawPickerImages` while `showCropFlow` stayed true,
+                // leaving `fullScreenCover` with no content (blank white screen). Same for wiping `selectedImages`
+                // after the user finished cropping.
+                if showCropFlow || !rawPickerImages.isEmpty || !selectedImages.isEmpty {
+                    return
+                }
                 selectedImages = []
                 rawPickerImages = []
                 showCropFlow = false
@@ -648,8 +671,10 @@ struct LookbooksUploadView: View {
         }
         await MainActor.run {
             guard !images.isEmpty else {
-                selectedImages = []
-                rawPickerImages = []
+                if !showCropFlow {
+                    selectedImages = []
+                    rawPickerImages = []
+                }
                 showCropFlow = false
                 return
             }
@@ -657,6 +682,8 @@ struct LookbooksUploadView: View {
             cropQueueIndex = 0
             cropAccumulated = []
             showCropFlow = true
+            // Reset binding so the system’s post-pick empty `selection` update doesn’t fight our state.
+            selectedItems = []
         }
     }
 
@@ -769,70 +796,78 @@ private struct LookbookUploadCropShellView: View {
     let onApplyCropped: (UIImage) -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button("Cancel", action: onCancel)
-                    .foregroundStyle(Theme.Colors.primaryText)
-                Spacer()
-                Text(totalImages > 1 ? "Photo \(imageIndex) of \(totalImages)" : "Frame your photo")
-                    .font(Theme.Typography.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.Colors.primaryText)
-                Spacer()
-                Color.clear.frame(width: 56)
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.xs)
-            .background(Theme.Colors.background)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Export size")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.secondaryText)
-                    .padding(.horizontal, Theme.Spacing.md)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        ForEach(LookbookUploadCropPreset.allCases) { p in
-                            let on = p == preset
-                            Button {
-                                preset = p
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(p.menuTitle)
-                                        .font(.subheadline.weight(.semibold))
-                                    Text(p.menuSubtitle)
-                                        .font(.caption2)
-                                        .opacity(0.85)
-                                }
-                                .foregroundStyle(on ? .white : Theme.Colors.primaryText)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(on ? Theme.primaryColor : Theme.Colors.secondaryBackground)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, Theme.Spacing.md)
+        // `fullScreenCover` from a pushed `NavigationLink` often inherits the navigation bar’s safe-area
+        // inset *in addition to* the system status-bar inset, which stacks as a large blank band at the top.
+        // Fill the window with `ignoresSafeArea` and apply top/bottom insets exactly once from `GeometryReader`.
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                HStack {
+                    Button("Cancel", action: onCancel)
+                        .foregroundStyle(Theme.Colors.primaryText)
+                    Spacer()
+                    Text(totalImages > 1 ? "Photo \(imageIndex) of \(totalImages)" : "Frame your photo")
+                        .font(Theme.Typography.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                    Spacer()
+                    Color.clear.frame(width: 56)
                 }
-            }
-            .padding(.vertical, Theme.Spacing.xs)
-            .background(Theme.Colors.background)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.xs)
+                .background(Theme.Colors.background)
 
-            GeometryReader { geo in
-                LookbookAspectCropRepresentable(image: image, preset: preset, onCropped: onApplyCropped)
-                    .frame(width: geo.size.width, height: geo.size.height)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Export size")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                        .padding(.horizontal, Theme.Spacing.md)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            ForEach(LookbookUploadCropPreset.allCases) { p in
+                                let on = p == preset
+                                Button {
+                                    preset = p
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(p.menuTitle)
+                                            .font(.subheadline.weight(.semibold))
+                                        Text(p.menuSubtitle)
+                                            .font(.caption2)
+                                            .opacity(0.85)
+                                    }
+                                    .foregroundStyle(on ? .white : Theme.Colors.primaryText)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(on ? Theme.primaryColor : Theme.Colors.secondaryBackground)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
+                    }
+                }
+                .padding(.vertical, Theme.Spacing.xs)
+                .background(Theme.Colors.background)
 
-            PrimaryGlassButton(totalImages > 1 && imageIndex < totalImages ? "Next" : "Use photo") {
-                NotificationCenter.default.post(name: .lookbookAspectCropExportRequested, object: nil)
+                GeometryReader { geo in
+                    LookbookAspectCropRepresentable(image: image, preset: preset, onCropped: onApplyCropped)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black)
+
+                PrimaryGlassButton(totalImages > 1 && imageIndex < totalImages ? "Next" : "Use photo") {
+                    NotificationCenter.default.post(name: .lookbookAspectCropExportRequested, object: nil)
+                }
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.top, Theme.Spacing.md)
+                .padding(.bottom, max(Theme.Spacing.md, proxy.safeAreaInsets.bottom))
+                .background(Theme.Colors.background)
             }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, Theme.Spacing.md)
-            .background(Theme.Colors.background)
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+            .padding(.top, proxy.safeAreaInsets.top)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
         .background(Theme.Colors.background)
     }
 }
