@@ -255,7 +255,7 @@ private struct ProductIdNavigator: Identifiable, Hashable {
     let id: String
 }
 
-/// Lookbooks entry: choose Feed, Explore, or My items (onboarding on first open).
+/// Lookbooks entry: create post, Feed, Explore, or My items (onboarding on first open).
 struct LookbookView: View {
     @EnvironmentObject private var authService: AuthService
     @State private var showLookbooksOnboarding = false
@@ -264,6 +264,13 @@ struct LookbookView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.md) {
+                LookbooksHubBannerRow(
+                    kind: .createPost,
+                    title: L10n.string("Create a post"),
+                    subtitle: L10n.string("Upload photos, crop your look, and share it with followers.")
+                ) {
+                    LookbooksUploadView()
+                }
                 LookbooksHubBannerRow(
                     kind: .feed,
                     title: L10n.string("Feed"),
@@ -284,13 +291,6 @@ struct LookbookView: View {
                     subtitle: L10n.string("Your uploads — switch between feed and a 3-column grid.")
                 ) {
                     LookbookMyItemsScreenView()
-                }
-                LookbooksHubBannerRow(
-                    kind: .createPost,
-                    title: L10n.string("Create a post"),
-                    subtitle: L10n.string("Upload photos, crop your look, and share it with followers.")
-                ) {
-                    LookbooksUploadView()
                 }
             }
             .padding(.horizontal, Theme.Spacing.md)
