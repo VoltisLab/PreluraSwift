@@ -304,9 +304,9 @@ struct LookbookView: View {
                 LookbookHubGridTile(
                     kind: .settings,
                     title: L10n.string("Settings"),
-                    subtitle: L10n.string("Profile, account, notifications, and more.")
+                    subtitle: L10n.string("Lookbook hub settings subtitle")
                 ) {
-                    SettingsMenuView()
+                    LookbookSettingsView()
                 }
                 .gridCellColumns(2)
             }
