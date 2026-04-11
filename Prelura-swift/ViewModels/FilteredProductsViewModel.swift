@@ -46,6 +46,7 @@ class FilteredProductsViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var isLoadingMore: Bool = false
     @Published var errorMessage: String?
+    @Published var errorBannerTitle: String?
     @Published var hasMorePages: Bool = true
     
     private var productService: ProductService
@@ -80,6 +81,7 @@ class FilteredProductsViewModel: ObservableObject {
     func loadData() {
         isLoading = true
         errorMessage = nil
+        errorBannerTitle = nil
         currentPage = 1
         hasMorePages = true
         
@@ -97,6 +99,7 @@ class FilteredProductsViewModel: ObservableObject {
                 await MainActor.run {
                     self.isLoading = false
                     self.errorMessage = L10n.userFacingError(error)
+                    self.errorBannerTitle = L10n.userFacingErrorBannerTitle(error)
                 }
             }
         }
@@ -129,6 +132,8 @@ class FilteredProductsViewModel: ObservableObject {
             isLoading = true
             currentPage = 1
             hasMorePages = true
+            errorMessage = nil
+            errorBannerTitle = nil
         }
         
         do {
@@ -144,6 +149,7 @@ class FilteredProductsViewModel: ObservableObject {
             await MainActor.run {
                 self.isLoading = false
                 self.errorMessage = L10n.userFacingError(error)
+                self.errorBannerTitle = L10n.userFacingErrorBannerTitle(error)
             }
         }
     }

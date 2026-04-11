@@ -46,7 +46,7 @@ struct ShareProfileLinkSheet: View {
             }
         }
         .presentationDragIndicator(.visible)
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
         .task { await loadProfile() }
     }
 

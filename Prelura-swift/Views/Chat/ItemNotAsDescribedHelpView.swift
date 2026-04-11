@@ -29,7 +29,6 @@ struct ItemNotAsDescribedHelpView: View {
     private let productService = ProductService()
     private let fileUploadService = FileUploadService()
     private let chatService = ChatService()
-    private let descriptionFieldCornerRadius: CGFloat = 30
 
     private let issueTypes: [(id: String, label: String)] = [
         ("NOT_AS_DESCRIBED", "Item not as described"),
@@ -96,7 +95,7 @@ struct ItemNotAsDescribedHelpView: View {
                             .padding(.vertical, Theme.TextInput.insetVertical)
                             .padding(.top, selectedPreviewImages.isEmpty ? 24 : 108)
                             .frame(minHeight: selectedPreviewImages.isEmpty ? 170 : 240)
-                            .clipShape(RoundedRectangle(cornerRadius: descriptionFieldCornerRadius))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
 
                         PhotosPicker(selection: $selectedPhotoItems, maxSelectionCount: 6, matching: .images) {
                             HStack(spacing: Theme.Spacing.xs) {
@@ -131,9 +130,9 @@ struct ItemNotAsDescribedHelpView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Theme.Colors.secondaryBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: descriptionFieldCornerRadius))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: descriptionFieldCornerRadius)
+                        RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
                             .stroke(Theme.Colors.glassBorder.opacity(0.6), lineWidth: 0.5)
                     )
                     .padding(.horizontal, Theme.Spacing.md)

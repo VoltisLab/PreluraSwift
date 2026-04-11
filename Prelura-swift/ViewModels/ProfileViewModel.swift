@@ -10,6 +10,7 @@ class ProfileViewModel: ObservableObject {
     @Published var isMenuVisible: Bool = false
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
+    @Published var errorBannerTitle: String?
     
     var topBrands: [String] {
         // Extract unique brands from userItems, sorted by frequency then by name so order is stable when view re-renders.
@@ -69,6 +70,7 @@ class ProfileViewModel: ObservableObject {
         await MainActor.run {
             isLoading = true
             errorMessage = nil
+            errorBannerTitle = nil
         }
         
         do {
@@ -88,6 +90,7 @@ class ProfileViewModel: ObservableObject {
             await MainActor.run {
                 self.isLoading = false
                 self.errorMessage = L10n.userFacingError(error)
+                self.errorBannerTitle = L10n.userFacingErrorBannerTitle(error)
                 print("❌ Profile load error: \(error.localizedDescription)")
                 print("❌ Error details: \(error)")
                 if let graphQLError = error as? GraphQLError {
@@ -107,6 +110,7 @@ class ProfileViewModel: ObservableObject {
         await MainActor.run {
             isLoading = true
             errorMessage = nil
+            errorBannerTitle = nil
             // Keep user and userItems so the UI doesn't flash to empty/shimmer and break layout
         }
         await loadUserData()

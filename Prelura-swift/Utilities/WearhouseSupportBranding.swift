@@ -35,5 +35,6 @@ enum WearhouseSupportBranding {
             .scaledToFill()
             .frame(width: size, height: size)
             .clipShape(Circle())
+            .circularAvatarHairlineBorder()
     }
 }

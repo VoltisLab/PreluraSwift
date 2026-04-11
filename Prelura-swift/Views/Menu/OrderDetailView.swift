@@ -1,6 +1,11 @@
 import SwiftUI
 import UIKit
 
+private enum OrderFeedbackSheetRole {
+    case buyerRatesSeller
+    case sellerRatesBuyer
+}
+
 /// Order details: status, seller/buyer, items, summary. Matches reference design with section labels and rounded cards.
 struct OrderDetailView: View {
     private static var orderSnapshotCache: [String: Order] = [:]
@@ -38,6 +43,7 @@ struct OrderDetailView: View {
     @State private var showMultibuyProblemProductPicker = false
     @State private var orderHelpProductContext: OrderProductSummary?
     @State private var showLeaveFeedbackSheet = false
+    @State private var feedbackSheetRole: OrderFeedbackSheetRole = .buyerRatesSeller
     @State private var leaveFeedbackRefreshToken = UUID()
 
     init(order: Order, isSeller: Bool? = nil, suppressBuyerHelpAndCancelActions: Bool = false) {
@@ -94,7 +100,6 @@ struct OrderDetailView: View {
                         processingCard
                         productCard
                         sellerPayoutNoticeIfNeeded
-                        leaveFeedbackSectionIfNeeded
                         if effectiveOrder.otherParty != nil {
                             sectionLabel(otherPartySectionTitle)
                             outlinedPartyCard
@@ -103,6 +108,8 @@ struct OrderDetailView: View {
                         shippingAddressAndDeliverySection
                         sectionLabel("Tracking details")
                         shippingSelectedCard
+
+                        leaveReviewSectionIfNeeded
 
                         if canShowBuyerOrderHelp, !suppressBuyerHelpAndCancelActions {
                             if shouldPickProductBeforeOrderHelp {
@@ -118,7 +125,7 @@ struct OrderDetailView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(Theme.Spacing.md)
                                     .background(Theme.Colors.secondaryBackground)
-                                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                                 }
                                 .buttonStyle(PlainTappableButtonStyle())
                             } else {
@@ -132,7 +139,7 @@ struct OrderDetailView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(Theme.Spacing.md)
                                     .background(Theme.Colors.secondaryBackground)
-                                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                                 }
                                 .buttonStyle(PlainTappableButtonStyle())
                             }
@@ -149,7 +156,7 @@ struct OrderDetailView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(Theme.Spacing.md)
                             .background(Theme.Colors.secondaryBackground)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                         }
 
                         if canShowRespondToCancellation {
@@ -167,7 +174,7 @@ struct OrderDetailView: View {
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, Theme.Spacing.sm)
                                             .background(Theme.Colors.tertiaryBackground)
-                                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                                     }
                                     .buttonStyle(PlainTappableButtonStyle())
                                     .disabled(cancellationBusy)
@@ -181,7 +188,7 @@ struct OrderDetailView: View {
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, Theme.Spacing.sm)
                                             .background(Theme.primaryColor)
-                                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                                     }
                                     .buttonStyle(PlainTappableButtonStyle())
                                     .disabled(cancellationBusy)
@@ -198,7 +205,7 @@ struct OrderDetailView: View {
                             }
                             .padding(Theme.Spacing.md)
                             .background(Theme.Colors.secondaryBackground)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                         }
 
                         if canShowCancelOrder, !suppressBuyerHelpAndCancelActions {
@@ -212,7 +219,7 @@ struct OrderDetailView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(Theme.Spacing.md)
                                 .background(Theme.Colors.secondaryBackground)
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                             }
                             .buttonStyle(PlainTappableButtonStyle())
                         }
@@ -228,7 +235,7 @@ struct OrderDetailView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(Theme.Spacing.md)
                                 .background(Theme.Colors.secondaryBackground)
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                             }
                             .buttonStyle(PlainTappableButtonStyle())
                         }
@@ -291,10 +298,12 @@ struct OrderDetailView: View {
         }
         .sheet(isPresented: $showLeaveFeedbackSheet) {
             if let oid = Int(effectiveOrder.id),
-               let sid = effectiveOrder.otherParty?.userId {
+               let rateeId = effectiveOrder.otherParty?.userId {
                 LeaveOrderFeedbackSheet(
                     orderId: oid,
-                    sellerUserId: sid,
+                    rateeUserId: rateeId,
+                    role: feedbackSheetRole,
+                    buyerSubmitReleasesPayment: feedbackSheetRole == .buyerRatesSeller && orderStatusUppercased == "DELIVERED",
                     onFinished: {
                         showLeaveFeedbackSheet = false
                         leaveFeedbackRefreshToken = UUID()
@@ -312,23 +321,23 @@ struct OrderDetailView: View {
         }
     }
 
-    /// Buyer: mark delivered and no review yet — primary CTA to complete the order.
     @ViewBuilder
-    private var leaveFeedbackSectionIfNeeded: some View {
-        if shouldShowLeaveFeedback {
+    private var leaveReviewSectionIfNeeded: some View {
+        if shouldShowLeaveReviewForBuyer || shouldShowLeaveReviewForSeller {
             Button {
+                feedbackSheetRole = shouldShowLeaveReviewForSeller ? .sellerRatesBuyer : .buyerRatesSeller
                 showLeaveFeedbackSheet = true
             } label: {
                 HStack {
                     Image(systemName: "star.bubble")
-                    Text("Leave feedback")
+                    Text(L10n.string("Leave a review"))
                 }
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.primaryColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(Theme.Spacing.md)
                 .background(Theme.Colors.secondaryBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
             }
             .buttonStyle(PlainTappableButtonStyle())
         }
@@ -344,7 +353,7 @@ struct OrderDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(Theme.Spacing.md)
                     .background(Theme.Colors.secondaryBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
             } else {
                 Text("Payment is released after the buyer leaves feedback, or automatically 3 days after delivery if they do not.")
                     .font(Theme.Typography.caption)
@@ -352,7 +361,7 @@ struct OrderDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(Theme.Spacing.md)
                     .background(Theme.Colors.secondaryBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
             }
         }
     }
@@ -361,13 +370,28 @@ struct OrderDetailView: View {
         effectiveOrder.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     }
 
-    private var shouldShowLeaveFeedback: Bool {
+    /// Buyer rates seller: delivered (completes order) or completed if a review is still outstanding.
+    private var shouldShowLeaveReviewForBuyer: Bool {
         guard isSeller == false else { return false }
-        let st = effectiveOrder.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard st == "DELIVERED" else { return false }
+        let st = orderStatusUppercased
+        guard st == "DELIVERED" || st == "COMPLETED" else { return false }
         guard !effectiveOrder.buyerHasLeftReview else { return false }
         guard !effectiveOrder.hasOpenOrderIssue else { return false }
         return effectiveOrder.otherParty?.userId != nil && Int(effectiveOrder.id) != nil
+    }
+
+    /// Seller rates buyer after the order is completed (manual review only; ignores platform auto-reviews).
+    private var shouldShowLeaveReviewForSeller: Bool {
+        guard isSeller == true else { return false }
+        guard orderStatusUppercased == "COMPLETED" else { return false }
+        guard !effectiveOrder.hasOpenOrderIssue else { return false }
+        guard let buyerId = effectiveOrder.otherParty?.userId, buyerId != 0 else { return false }
+        guard let myId = currentUser?.userId else { return false }
+        guard Int(effectiveOrder.id) != nil else { return false }
+        let already = effectiveOrder.orderReviews.contains {
+            !$0.isAutoReview && $0.reviewerUserId == myId && $0.reviewedUserId == buyerId
+        }
+        return !already
     }
 
     private func sectionLabel(_ title: String) -> some View {
@@ -420,7 +444,7 @@ struct OrderDetailView: View {
         }
         .padding(Theme.Spacing.md)
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
                 .stroke(Theme.Colors.glassBorder, lineWidth: 1)
         )
     }
@@ -462,7 +486,7 @@ struct OrderDetailView: View {
             }
         }
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
                 .stroke(Theme.Colors.glassBorder, lineWidth: 1)
         )
     }
@@ -567,7 +591,7 @@ struct OrderDetailView: View {
                 }
                 .padding(Theme.Spacing.md)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16)
+                    RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
                         .stroke(Theme.Colors.glassBorder, lineWidth: 1)
                 )
             }
@@ -602,7 +626,7 @@ struct OrderDetailView: View {
                         .padding(Theme.Spacing.md)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 16)
+                            RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
                                 .stroke(Theme.Colors.glassBorder, lineWidth: 1)
                         )
                 }
@@ -621,7 +645,7 @@ struct OrderDetailView: View {
             .padding(Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
+                RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
                     .stroke(Theme.Colors.glassBorder, lineWidth: 1)
             )
         }
@@ -671,7 +695,7 @@ struct OrderDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Spacing.md)
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
                 .stroke(Theme.Colors.glassBorder, lineWidth: 1)
         )
         .overlay(alignment: .bottomLeading) {
@@ -704,7 +728,7 @@ struct OrderDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Spacing.md)
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
                 .stroke(Theme.Colors.glassBorder, lineWidth: 1)
         )
     }
@@ -717,7 +741,7 @@ struct OrderDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.md)
             .background(Theme.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
     }
 
     private var otherPartyCard: some View {
@@ -737,7 +761,7 @@ struct OrderDetailView: View {
                 }
                 .padding(Theme.Spacing.md)
                 .background(Theme.Colors.secondaryBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
             }
         }
     }
@@ -788,7 +812,7 @@ struct OrderDetailView: View {
                 }
                 .padding(Theme.Spacing.md)
                 .background(Theme.Colors.secondaryBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
             }
         }
     }
@@ -806,7 +830,7 @@ struct OrderDetailView: View {
         }
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
     }
 
     private func shippingAddressCard(_ addr: ShippingAddress) -> some View {
@@ -842,7 +866,7 @@ struct OrderDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
     }
 
     private func formatShippingAddress(_ addr: ShippingAddress) -> String {
@@ -1209,51 +1233,138 @@ struct OrderDetailView: View {
     }
 }
 
-/// Buyer rates seller after delivery; backend completes the order and moves payout out of the delivered bucket.
+/// Rate the other party on an order (`rateUser`); buyer→seller or seller→buyer.
 private struct LeaveOrderFeedbackSheet: View {
     let orderId: Int
-    let sellerUserId: Int
+    let rateeUserId: Int
+    var role: OrderFeedbackSheetRole
+    /// Buyer flow while status is still DELIVERED (submit completes order / payout).
+    var buyerSubmitReleasesPayment: Bool
     var onFinished: () -> Void
 
     @EnvironmentObject var authService: AuthService
     @Environment(\.dismiss) private var dismiss
-    @State private var rating = 5
+    @State private var rating: Double = 5
+    @State private var selectedSuggestionTags: Set<String> = []
     @State private var comment = ""
     @State private var busy = false
     @State private var errorMessage: String?
 
     private let userService = UserService()
 
+    private var reviewTagSuggestions: [String] {
+        switch role {
+        case .buyerRatesSeller:
+            return [
+                L10n.string("Fast delivery"),
+                L10n.string("Item as described"),
+                L10n.string("Great communication"),
+                L10n.string("Well packaged"),
+                L10n.string("Accurate photos"),
+                L10n.string("Would buy again"),
+            ]
+        case .sellerRatesBuyer:
+            return [
+                L10n.string("Quick payment"),
+                L10n.string("Smooth transaction"),
+                L10n.string("Great communication"),
+                L10n.string("Polite and friendly"),
+                L10n.string("Would sell again"),
+                L10n.string("Easy to work with"),
+            ]
+        }
+    }
+
+    private var composedCommentForSubmit: String {
+        let tagLine = selectedSuggestionTags.sorted().joined(separator: ". ")
+        let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        if tagLine.isEmpty { return trimmed }
+        if trimmed.isEmpty { return tagLine }
+        return tagLine + ". " + trimmed
+    }
+
+    private var footerText: String {
+        switch role {
+        case .buyerRatesSeller:
+            if buyerSubmitReleasesPayment {
+                return "Submitting completes your order and releases payment to the seller, unless the order is on hold."
+            }
+            return "Your feedback is shared with the seller and visible on their profile."
+        case .sellerRatesBuyer:
+            return "Your rating helps other sellers understand their experience with this buyer."
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    HStack {
-                        Text("Rating")
-                        Spacer()
-                        Picker("Rating", selection: $rating) {
-                            ForEach(1...5, id: \.self) { n in
-                                Text("\(n) stars").tag(n)
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                        Text(L10n.string("Rating"))
+                            .font(Theme.Typography.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Theme.Colors.primaryText)
+
+                        InteractiveStarRatingControl(rating: $rating)
+                            .padding(.top, Theme.Spacing.xs)
+
+                        Divider()
+                            .background(Theme.Colors.glassBorder.opacity(0.4))
+
+                        Text(L10n.string("What went well?"))
+                            .font(Theme.Typography.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Theme.Colors.primaryText)
+
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 118), spacing: Theme.Spacing.sm)],
+                            alignment: .leading,
+                            spacing: Theme.Spacing.sm
+                        ) {
+                            ForEach(reviewTagSuggestions, id: \.self) { tag in
+                                PillTag(
+                                    title: tag,
+                                    isSelected: selectedSuggestionTags.contains(tag),
+                                    accentWhenUnselected: true,
+                                    action: {
+                                        if selectedSuggestionTags.contains(tag) {
+                                            selectedSuggestionTags.remove(tag)
+                                        } else {
+                                            selectedSuggestionTags.insert(tag)
+                                        }
+                                    }
+                                )
                             }
                         }
-                        .pickerStyle(.menu)
-                    }
-                    TextField("Comment (optional)", text: $comment, axis: .vertical)
-                        .lineLimit(3...6)
-                } footer: {
-                    Text("Submitting completes your order and releases payment to the seller, unless the order is on hold.")
-                        .font(Theme.Typography.caption)
-                }
 
-                if let errorMessage, !errorMessage.isEmpty {
-                    Section {
+                        TextField("Comment (optional)", text: $comment, axis: .vertical)
+                            .font(Theme.Typography.body)
+                            .lineLimit(3...8)
+                            .padding(Theme.Spacing.sm)
+                            .background(Theme.Colors.tertiaryBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius, style: .continuous))
+                    }
+                    .padding(Theme.Spacing.md)
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
+
+                    Text(footerText)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let errorMessage, !errorMessage.isEmpty {
                         Text(errorMessage)
-                            .foregroundColor(Theme.Colors.error)
                             .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.error)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .padding(Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.xl)
             }
-            .navigationTitle("Leave feedback")
+            .background(Theme.Colors.background)
+            .navigationTitle(L10n.string("Leave a review"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1279,12 +1390,13 @@ private struct LeaveOrderFeedbackSheet: View {
             errorMessage = nil
         }
         userService.updateAuthToken(authService.authToken)
+        let intRating = min(5, max(1, Int(rating.rounded())))
         do {
             try await userService.rateUser(
-                comment: comment.trimmingCharacters(in: .whitespacesAndNewlines),
+                comment: composedCommentForSubmit,
                 orderId: orderId,
-                rating: rating,
-                userId: sellerUserId
+                rating: intRating,
+                userId: rateeUserId
             )
             await MainActor.run {
                 busy = false
@@ -1373,7 +1485,7 @@ private struct MultibuyOrderProblemProductPickerSheet: View {
                         }
                     }
                     .background(Theme.Colors.secondaryBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                     .padding(.horizontal, Theme.Spacing.md)
                 }
                 .padding(.bottom, Theme.Spacing.xs)

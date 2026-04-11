@@ -685,7 +685,7 @@ struct UserProfileView: View {
                 }
                 .padding(Theme.Spacing.sm)
                 .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(10)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.sm)
                 .padding(.bottom, Theme.Spacing.xs)
@@ -739,7 +739,14 @@ struct UserProfileView: View {
         }
         return Group {
             if items.isEmpty {
-                profileListingsEmptyState(hasAnyListings: !viewModel.items.isEmpty)
+                if let err = viewModel.errorMessage, !err.isEmpty, viewModel.items.isEmpty {
+                    FeedNetworkBannerView(message: err, title: viewModel.errorBannerTitle) {
+                        Task { await viewModel.refreshAsync() }
+                    }
+                    .padding(.top, Theme.Spacing.md)
+                } else {
+                    profileListingsEmptyState(hasAnyListings: !viewModel.items.isEmpty)
+                }
             } else {
                 LazyVGrid(
                     columns: [

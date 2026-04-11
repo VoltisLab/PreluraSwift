@@ -232,8 +232,7 @@ struct PaymentView: View {
                             Spacer()
                         }
                         .padding(Theme.Spacing.md)
-                        .background(Theme.Colors.secondaryBackground)
-                        .cornerRadius(Theme.Glass.cornerRadius)
+                        .preluraDescriptionMatchedCard()
                     } else if !isLoadingPaymentMethod {
                         Text(L10n.string("No payment method added"))
                             .font(Theme.Typography.body)
@@ -317,8 +316,7 @@ struct PaymentView: View {
                 .foregroundColor(Theme.Colors.secondaryText)
         }
         .padding(Theme.Spacing.md)
-        .background(Theme.Colors.secondaryBackground)
-        .cornerRadius(Theme.Glass.cornerRadius)
+        .preluraDescriptionMatchedCard()
     }
 
     @ViewBuilder
@@ -387,9 +385,9 @@ struct PaymentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.md)
             .background(isSelected ? Theme.primaryColor.opacity(0.1) : Theme.Colors.secondaryBackground)
-            .cornerRadius(12)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
                     .stroke(isSelected ? Theme.primaryColor : Theme.Colors.glassBorder, lineWidth: isSelected ? 2 : 1)
             )
         }
@@ -424,9 +422,9 @@ struct PaymentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.md)
             .background(isSelected ? Theme.primaryColor.opacity(0.1) : Theme.Colors.secondaryBackground)
-            .cornerRadius(12)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
                     .stroke(isSelected ? Theme.primaryColor : Theme.Colors.glassBorder, lineWidth: isSelected ? 2 : 1)
             )
         }

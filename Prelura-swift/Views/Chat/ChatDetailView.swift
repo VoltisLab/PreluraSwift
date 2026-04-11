@@ -2448,6 +2448,7 @@ struct ChatDetailView: View {
             }
             .frame(width: Self.chatAvatarSize, height: Self.chatAvatarSize)
             .clipShape(Circle())
+            .circularAvatarHairlineBorder()
         }
     }
 
@@ -3795,7 +3796,7 @@ private struct OrderCancellationRequestChatCardView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, Theme.Spacing.sm)
                             .background(Theme.Colors.tertiaryBackground)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                     }
                     .buttonStyle(PlainTappableButtonStyle())
                     Button {
@@ -3807,7 +3808,7 @@ private struct OrderCancellationRequestChatCardView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, Theme.Spacing.sm)
                             .background(Theme.primaryColor)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                     }
                     .buttonStyle(PlainTappableButtonStyle())
                 }
@@ -3828,7 +3829,7 @@ private struct OrderCancellationRequestChatCardView: View {
         }
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.chatInlineCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
     }
 
     private func respond(approve: Bool) async {
@@ -3875,7 +3876,7 @@ private struct OrderCancellationOutcomeChatCardView: View {
             .padding(Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.Colors.chatInlineCardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
     }
 }
 
@@ -3957,6 +3958,27 @@ private struct SellerOrderProblemOptionsView: View {
                 isCancelling = false
                 errorMessage = L10n.userFacingError(error)
             }
+        }
+    }
+}
+
+/// In-memory cache so order-issue cards keep showing resolution status after leaving and re-opening the chat (`@State` is reset when the view is torn down).
+private enum OrderIssueChatCardCache {
+    @MainActor private static var detailsByKey: [String: OrderIssueDetails] = [:]
+
+    @MainActor
+    static func cached(issueId: Int?, publicId: String?) -> OrderIssueDetails? {
+        if let id = issueId, let v = detailsByKey["i:\(id)"] { return v }
+        let p = publicId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !p.isEmpty, let v = detailsByKey["p:\(p)"] { return v }
+        return nil
+    }
+
+    @MainActor
+    static func store(_ issue: OrderIssueDetails) {
+        detailsByKey["i:\(issue.id)"] = issue
+        if let pid = issue.publicId?.trimmingCharacters(in: .whitespacesAndNewlines), !pid.isEmpty {
+            detailsByKey["p:\(pid)"] = issue
         }
     }
 }
@@ -4065,12 +4087,23 @@ private struct OrderIssueChatCardView: View {
         let hasId = payload?.issueId != nil
         let pub = payload?.publicId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard hasId || !pub.isEmpty else { return }
-        await MainActor.run { isFetchingLive = true }
+        let issueId = payload?.issueId
+        let publicIdForFetch = pub.isEmpty ? nil : pub
+        await MainActor.run {
+            if liveIssue == nil, let cached = OrderIssueChatCardCache.cached(issueId: issueId, publicId: publicIdForFetch) {
+                liveIssue = cached
+            }
+            // Only show "Checking status…" when we have nothing to display yet.
+            isFetchingLive = (liveIssue == nil)
+        }
         userService.updateAuthToken(authService.authToken)
         do {
-            let issue = try await userService.getOrderIssue(issueId: payload?.issueId, publicId: pub.isEmpty ? nil : pub)
+            let issue = try await userService.getOrderIssue(issueId: issueId, publicId: publicIdForFetch)
             await MainActor.run {
-                liveIssue = issue
+                if let issue {
+                    liveIssue = issue
+                    OrderIssueChatCardCache.store(issue)
+                }
                 isFetchingLive = false
             }
         } catch {
@@ -4263,6 +4296,7 @@ struct MessageBubbleView: View {
             }
             .frame(width: Self.messageAvatarSize, height: Self.messageAvatarSize)
             .clipShape(Circle())
+            .circularAvatarHairlineBorder()
         }
     }
 

@@ -164,11 +164,11 @@ struct LookbookAnalyticsView: View {
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
                 .fill(Theme.Colors.secondaryBackground)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
                 .strokeBorder(Theme.Colors.glassBorder.opacity(0.35), lineWidth: 0.5)
         )
     }

@@ -35,9 +35,6 @@ struct OrderIssueDetailView: View {
 
     private let userService = UserService()
 
-    /// Slightly larger than `Theme.Glass.cornerRadius` so issue description + refund rows read as the same family of rounded cards.
-    private static let issueContentCornerRadius: CGFloat = 16
-
     private static let refundWithoutReturn = "REFUND_WITHOUT_RETURN"
     private static let refundWithReturn = "REFUND_WITH_RETURN"
     private static let postageSeller = "SELLER"
@@ -213,7 +210,7 @@ struct OrderIssueDetailView: View {
                 .padding(.vertical, Theme.Spacing.md)
                 .background(isWithdrawing ? Theme.Colors.tertiaryBackground : Theme.primaryColor)
                 .foregroundColor(.white)
-                .clipShape(RoundedRectangle(cornerRadius: Self.issueContentCornerRadius))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(isWithdrawing || isSubmittingResolution)
@@ -308,7 +305,7 @@ struct OrderIssueDetailView: View {
                             ? .white
                             : Theme.Colors.secondaryText
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: Self.issueContentCornerRadius))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                 }
                 .disabled(selectedReturnPostagePayer == nil || isSubmittingResolution)
                 .padding(.top, Theme.Spacing.xs)
@@ -380,9 +377,9 @@ struct OrderIssueDetailView: View {
             }
             .padding(Theme.Spacing.md)
             .background(Theme.Colors.background)
-            .clipShape(RoundedRectangle(cornerRadius: Self.issueContentCornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: Self.issueContentCornerRadius)
+                RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
                     .stroke(
                         isSelected ? Theme.primaryColor : Theme.Colors.glassBorder,
                         lineWidth: isSelected ? 2 : 1
@@ -409,9 +406,9 @@ struct OrderIssueDetailView: View {
             .background(
                 selected == value ? Theme.primaryColor.opacity(0.12) : Theme.Colors.secondaryBackground
             )
-            .clipShape(RoundedRectangle(cornerRadius: Self.issueContentCornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: Self.issueContentCornerRadius)
+                RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
                     .stroke(
                         selected == value ? Theme.primaryColor : Theme.Colors.glassBorder,
                         lineWidth: selected == value ? 2 : 1
@@ -432,7 +429,7 @@ struct OrderIssueDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.md)
             .background(Theme.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Self.issueContentCornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
     }
 
     private func isIssuePending(_ issue: OrderIssueDetails) -> Bool {

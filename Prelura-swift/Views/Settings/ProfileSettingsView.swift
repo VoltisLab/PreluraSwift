@@ -1,7 +1,7 @@
 import PhotosUI
 import SwiftUI
 
-/// Profile details: username, bio, location only. Same UI pattern as Account Settings (ScrollView + SettingsTextField/Editor + PrimaryButtonBar).
+/// Profile details: username, bio, location. Labeled fields above each control (same pattern as Shipping Address).
 /// Load from UserService.getUser(); save via UserService.updateProfile(bio:username:location:).
 struct ProfileSettingsView: View {
     private static let profilePhotoSize: CGFloat = 88
@@ -32,31 +32,51 @@ struct ProfileSettingsView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     profilePhotoHeader
 
-                    SettingsTextField(
-                        placeholder: L10n.string("Username"),
-                        text: $username,
-                        textContentType: .username
-                    )
-                    .focused($focusedField, equals: .username)
-
-                    ZStack(alignment: .bottomTrailing) {
-                        SettingsTextEditor(placeholder: L10n.string("Bio"), text: $bio, minHeight: 100, maxLength: bioMaxLength)
-                            .focused($focusedField, equals: .bio)
-                        Text("\(bio.count)/\(bioMaxLength)")
-                            .font(Theme.Typography.caption)
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Username"))
+                            .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.Colors.secondaryText)
-                            .padding(Theme.Spacing.sm)
+                        SettingsTextField(
+                            placeholder: L10n.string("Public username hint"),
+                            text: $username,
+                            textContentType: .username
+                        )
+                        .focused($focusedField, equals: .username)
                     }
 
-                    LocationSuggestionField(
-                        placeholder: L10n.string("Location"),
-                        text: $location,
-                        isFocused: focusedField == .location
-                    )
-                    .focused($focusedField, equals: .location)
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Bio"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        ZStack(alignment: .bottomTrailing) {
+                            SettingsTextEditor(
+                                placeholder: L10n.string("Bio hint"),
+                                text: $bio,
+                                minHeight: 100,
+                                maxLength: bioMaxLength
+                            )
+                            .focused($focusedField, equals: .bio)
+                            Text("\(bio.count)/\(bioMaxLength)")
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(Theme.Colors.secondaryText)
+                                .padding(Theme.Spacing.sm)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Location"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        LocationSuggestionField(
+                            placeholder: L10n.string("Location hint"),
+                            text: $location,
+                            isFocused: focusedField == .location
+                        )
+                        .focused($focusedField, equals: .location)
+                    }
 
                     if let err = errorMessage {
                         Text(err)

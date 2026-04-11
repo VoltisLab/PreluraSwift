@@ -525,6 +525,7 @@ private struct NotificationRowView: View {
                 }
                 .frame(width: 44, height: 44)
                 .clipShape(Circle())
+                .circularAvatarHairlineBorder()
             } else {
                 Circle()
                     .fill(Theme.Colors.secondaryBackground)
@@ -533,6 +534,7 @@ private struct NotificationRowView: View {
                         Image(systemName: "person")
                             .foregroundColor(Theme.Colors.secondaryText)
                     )
+                    .circularAvatarHairlineBorder()
             }
             HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                 messageText

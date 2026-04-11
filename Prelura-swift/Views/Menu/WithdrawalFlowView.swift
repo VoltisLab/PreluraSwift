@@ -267,7 +267,7 @@ struct WithdrawalFlowView: View {
             .padding(Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
 
             if let err = errorMessage {
                 Text(err)

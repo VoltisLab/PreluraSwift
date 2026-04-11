@@ -70,7 +70,7 @@ struct CancelOrderView: View {
                         }
                         .padding(Theme.Spacing.md)
                         .background(Theme.Colors.secondaryBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                     }
                     .buttonStyle(PlainTappableButtonStyle())
                 }

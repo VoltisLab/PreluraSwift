@@ -88,17 +88,30 @@ struct FilteredProductsView: View {
         if viewModel.isLoading && viewModel.items.isEmpty {
             FeedShimmerView()
         } else if viewModel.items.isEmpty {
-            VStack(spacing: Theme.Spacing.md) {
-                Spacer()
-                Image(systemName: "bag")
-                    .font(.system(size: 60))
-                    .foregroundColor(Theme.Colors.secondaryText)
-                Text(L10n.string("No products found"))
-                    .font(Theme.Typography.title3)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                Spacer()
+            Group {
+                if let err = viewModel.errorMessage, !err.isEmpty {
+                    VStack {
+                        Spacer()
+                        FeedNetworkBannerView(message: err, title: viewModel.errorBannerTitle) {
+                            viewModel.loadData()
+                        }
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    VStack(spacing: Theme.Spacing.md) {
+                        Spacer()
+                        Image(systemName: "bag")
+                            .font(.system(size: 60))
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        Text(L10n.string("No products found"))
+                            .font(Theme.Typography.title3)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView {
                 LazyVGrid(
@@ -152,7 +165,8 @@ struct FilteredProductsView: View {
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.sm)
+                .padding(.bottom, Theme.Spacing.md)
                 .padding(.bottom, (tryCartShoppingEnabled && shopAllBagToolbarActive) ? 88 : 0)
                 .background(
                     GeometryReader { geo in
@@ -187,35 +201,47 @@ struct FilteredProductsView: View {
             )
             .padding(.trailing, Theme.Spacing.sm)
 
-            // Shop by style: pill tags under search bar for style filters
+            // Shop by style: pill tags under search bar for style filters.
+            // Selected style is shown before "All" so the active filter stays visible without horizontal scrolling.
             if case .shopByStyle = filterType {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        PillTag(
-                            title: L10n.string("All"),
-                            isSelected: viewModel.selectedStyle == nil,
-                            accentWhenUnselected: true,
-                            action: {
-                                viewModel.selectedStyle = nil
-                                viewModel.loadData()
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            if let selectedRaw = viewModel.selectedStyle {
+                                shopByStylePill(for: selectedRaw)
+                                    .id(Self.shopByStyleChipScrollId(selectedRaw))
                             }
-                        )
-                        ForEach(Self.styleFilterOptions, id: \.self) { raw in
-                            let displayName = StyleSelectionView.displayName(for: raw)
                             PillTag(
-                                title: displayName,
-                                isSelected: viewModel.selectedStyle == raw,
+                                title: L10n.string("All"),
+                                isSelected: viewModel.selectedStyle == nil,
                                 accentWhenUnselected: true,
                                 action: {
-                                    viewModel.selectedStyle = raw
+                                    viewModel.selectedStyle = nil
                                     viewModel.loadData()
                                 }
                             )
+                            .id(Self.shopByStyleAllChipScrollId)
+                            ForEach(Self.styleFilterOptionsExcludingSelected(viewModel.selectedStyle), id: \.self) { raw in
+                                shopByStylePill(for: raw)
+                                    .id(Self.shopByStyleChipScrollId(raw))
+                            }
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
+                    }
+                    .padding(.vertical, Theme.Spacing.sm)
+                    .onChange(of: viewModel.selectedStyle) { _, newValue in
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            if let raw = newValue {
+                                proxy.scrollTo(Self.shopByStyleChipScrollId(raw), anchor: .leading)
+                            } else {
+                                proxy.scrollTo(Self.shopByStyleAllChipScrollId, anchor: .leading)
+                            }
                         }
                     }
-                    .padding(.horizontal, Theme.Spacing.md)
                 }
-                .padding(.vertical, Theme.Spacing.sm)
+                // Horizontal `ScrollView` in a top `ZStack` otherwise expands vertically to fill the screen,
+                // inflating header height measurement and leaving empty space above the grid.
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             // Shop All: Row 1 = category pills. Full hierarchy (rows 2–3) only for standard Try Cart Shop All.
@@ -264,6 +290,7 @@ struct FilteredProductsView: View {
                         .padding(.horizontal, Theme.Spacing.md)
                     }
                     .padding(.vertical, Theme.Spacing.sm)
+                    .fixedSize(horizontal: false, vertical: true)
 
                     // Row 2: subcategories (Try Cart Shop All only)
                     if case .tryCartSearch = filterType, viewModel.selectedParentCategory != nil {
@@ -285,6 +312,7 @@ struct FilteredProductsView: View {
                             .padding(.horizontal, Theme.Spacing.md)
                         }
                         .padding(.vertical, Theme.Spacing.sm)
+                        .fixedSize(horizontal: false, vertical: true)
                         .transition(.asymmetric(
                             insertion: .move(edge: .top).combined(with: .opacity),
                             removal: .move(edge: .top).combined(with: .opacity)
@@ -313,6 +341,7 @@ struct FilteredProductsView: View {
                             .padding(.horizontal, Theme.Spacing.md)
                         }
                         .padding(.vertical, Theme.Spacing.sm)
+                        .fixedSize(horizontal: false, vertical: true)
                         .transition(.asymmetric(
                             insertion: .move(edge: .top).combined(with: .opacity),
                             removal: .move(edge: .top).combined(with: .opacity)
@@ -356,6 +385,7 @@ struct FilteredProductsView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                 }
                 .padding(.vertical, Theme.Spacing.sm)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             // Filter / Sort row (grey pills, no shadow)
@@ -403,14 +433,16 @@ struct FilteredProductsView: View {
     }
 
     private var resolvedProductsHeaderHeight: CGFloat {
-        productsHeaderHeight > 8 ? productsHeaderHeight : 220
+        // Before the first layout pass, avoid a tall placeholder spacer (was 220pt) that mimicked “empty” space under the header.
+        productsHeaderHeight > 8 ? productsHeaderHeight : 160
     }
 
     var body: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
+                // Constant inset: toggling height made scroll offset jump and retriggered chrome visibility (feedback loop).
                 Color.clear
-                    .frame(height: showProductsTopChrome ? resolvedProductsHeaderHeight : 0)
+                    .frame(height: resolvedProductsHeaderHeight)
                 productGridContent
             }
             .clipped()
@@ -645,6 +677,32 @@ struct FilteredProductsView: View {
             .padding(.vertical, Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private static let shopByStyleAllChipScrollId = "shopByStyleAll"
+
+    private static func shopByStyleChipScrollId(_ raw: String) -> String {
+        "shopByStyle-\(raw)"
+    }
+
+    /// Remaining style pills after moving the selected one before "All" (avoids duplicate chips).
+    private static func styleFilterOptionsExcludingSelected(_ selected: String?) -> [String] {
+        guard let selected else { return styleFilterOptions }
+        return styleFilterOptions.filter { $0 != selected }
+    }
+
+    @ViewBuilder
+    private func shopByStylePill(for raw: String) -> some View {
+        let displayName = StyleSelectionView.displayName(for: raw)
+        PillTag(
+            title: displayName,
+            isSelected: viewModel.selectedStyle == raw,
+            accentWhenUnselected: true,
+            action: {
+                viewModel.selectedStyle = raw
+                viewModel.loadData()
+            }
+        )
     }
 
     /// Style filter options (StyleEnum raw values; same set as StyleSelectionView in SellView).

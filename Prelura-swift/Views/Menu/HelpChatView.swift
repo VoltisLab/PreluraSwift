@@ -225,7 +225,7 @@ private struct SupportOrderProductHeader: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.sm)
             .background(Theme.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
         }
         .buttonStyle(PlainTappableButtonStyle())
     }
@@ -506,7 +506,7 @@ struct HelpChatView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.md)
             .background(Theme.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
         }
     }
 

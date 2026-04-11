@@ -116,7 +116,7 @@ struct EmailVerificationCodeView: View {
                                 .padding(.horizontal, Theme.TextInput.insetHorizontal)
                                 .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                                 .background(Theme.Colors.secondaryBackground)
-                                .cornerRadius(12)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
                                 .foregroundColor(Theme.Colors.primaryText)
                         }
                         .padding(.horizontal, Theme.Spacing.lg)

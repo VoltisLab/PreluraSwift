@@ -199,7 +199,7 @@ struct MultiBuyCartView: View {
         .padding(.vertical, Theme.Spacing.sm)
         .padding(.horizontal, Theme.Spacing.sm)
         .background(
-            RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+            RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
                 .fill(Theme.Colors.secondaryBackground)
         )
         .padding(.vertical, Theme.Spacing.xs)

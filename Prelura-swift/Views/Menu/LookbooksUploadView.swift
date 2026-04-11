@@ -795,79 +795,76 @@ private struct LookbookUploadCropShellView: View {
     let onCancel: () -> Void
     let onApplyCropped: (UIImage) -> Void
 
+    private var navigationTitle: String {
+        totalImages > 1 ? "Photo \(imageIndex) of \(totalImages)" : "Frame your photo"
+    }
+
     var body: some View {
-        // `fullScreenCover` from a pushed `NavigationLink` often inherits the navigation bar’s safe-area
-        // inset *in addition to* the system status-bar inset, which stacks as a large blank band at the top.
-        // Fill the window with `ignoresSafeArea` and apply top/bottom insets exactly once from `GeometryReader`.
-        GeometryReader { proxy in
+        NavigationStack {
             VStack(spacing: 0) {
-                HStack {
+                exportSizePicker
+                LookbookAspectCropRepresentable(image: image, preset: preset, onCropped: onApplyCropped)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black)
+            }
+            .background(Theme.Colors.background)
+            .navigationTitle(navigationTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Theme.Colors.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: onCancel)
                         .foregroundStyle(Theme.Colors.primaryText)
-                    Spacer()
-                    Text(totalImages > 1 ? "Photo \(imageIndex) of \(totalImages)" : "Frame your photo")
-                        .font(Theme.Typography.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.Colors.primaryText)
-                    Spacer()
-                    Color.clear.frame(width: 56)
                 }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.xs)
-                .background(Theme.Colors.background)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Export size")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                        .padding(.horizontal, Theme.Spacing.md)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: Theme.Spacing.sm) {
-                            ForEach(LookbookUploadCropPreset.allCases) { p in
-                                let on = p == preset
-                                Button {
-                                    preset = p
-                                } label: {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(p.menuTitle)
-                                            .font(.subheadline.weight(.semibold))
-                                        Text(p.menuSubtitle)
-                                            .font(.caption2)
-                                            .opacity(0.85)
-                                    }
-                                    .foregroundStyle(on ? .white : Theme.Colors.primaryText)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .background(on ? Theme.primaryColor : Theme.Colors.secondaryBackground)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, Theme.Spacing.md)
-                    }
-                }
-                .padding(.vertical, Theme.Spacing.xs)
-                .background(Theme.Colors.background)
-
-                GeometryReader { geo in
-                    LookbookAspectCropRepresentable(image: image, preset: preset, onCropped: onApplyCropped)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
-
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 PrimaryGlassButton(totalImages > 1 && imageIndex < totalImages ? "Next" : "Use photo") {
                     NotificationCenter.default.post(name: .lookbookAspectCropExportRequested, object: nil)
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
                 .padding(.top, Theme.Spacing.md)
-                .padding(.bottom, max(Theme.Spacing.md, proxy.safeAreaInsets.bottom))
+                .padding(.bottom, Theme.Spacing.md)
+                .frame(maxWidth: .infinity)
                 .background(Theme.Colors.background)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-            .padding(.top, proxy.safeAreaInsets.top)
         }
-        .ignoresSafeArea()
+        .tint(Theme.primaryColor)
+    }
+
+    private var exportSizePicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Export size")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.secondaryText)
+                .padding(.horizontal, Theme.Spacing.md)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    ForEach(LookbookUploadCropPreset.allCases) { p in
+                        let on = p == preset
+                        Button {
+                            preset = p
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(p.menuTitle)
+                                    .font(.subheadline.weight(.semibold))
+                                Text(p.menuSubtitle)
+                                    .font(.caption2)
+                                    .opacity(0.85)
+                            }
+                            .foregroundStyle(on ? .white : Theme.Colors.primaryText)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(on ? Theme.primaryColor : Theme.Colors.secondaryBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+            }
+        }
+        .padding(.vertical, Theme.Spacing.xs)
         .background(Theme.Colors.background)
     }
 }
@@ -897,6 +894,8 @@ private final class LookbookAspectCropViewController: UIViewController, UIScroll
     private var normalizedImage: UIImage?
     /// `imageView` width ÷ full image width in points (after normalize).
     private var baseCoverScale: CGFloat = 1
+    /// Last laid-out crop viewport size; used to avoid resetting `zoomScale` on every `layoutSubviews` (which broke pinch-to-zoom).
+    private var laidOutCropSize: CGSize = .zero
 
     init(image: UIImage, preset: LookbookUploadCropPreset) {
         self.originalImage = image
@@ -913,6 +912,7 @@ private final class LookbookAspectCropViewController: UIViewController, UIScroll
     func setPreset(_ newPreset: LookbookUploadCropPreset) {
         guard newPreset != preset else { return }
         preset = newPreset
+        laidOutCropSize = .zero
         scrollView.zoomScale = 1
         view.setNeedsLayout()
         view.layoutIfNeeded()
@@ -921,10 +921,13 @@ private final class LookbookAspectCropViewController: UIViewController, UIScroll
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        view.isMultipleTouchEnabled = true
         normalizedImage = Self.normalizeOrientation(originalImage)
         scrollView.delegate = self
         scrollView.minimumZoomScale = 1
         scrollView.maximumZoomScale = 5
+        scrollView.bouncesZoom = true
+        scrollView.isMultipleTouchEnabled = true
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.showsVerticalScrollIndicator = false
         scrollView.clipsToBounds = true
@@ -970,12 +973,22 @@ private final class LookbookAspectCropViewController: UIViewController, UIScroll
         let w = iw * baseCoverScale
         let h = ih * baseCoverScale
         imageView.image = img
-        imageView.frame = CGRect(x: 0, y: 0, width: w, height: h)
-        scrollView.contentSize = CGSize(width: w, height: h)
-        scrollView.zoomScale = 1
-        let offsetX = max(0, (w - cw) * 0.5)
-        let offsetY = max(0, (h - ch) * 0.5)
-        scrollView.contentOffset = CGPoint(x: offsetX, y: offsetY)
+
+        let cropSize = CGSize(width: cw, height: ch)
+        let cropSizeChanged =
+            laidOutCropSize == .zero
+            || abs(cropSize.width - laidOutCropSize.width) > 0.5
+            || abs(cropSize.height - laidOutCropSize.height) > 0.5
+        laidOutCropSize = cropSize
+
+        if cropSizeChanged {
+            imageView.frame = CGRect(x: 0, y: 0, width: w, height: h)
+            scrollView.contentSize = CGSize(width: w, height: h)
+            scrollView.zoomScale = 1
+            let offsetX = max(0, (w - cw) * 0.5)
+            let offsetY = max(0, (h - ch) * 0.5)
+            scrollView.contentOffset = CGPoint(x: offsetX, y: offsetY)
+        }
         scrollView.layer.cornerCurve = .continuous
         scrollView.layer.cornerRadius = 8
         scrollView.layer.borderWidth = 1 / max(view.traitCollection.displayScale, 1)

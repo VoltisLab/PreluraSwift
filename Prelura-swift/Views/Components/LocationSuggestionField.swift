@@ -84,9 +84,9 @@ struct LocationSuggestionField: View {
                     }
                 }
                 .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(12)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
                         .strokeBorder(Theme.Colors.glassBorder.opacity(0.5), lineWidth: 1)
                 )
                 .padding(.top, 4)

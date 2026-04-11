@@ -146,7 +146,7 @@ struct ShopValueView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Spacing.lg)
         .background(Theme.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
     }
 
     // MARK: - KPI grid (6 thumbnails: Balance, Pending orders, This month, Total earnings, Transactions, Lifetime)
@@ -184,7 +184,7 @@ struct ShopValueView: View {
         .padding(Theme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
     }
 
     // MARK: - Performance (Views, Items sold, Conversion, Avg price — Pending orders moved to top section)
@@ -221,7 +221,7 @@ struct ShopValueView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.lg)
             .background(Theme.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
 
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(L10n.string("Projected monthly earnings"))
@@ -241,7 +241,7 @@ struct ShopValueView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Theme.Spacing.lg)
             .background(Theme.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
         }
     }
 
@@ -322,7 +322,7 @@ private struct DashboardKPICard: View {
         .frame(maxWidth: .infinity, minHeight: cardMinHeight, alignment: .topLeading)
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
     }
 }
 

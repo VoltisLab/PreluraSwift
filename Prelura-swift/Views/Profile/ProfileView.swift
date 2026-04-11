@@ -75,13 +75,9 @@ struct ProfileView: View {
                         VStack(spacing: 0) {
                             Color.clear.frame(height: 1).id(topId)
                             if let err = viewModel.errorMessage, !err.isEmpty {
-                                Text(err)
-                                    .font(.footnote)
-                                    .foregroundStyle(Color.red.opacity(0.95))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, Theme.Spacing.md)
-                                    .padding(.vertical, Theme.Spacing.sm)
-                                    .background(Color.red.opacity(0.12))
+                                FeedNetworkBannerView(message: err, title: viewModel.errorBannerTitle) {
+                                    viewModel.refresh()
+                                }
                             }
                             profileSection
                             
@@ -822,7 +818,7 @@ struct ProfileView: View {
                 }
                 .padding(Theme.Spacing.sm)
                 .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(10)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.sm)
                 .padding(.bottom, Theme.Spacing.xs)
@@ -902,7 +898,12 @@ struct ProfileView: View {
 
         return Group {
             if items.isEmpty {
-                profileListingsEmptyState(hasAnyListings: !viewModel.userItems.isEmpty)
+                let hideEmptyForNetwork = !(viewModel.errorMessage?.isEmpty ?? true) && viewModel.userItems.isEmpty
+                if hideEmptyForNetwork {
+                    Color.clear.frame(height: 1)
+                } else {
+                    profileListingsEmptyState(hasAnyListings: !viewModel.userItems.isEmpty)
+                }
             } else {
                 LazyVGrid(
                     columns: [

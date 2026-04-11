@@ -35,50 +35,82 @@ struct AccountSettingsView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    SettingsTextField(
-                        placeholder: L10n.string("First name"),
-                        text: $firstName,
-                        textContentType: .givenName
-                    )
-                    .focused($focusedField, equals: .firstName)
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    Text(L10n.string("Personal details"))
+                        .font(Theme.Typography.headline)
+                        .foregroundColor(Theme.Colors.primaryText)
 
-                    SettingsTextField(
-                        placeholder: L10n.string("Last name"),
-                        text: $lastName,
-                        textContentType: .familyName
-                    )
-                    .focused($focusedField, equals: .lastName)
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("First name"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: L10n.string("First name"),
+                            text: $firstName,
+                            textContentType: .givenName
+                        )
+                        .focused($focusedField, equals: .firstName)
+                    }
 
-                    SettingsTextField(
-                        placeholder: "Email",
-                        text: $email,
-                        keyboardType: .emailAddress,
-                        textContentType: .emailAddress
-                    )
-                    .focused($focusedField, equals: .email)
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Last name"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: L10n.string("Last name"),
+                            text: $lastName,
+                            textContentType: .familyName
+                        )
+                        .focused($focusedField, equals: .lastName)
+                    }
 
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Email"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: L10n.string("Email address"),
+                            text: $email,
+                            keyboardType: .emailAddress,
+                            textContentType: .emailAddress
+                        )
+                        .focused($focusedField, equals: .email)
+                    }
+
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Phone"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
                         phoneField
-                        Text("UK number only (without +44)")
+                        Text(L10n.string("UK number only (without +44)"))
                             .font(Theme.Typography.caption)
                             .foregroundColor(Theme.Colors.secondaryText)
                             .padding(.horizontal, Theme.Spacing.sm)
                     }
 
-                    SettingsTextField(
-                        placeholder: "Date of birth",
-                        text: $dateOfBirthText,
-                        isEnabled: false,
-                        onTap: { showDatePicker = true }
-                    )
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Date of birth"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: L10n.string("Tap to choose date"),
+                            text: $dateOfBirthText,
+                            isEnabled: false,
+                            onTap: { showDatePicker = true }
+                        )
+                    }
 
-                    SettingsTextField(
-                        placeholder: L10n.string("Gender"),
-                        text: $gender,
-                        isEnabled: false,
-                        onTap: { showGenderPicker = true }
-                    )
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Gender"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        SettingsTextField(
+                            placeholder: L10n.string("Tap to choose gender"),
+                            text: $gender,
+                            isEnabled: false,
+                            onTap: { showGenderPicker = true }
+                        )
+                    }
 
                     if let err = errorMessage {
                         Text(err)
@@ -390,7 +422,7 @@ struct AccountSettingsView: View {
             .background(Theme.Colors.secondaryBackground)
             .clipShape(Capsule())
 
-            TextField("Phone", text: $phone)
+            TextField(L10n.string("Mobile number"), text: $phone)
                 .keyboardType(.numberPad)
                 .textContentType(.telephoneNumber)
                 .focused($focusedField, equals: .phone)

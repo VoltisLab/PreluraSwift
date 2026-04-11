@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Invite a friend — redesigned: one intro, three equal-weight actions in a single list style.
+/// Invite a friend — intro plus contact invite and share profile link.
 struct InviteFriendView: View {
     @EnvironmentObject private var authService: AuthService
     @State private var showShareProfileSheet = false
@@ -36,16 +36,6 @@ struct InviteFriendView: View {
                             icon: "link",
                             title: "Share profile link",
                             subtitle: "Copy or share your link"
-                        )
-                    }
-                    .buttonStyle(PlainTappableButtonStyle())
-
-                    Button(action: {}) {
-                        inviteRow(
-                            icon: "person.2.fill",
-                            title: "Invite via Facebook",
-                            subtitle: "Connect with Facebook friends",
-                            iconColor: Color(red: 0.23, green: 0.35, blue: 0.6)
                         )
                     }
                     .buttonStyle(PlainTappableButtonStyle())
@@ -89,8 +79,7 @@ struct InviteFriendView: View {
                 .foregroundColor(Theme.Colors.tertiaryText)
         }
         .padding(Theme.Spacing.md)
-        .background(Theme.Colors.secondaryBackground)
-        .cornerRadius(Theme.Glass.cornerRadius)
+        .preluraDescriptionMatchedCard()
     }
 
 }

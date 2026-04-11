@@ -8,18 +8,22 @@ struct HomeView: View {
     @ObservedObject var tabCoordinator: TabCoordinator
     @StateObject private var viewModel = HomeViewModel()
     @State private var searchText: String = ""
-    @State private var scrollPosition: String? = "home_top"
     @State private var showAIChat: Bool = false
     @State private var showGuestSignInPrompt: Bool = false
     /// Programmatic push avoids `NavigationLink` in the toolbar, which often skips redraws for the red dot.
     @State private var showNotificationsList: Bool = false
-    @State private var showFeedNavChrome = true
-    @State private var lastFeedScrollMinY: CGFloat = 0
 
     let categories = ["All", "Women", "Men", "Boys", "Girls", "Toddlers"]
 
     private let topId = "home_top"
-    private let homeScrollSpace = "homeFeedScroll"
+    /// Band for “at top” when the feed is one continuous `ScrollView` (anchor sits just below the search header).
+    private static let feedScrollTopSnap: CGFloat = 12
+    /// Cap horizontal chip `ScrollView` height so category pills don’t expand vertically in the header.
+    private static let categoryChipScrollMaxHeight: CGFloat = 44
+    /// Scrollable tail so the last grid row can sit above the floating tab bar + home indicator (see `contentMargins` note on `ScrollView`).
+    private static let feedScrollBottomClearance: CGFloat = 112
+    /// Breathing room below the chip row inside the pinned header (feed starts immediately after measured header height).
+    private static let chipRowBottomSpacing: CGFloat = Theme.Spacing.xs
 
     var body: some View {
         homeChromeAndLifecycle
@@ -27,16 +31,6 @@ struct HomeView: View {
 
     private var homeNavChromeStack: some View {
         homeMainContent
-            .onChange(of: scrollPosition) { _, new in
-                tabCoordinator.reportAtTop(tab: 0, isAtTop: new == topId)
-            }
-            .onPreferenceChange(ScrollMinYPreferenceKey.self) { minY in
-                CollapsingScrollChrome.updateVisibility(
-                    scrollMinY: minY,
-                    lastY: &lastFeedScrollMinY,
-                    isVisible: $showFeedNavChrome
-                )
-            }
             .background(Theme.Colors.background)
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarHidden(viewModel.isLoading && viewModel.filteredItems.isEmpty && viewModel.featuredItems.isEmpty)
@@ -48,7 +42,7 @@ struct HomeView: View {
                     homeNotificationsBellLink
                 }
             }
-            .toolbar(showFeedNavChrome ? .visible : .hidden, for: .navigationBar)
+            .toolbarBackground(Theme.Colors.background, for: .navigationBar)
             .refreshable {
                 await viewModel.refreshAsync()
             }
@@ -101,6 +95,34 @@ struct HomeView: View {
             }
     }
 
+    /// Search, closest-match hint, and category chips — part of the main vertical scroll (no overlay `ZStack`: that layout caused scroll clipping glitches and stray text fragments above the grid).
+    @ViewBuilder
+    private var homePinnedHeader: some View {
+        VStack(spacing: 0) {
+            FeedSearchField(
+                text: $searchText,
+                onSubmit: { viewModel.searchWithParsed($0) },
+                onAITap: { showAIChat = true },
+                topPadding: Theme.Spacing.xs
+            )
+            if let hint = viewModel.searchClosestMatchHint {
+                HStack(spacing: Theme.Spacing.xs) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Theme.primaryColor)
+                    Text(hint)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.xs)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            categoryFiltersSection
+        }
+        .background(Theme.Colors.background)
+    }
+
     @ViewBuilder
     private var homeMainContent: some View {
         if viewModel.isLoading && viewModel.filteredItems.isEmpty && viewModel.featuredItems.isEmpty {
@@ -111,46 +133,24 @@ struct HomeView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         Color.clear.frame(height: 1).id(topId)
-                        FeedSearchField(
-                            text: $searchText,
-                            onSubmit: { viewModel.searchWithParsed($0) },
-                            onAITap: { showAIChat = true },
-                            topPadding: Theme.Spacing.xs
-                        )
-                        if let hint = viewModel.searchClosestMatchHint {
-                            HStack(spacing: Theme.Spacing.xs) {
-                                Image(systemName: "info.circle.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(Theme.primaryColor)
-                                Text(hint)
-                                    .font(Theme.Typography.caption)
-                                    .foregroundColor(Theme.Colors.secondaryText)
-                            }
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .padding(.vertical, Theme.Spacing.xs)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        categoryFiltersSection
+                        homePinnedHeader
                         featuredSection
                         productGridSection
+                        Color.clear.frame(height: Self.feedScrollBottomClearance)
                     }
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear.preference(
-                                key: ScrollMinYPreferenceKey.self,
-                                value: geo.frame(in: .named(homeScrollSpace)).minY
-                            )
-                        }
-                    )
                 }
-                .coordinateSpace(name: homeScrollSpace)
-                .scrollPosition(id: $scrollPosition, anchor: .top)
+                .background(Theme.Colors.background)
+                .contentMargins(.top, 0, for: .scrollContent)
+                .onScrollGeometryChange(for: CGFloat.self) { geo in
+                    -geo.contentOffset.y
+                } action: { _, scrollMinY in
+                    tabCoordinator.reportAtTop(tab: 0, isAtTop: scrollMinY > -Self.feedScrollTopSnap)
+                }
                 .overlay(alignment: .center) {
                     if let err = viewModel.errorMessage, !err.isEmpty {
                         FeedNetworkBannerView(message: err, title: viewModel.errorBannerTitle) {
                             Task { await viewModel.refreshAsync() }
                         }
-                        .padding(.horizontal, Theme.Spacing.lg)
                         .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .center)))
                     }
                 }
@@ -183,7 +183,7 @@ struct HomeView: View {
     // MARK: - Category Filters
     private var categoryFiltersSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Spacing.sm) {
+            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                 ForEach(categories, id: \.self) { category in
                     CategoryFilterButton(
                         title: L10n.string(category),
@@ -194,9 +194,14 @@ struct HomeView: View {
                     )
                 }
             }
-            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.leading, Theme.Spacing.md)
+            .padding(.trailing, Theme.Spacing.xl)
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, Theme.Spacing.sm)
+        .frame(maxHeight: Self.categoryChipScrollMaxHeight, alignment: .top)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.top, Theme.Spacing.sm)
+        .padding(.bottom, Self.chipRowBottomSpacing)
     }
 
     @ViewBuilder
@@ -226,7 +231,8 @@ struct HomeView: View {
             .allowsHitTesting(true)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .id("\(item.id)-\(item.isLiked)-\(item.likeCount)")
+        // Stable identity: including like state forced `LazyVGrid` to destroy/recreate cells and redraw strikethrough/text outside clips while scrolling.
+        .id(item.id)
         .onAppear {
             guard trackLoadMore else { return }
             if item.id == viewModel.filteredItems.suffix(4).first?.id {
@@ -253,6 +259,7 @@ struct HomeView: View {
                         }
                         .padding(.horizontal, Theme.Spacing.md)
                     }
+                    .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.bottom, Theme.Spacing.sm)
             }
@@ -286,7 +293,8 @@ struct HomeView: View {
             }
         }
         .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.md)
+        .padding(.top, 0)
+        .padding(.bottom, Theme.Spacing.md)
     }
 }
 
@@ -359,50 +367,50 @@ struct HomeItemCard: View {
             .padding(.horizontal, Theme.Spacing.xs)
             .padding(.bottom, Theme.Spacing.xs * 1.5)
             
-            // Image with like count overlay - fixed size container
-            GeometryReader { geometry in
-                let imageWidth = geometry.size.width
-                let imageHeight = imageWidth * 1.3 // 1:1.3 width:height ratio
-                
-                ZStack(alignment: .bottomTrailing) {
-                    // Background container - fixed size
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Theme.primaryColor.opacity(0.3),
-                                    Theme.primaryColor.opacity(0.1)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+            // Image: avoid a bare `GeometryReader` as the grid cell’s main flexible child (it confuses `LazyVGrid` sizing and can cause scroll clipping glitches). Resolve size from a fixed aspect-ratio slot, then measure inside the overlay.
+            Color.clear
+                .aspectRatio(1.0 / 1.3, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .overlay {
+                    GeometryReader { geometry in
+                        let imageWidth = geometry.size.width
+                        let imageHeight = geometry.size.height
+                        ZStack(alignment: .bottomTrailing) {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Theme.primaryColor.opacity(0.3),
+                                            Theme.primaryColor.opacity(0.1)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: imageWidth, height: imageHeight)
+                            RetryAsyncImage(
+                                url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
+                                width: imageWidth,
+                                height: imageHeight,
+                                cornerRadius: 8,
+                                placeholder: {
+                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                                        .frame(width: imageWidth, height: imageHeight)
+                                },
+                                failurePlaceholder: {
+                                    Image(systemName: "photo")
+                                        .font(.system(size: 40))
+                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                        .frame(width: imageWidth, height: imageHeight)
+                                }
                             )
-                        )
-                        .frame(width: imageWidth, height: imageHeight)
-                    
-                    // Product Image - fixed size container; retries once on load failure (e.g. in chat)
-                    RetryAsyncImage(
-                        url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
-                        width: imageWidth,
-                        height: imageHeight,
-                        cornerRadius: 8,
-                        placeholder: {
-                            ImageShimmerPlaceholderFilled(cornerRadius: 8)
-                                .frame(width: imageWidth, height: imageHeight)
-                        },
-                        failurePlaceholder: {
-                            Image(systemName: "photo")
-                                .font(.system(size: 40))
-                                .foregroundColor(Theme.primaryColor.opacity(0.5))
-                                .frame(width: imageWidth, height: imageHeight)
+                            if !hideLikeButton {
+                                likeButtonContent
+                            }
                         }
-                    )
-                    
-                    if !hideLikeButton {
-                        likeButtonContent
                     }
                 }
-            }
-            .aspectRatio(1.0/1.3, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             
             // Product details section with consistent spacing
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -425,7 +433,7 @@ struct HomeItemCard: View {
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
                 
-                // Price
+                // Price (clipped row: strikethrough decoration can paint slightly outside the line’s bounds during scroll)
                 HStack(spacing: Theme.Spacing.xs) {
                     if let originalPrice = item.originalPrice {
                         Text(item.formattedOriginalPrice)
@@ -450,6 +458,8 @@ struct HomeItemCard: View {
                             )
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
             }
             
             if showAddToBag {

@@ -54,7 +54,7 @@ struct Constants {
     /// Discover uses “trusted” vendor copy; there is **no** dedicated native “badge” settings screen—web article should state real eligibility from your business rules.
     static var helpArticleTrustedSellerURL: String { "\(publicWebsiteBaseURL)/help/trusted-seller" }
     
-    /// Backend API / legacy universal-link host (`/app/u/*`, `/join/` on API). **Do not** use for user-visible share copy—use `publicWebsiteBaseURL` and helpers below.
+    /// Backend API: GraphQL plus public HTML landings for `/item/*`, `/lookbook/*`, `/join/`, `/app/u/*` (Django `web_public`). Universal links / AASA are served here.
     static let universalLinksAPIBaseURL = "https://prelura.voltislabs.uk"
 
     /// Public profile URL for sharing, QR, and web (`/profile/{username}` on the consumer site).
@@ -68,8 +68,8 @@ struct Constants {
     /// Invite landing (SMS / contacts share). Consumer domain only.
     static var inviteFriendsLandingURL: String { "\(publicWebsiteBaseURL)/join/" }
 
-    /// Product and lookbook share links (`/item/…`, `/lookbook/…`) on the public site.
-    static var publicWebItemLinkBaseURL: String { publicWebsiteBaseURL }
+    /// Product and lookbook share links (`/item/…`, `/lookbook/…`). These paths are implemented on `universalLinksAPIBaseURL` only; `mywearhouse.co.uk` does not serve them (Safari would 404).
+    static var publicWebItemLinkBaseURL: String { universalLinksAPIBaseURL }
     
     // API Configuration
     static let apiTimeout: TimeInterval = 60.0

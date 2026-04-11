@@ -300,6 +300,7 @@ struct MainTabView: View {
                 .tabItem { Label(L10n.string("Profile"), systemImage: "person.fill") }
                 .tag(4)
         }
+        .tabBarMinimizeBehavior(.never)
         .accentColor(Theme.primaryColor)
         .environmentObject(shopAllBagStore)
         .environmentObject(SavedLookbookFavoritesStore.shared)

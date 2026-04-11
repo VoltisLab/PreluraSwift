@@ -344,8 +344,7 @@ private struct AnnOrderHelpSheet: View {
                     }
                     .padding(Theme.Spacing.md)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Theme.Colors.secondaryBackground)
-                    .cornerRadius(Theme.Glass.cornerRadius)
+                    .preluraDescriptionMatchedCard()
 
                     Text("What issue are you having?")
                         .font(Theme.Typography.body)

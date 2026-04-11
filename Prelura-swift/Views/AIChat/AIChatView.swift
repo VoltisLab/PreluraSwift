@@ -621,8 +621,7 @@ private struct OrderSliderCard: View {
                 .foregroundColor(Theme.Colors.secondaryText)
         }
         .padding(Theme.Spacing.sm)
-        .background(Theme.Colors.secondaryBackground)
-        .cornerRadius(Theme.Glass.cornerRadius)
+        .preluraDescriptionMatchedCard()
     }
 
     private var orderImage: some View {

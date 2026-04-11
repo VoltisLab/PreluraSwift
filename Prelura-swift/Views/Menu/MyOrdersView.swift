@@ -53,7 +53,7 @@ struct MyOrdersView: View {
                 }
                 .padding(.horizontal, Theme.Spacing.md)
             }
-            .padding(.bottom, Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.xl)
 
             if let err = errorMessage {
                 Text(err)
@@ -157,8 +157,7 @@ private struct OrderRowView: View {
                 .foregroundColor(Theme.Colors.secondaryText)
         }
         .padding(Theme.Spacing.md)
-        .background(Theme.Colors.secondaryBackground)
-        .cornerRadius(Theme.Glass.cornerRadius)
+        .preluraDescriptionMatchedCard()
     }
 
     private var orderImage: some View {

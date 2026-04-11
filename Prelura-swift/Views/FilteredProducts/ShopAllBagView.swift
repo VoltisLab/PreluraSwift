@@ -124,6 +124,9 @@ struct ShopAllBagView: View {
             .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
         }
         .padding(Theme.Spacing.sm)
-        .background(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius).fill(Theme.Colors.secondaryBackground))
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
+                .fill(Theme.Colors.secondaryBackground)
+        )
     }
 }

@@ -446,6 +446,7 @@ struct ChatRowView: View {
                 }
                 .frame(width: 50, height: 50)
                 .clipShape(Circle())
+                .circularAvatarHairlineBorder()
             } else {
                 Circle()
                     .fill(Theme.primaryColor)
@@ -455,6 +456,7 @@ struct ChatRowView: View {
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(.white)
                     )
+                    .circularAvatarHairlineBorder()
             }
             
             // Content

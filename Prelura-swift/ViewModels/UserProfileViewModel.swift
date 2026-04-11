@@ -7,6 +7,7 @@ class UserProfileViewModel: ObservableObject {
     @Published var items: [Item] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
+    @Published var errorBannerTitle: String?
     /// Follow state for other user's profile (synced from user.isFollowing on load, updated on toggle).
     @Published var isFollowing: Bool = false
     /// Followers count shown in header (synced from user, updated optimistically on follow/unfollow).
@@ -52,7 +53,7 @@ class UserProfileViewModel: ObservableObject {
     }
     
     private func loadProfileAndProducts() async {
-        await MainActor.run { isLoading = true; errorMessage = nil }
+        await MainActor.run { isLoading = true; errorMessage = nil; errorBannerTitle = nil }
         do {
             // Fetch full profile (bio, location, stats) for this username
             let profileUser = try await userService.getUserByUsername(user.username)
@@ -70,12 +71,13 @@ class UserProfileViewModel: ObservableObject {
             await MainActor.run {
                 self.isLoading = false
                 self.errorMessage = L10n.userFacingError(error)
+                self.errorBannerTitle = L10n.userFacingErrorBannerTitle(error)
             }
         }
     }
 
     private func loadProducts() async {
-        await MainActor.run { isLoading = true; errorMessage = nil; items = [] }
+        await MainActor.run { isLoading = true; errorMessage = nil; errorBannerTitle = nil; items = [] }
         do {
             let products = try await userService.getUserProducts(username: user.username)
             await MainActor.run {
@@ -86,6 +88,7 @@ class UserProfileViewModel: ObservableObject {
             await MainActor.run {
                 self.isLoading = false
                 self.errorMessage = L10n.userFacingError(error)
+                self.errorBannerTitle = L10n.userFacingErrorBannerTitle(error)
             }
         }
     }

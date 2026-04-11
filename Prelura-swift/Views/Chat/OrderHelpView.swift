@@ -176,7 +176,7 @@ private struct OrderTrackingCodeHelpView: View {
                         }
                         .padding(Theme.Spacing.md)
                         .background(Theme.Colors.secondaryBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                     } else {
                         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                             Image(systemName: "tray")
@@ -193,7 +193,7 @@ private struct OrderTrackingCodeHelpView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(Theme.Spacing.md)
                         .background(Theme.Colors.secondaryBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                     }
                 }
                 .padding(Theme.Spacing.md)

@@ -74,6 +74,11 @@ struct Theme {
                 ? Color.white.opacity(0.35)
                 : Color.black.opacity(0.2)
         }
+
+        /// Hairline stroke for circular list avatars (messages, notifications); follows system separator in light/dark.
+        static var avatarHairlineBorder: Color {
+            Color(uiColor: UIColor.separator)
+        }
     }
     
     // Glassmorphism Constants (menu container corner radius reduced by 40% from 18)
@@ -86,6 +91,10 @@ struct Theme {
         static let menuContainerCornerRadius: CGFloat = 12
         /// Corner radius for category/tag pills (unchanged by menu container reduction; keep pill-shaped)
         static let tagCornerRadius: CGFloat = 20
+        /// Multiline description editors in order-issue flows and secondary list/order row cards (My orders, bag lines, payment rows).
+        static let descriptionFieldCornerRadius: CGFloat = 30
+        /// Same continuous corner as description fields: dashboard KPI tiles, analytics cards, feed error banner, sheet search bars, delivery option cards.
+        static var bannerSurfaceCornerRadius: CGFloat { descriptionFieldCornerRadius }
         static let shadowRadius: CGFloat = 10
         static let shadowOpacity: Double = 0.1
     }
@@ -149,6 +158,15 @@ struct Theme {
         case "gold": return Color(hex: "D4AF37")
         case "navy": return Color(hex: "000080")
         default: return nil
+        }
+    }
+}
+
+extension View {
+    /// 1pt border on circular avatars; apply after `clipShape(Circle())` or on a fixed square circular avatar.
+    func circularAvatarHairlineBorder(lineWidth: CGFloat = 1) -> some View {
+        overlay {
+            Circle().stroke(Theme.Colors.avatarHairlineBorder, lineWidth: lineWidth)
         }
     }
 }

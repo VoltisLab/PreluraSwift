@@ -1510,6 +1510,11 @@ class UserService: ObservableObject {
             hasOpenOrderIssue
             cancelledOrder { status requestedBySeller }
             user { id username displayName profilePictureUrl }
+            reviews {
+              isAutoReview
+              reviewer { id }
+              reviewed { id }
+            }
             products {
               id
               name
@@ -1555,7 +1560,13 @@ class UserService: ObservableObject {
             let hasOpenOrderIssue: Bool?
             let cancelledOrder: CancelledOrderRow?
             let user: OrderUserRow?
+            let reviews: [OrderReviewRow]?
             let products: [OrderProductRow]?
+        }
+        struct OrderReviewRow: Decodable {
+            let isAutoReview: Bool?
+            let reviewer: OrderUserRow?
+            let reviewed: OrderUserRow?
         }
         struct CancelledOrderRow: Decodable {
             let status: String?
@@ -1682,6 +1693,12 @@ class UserService: ObservableObject {
                 guard let co = row.cancelledOrder, let st = co.status?.trimmingCharacters(in: .whitespacesAndNewlines), !st.isEmpty else { return nil }
                 return OrderCancellationSummary(status: st.uppercased(), requestedBySeller: co.requestedBySeller ?? false)
             }()
+            let orderReviews: [OrderReviewSummary] = (row.reviews ?? []).compactMap { rev in
+                let rv = (rev.reviewer?.id?.value as? Int) ?? (rev.reviewer?.id?.value as? String).flatMap { Int($0) }
+                let td = (rev.reviewed?.id?.value as? Int) ?? (rev.reviewed?.id?.value as? String).flatMap { Int($0) }
+                guard let rv, let td else { return nil }
+                return OrderReviewSummary(reviewerUserId: rv, reviewedUserId: td, isAutoReview: rev.isAutoReview ?? false)
+            }
             return Order(
                 id: idStr,
                 publicId: row.publicId,
@@ -1700,7 +1717,8 @@ class UserService: ObservableObject {
                 cancellation: cancellation,
                 buyerHasLeftReview: row.buyerHasLeftReview ?? false,
                 hasOpenOrderIssue: row.hasOpenOrderIssue ?? false,
-                deliveredAt: row.deliveredAt?.date
+                deliveredAt: row.deliveredAt?.date,
+                orderReviews: orderReviews
             )
         }
         let total = response.userOrdersTotalNumber?.intValue ?? 0
@@ -2570,6 +2588,13 @@ struct OrderCancellationSummary: Equatable, Sendable {
     let requestedBySeller: Bool
 }
 
+/// One edge from `OrderType.reviews` (userOrders): who rated whom.
+struct OrderReviewSummary: Equatable, Sendable {
+    let reviewerUserId: Int
+    let reviewedUserId: Int
+    let isAutoReview: Bool
+}
+
 /// Order from userOrders query. Used in My Orders list and detail.
 struct Order: Identifiable {
     let id: String
@@ -2595,6 +2620,8 @@ struct Order: Identifiable {
     let hasOpenOrderIssue: Bool
     /// When the order first reached DELIVERED (server); used for feedback window messaging.
     let deliveredAt: Date?
+    /// From `userOrders` → `reviews`; used to hide “rate buyer” after the seller has submitted.
+    let orderReviews: [OrderReviewSummary]
 
     init(
         id: String,
@@ -2614,7 +2641,8 @@ struct Order: Identifiable {
         cancellation: OrderCancellationSummary?,
         buyerHasLeftReview: Bool = false,
         hasOpenOrderIssue: Bool = false,
-        deliveredAt: Date? = nil
+        deliveredAt: Date? = nil,
+        orderReviews: [OrderReviewSummary] = []
     ) {
         self.id = id
         self.publicId = publicId
@@ -2634,6 +2662,7 @@ struct Order: Identifiable {
         self.buyerHasLeftReview = buyerHasLeftReview
         self.hasOpenOrderIssue = hasOpenOrderIssue
         self.deliveredAt = deliveredAt
+        self.orderReviews = orderReviews
     }
 
     /// Order ID for display: prefers backend `publicId` (e.g. PR23DG2DF3). Falls back when navigating from chat before hydration.

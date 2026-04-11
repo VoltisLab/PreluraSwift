@@ -157,6 +157,9 @@ struct DiscoverView: View {
                 shopByStyleAndLookbooksBanners
                     .padding(.top, max(0, Theme.Spacing.md - 10))
                     .padding(.bottom, Theme.Spacing.lg)
+                ContentDivider()
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.lg)
                 recentlyViewedSection
                 ContentDivider()
                     .padding(.horizontal, Theme.Spacing.md)

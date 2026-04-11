@@ -28,11 +28,13 @@ struct InboxMessageRow: View {
                         Circle()
                             .fill(Theme.primaryColor)
                             .frame(width: 50, height: 50)
-                        
+
                         Text(String(message.senderUsername.prefix(1)).uppercased())
                             .font(.system(size: 20, weight: .bold))
                             .foregroundColor(.white)
                     }
+                    .frame(width: 50, height: 50)
+                    .circularAvatarHairlineBorder()
                 }
             }
             

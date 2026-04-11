@@ -8,7 +8,6 @@ struct FeedNetworkBannerView: View {
     /// When set, shows a primary “Try again” action; otherwise shows a pull-to-refresh hint.
     var onTryAgain: (() -> Void)? = nil
 
-    private let cornerRadius: CGFloat = 24
     private let iconColumnSize: CGFloat = 56
     private let iconGlyphSize: CGFloat = 22
 
@@ -66,14 +65,16 @@ struct FeedNetworkBannerView: View {
         .padding(.vertical, Theme.Spacing.lg + 4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
                 .fill(Theme.Colors.chatInlineCardBackground)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
                 .strokeBorder(Theme.Colors.error.opacity(0.88), lineWidth: 1.5)
         )
         .shadow(color: Color.black.opacity(0.18), radius: 20, x: 0, y: 10)
+        /// Insets the card from screen edges; without this, `frame(maxWidth: .infinity)` paints edge-to-edge.
+        .padding(.horizontal, Theme.Spacing.lg)
     }
 }
 
@@ -82,8 +83,8 @@ struct FeedNetworkBannerView: View {
         message: L10n.string("Connection timed out. Please try again."),
         onTryAgain: {}
     )
-    .padding(.horizontal, Theme.Spacing.lg)
     .padding(.vertical)
+    .frame(maxWidth: .infinity)
     .background(Theme.Colors.background)
     .preferredColorScheme(.dark)
 }
@@ -92,8 +93,8 @@ struct FeedNetworkBannerView: View {
     FeedNetworkBannerView(
         message: L10n.string("Unable to connect. Please check your internet connection.")
     )
-    .padding(.horizontal, Theme.Spacing.lg)
     .padding(.vertical)
+    .frame(maxWidth: .infinity)
     .background(Theme.Colors.background)
     .preferredColorScheme(.dark)
 }

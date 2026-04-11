@@ -106,7 +106,7 @@ struct ReviewsView: View {
                 .fontWeight(.bold)
                 .foregroundColor(Theme.Colors.primaryText)
             HStack(spacing: Theme.Spacing.xs) {
-                StarRatingView(rating: rating, size: 15)
+                FractionalStarRatingDisplay(rating: rating, starSize: 15, spacing: 2)
                 Text("(\(totalNumber))")
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.secondaryText)
@@ -120,7 +120,7 @@ struct ReviewsView: View {
                     Text(String(format: "%.1f", averageRating(for: memberReviews)))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
-                    StarRatingView(rating: averageRating(for: memberReviews), size: 12)
+                    FractionalStarRatingDisplay(rating: averageRating(for: memberReviews), starSize: 12, spacing: 2)
                 }
                 HStack {
                     Text(L10n.string("Automatic reviews (%@)").replacingOccurrences(of: "%@", with: "\(automaticReviews.count)"))
@@ -130,7 +130,7 @@ struct ReviewsView: View {
                     Text(String(format: "%.1f", averageRating(for: automaticReviews)))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
-                    StarRatingView(rating: averageRating(for: automaticReviews), size: 12)
+                    FractionalStarRatingDisplay(rating: averageRating(for: automaticReviews), starSize: 12, spacing: 2)
                 }
             }
             .padding(.top, Theme.Spacing.sm)
@@ -180,7 +180,7 @@ struct ReviewsView: View {
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
-                StarRatingView(rating: Double(review.rating), size: 14)
+                FractionalStarRatingDisplay(rating: Double(review.rating), starSize: 14, spacing: 2)
                 Text(review.comment)
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.primaryText)
@@ -251,23 +251,6 @@ struct ReviewsView: View {
             await MainActor.run {
                 errorMessage = L10n.userFacingError(error)
                 reviews = []
-            }
-        }
-    }
-}
-
-// MARK: - Star rating (matches Flutter Ratings widget)
-private struct StarRatingView: View {
-    let rating: Double
-    var size: CGFloat = 15
-    private let starColor = Color(red: 1, green: 0.8, blue: 0) // amber/gold
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(1...5, id: \.self) { i in
-                Image(systemName: Double(i) <= rating ? "star.fill" : (Double(i) - 0.5 <= rating ? "star.leadinghalf.filled" : "star"))
-                    .font(.system(size: size))
-                    .foregroundColor(starColor)
             }
         }
     }

@@ -704,26 +704,35 @@ private struct LookbookFeedScreenView: View {
     }
 
     private func feedEmptyPlaceholder(minHeight: CGFloat) -> some View {
-        VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 48))
-                .foregroundColor(Theme.Colors.secondaryText)
-            Text(L10n.string("No Lookbook posts yet"))
-                .font(Theme.Typography.title3)
-                .foregroundColor(Theme.Colors.primaryText)
-            Text(L10n.string("Upload from the menu to add your first look."))
-                .font(Theme.Typography.subheadline)
-                .foregroundColor(Theme.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Theme.Spacing.xl)
+        Group {
             if let err = feedError, !err.isEmpty {
-                FeedNetworkBannerView(message: err, title: feedErrorBannerTitle) {
-                    loadFeedFromServer()
+                VStack {
+                    Spacer(minLength: 0)
+                    FeedNetworkBannerView(message: err, title: feedErrorBannerTitle) {
+                        loadFeedFromServer()
+                    }
+                    Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minHeight: max(minHeight, 200))
+            } else {
+                VStack(spacing: Theme.Spacing.md) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 48))
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    Text(L10n.string("No Lookbook posts yet"))
+                        .font(Theme.Typography.title3)
+                        .foregroundColor(Theme.Colors.primaryText)
+                    Text(L10n.string("Upload from the menu to add your first look."))
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, Theme.Spacing.xl)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minHeight: max(minHeight, 200))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .frame(minHeight: max(minHeight, 200))
     }
 
     @ViewBuilder
@@ -1143,26 +1152,35 @@ private struct LookbookMyItemsScreenView: View {
     }
 
     private var myItemsEmpty: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "tray")
-                .font(.system(size: 48))
-                .foregroundColor(Theme.Colors.secondaryText)
-            Text(L10n.string("No uploads yet"))
-                .font(Theme.Typography.title3)
-                .foregroundColor(Theme.Colors.primaryText)
-            Text(L10n.string("Post a look from the plus button — it will show up here."))
-                .font(Theme.Typography.subheadline)
-                .foregroundColor(Theme.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Theme.Spacing.xl)
+        Group {
             if let err = feedError, !err.isEmpty {
-                FeedNetworkBannerView(message: err, title: feedErrorBannerTitle) {
-                    loadFeedFromServer()
+                VStack {
+                    Spacer(minLength: 0)
+                    FeedNetworkBannerView(message: err, title: feedErrorBannerTitle) {
+                        loadFeedFromServer()
+                    }
+                    Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, Theme.Spacing.xl)
+            } else {
+                VStack(spacing: Theme.Spacing.md) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 48))
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    Text(L10n.string("No uploads yet"))
+                        .font(Theme.Typography.title3)
+                        .foregroundColor(Theme.Colors.primaryText)
+                    Text(L10n.string("Post a look from the plus button — it will show up here."))
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, Theme.Spacing.xl)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, Theme.Spacing.xl)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.top, Theme.Spacing.xl)
     }
 
     private func loadFeedFromServer() {
@@ -1293,37 +1311,46 @@ private struct LookbookTopicFeedView: View {
     }
 
     private func topicEmptyPlaceholder(allLoadedEmpty: Bool) -> some View {
-        VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 48))
-                .foregroundColor(Theme.Colors.secondaryText)
-            if allLoadedEmpty {
-                Text("No lookbooks yet")
-                    .font(Theme.Typography.title3)
-                    .foregroundColor(Theme.Colors.primaryText)
-                Text("Upload from the menu to add your first look.")
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, Theme.Spacing.xl)
-            } else {
-                Text("No lookbooks here yet")
-                    .font(Theme.Typography.title3)
-                    .foregroundColor(Theme.Colors.primaryText)
-                Text("Nothing matches this topic right now. Check back soon.")
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, Theme.Spacing.xl)
-            }
+        Group {
             if let err = feedError, !err.isEmpty {
-                FeedNetworkBannerView(message: err, title: feedErrorBannerTitle) {
-                    loadFeedFromServer()
+                VStack {
+                    Spacer(minLength: 0)
+                    FeedNetworkBannerView(message: err, title: feedErrorBannerTitle) {
+                        loadFeedFromServer()
+                    }
+                    Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, Theme.Spacing.xl)
+            } else {
+                VStack(spacing: Theme.Spacing.md) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 48))
+                        .foregroundColor(Theme.Colors.secondaryText)
+                    if allLoadedEmpty {
+                        Text("No lookbooks yet")
+                            .font(Theme.Typography.title3)
+                            .foregroundColor(Theme.Colors.primaryText)
+                        Text("Upload from the menu to add your first look.")
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, Theme.Spacing.xl)
+                    } else {
+                        Text("No lookbooks here yet")
+                            .font(Theme.Typography.title3)
+                            .foregroundColor(Theme.Colors.primaryText)
+                        Text("Nothing matches this topic right now. Check back soon.")
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, Theme.Spacing.xl)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, Theme.Spacing.xl)
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, Theme.Spacing.xl)
     }
 
     private func topicFeedRow(model: LookbookFeedRowModel) -> some View {
@@ -1716,50 +1743,72 @@ private struct LookbookFeedOnlyShimmerView: View {
 
 private struct LookbookPostCardShimmer: View {
     private let mediaAspect: CGFloat = lookbookFeedAsyncImagePlaceholderAspect
+    private let avatarSize: CGFloat = 40
+    /// Matches trailing `…` menu in `LookbookFeedRowView` (44×44 content shape).
+    private let menuPlaceholderSide: CGFloat = 44
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: Theme.Spacing.sm) {
+            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
                 Circle()
                     .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 40, height: 40)
-                VStack(alignment: .leading, spacing: 6) {
+                    .frame(width: avatarSize, height: avatarSize)
+                VStack(alignment: .leading, spacing: 2) {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(Theme.Colors.secondaryBackground)
-                        .frame(width: 120, height: 14)
+                        .frame(width: 120, height: 15)
                     RoundedRectangle(cornerRadius: 4)
                         .fill(Theme.Colors.secondaryBackground)
-                        .frame(width: 80, height: 11)
+                        .frame(width: 88, height: 12)
                 }
-                Spacer()
+                Spacer(minLength: 0)
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: menuPlaceholderSide, height: menuPlaceholderSide)
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, 10)
 
-            RoundedRectangle(cornerRadius: 0)
-                .fill(Theme.Colors.secondaryBackground)
+            // Full-bleed portrait slot (same layout trick as `mediaBlock` / `Color.clear` + aspect in feed rows — avoids a centered “floating” tile in `LazyVStack`).
+            Color.clear
                 .aspectRatio(mediaAspect, contentMode: .fit)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 0)
+                        .fill(Theme.Colors.secondaryBackground)
+                }
                 .frame(maxWidth: .infinity)
+                .clipped()
 
-            HStack(spacing: Theme.Spacing.md) {
+            // `LookbookFeedPostActionBar`: like + count, comment + count, send (44), spacer, bookmark (44).
+            HStack(alignment: .center, spacing: 0) {
+                HStack(spacing: Theme.Spacing.md) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(width: 56, height: 14)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(width: 48, height: 14)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(width: 20, height: 20)
+                }
+                .frame(minHeight: 44, alignment: .center)
+                Spacer(minLength: Theme.Spacing.sm)
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 48, height: 16)
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 24, height: 16)
-                Spacer()
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 56, height: 16)
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 22, height: 16)
+                    .frame(width: 20, height: 20)
+                    .frame(width: 44, height: 44)
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, 10)
-            Divider().background(Theme.Colors.glassBorder.opacity(0.5)).padding(.leading, Theme.Spacing.md)
+            .background(Theme.Colors.background)
+
+            Rectangle()
+                .fill(Theme.Colors.glassBorder.opacity(0.35))
+                .frame(height: 0.5)
+                .padding(.leading, Theme.Spacing.md)
         }
+        .background(Theme.Colors.background)
         .padding(.bottom, lookbookSpacing)
     }
 }
@@ -3485,7 +3534,7 @@ struct LookbookSearchSheet: View {
                 }
                 .padding(Theme.Spacing.sm)
                 .background(Theme.Colors.secondaryBackground)
-                .cornerRadius(10)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.sm)
 

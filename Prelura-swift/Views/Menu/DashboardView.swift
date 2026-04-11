@@ -116,7 +116,7 @@ private struct KPICard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.secondaryBackground)
-        .cornerRadius(8)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
     }
 }
 
@@ -617,7 +617,7 @@ private struct StatListDemo: View {
         }
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.secondaryBackground)
-        .cornerRadius(8)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
     }
 }
 
@@ -638,7 +638,7 @@ private struct LeaderboardDemo: View {
         }
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.secondaryBackground)
-        .cornerRadius(8)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
     }
 }
 
@@ -666,7 +666,7 @@ private struct DataTableDemo: View {
         }
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.secondaryBackground)
-        .cornerRadius(8)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
     }
 }
 
