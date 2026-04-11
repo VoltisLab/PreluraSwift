@@ -155,8 +155,9 @@ enum L10n {
         "Greek displays the app in Greek.": "Η γλώσσα Ελληνικά εμφανίζει την εφαρμογή στα Ελληνικά.",
 
         // About WEARHOUSE
-        "How to use WEARHOUSE": "Πώς να χρησιμοποιήσετε το WEARHOUSE",
-        "Legal Information": "Νομικές πληροφορίες",
+        "About us": "Σχετικά με εμάς",
+        "Terms": "Όροι",
+        "Privacy Policy": "Πολιτική απορρήτου",
 
         // Help Centre
         "Got a burning question?": "Έχετε κάποια ερώτηση;",

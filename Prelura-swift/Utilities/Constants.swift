@@ -18,17 +18,12 @@ struct Constants {
     /// Consumer marketing site: legal HTML, help articles. Host these paths on **mywearhouse.co.uk** (or adjust here if routes differ).
     static let publicWebsiteBaseURL = "https://mywearhouse.co.uk"
 
-    // Legal (in-app **Legal Information** → WebView)
-    static var termsAndConditionsURL: String { "\(publicWebsiteBaseURL)/terms/" }
-    static var privacyPolicyURL: String { "\(publicWebsiteBaseURL)/privacy/" }
-    static var acknowledgementsURL: String { "\(publicWebsiteBaseURL)/acknowledgements/" }
-    /// Official HMRC fraud reporting (unchanged).
-    static let hmrcReportingURL = "https://www.gov.uk/government/organisations/hm-revenue-customs/contact/report-fraud-or-an-untrustworthy-website"
+    // About WEARHOUSE screen (flat list → WebView on mywearhouse.co.uk)
+    static var aboutUsURL: String { "\(publicWebsiteBaseURL)/about" }
+    static var termsAndConditionsURL: String { "\(publicWebsiteBaseURL)/about" }
+    static var privacyPolicyURL: String { "\(publicWebsiteBaseURL)/privacy" }
 
     // MARK: - Help Centre (paths must exist on `publicWebsiteBaseURL`; each comment ties the article to native app behaviour)
-
-    /// **About → How to use Wearhouse** (replaces placeholder scroll copy).
-    static var helpHowToUseWearhouseURL: String { "\(publicWebsiteBaseURL)/help/how-to-use" }
 
     /// **UserService.cancelOrder**, **sellerRequestOrderCancellation**, **approveOrderCancellation** / **rejectOrderCancellation**; buyer/seller flows in **OrderDetailView**.
     static var helpArticleCancelOrderURL: String { "\(publicWebsiteBaseURL)/help/cancel-order" }

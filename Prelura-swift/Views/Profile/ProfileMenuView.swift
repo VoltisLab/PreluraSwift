@@ -216,15 +216,18 @@ struct ShippingMenuView: View {
     }
 }
 
-// MARK: - Submenu: About Wearhouse. Presented as pushed destination.
+// MARK: - Submenu: About WEARHOUSE. Flat links to mywearhouse.co.uk (no nested Legal screen).
 struct AboutWearhouseMenuView: View {
     var body: some View {
         List {
-            NavigationLink(destination: HowToUseWearhouseView()) {
-                aboutRow(L10n.string("How to use WEARHOUSE"), icon: "book")
+            NavigationLink(destination: HostedWebArticleView(title: L10n.string("About us"), urlString: Constants.aboutUsURL)) {
+                aboutRow(L10n.string("About us"), icon: "info.circle")
             }
-            NavigationLink(destination: LegalInformationView()) {
-                aboutRow(L10n.string("Legal Information"), icon: "doc.text")
+            NavigationLink(destination: HostedWebArticleView(title: L10n.string("Terms"), urlString: Constants.termsAndConditionsURL)) {
+                aboutRow(L10n.string("Terms"), icon: "doc.text")
+            }
+            NavigationLink(destination: HostedWebArticleView(title: L10n.string("Privacy Policy"), urlString: Constants.privacyPolicyURL)) {
+                aboutRow(L10n.string("Privacy Policy"), icon: "lock.shield")
             }
         }
         .listStyle(.insetGrouped)
@@ -233,7 +236,7 @@ struct AboutWearhouseMenuView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }
-    
+
     private func aboutRow(_ title: String, icon: String) -> some View {
         HStack(spacing: Theme.Spacing.md) {
             Image(systemName: icon)
