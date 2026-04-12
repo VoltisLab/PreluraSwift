@@ -2,6 +2,12 @@ import SwiftUI
 
 /// Short labels for like/comment counts on lookbook feed rows so wide numbers do not clip the action bar.
 enum LookbookFeedEngagementCountFormatting {
+    /// Full phrase for comment count labels (e.g. feed preview line, accessibility).
+    static func fullCommentCountPhrase(_ n: Int) -> String {
+        if n == 1 { return L10n.string("1 comment") }
+        return String(format: L10n.string("%d comments"), n)
+    }
+
     static func short(_ n: Int) -> String {
         if n < 1000 { return "\(n)" }
         if n >= 1_000_000 {

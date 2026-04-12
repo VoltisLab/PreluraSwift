@@ -267,6 +267,8 @@ enum L10n {
         "No looks match your search.": "Δεν ταιριάζει κανένα look με την αναζήτησή σας.",
         "No comments yet": "Δεν υπάρχουν σχόλια ακόμα",
         "Comments": "Σχόλια",
+        "1 comment": "1 σχόλιο",
+        "%d comments": "%d σχόλια",
         "Add a comment": "Πρόσθεσε σχόλιο",
         "Send": "Αποστολή",
         "Reply": "Απάντηση",

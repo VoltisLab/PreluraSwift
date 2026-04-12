@@ -22,7 +22,6 @@ private struct CommentSheetTarget: Identifiable, Hashable {
 
 struct DebugLookbookFeedSandboxView: View {
     private let actionIconSize: CGFloat = 20
-    private let likeCountSize: CGFloat = 14
 
     @State private var rows: [DebugSandboxFeedRow] = [
         DebugSandboxFeedRow(
@@ -167,8 +166,9 @@ struct DebugLookbookFeedSandboxView: View {
 
     @ViewBuilder
     private func sandboxActionBar(index: Int, row: DebugSandboxFeedRow) -> some View {
+        let clusterSpacing = max(4, (Theme.Spacing.md * 3 / 10).rounded())
         HStack(alignment: .center, spacing: 0) {
-            HStack(alignment: .center, spacing: Theme.Spacing.md) {
+            HStack(alignment: .center, spacing: clusterSpacing) {
                 LikeButtonView(
                     isLiked: row.liked,
                     likeCount: row.likeCount,
@@ -183,19 +183,11 @@ struct DebugLookbookFeedSandboxView: View {
                     commentDraft = ""
                     commentSheetTarget = CommentSheetTarget(id: row.id)
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "bubble.right")
-                            .font(.system(size: actionIconSize, weight: .medium))
-                            .foregroundStyle(Theme.Colors.primaryText)
-                        Text(LookbookFeedEngagementCountFormatting.short(row.commentsCount))
-                            .font(.system(size: likeCountSize, weight: .medium))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.Colors.primaryText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                    }
-                    .frame(minHeight: 44)
-                    .contentShape(Rectangle())
+                    Image(systemName: "bubble.right")
+                        .font(.system(size: actionIconSize, weight: .medium))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
