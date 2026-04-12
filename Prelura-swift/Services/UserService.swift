@@ -1517,8 +1517,17 @@ class UserService: ObservableObject {
             deliveredAt
             buyerHasLeftReview
             hasOpenOrderIssue
+            issues {
+              id
+              publicId
+              issueType
+              description
+              status
+              createdAt
+            }
             cancelledOrder { status requestedBySeller }
             user { id username displayName profilePictureUrl }
+            seller { id username displayName profilePictureUrl }
             reviews {
               isAutoReview
               reviewer { id }
@@ -1550,6 +1559,14 @@ class UserService: ObservableObject {
             let userOrders: [OrderRow]?
             let userOrdersTotalNumber: IntOrString?
         }
+        /// `OrderType.issues` row from `userOrders`.
+        struct OrderIssueListRow: Decodable {
+            let id: AnyCodable?
+            let publicId: String?
+            let issueType: String?
+            let description: String?
+            let status: String?
+        }
         struct OrderRow: Decodable {
             let id: AnyCodable?
             let publicId: String?
@@ -1567,8 +1584,10 @@ class UserService: ObservableObject {
             let deliveredAt: DateStringOrTimestamp?
             let buyerHasLeftReview: Bool?
             let hasOpenOrderIssue: Bool?
+            let issues: [OrderIssueListRow]?
             let cancelledOrder: CancelledOrderRow?
             let user: OrderUserRow?
+            let seller: OrderUserRow?
             let reviews: [OrderReviewRow]?
             let products: [OrderProductRow]?
         }
@@ -1663,7 +1682,9 @@ class UserService: ObservableObject {
         let orders = rows.compactMap { row -> Order? in
             guard let idVal = row.id?.value else { return nil }
             let idStr = (idVal as? Int).map { String($0) } ?? (idVal as? String) ?? String(describing: idVal)
-            let otherParty: User? = row.user.map { u in
+            // Sold: counterparty is buyer (`user`). Bought: counterparty is seller (`seller`).
+            let counterpartyRow: OrderUserRow? = isSeller ? row.user : row.seller
+            let otherParty: User? = counterpartyRow.map { u in
                 let uid = (u.id?.value as? Int) ?? (u.id?.value as? String).flatMap { Int($0) }
                 return User(
                     userId: uid,
@@ -1708,6 +1729,19 @@ class UserService: ObservableObject {
                 guard let rv, let td else { return nil }
                 return OrderReviewSummary(reviewerUserId: rv, reviewedUserId: td, isAutoReview: rev.isAutoReview ?? false)
             }
+            let openOrderIssue: OrderOpenIssueSummary? = {
+                let pending = (row.issues ?? []).first { ($0.status ?? "").uppercased() == "PENDING" }
+                guard let p = pending else { return nil }
+                let iid = (p.id?.value as? Int) ?? (p.id?.value as? String).flatMap { Int($0) }
+                guard let iid else { return nil }
+                return OrderOpenIssueSummary(
+                    issueId: iid,
+                    publicId: p.publicId,
+                    issueType: p.issueType ?? "",
+                    description: p.description ?? "",
+                    status: p.status ?? "PENDING"
+                )
+            }()
             return Order(
                 id: idStr,
                 publicId: row.publicId,
@@ -1727,7 +1761,8 @@ class UserService: ObservableObject {
                 buyerHasLeftReview: row.buyerHasLeftReview ?? false,
                 hasOpenOrderIssue: row.hasOpenOrderIssue ?? false,
                 deliveredAt: row.deliveredAt?.date,
-                orderReviews: orderReviews
+                orderReviews: orderReviews,
+                openOrderIssue: openOrderIssue
             )
         }
         let total = response.userOrdersTotalNumber?.intValue ?? 0
@@ -2604,6 +2639,15 @@ struct OrderReviewSummary: Equatable, Sendable {
     let isAutoReview: Bool
 }
 
+/// First open (PENDING) issue from `userOrders` → `issues`, for order-detail summary UI.
+struct OrderOpenIssueSummary: Equatable, Sendable {
+    let issueId: Int
+    let publicId: String?
+    let issueType: String
+    let description: String
+    let status: String
+}
+
 /// Order from userOrders query. Used in My Orders list and detail.
 struct Order: Identifiable {
     let id: String
@@ -2631,6 +2675,8 @@ struct Order: Identifiable {
     let deliveredAt: Date?
     /// From `userOrders` → `reviews`; used to hide “rate buyer” after the seller has submitted.
     let orderReviews: [OrderReviewSummary]
+    /// First PENDING issue from `issues` when present (detail + “View report”).
+    let openOrderIssue: OrderOpenIssueSummary?
 
     init(
         id: String,
@@ -2651,7 +2697,8 @@ struct Order: Identifiable {
         buyerHasLeftReview: Bool = false,
         hasOpenOrderIssue: Bool = false,
         deliveredAt: Date? = nil,
-        orderReviews: [OrderReviewSummary] = []
+        orderReviews: [OrderReviewSummary] = [],
+        openOrderIssue: OrderOpenIssueSummary? = nil
     ) {
         self.id = id
         self.publicId = publicId
@@ -2672,6 +2719,7 @@ struct Order: Identifiable {
         self.hasOpenOrderIssue = hasOpenOrderIssue
         self.deliveredAt = deliveredAt
         self.orderReviews = orderReviews
+        self.openOrderIssue = openOrderIssue
     }
 
     /// Order ID for display: prefers backend `publicId` (e.g. PR23DG2DF3). Falls back when navigating from chat before hydration.
