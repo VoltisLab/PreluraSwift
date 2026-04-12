@@ -55,7 +55,6 @@ struct HomeView: View {
                     }
                 }
             }
-            .toolbarBackground(Theme.Colors.background, for: .navigationBar)
             // Same system search as Debug (`appStandardSearchable` → `navigationBarDrawer`); smooth nav-bar transitions are handled by SwiftUI, not a custom toolbar field.
             .appStandardSearchable(
                 text: $viewModel.searchText,
@@ -71,6 +70,7 @@ struct HomeView: View {
                     viewModel.reloadFeedAfterSearchEmptied()
                 }
             }
+            .preluraNavigationBarChrome()
     }
 
     private var homeChromeAndLifecycle: some View {

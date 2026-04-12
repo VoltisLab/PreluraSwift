@@ -406,38 +406,41 @@ struct FilteredProductsView: View {
             }
 
             // Pill tags for main categories (Women, Men, Boys, Girls): Condition, Style, Colour, Price
+            // Match Shop-by-style: `ScrollViewReader` + `fixedSize` so the horizontal `ScrollView` does not over-expand vertically and inflate the measured header (gap under Filter/Sort).
             if case .byParentCategory = filterType {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        PillTag(
-                            title: L10n.string("Condition"),
-                            isSelected: viewModel.filterCondition != nil,
-                            accentWhenUnselected: true,
-                            action: { activeSheet = .filter }
-                        )
-                        PillTag(
-                            title: L10n.string("Style"),
-                            isSelected: false,
-                            accentWhenUnselected: true,
-                            action: { activeSheet = .filter }
-                        )
-                        PillTag(
-                            title: L10n.string("Colour"),
-                            isSelected: false,
-                            accentWhenUnselected: true,
-                            action: { activeSheet = .filter }
-                        )
-                        PillTag(
-                            title: L10n.string("Price"),
-                            isSelected: !viewModel.filterMinPrice.isEmpty || !viewModel.filterMaxPrice.isEmpty,
-                            accentWhenUnselected: true,
-                            action: { activeSheet = .filter }
-                        )
+                ScrollViewReader { _ in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            PillTag(
+                                title: L10n.string("Condition"),
+                                isSelected: viewModel.filterCondition != nil,
+                                accentWhenUnselected: true,
+                                action: { activeSheet = .filter }
+                            )
+                            PillTag(
+                                title: L10n.string("Style"),
+                                isSelected: false,
+                                accentWhenUnselected: true,
+                                action: { activeSheet = .filter }
+                            )
+                            PillTag(
+                                title: L10n.string("Colour"),
+                                isSelected: false,
+                                accentWhenUnselected: true,
+                                action: { activeSheet = .filter }
+                            )
+                            PillTag(
+                                title: L10n.string("Price"),
+                                isSelected: !viewModel.filterMinPrice.isEmpty || !viewModel.filterMaxPrice.isEmpty,
+                                accentWhenUnselected: true,
+                                action: { activeSheet = .filter }
+                            )
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
                     }
-                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Self.filterPageChipTopInset)
+                    .padding(.bottom, Self.filterPageChipBottomInset)
                 }
-                .padding(.top, Self.filterPageChipTopInset)
-                .padding(.bottom, Self.filterPageChipBottomInset)
                 .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -480,6 +483,11 @@ struct FilteredProductsView: View {
             .padding(.bottom, Self.filterPageFilterRowBottomInset)
             .background(isVintageRetroShop ? Color.clear : Theme.Colors.background)
         }
+        .background(
+            GeometryReader { g in
+                Color.clear.preference(key: FilteredProductsHeaderHeightKey.self, value: g.size.height)
+            }
+        )
     }
 
     /// Placeholder before `GeometryReader` measures the real header (wrong default caused a gap under the filter row or clipped the first grid row).
@@ -488,7 +496,8 @@ struct FilteredProductsView: View {
         case .shopAllVintageLocked: return 96
         case .tryCartSearch: return 132
         case .shopByStyle: return 100
-        case .byParentCategory: return 124
+        /// Same chrome stack as Shop by style (one chip row + Filter/Sort); keep fallback aligned so the grid does not sit low before measurement arrives.
+        case .byParentCategory: return 100
         case .onSale, .shopBargains, .recentlyViewed, .brandsYouLove, .byBrand, .bySize:
             /// Filter + sort row only; tuned with `normalizedHeaderMeasurement` slack trim.
             return 48
@@ -531,11 +540,6 @@ struct FilteredProductsView: View {
                 .background(isVintageRetroShop ? Color.clear : Theme.Colors.background)
                 .offset(y: showProductsTopChrome ? 0 : -resolvedProductsHeaderHeight)
                 .allowsHitTesting(showProductsTopChrome)
-                .background(
-                    GeometryReader { g in
-                        Color.clear.preference(key: FilteredProductsHeaderHeightKey.self, value: g.size.height)
-                    }
-                )
         }
         .onPreferenceChange(FilteredProductsHeaderHeightKey.self) { productsHeaderHeight = $0 }
         .onPreferenceChange(ScrollMinYPreferenceKey.self) { minY in

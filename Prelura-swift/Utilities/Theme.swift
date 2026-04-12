@@ -188,6 +188,14 @@ extension View {
             prompt: prompt
         )
     }
+
+    /// Keeps the navigation bar from flashing the wrong scheme or material while scrolling (notably with `.searchable` + `.navigationBarDrawer`).
+    func preluraNavigationBarChrome() -> some View {
+        self
+            .toolbarBackground(Theme.Colors.background, for: .navigationBar)
+            .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+            .toolbarColorScheme(Theme.effectiveColorScheme, for: .navigationBar)
+    }
 }
 
 // Color extension for hex support

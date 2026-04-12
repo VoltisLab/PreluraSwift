@@ -36,6 +36,9 @@ struct MenuView: View {
                         .cornerRadius(4)
                 }
             }
+            NavigationLink(destination: ForumHubView()) {
+                menuRow(L10n.string("Community Forum"), icon: "bubble.left.and.bubble.right")
+            }
             if isStaffUser {
                 NavigationLink(destination: AdminMenuView()) {
                     menuRow(L10n.string("Admin Dashboard"), icon: "gearshape.2")

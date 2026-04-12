@@ -113,7 +113,9 @@ struct OrderDetailView: View {
                         leaveReviewSectionIfNeeded
 
                         if canShowBuyerOrderHelp, !suppressBuyerHelpAndCancelActions {
-                            if shouldPickProductBeforeOrderHelp {
+                            if effectiveOrder.hasOpenOrderIssue {
+                                buyerReportedProblemSummary
+                            } else if shouldPickProductBeforeOrderHelp {
                                 Button {
                                     showMultibuyProblemProductPicker = true
                                 } label: {
@@ -369,6 +371,76 @@ struct OrderDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
             }
             .buttonStyle(PlainTappableButtonStyle())
+        }
+    }
+
+    /// Replaces “I have a problem” when `hasOpenOrderIssue` (buyer already reported).
+    @ViewBuilder
+    private var buyerReportedProblemSummary: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "exclamationmark.bubble.fill")
+                    .foregroundColor(Theme.primaryColor)
+                Text(L10n.string("Problem reported"))
+                    .font(Theme.Typography.body.weight(.semibold))
+                    .foregroundColor(Theme.Colors.primaryText)
+            }
+            Text(L10n.string("You already reported a problem for this order. You cannot submit another report while it is open."))
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            if let issue = effectiveOrder.openOrderIssue {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text("\(L10n.string("Type")): \(humanizedOrderIssueType(issue.issueType))")
+                    if !issue.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(issue.description)
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.primaryText)
+                            .lineLimit(5)
+                    }
+                    Text("\(L10n.string("Status")): \(buyerReportedProblemStatusLabel(issue.status))")
+                }
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+                NavigationLink(destination: OrderIssueDetailView(issueId: issue.issueId, publicId: issue.publicId)) {
+                    HStack {
+                        Text(L10n.string("View report details"))
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.primaryColor)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.Colors.secondaryText)
+                    }
+                    .padding(Theme.Spacing.md)
+                    .background(Theme.Colors.tertiaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
+                }
+                .buttonStyle(PlainTappableButtonStyle())
+            } else {
+                Text(L10n.string("This order is on hold until the report is resolved."))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Spacing.md)
+        .background(Theme.Colors.secondaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
+    }
+
+    private func humanizedOrderIssueType(_ raw: String) -> String {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return "—" }
+        return t.replacingOccurrences(of: "_", with: " ").lowercased().capitalized
+    }
+
+    private func buyerReportedProblemStatusLabel(_ status: String) -> String {
+        switch status.uppercased() {
+        case "PENDING": return L10n.string("On hold — under review")
+        case "RESOLVED": return L10n.string("Resolved")
+        case "DECLINED": return L10n.string("Declined")
+        default: return status
         }
     }
 
@@ -1007,6 +1079,7 @@ struct OrderDetailView: View {
     /// Show "Cancel order" when: buyer view, order not yet delivered/cancelled/refunded, no open cancellation request.
     private var canShowCancelOrder: Bool {
         guard isSeller == false else { return false }
+        guard !effectiveOrder.hasOpenOrderIssue else { return false }
         guard !hasPendingCancellation else { return false }
         let tracking = effectiveOrder.trackingNumber?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !tracking.isEmpty { return false }

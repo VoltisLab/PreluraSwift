@@ -66,6 +66,14 @@ enum L10n {
         "Shop Categories": "Κατηγορίες Καταστήματος",
         "Orders": "Παραγγελίες",
         "Order details": "Λεπτομέρειες παραγγελίας",
+        "Problem reported": "Αναφέρθηκε πρόβλημα",
+        "You already reported a problem for this order. You cannot submit another report while it is open.": "Έχετε ήδη αναφέρει πρόβλημα για αυτή την παραγγελία. Δεν μπορείτε να υποβάλετε νέα αναφορά όσο είναι ανοιχτή.",
+        "View report details": "Προβολή λεπτομερειών αναφοράς",
+        "On hold — under review": "Σε αναμονή — υπό έλεγχο",
+        "This order is on hold until the report is resolved.": "Η παραγγελία είναι σε αναμονή μέχρι να επιλυθεί η αναφορά.",
+        "Type": "Τύπος",
+        "Resolved": "Επιλύθηκε",
+        "Declined": "Απορρίφθηκε",
         "Leave a review": "Αφήστε κριτική",
         "Thanks! Your review was submitted.": "Ευχαριστούμε! Η κριτική σας υποβλήθηκε.",
         "Rating": "Βαθμολογία",
@@ -197,6 +205,8 @@ enum L10n {
 
         // Menu (navigation)
         "Menu": "Μενού",
+        "The forum is not available on this server yet. Deploy the latest backend and run migrations, then try again.":
+            "Το φόρουμ δεν είναι διαθέσιμο σε αυτόν τον διακομιστή ακόμα. Αναπτύξτε το πιο πρόσφατο backend και εκτελέστε migrations, μετά δοκιμάστε ξανά.",
         "© WEARHOUSE 2026": "© WEARHOUSE 2026",
         "© Voltis Labs 2026": "© Voltis Labs 2026",
         "Debug": "Εντοπισμός σφαλμάτων",
@@ -663,6 +673,7 @@ enum L10n {
         "Reactions": "Αντιδράσεις",
         "Search emojis": "Αναζήτηση emoji",
         "No matching emojis": "Δεν βρέθηκαν emoji",
+
     ]
 }
 
