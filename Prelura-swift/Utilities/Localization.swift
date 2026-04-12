@@ -69,6 +69,7 @@ enum L10n {
         "Leave a review": "Αφήστε κριτική",
         "Rating": "Βαθμολογία",
         "What went well?": "Τι πήγε καλά;",
+        "Comment (optional)": "Σχόλιο (προαιρετικό)",
         "Fast delivery": "Γρήγορη παράδοση",
         "Item as described": "Όπως στην περιγραφή",
         "Great communication": "Άριστη επικοινωνία",
@@ -80,6 +81,18 @@ enum L10n {
         "Polite and friendly": "Ευγενικός και φιλικός",
         "Would sell again": "Θα ξαναπουλούσα",
         "Easy to work with": "Εύκολη συνεργασία",
+        "Tap to rate": "Πατήστε για βαθμολογία",
+        "Very poor": "Πολύ κακή",
+        "Poor": "Κακή",
+        "Below average": "Κάτω του μέσου όρου",
+        "Fair": "Μέτρια",
+        "Okay": "Αρκετά καλή",
+        "Good": "Καλή",
+        "Very good": "Πολύ καλή",
+        "Great": "Υπέροχη",
+        "Excellent": "Εξαιρετική",
+        "Perfect": "Τέλεια",
+        "Submit": "Υποβολή",
         "Select item": "Επιλογή προϊόντος",
         "Which item is your issue about? Choose one to continue.": "Ποιο προϊόν αφορά το πρόβλημά σας; Επιλέξτε ένα για να συνεχίσετε.",
         "Favourites": "Αγαπημένα",
@@ -174,12 +187,20 @@ enum L10n {
         "No matching topics": "Δεν βρέθηκαν σχετικά θέματα",
         "Start a conversation": "Ξεκινήστε συνομιλία",
         "e.g. How do I change my profile photo?": "π.χ. Πώς αλλάζω τη φωτογραφία προφίλ μου;",
+        "Tap a row for details. Opening a type plays it once.": "Πατήστε μια γραμμή για λεπτομέρειες. Το άνοιγμα ενός τύπου τον αναπαράγει μία φορά.",
+        "Impact & selection": "Κραδασμός & επιλογή",
+        "Notification feedback": "Ειδοποίηση (haptic)",
+        "Haptics": "Απτική ανάδραση",
+        "Play again": "Αναπαραγωγή",
+        "Where it's used": "Πού χρησιμοποιείται",
 
         // Menu (navigation)
         "Menu": "Μενού",
         "© WEARHOUSE 2026": "© WEARHOUSE 2026",
         "© Voltis Labs 2026": "© Voltis Labs 2026",
         "Debug": "Εντοπισμός σφαλμάτων",
+        "Search debug tools": "Αναζήτηση εργαλείων debug",
+        "No matching tools": "Δεν βρέθηκαν εργαλεία",
 
         // Home
         "Search items, brands or styles": "Αναζήτηση προϊόντων, εμπορικών σημάτων ή στυλ",
@@ -215,6 +236,18 @@ enum L10n {
         "Search favourites": "Αναζήτηση αγαπημένων",
         "Search saved photos": "Αναζήτηση αποθηκευμένων φωτογραφιών",
         "Search saved lookbooks": "Αναζήτηση αποθηκευμένων lookbook",
+        "Search lookbook folders": "Αναζήτηση φακέλων lookbook",
+        "No lookbook folders yet": "Δεν υπάρχουν φάκελοι lookbook ακόμα",
+        "Save looks from the feed — you can organize them into folders.": "Αποθηκεύστε εμφανίσεις από τη ροή — μπορείτε να τις οργανώσετε σε φακέλους.",
+        "Save to folder": "Αποθήκευση σε φάκελο",
+        "My saves": "Οι αποθηκεύσεις μου",
+        "New folder": "Νέος φάκελος",
+        "Folder name": "Όνομα φακέλου",
+        "You can add the same look to more than one folder.": "Μπορείτε να προσθέσετε την ίδια εμφάνιση σε περισσότερους από έναν φάκελο.",
+        "Saved to %@": "Αποθηκεύτηκε στο %@",
+        "Remove from folder": "Αφαίρεση από φάκελο",
+        "No saves in this folder": "Δεν υπάρχει αποθήκευση σε αυτόν τον φάκελο",
+        "Save looks from the feed into this folder.": "Αποθηκεύστε εμφανίσεις από τη ροή σε αυτόν τον φάκελο.",
         "Lookbook": "Lookbook",
         "Lookbook settings": "Ρυθμίσεις Lookbook",
         "Lookbook hub settings subtitle": "Προτιμήσεις και επιλογές για το Lookbook.",
@@ -228,6 +261,10 @@ enum L10n {
         "Photo": "Φωτογραφία",
         "Lookbook": "Lookbook",
         "No Lookbook posts yet": "Δεν υπάρχουν δημοσιεύσεις Lookbook ακόμα",
+        "Search": "Αναζήτηση",
+        "Lookbook post": "Δημοσίευση Lookbook",
+        "Search topics, hashtags, styles…": "Αναζήτηση θεμάτων, hashtag, στυλ…",
+        "No looks match your search.": "Δεν ταιριάζει κανένα look με την αναζήτησή σας.",
         "No comments yet": "Δεν υπάρχουν σχόλια ακόμα",
         "Comments": "Σχόλια",
         "Add a comment": "Πρόσθεσε σχόλιο",
@@ -237,6 +274,7 @@ enum L10n {
         "Delete this comment?": "Διαγραφή αυτού του σχολίου;",
         "This will remove your comment and any replies under it.": "Θα αφαιρεθεί το σχόλιό σας και τυχόν απαντήσεις κάτω από αυτό.",
         "Lookbook upload": "Μεταφόρτωση Lookbook",
+        "Create": "Δημιουργία",
         "Create a post": "Δημιουργία δημοσίευσης",
         "Profile, account, notifications, and more.": "Προφίλ, λογαριασμός, ειδοποιήσεις και άλλα.",
         "Upload photos, crop your look, and share it with followers.": "Ανέβασε φωτογραφίες, κόψε το look σου και μοιράσου το με τους ακόλουθούς σου.",
@@ -257,6 +295,8 @@ enum L10n {
         "Retro": "Ρετρό",
         "This is where to shop vintage finds.": "Εδώ αγοράζετε επιλεγμένα vintage κομμάτια.",
         "Reviews": "Κριτικές",
+        "Members": "Μέλη",
+        "Automatic": "Αυτόματες",
         "Location": "Τοποθεσία",
         "N/A": "Μ/Δ",
         "Categories": "Κατηγορίες",
@@ -689,6 +729,26 @@ extension L10n {
         }
         return L10n.string("Something went wrong. Please try again.")
     }
+
+    /// Human-readable line under interactive order-review stars (0…5 in half-star steps).
+    static func orderReviewRatingSubtitle(for rating: Double) -> String {
+        let step = min(10, max(0, Int((rating * 2).rounded())))
+        return string(orderReviewRatingKeys[step])
+    }
+
+    private static let orderReviewRatingKeys: [String] = [
+        "Tap to rate",
+        "Very poor",
+        "Poor",
+        "Below average",
+        "Fair",
+        "Okay",
+        "Good",
+        "Very good",
+        "Great",
+        "Excellent",
+        "Perfect",
+    ]
 
     /// Avoid exposing decoding paths, HTTP codes, and GraphQL plumbing in production UI.
     private static func userFacingMessageForGraphQLError(_ error: Error) -> String? {

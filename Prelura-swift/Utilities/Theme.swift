@@ -120,7 +120,7 @@ struct Theme {
     struct AppBar {
         static let horizontalPadding: CGFloat = Spacing.md
         static let verticalPadding: CGFloat = Spacing.sm
-        static let buttonSize: CGFloat = 44
+        static let buttonSize: CGFloat = 52
     }
     
     // Typography

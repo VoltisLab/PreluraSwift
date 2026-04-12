@@ -119,8 +119,8 @@ struct NotificationToolbarBellVisual: View {
         self.kind = .shopper(unreadCount: max(0, unreadCount))
     }
 
-    /// Wider than the 44pt glass so the count badge stays inside the bar item (nav chrome clips overflow).
-    private static let toolbarCanvasWidth: CGFloat = 56
+    /// Wider canvas so the count badge stays inside the bar item (nav chrome clips overflow).
+    private static let toolbarCanvasWidth: CGFloat = 62
     private static let toolbarCanvasHeight: CGFloat = 52
     /// Nudge badge onto the bell rim so it meets the glyph (was pinned to outer canvas and looked “floating”).
     private static let bellBadgeRimNudgeX: CGFloat = -3
@@ -132,12 +132,12 @@ struct NotificationToolbarBellVisual: View {
                 Image(systemName: "bell")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(Theme.Colors.primaryText)
-                    .frame(width: 44, height: 44)
+                    .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
                     .contentShape(Rectangle())
                 badgeLayer
                     .offset(x: Self.bellBadgeRimNudgeX, y: Self.bellBadgeRimNudgeY)
             }
-            .frame(width: 44, height: 44)
+            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
         }
         .frame(width: Self.toolbarCanvasWidth, height: Self.toolbarCanvasHeight)
     }
