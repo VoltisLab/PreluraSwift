@@ -104,28 +104,48 @@ class HomeViewModel: ObservableObject {
         Task {
             do {
                 let categoryFilter = selectedCategory == "All" ? nil : selectedCategory
-                async let featuredTask = productService.getDiscoverFeaturedProducts()
-                let products = try await productService.getAllProducts(
-                    pageNumber: currentPage,
-                    pageCount: pageSize,
-                    parentCategory: categoryFilter
-                )
-                let visible = products.excludingVacationModeSellers().excludingSold()
-                await MainActor.run {
-                    self.allItems = visible
-                    self.filteredItems = visible
-                    self.isLoading = false
-                    self.hasMorePages = products.count >= pageSize
-                }
-                let featured = (try? await featuredTask) ?? []
-                await MainActor.run {
-                    self.featuredItems = Self.featuredSectionItems(from: featured)
+                let search = searchText.isEmpty ? nil : searchText
+                let hideFeatured = !(search ?? "").isEmpty
+                if hideFeatured {
+                    let products = try await productService.getAllProducts(
+                        pageNumber: currentPage,
+                        pageCount: pageSize,
+                        search: search,
+                        parentCategory: categoryFilter
+                    )
+                    let visible = products.excludingVacationModeSellers().excludingSold()
+                    await MainActor.run {
+                        self.featuredItems = []
+                        self.allItems = visible
+                        self.filteredItems = visible
+                        self.isLoading = false
+                        self.hasMorePages = products.count >= pageSize
+                    }
+                } else {
+                    async let featuredTask = productService.getDiscoverFeaturedProducts()
+                    let products = try await productService.getAllProducts(
+                        pageNumber: currentPage,
+                        pageCount: pageSize,
+                        search: nil,
+                        parentCategory: categoryFilter
+                    )
+                    let visible = products.excludingVacationModeSellers().excludingSold()
+                    await MainActor.run {
+                        self.allItems = visible
+                        self.filteredItems = visible
+                        self.isLoading = false
+                        self.hasMorePages = products.count >= pageSize
+                    }
+                    let featured = (try? await featuredTask) ?? []
+                    await MainActor.run {
+                        self.featuredItems = Self.featuredSectionItems(from: featured)
+                    }
                 }
             } catch {
                 await MainActor.run {
                     self.isLoading = false
                     self.setNetworkError(error)
-                    print("❌ Error loading products: \(error.localizedDescription)")
+                    print("Error loading products: \(error.localizedDescription)")
                 }
             }
         }
@@ -159,7 +179,7 @@ class HomeViewModel: ObservableObject {
                 await MainActor.run {
                     self.isLoadingMore = false
                     self.currentPage -= 1 // Revert page increment on error
-                    print("❌ Load more error: \(error.localizedDescription)")
+                    print("Load more error: \(error.localizedDescription)")
                 }
             }
         }
@@ -171,9 +191,16 @@ class HomeViewModel: ObservableObject {
         runSearch(search: query.isEmpty ? nil : query, category: selectedCategory)
     }
     
+    /// Clears the home search field and reloads the default feed (featured + first page).
+    func clearSearchAndReload() {
+        searchText = ""
+        searchClosestMatchHint = nil
+        loadData()
+    }
+
     /// Run search using AI-parsed result (colours/categories resolved; hint for "closest to").
     func searchWithParsed(_ parsed: ParsedSearch) {
-        searchText = parsed.searchText
+        // Keep the user's typed text in the field; only the network query uses parsed terms.
         searchClosestMatchHint = parsed.closestMatchHint
         if let cat = parsed.categoryOverride, !cat.isEmpty {
             selectedCategory = cat
@@ -238,7 +265,7 @@ class HomeViewModel: ObservableObject {
     
     func filterByCategory(_ category: String) {
         selectedCategory = category
-        // Reload data with new category filter
+        // Reload with new category; keep an active search query if the user is searching.
         currentPage = 1
         hasMorePages = true
         isLoading = true
@@ -247,28 +274,48 @@ class HomeViewModel: ObservableObject {
         Task {
             do {
                 let categoryFilter = selectedCategory == "All" ? nil : selectedCategory
-                async let featuredTask = productService.getDiscoverFeaturedProducts()
-                let products = try await productService.getAllProducts(
-                    pageNumber: currentPage,
-                    pageCount: pageSize,
-                    parentCategory: categoryFilter
-                )
-                let visible = products.excludingVacationModeSellers().excludingSold()
-                await MainActor.run {
-                    self.allItems = visible
-                    self.filteredItems = visible
-                    self.isLoading = false
-                    self.hasMorePages = products.count >= pageSize
-                }
-                let featured = (try? await featuredTask) ?? []
-                await MainActor.run {
-                    self.featuredItems = Self.featuredSectionItems(from: featured)
+                let search = searchText.isEmpty ? nil : searchText
+                let hideFeatured = !(search ?? "").isEmpty
+                if hideFeatured {
+                    let products = try await productService.getAllProducts(
+                        pageNumber: currentPage,
+                        pageCount: pageSize,
+                        search: search,
+                        parentCategory: categoryFilter
+                    )
+                    let visible = products.excludingVacationModeSellers().excludingSold()
+                    await MainActor.run {
+                        self.featuredItems = []
+                        self.allItems = visible
+                        self.filteredItems = visible
+                        self.isLoading = false
+                        self.hasMorePages = products.count >= pageSize
+                    }
+                } else {
+                    async let featuredTask = productService.getDiscoverFeaturedProducts()
+                    let products = try await productService.getAllProducts(
+                        pageNumber: currentPage,
+                        pageCount: pageSize,
+                        search: nil,
+                        parentCategory: categoryFilter
+                    )
+                    let visible = products.excludingVacationModeSellers().excludingSold()
+                    await MainActor.run {
+                        self.allItems = visible
+                        self.filteredItems = visible
+                        self.isLoading = false
+                        self.hasMorePages = products.count >= pageSize
+                    }
+                    let featured = (try? await featuredTask) ?? []
+                    await MainActor.run {
+                        self.featuredItems = Self.featuredSectionItems(from: featured)
+                    }
                 }
             } catch {
                 await MainActor.run {
                     self.isLoading = false
                     self.setNetworkError(error)
-                    print("❌ Error filtering by category '\(category)': \(error.localizedDescription)")
+                    print("Error filtering by category '\(category)': \(error.localizedDescription)")
                 }
             }
         }
@@ -353,7 +400,7 @@ class HomeViewModel: ObservableObject {
                     }
                 } catch {
                     await MainActor.run {
-                        print("❌ Search error: \(error.localizedDescription)")
+                        print("Search error: \(error.localizedDescription)")
                         // Fallback to client-side filtering
                         filtered = filtered.filter {
                             $0.title.localizedCaseInsensitiveContains(searchText) ||

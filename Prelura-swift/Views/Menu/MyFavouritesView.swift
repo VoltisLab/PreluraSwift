@@ -16,6 +16,9 @@ struct MyFavouritesView: View {
     @State private var errorMessage: String?
     @State private var currentPage = 1
     @State private var isLoadingMore = false
+    @State private var lookbookFolderSelectionMode = false
+    @State private var selectedLookbookFolderIds: Set<String> = []
+    @State private var confirmDeleteSelectedFolders = false
 
     private let productService = ProductService()
     private let pageCount = 20
@@ -23,15 +26,11 @@ struct MyFavouritesView: View {
         GridItem(.flexible(), spacing: Theme.Spacing.md),
         GridItem(.flexible(), spacing: Theme.Spacing.md)
     ]
-    /// Tight spacing for an Instagram-style profile grid (edge-to-edge).
-    private let lookbookGridSpacing: CGFloat = 1
-    private var lookbookGridColumns: [GridItem] {
-        [
-            GridItem(.flexible(), spacing: lookbookGridSpacing),
-            GridItem(.flexible(), spacing: lookbookGridSpacing),
-            GridItem(.flexible(), spacing: lookbookGridSpacing)
-        ]
-    }
+    /// Two folder tiles per row (square thumbs, banner corner radius).
+    private let lookbookFolderGridColumns = [
+        GridItem(.flexible(), spacing: Theme.Spacing.md),
+        GridItem(.flexible(), spacing: Theme.Spacing.md)
+    ]
 
     private var isProductsTab: Bool { favouritesSegment == 0 }
 
@@ -41,13 +40,15 @@ struct MyFavouritesView: View {
         return items.filter { $0.title.lowercased().contains(q) }
     }
 
-    private var filteredSavedPhotos: [SavedLookbookPhoto] {
-        let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        let base = savedLookbookFavorites.photos
-        if q.isEmpty { return base }
-        return base.filter {
-            $0.posterUsername.lowercased().contains(q)
-            || ($0.caption ?? "").lowercased().contains(q)
+    private var filteredLookbookFolders: [LookbookSaveFolder] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let sorted = savedLookbookFavorites.folders.sorted { $0.createdAt > $1.createdAt }
+        if q.isEmpty { return sorted }
+        return sorted.filter { folder in
+            if folder.name.lowercased().contains(q) { return true }
+            return savedLookbookFavorites.orderedPhotos(in: folder.id).contains {
+                $0.posterUsername.lowercased().contains(q) || ($0.caption ?? "").lowercased().contains(q)
+            }
         }
     }
 
@@ -64,7 +65,7 @@ struct MyFavouritesView: View {
 
             DiscoverSearchField(
                 text: $searchText,
-                placeholder: isProductsTab ? L10n.string("Search favourites") : L10n.string("Search saved lookbooks"),
+                placeholder: isProductsTab ? L10n.string("Search favourites") : L10n.string("Search lookbook folders"),
                 topPadding: Theme.Spacing.xs
             )
 
@@ -93,6 +94,28 @@ struct MyFavouritesView: View {
                     .buttonStyle(PlainTappableButtonStyle())
                     .accessibilityLabel("Toggle shopping bag mode")
                 }
+            } else if !filteredLookbookFolders.isEmpty {
+                if lookbookFolderSelectionMode {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(L10n.string("Done")) {
+                            lookbookFolderSelectionMode = false
+                            selectedLookbookFolderIds.removeAll()
+                        }
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(L10n.string("Delete")) {
+                            confirmDeleteSelectedFolders = true
+                        }
+                        .disabled(selectedLookbookFolderIds.isEmpty)
+                    }
+                } else {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(L10n.string("Select")) {
+                            lookbookFolderSelectionMode = true
+                            selectedLookbookFolderIds.removeAll()
+                        }
+                    }
+                }
             }
         }
         .overlay(alignment: .bottom) {
@@ -107,6 +130,27 @@ struct MyFavouritesView: View {
         }
         .task {
             await load(resetPage: true)
+        }
+        .onChange(of: favouritesSegment) { _, newValue in
+            if newValue == 0 {
+                lookbookFolderSelectionMode = false
+                selectedLookbookFolderIds.removeAll()
+            }
+        }
+        .confirmationDialog(
+            L10n.string("Delete selected folders?"),
+            isPresented: $confirmDeleteSelectedFolders,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.string("Delete"), role: .destructive) {
+                let ids = Array(selectedLookbookFolderIds)
+                _ = savedLookbookFavorites.deleteFolders(withIds: ids)
+                lookbookFolderSelectionMode = false
+                selectedLookbookFolderIds.removeAll()
+            }
+            Button(L10n.string("Cancel"), role: .cancel) {}
+        } message: {
+            Text(L10n.string("This will delete the selected folders and every look saved inside them. This can't be undone."))
         }
     }
 
@@ -162,6 +206,7 @@ struct MyFavouritesView: View {
                             HomeItemCard(
                                 item: item,
                                 onLikeTap: { unfavourite(item) },
+                                squareImageSlot: true,
                                 showAddToBag: shopAllBagToolbarActive,
                                 onAddToBag: shopAllBagToolbarActive
                                     ? {
@@ -200,13 +245,13 @@ struct MyFavouritesView: View {
 
     @ViewBuilder
     private var photosTabContent: some View {
-        if filteredSavedPhotos.isEmpty {
+        if filteredLookbookFolders.isEmpty {
             Spacer()
             VStack(spacing: Theme.Spacing.md) {
-                Text(L10n.string("No saved Lookbook photos yet"))
+                Text(L10n.string("No lookbook folders yet"))
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.primaryText)
-                Text(L10n.string("Lookbook photos you save from the feed appear here."))
+                Text(L10n.string("Save looks from the feed — you can organize them into folders."))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
                     .multilineTextAlignment(.center)
@@ -215,45 +260,96 @@ struct MyFavouritesView: View {
             Spacer()
         } else {
             ScrollView {
-                LazyVGrid(columns: lookbookGridColumns, alignment: .leading, spacing: lookbookGridSpacing, pinnedViews: []) {
-                    ForEach(filteredSavedPhotos) { photo in
-                        NavigationLink(
-                            destination: SavedLookbookFavoritesFeedView(
-                                orderedPhotoIds: filteredSavedPhotos.map(\.id),
-                                initialPhotoId: photo.id
-                            )
-                            .environmentObject(savedLookbookFavorites)
-                        ) {
-                            savedPhotoGridCell(photo)
+                LazyVGrid(columns: lookbookFolderGridColumns, alignment: .leading, spacing: Theme.Spacing.md, pinnedViews: []) {
+                    ForEach(filteredLookbookFolders) { folder in
+                        if lookbookFolderSelectionMode {
+                            Button {
+                                HapticManager.selection()
+                                if selectedLookbookFolderIds.contains(folder.id) {
+                                    selectedLookbookFolderIds.remove(folder.id)
+                                } else {
+                                    selectedLookbookFolderIds.insert(folder.id)
+                                }
+                            } label: {
+                                lookbookFolderGridCell(folder, isSelected: selectedLookbookFolderIds.contains(folder.id))
+                            }
+                            .buttonStyle(PlainTappableButtonStyle())
+                        } else {
+                            NavigationLink(
+                                destination: SavedLookbookFavoritesFeedView(folderId: folder.id, initialPhotoId: nil)
+                                    .environmentObject(authService)
+                                    .environmentObject(savedLookbookFavorites)
+                            ) {
+                                lookbookFolderGridCell(folder, isSelected: false)
+                            }
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
-                        .buttonStyle(PlainTappableButtonStyle())
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.lg)
             }
         }
     }
 
-    private func savedPhotoGridCell(_ photo: SavedLookbookPhoto) -> some View {
-        Group {
-            if let url = URL(string: photo.imageUrl) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFill()
-                    case .failure, .empty:
-                        Rectangle().fill(Theme.Colors.secondaryBackground)
-                    @unknown default:
-                        Rectangle().fill(Theme.Colors.secondaryBackground)
+    private func lookbookFolderGridCell(_ folder: LookbookSaveFolder, isSelected: Bool) -> some View {
+        let cover = savedLookbookFavorites.coverImageURL(for: folder.id)
+        return VStack(alignment: .center, spacing: Theme.Spacing.sm) {
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    if let cover, let url = URL(string: cover), !cover.isEmpty {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let img):
+                                img
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                            case .failure, .empty:
+                                folderPlaceholder
+                            @unknown default:
+                                folderPlaceholder
+                            }
+                        }
+                    } else {
+                        folderPlaceholder
                     }
                 }
-            } else {
-                Rectangle().fill(Theme.Colors.secondaryBackground)
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fill)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
+                        .strokeBorder(isSelected ? Theme.primaryColor : Color.clear, lineWidth: 3)
+                }
+
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.white, Theme.primaryColor)
+                        .padding(8)
+                }
             }
+
+            Text(folder.name)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Theme.Colors.primaryText)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
         }
-        .aspectRatio(1, contentMode: .fill)
-        .clipped()
-        .contentShape(Rectangle())
+    }
+
+    private var folderPlaceholder: some View {
+        ZStack {
+            Theme.Colors.secondaryBackground
+            Image(systemName: "bookmark")
+                .font(.system(size: 28, weight: .medium))
+                .foregroundStyle(Theme.Colors.tertiaryText)
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
     }
 
     /// Same as Shop All Try Cart: tap opens `ShopAllBagView` → Checkout → `PaymentView`.
@@ -340,118 +436,403 @@ struct MyFavouritesView: View {
     }
 }
 
-// MARK: - Saved Lookbook feed (vertical scroll from grid tap)
+// MARK: - Saved Lookbook folder feed (grid / list switcher)
 
 private struct SavedLookbookFavoritesFeedView: View {
-    /// Order matches the favourites grid / search results; rows resolve from the store so removes update live.
-    let orderedPhotoIds: [String]
-    let initialPhotoId: String?
+    let folderId: String
+    var initialPhotoId: String?
+    @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
+    @State private var useGrid = false
+    @State private var pendingScrollId: String?
+    @State private var feedEntries: [LookbookEntry] = []
+    @State private var followedCommentBoostUsernames: Set<String> = []
+    @State private var commentsEntry: LookbookEntry?
+    @State private var selectedProductId: ProductIdNavigator?
+    @State private var removeConfirmPostId: String?
+    @State private var isSaveSelectionMode = false
+    @State private var selectedSaveIds: Set<String> = []
+    @State private var confirmBulkRemoveSaves = false
 
-    private let feedBlockSpacing: CGFloat = 16
+    private let lookbookListRowBottomPadding: CGFloat = 16
+    private let gridGutter: CGFloat = 2
 
     private var photos: [SavedLookbookPhoto] {
-        let byId = Dictionary(uniqueKeysWithValues: savedLookbookFavorites.photos.map { ($0.id, $0) })
-        return orderedPhotoIds.compactMap { byId[$0] }
+        savedLookbookFavorites.orderedPhotos(in: folderId)
     }
 
+    /// When this changes (add/remove/reorder), rebuild rows from the store; avoids wiping in-memory like counts on unrelated store updates.
+    private var folderPhotoIdsSignature: String {
+        photos.map(\.id).joined(separator: "\u{1E}")
+    }
+
+    private var folderDisplayName: String {
+        savedLookbookFavorites.folders.first { $0.id == folderId }?.name ?? ""
+    }
+
+    private var gridColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: gridGutter),
+            GridItem(.flexible(), spacing: gridGutter),
+            GridItem(.flexible(), spacing: gridGutter)
+        ]
+    }
+
+    private let productService = ProductService()
+
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: feedBlockSpacing) {
-                    ForEach(photos) { photo in
-                        savedLookbookFeedBlock(photo)
-                            .id(photo.id)
+        Group {
+            if photos.isEmpty {
+                ContentUnavailableView(
+                    L10n.string("No saves in this folder"),
+                    systemImage: "bookmark",
+                    description: Text(L10n.string("Save looks from the feed into this folder."))
+                )
+            } else if useGrid {
+                ScrollView {
+                    LazyVGrid(columns: gridColumns, spacing: gridGutter, pinnedViews: []) {
+                        ForEach(photos) { photo in
+                            gridThumbSelectable(photo)
+                        }
                     }
+                    .padding(2)
                 }
-                .padding(.bottom, Theme.Spacing.xl)
-            }
-            .onAppear {
-                guard let id = initialPhotoId else { return }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        proxy.scrollTo(id, anchor: .top)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LookbookScrollImmediateTouchesAnchor()
+                            .frame(width: 0, height: 0)
+                        LazyVStack(spacing: 0) {
+                            ForEach(buildLookbookFeedRows(from: feedEntries)) { model in
+                                HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                                    if isSaveSelectionMode {
+                                        Image(systemName: selectedSaveIds.contains(model.entry.apiPostId) ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 22, weight: .medium))
+                                            .foregroundStyle(
+                                                selectedSaveIds.contains(model.entry.apiPostId) ? Theme.primaryColor : Theme.Colors.secondaryText
+                                            )
+                                            .padding(.leading, Theme.Spacing.sm)
+                                            .padding(.top, Theme.Spacing.lg)
+                                    }
+                                    LookbookFeedRowView(
+                                        entry: model.entry,
+                                        followedCommentBoostUsernames: followedCommentBoostUsernames,
+                                        onCommentsTap: { commentsEntry = $0 },
+                                        onProductTap: { selectedProductId = ProductIdNavigator(id: $0) },
+                                        onPostDeleted: nil,
+                                        onOpenAnalytics: nil,
+                                        onLikeTap: { tapped in
+                                            handleLookbookFeedLikeTap(tapped, authService: authService, entries: $feedEntries)
+                                        },
+                                        onRemoveFromFolder: isSaveSelectionMode
+                                            ? nil
+                                            : {
+                                                removeConfirmPostId = model.entry.apiPostId
+                                            }
+                                    )
+                                    .allowsHitTesting(!isSaveSelectionMode)
+                                    .padding(.bottom, lookbookListRowBottomPadding)
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    guard isSaveSelectionMode else { return }
+                                    HapticManager.selection()
+                                    let id = model.entry.apiPostId
+                                    if selectedSaveIds.contains(id) {
+                                        selectedSaveIds.remove(id)
+                                    } else {
+                                        selectedSaveIds.insert(id)
+                                    }
+                                }
+                                .id(model.entry.apiPostId)
+                            }
+                        }
+                        .padding(.bottom, Theme.Spacing.xl)
+                    }
+                    .scrollContentBackground(.hidden)
+                    .onAppear {
+                        let target = initialPhotoId ?? pendingScrollId
+                        guard let id = target else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                proxy.scrollTo(id, anchor: .top)
+                            }
+                        }
+                        pendingScrollId = nil
                     }
                 }
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("Lookbook"))
+        .navigationTitle(folderDisplayName.isEmpty ? L10n.string("Lookbook") : folderDisplayName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !photos.isEmpty {
+                if isSaveSelectionMode {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(L10n.string("Done")) {
+                            isSaveSelectionMode = false
+                            selectedSaveIds.removeAll()
+                        }
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(L10n.string("Delete")) {
+                            confirmBulkRemoveSaves = true
+                        }
+                        .disabled(selectedSaveIds.isEmpty)
+                    }
+                } else {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            HapticManager.selection()
+                            useGrid.toggle()
+                        } label: {
+                            Image(systemName: useGrid ? "list.bullet" : "square.grid.3x3")
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundStyle(Theme.Colors.primaryText)
+                        }
+                        .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(L10n.string("Select")) {
+                            isSaveSelectionMode = true
+                            selectedSaveIds.removeAll()
+                        }
+                    }
+                }
+            }
+        }
+        .onAppear {
+            productService.updateAuthToken(authService.authToken)
+            reloadFeedEntriesFromStore()
+        }
+        .onChange(of: folderId) { _, _ in reloadFeedEntriesFromStore() }
+        .onChange(of: folderPhotoIdsSignature) { _, _ in reloadFeedEntriesFromStore() }
+        .task {
+            let client = GraphQLClient()
+            client.setAuthToken(authService.authToken)
+            followedCommentBoostUsernames = await lookbookLoadFollowedUsernamesForFeedComments(
+                authService: authService,
+                graphQLClient: client
+            )
+        }
+        .sheet(item: $commentsEntry) { entry in
+            LookbookCommentsSheet(entry: entry) { newCount in
+                let key = entry.apiPostId.lowercased()
+                if let idx = feedEntries.firstIndex(where: { $0.apiPostId.lowercased() == key }) {
+                    var updated = feedEntries[idx]
+                    updated.commentsCount = newCount
+                    feedEntries[idx] = updated
+                }
+            }
+            .lookbookCommentsPresentationChrome()
+        }
+        .navigationDestination(item: $selectedProductId) { nav in
+            LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
+        }
+        .confirmationDialog(
+            L10n.string("Remove from this folder?"),
+            isPresented: Binding(
+                get: { removeConfirmPostId != nil },
+                set: { if !$0 { removeConfirmPostId = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(L10n.string("Remove"), role: .destructive) {
+                if let id = removeConfirmPostId {
+                    savedLookbookFavorites.removePost(postId: id, fromFolder: folderId)
+                }
+                removeConfirmPostId = nil
+            }
+            Button(L10n.string("Cancel"), role: .cancel) {}
+        } message: {
+            Text(L10n.string("This look will be removed from this folder only."))
+        }
+        .confirmationDialog(
+            L10n.string("Remove selected looks?"),
+            isPresented: $confirmBulkRemoveSaves,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.string("Remove"), role: .destructive) {
+                let ids = Array(selectedSaveIds)
+                for pid in ids {
+                    savedLookbookFavorites.removePost(postId: pid, fromFolder: folderId)
+                }
+                isSaveSelectionMode = false
+                selectedSaveIds.removeAll()
+            }
+            Button(L10n.string("Cancel"), role: .cancel) {}
+        } message: {
+            Text(L10n.string("These looks will be removed from this folder only."))
+        }
+    }
+
+    private func reloadFeedEntriesFromStore() {
+        feedEntries = savedLookbookFavorites.orderedPhotos(in: folderId).map { $0.asLookbookEntryForFeed() }
     }
 
     @ViewBuilder
-    private func savedLookbookFeedBlock(_ photo: SavedLookbookPhoto) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(spacing: Theme.Spacing.sm) {
-                Circle()
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 36, height: 36)
-                    .overlay {
-                        Text(String(photo.posterUsername.prefix(1)).uppercased())
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Theme.Colors.primaryText)
-                    }
-                Text("@\(photo.posterUsername)")
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.top, Theme.Spacing.xs)
-
+    private func gridThumb(_ photo: SavedLookbookPhoto) -> some View {
+        Group {
             if let url = URL(string: photo.imageUrl) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let img):
-                        img
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity)
-                    case .failure:
-                        feedImagePlaceholder
-                    case .empty:
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, Theme.Spacing.xxl)
-                    @unknown default:
-                        feedImagePlaceholder
+                        img.resizable().scaledToFill()
+                    default:
+                        Rectangle().fill(Theme.Colors.secondaryBackground)
                     }
                 }
             } else {
-                feedImagePlaceholder
+                Rectangle().fill(Theme.Colors.secondaryBackground)
             }
-
-            if let cap = photo.caption?.trimmingCharacters(in: .whitespacesAndNewlines), !cap.isEmpty {
-                Text(cap)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .padding(.horizontal, Theme.Spacing.md)
-            }
-
-            Button(role: .destructive) {
-                HapticManager.tap()
-                savedLookbookFavorites.remove(id: photo.id)
-            } label: {
-                Text(L10n.string("Remove from favourites"))
-                    .font(Theme.Typography.caption)
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.bottom, Theme.Spacing.sm)
         }
-        .background(Theme.Colors.background)
+        .aspectRatio(1, contentMode: .fill)
+        .clipped()
+        .contentShape(Rectangle())
     }
 
-    private var feedImagePlaceholder: some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            Image(systemName: "photo")
-                .font(.system(size: 40))
-            Text(L10n.string("Image unavailable"))
-                .font(Theme.Typography.caption)
+    private func gridThumbSelectable(_ photo: SavedLookbookPhoto) -> some View {
+        ZStack(alignment: .topTrailing) {
+            gridThumb(photo)
+                .overlay {
+                    if isSaveSelectionMode {
+                        RoundedRectangle(cornerRadius: 0)
+                            .strokeBorder(selectedSaveIds.contains(photo.id) ? Theme.primaryColor : Color.clear, lineWidth: 3)
+                    }
+                }
+            if isSaveSelectionMode {
+                Image(systemName: selectedSaveIds.contains(photo.id) ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.white, Theme.primaryColor)
+                    .padding(6)
+            }
         }
-        .frame(maxWidth: .infinity)
-        .foregroundStyle(Theme.Colors.secondaryText)
-        .padding(.vertical, Theme.Spacing.xl)
-        .background(Theme.Colors.secondaryBackground)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isSaveSelectionMode {
+                HapticManager.selection()
+                if selectedSaveIds.contains(photo.id) {
+                    selectedSaveIds.remove(photo.id)
+                } else {
+                    selectedSaveIds.insert(photo.id)
+                }
+            } else {
+                HapticManager.tap()
+                pendingScrollId = photo.id
+                useGrid = false
+            }
+        }
+    }
+}
+
+// MARK: - Save lookbook post to folder(s) from feed
+
+struct LookbookSaveToFolderSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: SavedLookbookFavoritesStore
+    let entry: LookbookEntry
+    let imageUrl: String?
+    var onFinish: (_ newlyAddedFolderNames: [String]) -> Void
+
+    @State private var selectedIds: Set<String> = []
+    @State private var initialIds: Set<String> = []
+    @State private var showNewFolderSheet = false
+    @State private var newFolderDraft = ""
+    @State private var didEmitFinish = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(store.folders.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { folder in
+                        Button {
+                            toggle(folder.id)
+                        } label: {
+                            HStack {
+                                Text(folder.name)
+                                    .foregroundStyle(Theme.Colors.primaryText)
+                                Spacer()
+                                Image(systemName: selectedIds.contains(folder.id) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(selectedIds.contains(folder.id) ? Theme.primaryColor : Theme.Colors.secondaryText)
+                            }
+                        }
+                    }
+                } footer: {
+                    Text(L10n.string("You can add the same look to more than one folder."))
+                        .font(Theme.Typography.caption)
+                }
+            }
+            .navigationTitle(L10n.string("Save to folder"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.string("Close")) {
+                        emitFinishIfNeeded()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button(L10n.string("New folder")) {
+                        newFolderDraft = ""
+                        showNewFolderSheet = true
+                    }
+                }
+            }
+            .onAppear {
+                store.ensureDefaultFolderIfEmpty(defaultName: L10n.string("My saves"))
+                let s = Set(store.folderIdsContaining(postId: entry.apiPostId))
+                selectedIds = s
+                initialIds = s
+            }
+            .onDisappear {
+                emitFinishIfNeeded()
+            }
+            .sheet(isPresented: $showNewFolderSheet) {
+                NavigationStack {
+                    Form {
+                        TextField(L10n.string("Folder name"), text: $newFolderDraft)
+                    }
+                    .navigationTitle(L10n.string("New folder"))
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(L10n.string("Cancel")) { showNewFolderSheet = false }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(L10n.string("Create")) {
+                                if let f = store.createFolder(name: newFolderDraft) {
+                                    store.addPost(entry: entry, imageUrl: imageUrl, toFolder: f.id)
+                                    selectedIds.insert(f.id)
+                                    HapticManager.tap()
+                                }
+                                newFolderDraft = ""
+                                showNewFolderSheet = false
+                            }
+                            .disabled(newFolderDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func toggle(_ folderId: String) {
+        if selectedIds.contains(folderId) {
+            selectedIds.remove(folderId)
+            store.removePost(postId: entry.apiPostId, fromFolder: folderId)
+        } else {
+            selectedIds.insert(folderId)
+            store.addPost(entry: entry, imageUrl: imageUrl, toFolder: folderId)
+        }
+        HapticManager.tap()
+    }
+
+    private func emitFinishIfNeeded() {
+        guard !didEmitFinish else { return }
+        didEmitFinish = true
+        let added = selectedIds.subtracting(initialIds)
+        let names = store.folders.filter { added.contains($0.id) }.map(\.name).sorted()
+        onFinish(names)
     }
 }

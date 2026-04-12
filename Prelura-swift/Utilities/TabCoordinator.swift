@@ -36,6 +36,8 @@ final class TabCoordinator: ObservableObject {
     @Published var pendingArchiveWithUndo: Conversation?
     /// Set from product options ("Copy to a new listing"); Sell tab consumes once then clears.
     @Published var pendingSellPrefill: SellFormPrefill?
+    /// When the user taps Home while already on Home, return `true` if the tap was fully handled (e.g. exited search).
+    var homeSameTabTapHandler: (() -> Bool)?
 
     func requestInboxListRefresh() {
         inboxListRefreshNonce += 1
@@ -59,6 +61,12 @@ final class TabCoordinator: ObservableObject {
     }
 
     func handleTabTap(_ tab: Int) {
+        if tab == 0, tab == selectedTab, let handler = homeSameTabTapHandler, handler() {
+            readyForRefresh.removeAll()
+            HapticManager.tabTap()
+            return
+        }
+
         if tab != selectedTab {
             selectedTab = tab
             readyForRefresh.removeAll()

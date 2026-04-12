@@ -7,15 +7,20 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var tabCoordinator: TabCoordinator
     @StateObject private var viewModel = HomeViewModel()
-    @State private var searchText: String = ""
     @State private var showAIChat: Bool = false
     @State private var showGuestSignInPrompt: Bool = false
     /// Programmatic push avoids `NavigationLink` in the toolbar, which often skips redraws for the red dot.
     @State private var showNotificationsList: Bool = false
+    @State private var homeFloatingSearchExpanded: Bool = false
+    /// Floating search visibility with hysteresis so small scroll jitter at the threshold doesn’t flicker the control on/off.
+    @State private var homeFloatingChromeVisible: Bool = false
 
     let categories = ["All", "Women", "Men", "Boys", "Girls", "Toddlers"]
 
     private let topId = "home_top"
+    /// Scroll past this (negative Y) → show floating search (hysteresis: hide when closer to top than `floatingSearchHideThreshold`).
+    private static let floatingSearchShowThreshold: CGFloat = 56
+    private static let floatingSearchHideThreshold: CGFloat = 28
     /// Band for “at top” when the feed is one continuous `ScrollView` (anchor sits just below the search header).
     private static let feedScrollTopSnap: CGFloat = 12
     /// Cap horizontal chip `ScrollView` height so category pills don’t expand vertically in the header.
@@ -43,14 +48,18 @@ struct HomeView: View {
                 }
             }
             .toolbarBackground(Theme.Colors.background, for: .navigationBar)
-            .refreshable {
-                await viewModel.refreshAsync()
-            }
     }
 
     private var homeChromeAndLifecycle: some View {
         homeNavChromeStack
             .onAppear {
+                tabCoordinator.homeSameTabTapHandler = {
+                    if !viewModel.searchText.isEmpty {
+                        viewModel.clearSearchAndReload()
+                        return true
+                    }
+                    return false
+                }
                 viewModel.updateAuthToken(authService.isGuestMode ? nil : authService.authToken)
                 bellUnreadStore.scheduleRefresh(authService: authService)
             }
@@ -93,6 +102,11 @@ struct HomeView: View {
             .fullScreenCover(isPresented: $showGuestSignInPrompt) {
                 GuestSignInPromptView()
             }
+            .onChange(of: homeFloatingChromeVisible) { _, visible in
+                if !visible {
+                    homeFloatingSearchExpanded = false
+                }
+            }
     }
 
     /// Search, closest-match hint, and category chips — part of the main vertical scroll (no overlay `ZStack`: that layout caused scroll clipping glitches and stray text fragments above the grid).
@@ -100,7 +114,7 @@ struct HomeView: View {
     private var homePinnedHeader: some View {
         VStack(spacing: 0) {
             FeedSearchField(
-                text: $searchText,
+                text: $viewModel.searchText,
                 onSubmit: { viewModel.searchWithParsed($0) },
                 onAITap: { showAIChat = true },
                 topPadding: Theme.Spacing.xs
@@ -141,10 +155,33 @@ struct HomeView: View {
                 }
                 .background(Theme.Colors.background)
                 .contentMargins(.top, 0, for: .scrollContent)
+                .scrollBounceBehavior(.always, axes: .vertical)
+                .refreshable {
+                    await viewModel.refreshAsync()
+                }
                 .onScrollGeometryChange(for: CGFloat.self) { geo in
                     -geo.contentOffset.y
                 } action: { _, scrollMinY in
                     tabCoordinator.reportAtTop(tab: 0, isAtTop: scrollMinY > -Self.feedScrollTopSnap)
+                    // Hysteresis: avoid toggling floating search when `scrollMinY` hovers near the threshold.
+                    if scrollMinY < -Self.floatingSearchShowThreshold {
+                        if !homeFloatingChromeVisible { homeFloatingChromeVisible = true }
+                    } else if scrollMinY > -Self.floatingSearchHideThreshold {
+                        if homeFloatingChromeVisible { homeFloatingChromeVisible = false }
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if homeFloatingChromeVisible {
+                        HomeFloatingLiquidGlassSearch(
+                            expanded: $homeFloatingSearchExpanded,
+                            searchText: $viewModel.searchText,
+                            onSubmit: { viewModel.searchWithParsed($0) },
+                            onAITap: { showAIChat = true }
+                        )
+                        .padding(.horizontal, Theme.Spacing.md)
+                        // TabView already insets content above the tab bar; keep FAB tight to the bar.
+                        .padding(.bottom, 2)
+                    }
                 }
                 .overlay(alignment: .center) {
                     if let err = viewModel.errorMessage, !err.isEmpty {
@@ -277,6 +314,30 @@ struct HomeView: View {
             spacing: Theme.Spacing.md,
             pinnedViews: []
         ) {
+            let trimmedQuery = viewModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if viewModel.filteredItems.isEmpty && !viewModel.isLoading && !trimmedQuery.isEmpty {
+                VStack(spacing: Theme.Spacing.md) {
+                    Text(String(format: L10n.string("No results for \"%@\""), trimmedQuery))
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                    Text(L10n.string("Pull down to refresh"))
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.tertiaryText)
+                    Button {
+                        Task { await viewModel.refreshAsync() }
+                    } label: {
+                        Text(L10n.string("Try again"))
+                            .font(Theme.Typography.subheadline)
+                            .fontWeight(.semibold)
+                    }
+                    .buttonStyle(HapticTapButtonStyle())
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Spacing.xl)
+                .gridCellColumns(2)
+            }
+
             ForEach(viewModel.filteredItems) { item in
                 homeProductCore(item: item, trackLoadMore: true)
             }
@@ -302,6 +363,8 @@ struct HomeView: View {
 struct HomeItemCard: View {
     let item: Item
     var onLikeTap: (() -> Void)? = nil
+    /// When true, the product image uses a 1:1 slot (e.g. Favourites grid). Default is a slightly taller portrait slot.
+    var squareImageSlot: Bool = false
     /// When true, the like overlay is hidden (caller draws it outside NavigationLink so it's tappable).
     var hideLikeButton: Bool = false
     /// When true, show "Add to bag" / "Remove" (secondary border). Tap adds via onAddToBag or removes via onRemove.
@@ -369,7 +432,7 @@ struct HomeItemCard: View {
             
             // Image: avoid a bare `GeometryReader` as the grid cell’s main flexible child (it confuses `LazyVGrid` sizing and can cause scroll clipping glitches). Resolve size from a fixed aspect-ratio slot, then measure inside the overlay.
             Color.clear
-                .aspectRatio(1.0 / 1.3, contentMode: .fit)
+                .aspectRatio(squareImageSlot ? 1.0 : 1.0 / 1.3, contentMode: .fit)
                 .frame(maxWidth: .infinity)
                 .overlay {
                     GeometryReader { geometry in
@@ -480,6 +543,110 @@ struct HomeItemCard: View {
     private var likeButtonContent: some View {
         LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: { onLikeTap?() })
             .padding(Theme.Spacing.xs)
+    }
+}
+
+// MARK: - Floating liquid-glass search (bottom-right → expands above tab bar)
+
+private struct HomeFloatingLiquidGlassSearch: View {
+    @Binding var expanded: Bool
+    @Binding var searchText: String
+    @FocusState private var isFieldFocused: Bool
+    var onSubmit: (ParsedSearch) -> Void
+    var onAITap: () -> Void
+
+    private let aiSearch = AISearchService()
+    private static let expandedCornerRadius: CGFloat = 28
+
+    var body: some View {
+        Group {
+            if expanded {
+                expandedSearchBar
+            } else {
+                HStack {
+                    Spacer(minLength: 0)
+                    collapsedSearchButton
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.88), value: expanded)
+        .onChange(of: expanded) { _, isExpanded in
+            if !isExpanded { isFieldFocused = false }
+        }
+    }
+
+    private var collapsedSearchButton: some View {
+        GlassEffectContainer(spacing: 0) {
+            Button {
+                HapticManager.tap()
+                expanded = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    isFieldFocused = true
+                }
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.primaryText)
+                    .frame(width: 54, height: 54)
+                    .glassEffect(.regular, in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.string("Search items, brands or styles"))
+        }
+        .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
+    }
+
+    private var expandedSearchBar: some View {
+        GlassEffectContainer(spacing: 0) {
+            HStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Theme.Colors.secondaryText)
+                TextField(
+                    L10n.string("Search items, brands or styles"),
+                    text: $searchText
+                )
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Colors.primaryText)
+                .focused($isFieldFocused)
+                .submitLabel(.search)
+                .onSubmit {
+                    let parsed = aiSearch.parse(query: searchText.trimmingCharacters(in: .whitespacesAndNewlines))
+                    onSubmit(parsed)
+                }
+                Button {
+                    HapticManager.tap()
+                    collapseExpanded()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(Theme.Colors.tertiaryText)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("Close"))
+                Button {
+                    HapticManager.tap()
+                    onAITap()
+                } label: {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Theme.primaryColor)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("AI"))
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(.regular, in: .rect(cornerRadius: Self.expandedCornerRadius))
+        }
+        .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
+    }
+
+    private func collapseExpanded() {
+        expanded = false
+        isFieldFocused = false
     }
 }
 

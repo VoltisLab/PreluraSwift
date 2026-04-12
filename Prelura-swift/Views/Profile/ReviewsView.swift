@@ -69,9 +69,10 @@ struct ReviewsView: View {
                         } else {
                             LazyVStack(spacing: 0) {
                                 ForEach(displayedReviews) { review in
-                                    reviewCard(review)
+                                    reviewBlock(review)
+                                        .padding(.horizontal, Theme.Spacing.md)
+                                        .padding(.vertical, Theme.Spacing.sm)
                                     ContentDivider()
-                                        .padding(.leading, Theme.Spacing.md + 35 + 16)
                                 }
                             }
                         }
@@ -162,8 +163,35 @@ struct ReviewsView: View {
         .padding(.vertical, Theme.Spacing.md)
     }
 
-    private func reviewCard(_ review: UserReview) -> some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.md) {
+    /// Bordered review body, then highlight chips below the border (before the next row / divider).
+    private func reviewBlock(_ review: UserReview) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            reviewBorderedCard(review)
+            if !review.highlights.isEmpty {
+                HorizontalFlowLayout(
+                    horizontalSpacing: Theme.Spacing.xs,
+                    verticalSpacing: Theme.Spacing.xs
+                ) {
+                    ForEach(review.highlights, id: \.self) { tag in
+                        PillTag(
+                            title: L10n.string(tag),
+                            isSelected: false,
+                            accentWhenUnselected: false,
+                            showShadow: false,
+                            singleLineTitle: true,
+                            visualStyle: .compactOutline,
+                            playsSelectionHaptic: false,
+                            action: {}
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func reviewBorderedCard(_ review: UserReview) -> some View {
+        let cardShape = RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
+        return HStack(alignment: .top, spacing: Theme.Spacing.md) {
             avatarView(review)
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 HStack {
@@ -177,23 +205,6 @@ struct ReviewsView: View {
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
                 FractionalStarRatingDisplay(rating: Double(review.rating), starSize: 13, spacing: 2)
-                if !review.highlights.isEmpty {
-                    HorizontalFlowLayout(
-                        horizontalSpacing: Theme.Spacing.sm,
-                        verticalSpacing: Theme.Spacing.sm
-                    ) {
-                        ForEach(review.highlights, id: \.self) { tag in
-                            PillTag(
-                                title: tag,
-                                isSelected: true,
-                                accentWhenUnselected: true,
-                                showShadow: false,
-                                singleLineTitle: true,
-                                action: {}
-                            )
-                        }
-                    }
-                }
                 if !review.comment.isEmpty {
                     Text(review.comment)
                         .font(Theme.Typography.callout)
@@ -201,8 +212,11 @@ struct ReviewsView: View {
                 }
             }
         }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.sm)
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay {
+            cardShape.strokeBorder(Theme.Colors.glassBorder.opacity(0.85), lineWidth: 1)
+        }
     }
 
     private func avatarView(_ review: UserReview) -> some View {

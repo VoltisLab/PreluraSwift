@@ -248,6 +248,16 @@ struct AboutWearhouseMenuView: View {
     }
 }
 
+/// Horizontal rule under a menu row: full width minus the leading icon column (24pt + spacing), matching Help Centre reference layout.
+struct HelpCentreInsetDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(Theme.Colors.glassBorder.opacity(0.55))
+            .frame(height: 0.5)
+            .padding(.leading, 24 + Theme.Spacing.md)
+    }
+}
+
 // MARK: - Help Centre (Flutter HelpCentre). FAQ / topics → `HostedWebArticleView` on `Constants.publicWebsiteBaseURL`; Start conversation → AnnChatView.
 struct HelpCentreView: View {
     @State private var searchText: String = ""
@@ -322,73 +332,69 @@ struct HelpCentreView: View {
         return items.filter { $0.title.lowercased().contains(q) }
     }
 
-    private var helpListDivider: some View {
-        Rectangle()
-            .fill(Theme.Colors.glassBorder)
-            .frame(height: 0.5)
-            .padding(.horizontal, Theme.Spacing.md)
+    private var helpCentreHasActiveSearch: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                    DiscoverSearchField(
-                        text: $searchText,
-                        placeholder: L10n.string("e.g. How do I change my profile photo?"),
-                        outerPadding: false,
-                        topPadding: Theme.Spacing.xs,
-                        singleLineFixedHeight: true
-                    )
-                    .padding(.trailing, Theme.Spacing.sm)
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                DiscoverSearchField(
+                    text: $searchText,
+                    placeholder: L10n.string("e.g. How do I change my profile photo?"),
+                    outerPadding: false,
+                    topPadding: Theme.Spacing.xs,
+                    singleLineFixedHeight: true
+                )
+                .padding(.trailing, Theme.Spacing.sm)
 
-                    Text(L10n.string("Got a burning question?"))
-                        .font(Theme.Typography.title2)
-                        .foregroundColor(Theme.Colors.primaryText)
-
-                    Text(L10n.string("Frequently asked"))
-                        .font(Theme.Typography.headline)
-                        .foregroundColor(Theme.Colors.primaryText)
-
-                    if filteredFaq.isEmpty, !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text(L10n.string("No matching topics"))
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                            .padding(.vertical, Theme.Spacing.sm)
-                    } else {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(filteredFaq.enumerated()), id: \.element) { index, article in
-                                helpArticleLink(article)
-                                if index < filteredFaq.count - 1 { helpListDivider }
-                            }
-                        }
-                        .padding(.vertical, Theme.Spacing.sm)
-                    }
-
-                    Text(L10n.string("More topics"))
-                        .font(Theme.Typography.headline)
-                        .foregroundColor(Theme.Colors.primaryText)
-
-                    if filteredMore.isEmpty, !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        EmptyView()
-                    } else {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(filteredMore.enumerated()), id: \.element) { index, article in
-                                helpArticleLink(article)
-                                if index < filteredMore.count - 1 { helpListDivider }
-                            }
-                        }
-                        .padding(.vertical, Theme.Spacing.sm)
-                    }
-
-                    Color.clear.frame(height: 100)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.bottom, Theme.Spacing.md)
+                Text(L10n.string("Got a burning question?"))
+                    .font(Theme.Typography.title2)
+                    .foregroundColor(Theme.Colors.primaryText)
             }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.xs)
+            .padding(.bottom, Theme.Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.Colors.background)
 
+            List {
+                Section {
+                    if filteredFaq.isEmpty {
+                        Text(L10n.string("No matching topics"))
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    } else {
+                        ForEach(filteredFaq, id: \.self) { article in
+                            helpCentreMenuRowLink(article)
+                        }
+                    }
+                } header: {
+                    helpCentreListSectionHeader(L10n.string("Frequently asked"))
+                }
+
+                if !filteredMore.isEmpty || helpCentreHasActiveSearch {
+                    Section {
+                        if filteredMore.isEmpty {
+                            Text(L10n.string("No matching topics"))
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(Theme.Colors.secondaryText)
+                        } else {
+                            ForEach(filteredMore, id: \.self) { article in
+                                helpCentreMenuRowLink(article)
+                            }
+                        }
+                    } header: {
+                        helpCentreListSectionHeader(L10n.string("More topics"))
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Theme.Colors.background)
+        }
+        .background(Theme.Colors.background)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             PrimaryButtonBar {
                 NavigationLink(destination: AnnChatView()) {
                     HStack(spacing: Theme.Spacing.sm) {
@@ -410,23 +416,27 @@ struct HelpCentreView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    @ViewBuilder
-    private func helpArticleLink(_ article: HelpArticle) -> some View {
+    /// Same visual language as `MenuView` rows: secondary icon + primary label; `List` supplies the chevron.
+    private func helpCentreMenuRowLink(_ article: HelpArticle) -> some View {
         NavigationLink(destination: HostedWebArticleView(title: article.title, urlString: article.urlString)) {
-            HStack(spacing: Theme.Spacing.md) {
-                MenuRowContent(
-                    title: article.title,
-                    subtitle: nil,
-                    icon: article.icon,
-                    iconAndSubtitleColor: Theme.primaryColor
-                )
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Theme.Colors.tertiaryText)
-                    .padding(.trailing, Theme.Spacing.md)
+            HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                Image(systemName: article.icon)
+                    .font(.body)
+                    .foregroundStyle(Theme.Colors.secondaryText)
+                    .frame(width: 24, alignment: .leading)
+                Text(article.title)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.primaryText)
+                    .multilineTextAlignment(.leading)
             }
         }
-        .buttonStyle(PlainTappableButtonStyle())
+    }
+
+    private func helpCentreListSectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(Theme.Typography.headline)
+            .foregroundStyle(Theme.Colors.primaryText)
+            .textCase(nil)
     }
 }
 

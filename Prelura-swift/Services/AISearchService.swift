@@ -1584,16 +1584,29 @@ final class AISearchService {
     /// Fuzzy match a single word against app colours and aliases.
     private func fuzzyMatchColour(word: String) -> String? {
         var best: (colour: String, distance: Int)?
-        
+
+        func isPlausibleColourTypo(distance: Int, word: String, candidateLowercased: String) -> Bool {
+            guard distance <= maxTypoDistance else { return false }
+            let w0 = word.lowercased().first
+            let c0 = candidateLowercased.first
+            if let w0, let c0, w0 == c0 { return true }
+            // First letter differs: only accept a single edit (e.g. missing leading "g" in "reen" → "green").
+            // Blocks brand tokens like "nike" matching "lime" or "wine" at distance 2.
+            return distance <= 1
+        }
+
         for appColour in Self.appColours {
-            let d = Self.levenshtein(word, appColour.lowercased())
-            if d <= maxTypoDistance, best == nil || d < best!.distance {
+            let cand = appColour.lowercased()
+            let d = Self.levenshtein(word, cand)
+            guard isPlausibleColourTypo(distance: d, word: word, candidateLowercased: cand) else { continue }
+            if best == nil || d < best!.distance {
                 best = (appColour, d)
             }
         }
         for (alias, appColour) in Self.colourAliases {
             let d = Self.levenshtein(word, alias)
-            if d <= maxTypoDistance, best == nil || d < best!.distance {
+            guard isPlausibleColourTypo(distance: d, word: word, candidateLowercased: alias) else { continue }
+            if best == nil || d < best!.distance {
                 best = (appColour, d)
             }
         }

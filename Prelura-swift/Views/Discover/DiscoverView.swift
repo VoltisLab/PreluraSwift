@@ -48,6 +48,7 @@ struct DiscoverView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(viewModel.isLoading && viewModel.discoverItems.isEmpty)
         .toolbar { discoverToolbar }
+        .toolbarBackground(Theme.Colors.background, for: .navigationBar)
         .refreshable { await viewModel.refreshAsync() }
         .onAppear {
             if authService.isAuthenticated {
