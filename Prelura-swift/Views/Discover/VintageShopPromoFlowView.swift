@@ -15,7 +15,8 @@ enum VintageShopBannerGradient {
         colors(at: date, colorScheme: .dark)
     }
 
-    /// Dark: saturated intro gradient. Light: softer pastels so the page follows system appearance.
+    /// Dark: saturated intro gradient. Light: lighter pastels that still **lerp** green ↔ coral like dark mode
+    /// (the old light stops were almost identical off-whites, so the animation read as a static flat panel).
     static func colors(at date: Date, colorScheme: ColorScheme) -> [Color] {
         let elapsed = date.timeIntervalSinceReferenceDate
         let period = halfPeriodSeconds * 2
@@ -32,9 +33,23 @@ enum VintageShopBannerGradient {
         }
     }
 
-    private static let lightTopA = UIColor(red: 0.96, green: 0.90, blue: 0.90, alpha: 1)
-    private static let lightTopB = UIColor(red: 0.90, green: 0.96, blue: 0.88, alpha: 1)
-    private static let lightBottom = UIColor(red: 0.97, green: 0.94, blue: 0.88, alpha: 1)
+    /// Pastel coral / mint / gold — same hue relationship as `topFrameA` / `topFrameB` / `bottomShared`, blended toward white.
+    private static let lightTopA = blendWithWhite(topFrameA, whiteAmount: 0.52)
+    private static let lightTopB = blendWithWhite(topFrameB, whiteAmount: 0.52)
+    private static let lightBottom = blendWithWhite(bottomShared, whiteAmount: 0.45)
+
+    /// `amount` in 0...1 — higher = closer to white (softer pastel).
+    private static func blendWithWhite(_ color: UIColor, whiteAmount: CGFloat) -> UIColor {
+        let t = max(0, min(1, whiteAmount))
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return UIColor(
+            red: r + (1 - r) * t,
+            green: g + (1 - g) * t,
+            blue: b + (1 - b) * t,
+            alpha: 1
+        )
+    }
 
     private static func lerp(_ a: UIColor, _ b: UIColor, _ t: CGFloat) -> UIColor {
         var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
