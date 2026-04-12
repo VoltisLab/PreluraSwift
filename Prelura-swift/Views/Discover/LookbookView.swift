@@ -608,16 +608,21 @@ private struct LookbookFeedScreenView: View {
                 }
 
                 if !entries.isEmpty {
-                    Button {
-                        HapticManager.selection()
-                        useGrid.toggle()
-                    } label: {
-                        Image(systemName: useGrid ? "list.bullet" : "square.grid.3x3")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundStyle(Theme.Colors.primaryText)
+                    GlassEffectContainer(spacing: 0) {
+                        Button {
+                            HapticManager.selection()
+                            useGrid.toggle()
+                        } label: {
+                            Image(systemName: useGrid ? "list.bullet" : "square.grid.3x3")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(Theme.Colors.primaryText)
+                                .frame(width: 54, height: 54)
+                                .glassEffect(.regular, in: .circle)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
+                    .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
                     .padding(.trailing, Theme.Spacing.md)
                     .padding(.bottom, Theme.Spacing.lg)
                     .zIndex(1)
