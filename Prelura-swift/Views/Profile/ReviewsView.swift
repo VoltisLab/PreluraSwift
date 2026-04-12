@@ -181,9 +181,28 @@ struct ReviewsView: View {
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
                 FractionalStarRatingDisplay(rating: Double(review.rating), starSize: 14, spacing: 2)
-                Text(review.comment)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
+                if !review.highlights.isEmpty {
+                    HorizontalFlowLayout(
+                        horizontalSpacing: Theme.Spacing.sm,
+                        verticalSpacing: Theme.Spacing.sm
+                    ) {
+                        ForEach(review.highlights, id: \.self) { tag in
+                            PillTag(
+                                title: tag,
+                                isSelected: true,
+                                accentWhenUnselected: true,
+                                showShadow: false,
+                                singleLineTitle: true,
+                                action: {}
+                            )
+                        }
+                    }
+                }
+                if !review.comment.isEmpty {
+                    Text(review.comment)
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
+                }
             }
         }
         .padding(.horizontal, Theme.Spacing.md)

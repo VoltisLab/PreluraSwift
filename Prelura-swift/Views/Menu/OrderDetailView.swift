@@ -1251,6 +1251,7 @@ private struct LeaveOrderFeedbackSheet: View {
     @State private var errorMessage: String?
 
     private let userService = UserService()
+    private let maxReviewCommentLength = 500
 
     private var reviewTagSuggestions: [String] {
         switch role {
@@ -1275,14 +1276,6 @@ private struct LeaveOrderFeedbackSheet: View {
         }
     }
 
-    private var composedCommentForSubmit: String {
-        let tagLine = selectedSuggestionTags.sorted().joined(separator: ". ")
-        let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-        if tagLine.isEmpty { return trimmed }
-        if trimmed.isEmpty { return tagLine }
-        return tagLine + ". " + trimmed
-    }
-
     private var footerText: String {
         switch role {
         case .buyerRatesSeller:
@@ -1299,33 +1292,49 @@ private struct LeaveOrderFeedbackSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                        Text(L10n.string("Rating"))
-                            .font(Theme.Typography.subheadline)
-                            .fontWeight(.semibold)
+                    InteractiveStarRatingControl(rating: $rating)
+
+                    ZStack(alignment: .bottomTrailing) {
+                        TextField(L10n.string("Comment (optional)"), text: $comment, axis: .vertical)
+                            .font(Theme.Typography.body)
                             .foregroundStyle(Theme.Colors.primaryText)
+                            .lineLimit(6...12)
+                            .frame(minHeight: 140, alignment: .topLeading)
+                            .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                            .padding(.top, Theme.TextInput.insetVertical)
+                            .padding(.bottom, 28)
+                            .padding(.trailing, Theme.Spacing.sm)
+                        Text("\(min(comment.count, maxReviewCommentLength))/\(maxReviewCommentLength)")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .padding(.trailing, Theme.Spacing.md)
+                            .padding(.bottom, Theme.Spacing.sm)
+                    }
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
+                    .onChange(of: comment) { _, new in
+                        if new.count > maxReviewCommentLength {
+                            comment = String(new.prefix(maxReviewCommentLength))
+                        }
+                    }
 
-                        InteractiveStarRatingControl(rating: $rating)
-                            .padding(.top, Theme.Spacing.xs)
-
-                        Divider()
-                            .background(Theme.Colors.glassBorder.opacity(0.4))
-
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                         Text(L10n.string("What went well?"))
                             .font(Theme.Typography.subheadline)
                             .fontWeight(.semibold)
                             .foregroundStyle(Theme.Colors.primaryText)
 
-                        LazyVGrid(
-                            columns: [GridItem(.adaptive(minimum: 118), spacing: Theme.Spacing.sm)],
-                            alignment: .leading,
-                            spacing: Theme.Spacing.sm
+                        HorizontalFlowLayout(
+                            horizontalSpacing: Theme.Spacing.sm,
+                            verticalSpacing: Theme.Spacing.sm
                         ) {
                             ForEach(reviewTagSuggestions, id: \.self) { tag in
                                 PillTag(
                                     title: tag,
                                     isSelected: selectedSuggestionTags.contains(tag),
                                     accentWhenUnselected: true,
+                                    showShadow: false,
+                                    singleLineTitle: true,
                                     action: {
                                         if selectedSuggestionTags.contains(tag) {
                                             selectedSuggestionTags.remove(tag)
@@ -1336,17 +1345,7 @@ private struct LeaveOrderFeedbackSheet: View {
                                 )
                             }
                         }
-
-                        TextField("Comment (optional)", text: $comment, axis: .vertical)
-                            .font(Theme.Typography.body)
-                            .lineLimit(3...8)
-                            .padding(Theme.Spacing.sm)
-                            .background(Theme.Colors.tertiaryBackground)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius, style: .continuous))
                     }
-                    .padding(Theme.Spacing.md)
-                    .background(Theme.Colors.secondaryBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
 
                     Text(footerText)
                         .font(Theme.Typography.caption)
@@ -1361,24 +1360,46 @@ private struct LeaveOrderFeedbackSheet: View {
                     }
                 }
                 .padding(Theme.Spacing.md)
-                .padding(.bottom, Theme.Spacing.xl)
+                .padding(.bottom, Theme.Spacing.lg)
             }
             .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Leave a review"))
             .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .fill(Theme.Colors.glassBorder.opacity(0.35))
+                        .frame(height: 0.5)
+                    Group {
+                        if busy {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, Theme.Spacing.md)
+                        } else {
+                            Button {
+                                Task { await submit() }
+                            } label: {
+                                Text(L10n.string("Submit"))
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Theme.primaryColor)
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.md)
+                        }
+                    }
+                    .background(Theme.Colors.background)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(L10n.string("Cancel")) {
                         dismiss()
                     }
+                    .foregroundStyle(Theme.primaryColor)
                     .disabled(busy)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if busy {
-                        ProgressView()
-                    } else {
-                        Button("Submit") { Task { await submit() } }
-                    }
                 }
             }
         }
@@ -1392,8 +1413,10 @@ private struct LeaveOrderFeedbackSheet: View {
         userService.updateAuthToken(authService.authToken)
         let intRating = min(5, max(1, Int(rating.rounded())))
         do {
+            let trimmedComment = comment.trimmingCharacters(in: .whitespacesAndNewlines)
             try await userService.rateUser(
-                comment: composedCommentForSubmit,
+                comment: trimmedComment,
+                highlights: selectedSuggestionTags.sorted(),
                 orderId: orderId,
                 rating: intRating,
                 userId: rateeUserId

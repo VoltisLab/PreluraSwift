@@ -646,6 +646,7 @@ class UserService: ObservableObject {
             id
             rating
             comment
+            highlights
             isAutoReview
             dateCreated
             reviewer {
@@ -664,6 +665,7 @@ class UserService: ObservableObject {
             let id: String?
             let rating: Int?
             let comment: String?
+            let highlights: [String]?
             let isAutoReview: Bool?
             let dateCreated: String?
             let reviewer: ReviewerRow?
@@ -690,6 +692,7 @@ class UserService: ObservableObject {
                 id: id,
                 rating: row.rating ?? 0,
                 comment: row.comment ?? "",
+                highlights: row.highlights ?? [],
                 isAutoReview: row.isAutoReview ?? false,
                 dateCreated: date,
                 reviewerUsername: row.reviewer?.username ?? "",
@@ -857,11 +860,11 @@ class UserService: ObservableObject {
         }
     }
 
-    /// Rate a user after an order (e.g. rate seller as buyer). Matches Flutter rateUser(comment, orderId, rating, userId).
-    func rateUser(comment: String, orderId: Int, rating: Int, userId: Int) async throws {
+    /// Rate a user after an order (e.g. rate seller as buyer). Optional `highlights` are persisted and returned on profile reviews.
+    func rateUser(comment: String, highlights: [String] = [], orderId: Int, rating: Int, userId: Int) async throws {
         let mutation = """
-        mutation RateUser($comment: String!, $orderId: Int!, $rating: Int!, $userId: Int!) {
-          rateUser(comment: $comment, orderId: $orderId, rating: $rating, userId: $userId) {
+        mutation RateUser($comment: String!, $orderId: Int!, $rating: Int!, $userId: Int!, $highlights: [String]) {
+          rateUser(comment: $comment, orderId: $orderId, rating: $rating, userId: $userId, highlights: $highlights) {
             success
             message
           }
@@ -871,7 +874,13 @@ class UserService: ObservableObject {
         struct RateUserPayload: Decodable { let success: Bool?; let message: String? }
         let response: Payload = try await client.execute(
             query: mutation,
-            variables: ["comment": comment, "orderId": orderId, "rating": min(5, max(1, rating)), "userId": userId],
+            variables: [
+                "comment": comment,
+                "orderId": orderId,
+                "rating": min(5, max(1, rating)),
+                "userId": userId,
+                "highlights": highlights,
+            ],
             responseType: Payload.self
         )
         if response.rateUser?.success != true {

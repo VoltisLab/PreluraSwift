@@ -5,6 +5,8 @@ struct UserReview: Identifiable {
     let id: String
     let rating: Int
     let comment: String
+    /// Optional “What went well?” tags from `rateUser(highlights:)`.
+    let highlights: [String]
     let isAutoReview: Bool
     let dateCreated: Date
     let reviewerUsername: String
