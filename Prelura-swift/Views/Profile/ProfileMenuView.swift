@@ -113,6 +113,8 @@ struct MenuItemRow: View {
 // MARK: - Submenu: Settings (Flutter SettingScreen). Presented as pushed destination; no own NavigationView.
 struct SettingsMenuView: View {
     @EnvironmentObject var authService: AuthService
+    @State private var isStaffUser = false
+    private let userService = UserService()
 
     var body: some View {
         List {
@@ -161,12 +163,35 @@ struct SettingsMenuView: View {
                     settingsRow(L10n.string("Invite Friend"), icon: "person.badge.plus")
                 }
             }
+            if isStaffUser {
+                Section {
+                    NavigationLink(destination: AdminMenuView()) {
+                        settingsRow(L10n.string("Admin Dashboard"), icon: "gearshape.2")
+                    }
+                }
+            }
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Settings"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .onAppear {
+            Task { await refreshStaffFlag() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .wearhouseUserProfileDidUpdate)) { _ in
+            Task { await refreshStaffFlag() }
+        }
+    }
+
+    private func refreshStaffFlag() async {
+        userService.updateAuthToken(authService.authToken)
+        do {
+            let user = try await userService.getUser()
+            await MainActor.run { isStaffUser = user.isStaff }
+        } catch {
+            await MainActor.run { isStaffUser = false }
+        }
     }
     
     private func settingsRow(_ title: String, icon: String) -> some View {
@@ -258,78 +283,85 @@ struct HelpCentreInsetDivider: View {
     }
 }
 
-// MARK: - Help Centre (Flutter HelpCentre). FAQ / topics → `HostedWebArticleView` on `Constants.publicWebsiteBaseURL`; Start conversation → AnnChatView.
+// MARK: - Help Centre — inline accordions + same search chrome as home (`HomeFeedSearchField`, no AI icon). Start conversation → AnnChatView.
 struct HelpCentreView: View {
     @State private var searchText: String = ""
+    @State private var expandedTopicId: String?
 
-    private struct HelpArticle: Hashable {
-        let title: String
-        let urlString: String
+    private struct HelpCentreTopic: Identifiable {
+        let id: String
         let icon: String
+        let title: String
+        let answer: String
     }
 
-    private var faqArticles: [HelpArticle] {
+    private var faqTopics: [HelpCentreTopic] {
         [
-            HelpArticle(
+            HelpCentreTopic(
+                id: "cancel",
+                icon: "questionmark.circle",
                 title: L10n.string("How can I cancel an existing order"),
-                urlString: Constants.helpArticleCancelOrderURL,
-                icon: "questionmark.circle"
+                answer: helpAnswerCancel
             ),
-            HelpArticle(
+            HelpCentreTopic(
+                id: "refund",
+                icon: "questionmark.circle",
                 title: L10n.string("How long does a refund normally take?"),
-                urlString: Constants.helpArticleRefundsURL,
-                icon: "questionmark.circle"
+                answer: helpAnswerRefund
             ),
-            HelpArticle(
+            HelpCentreTopic(
+                id: "receive",
+                icon: "questionmark.circle",
                 title: L10n.string("When will I receive my item?"),
-                urlString: Constants.helpArticleDeliveryURL,
-                icon: "questionmark.circle"
+                answer: helpAnswerReceive
             ),
-            HelpArticle(
+            HelpCentreTopic(
+                id: "shipped",
+                icon: "questionmark.circle",
                 title: L10n.string("How will I know if my order has been shipped?"),
-                urlString: Constants.helpArticleOrderShippedURL,
-                icon: "questionmark.circle"
+                answer: helpAnswerShipped
             ),
         ]
     }
 
-    private var moreTopicArticles: [HelpArticle] {
+    private var moreTopics: [HelpCentreTopic] {
         [
-            HelpArticle(
+            HelpCentreTopic(
+                id: "collection",
+                icon: "doc.text",
                 title: L10n.string("What's a collection point?"),
-                urlString: Constants.helpArticleCollectionPointURL,
-                icon: "doc.text"
+                answer: helpAnswerCollection
             ),
-            HelpArticle(
+            HelpCentreTopic(
+                id: "delivered_not",
+                icon: "doc.text",
                 title: L10n.string("Item says \"Delivered\" but I don't have it"),
-                urlString: Constants.helpArticleDeliveredNotReceivedURL,
-                icon: "doc.text"
+                answer: helpAnswerDeliveredNotReceived
             ),
-            HelpArticle(
+            HelpCentreTopic(
+                id: "vacation",
+                icon: "doc.text",
                 title: L10n.string("What's Vacation mode?"),
-                urlString: Constants.helpArticleVacationModeURL,
-                icon: "doc.text"
+                answer: helpAnswerVacation
             ),
-            HelpArticle(
+            HelpCentreTopic(
+                id: "trusted",
+                icon: "doc.text",
                 title: L10n.string("How do I earn a trusted seller badge?"),
-                urlString: Constants.helpArticleTrustedSellerURL,
-                icon: "doc.text"
+                answer: helpAnswerTrustedSeller
             ),
         ]
     }
 
-    private var filteredFaq: [HelpArticle] {
-        filterArticles(faqArticles)
-    }
+    private var filteredFaq: [HelpCentreTopic] { filterTopics(faqTopics) }
+    private var filteredMore: [HelpCentreTopic] { filterTopics(moreTopics) }
 
-    private var filteredMore: [HelpArticle] {
-        filterArticles(moreTopicArticles)
-    }
-
-    private func filterArticles(_ items: [HelpArticle]) -> [HelpArticle] {
+    private func filterTopics(_ items: [HelpCentreTopic]) -> [HelpCentreTopic] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return items }
-        return items.filter { $0.title.lowercased().contains(q) }
+        return items.filter {
+            $0.title.lowercased().contains(q) || $0.answer.lowercased().contains(q)
+        }
     }
 
     private var helpCentreHasActiveSearch: Bool {
@@ -339,23 +371,26 @@ struct HelpCentreView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                DiscoverSearchField(
-                    text: $searchText,
-                    placeholder: L10n.string("e.g. How do I change my profile photo?"),
-                    outerPadding: false,
-                    topPadding: Theme.Spacing.xs,
-                    singleLineFixedHeight: true
-                )
-                .padding(.trailing, Theme.Spacing.sm)
-
                 Text(L10n.string("Got a burning question?"))
                     .font(Theme.Typography.title2)
                     .foregroundColor(Theme.Colors.primaryText)
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.top, Theme.Spacing.xs)
-            .padding(.bottom, Theme.Spacing.sm)
+            .padding(.bottom, Theme.Spacing.xs)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.Colors.background)
+
+            // Same outer rhythm as `HomeView.homePinnedHeader` (search field only) so size, corners, and animation match Home.
+            VStack(spacing: 0) {
+                HomeFeedSearchField(
+                    text: $searchText,
+                    onSubmit: { _ in },
+                    onAITap: nil,
+                    topPadding: Theme.Spacing.xs
+                )
+            }
+            .padding(.top, Theme.Spacing.xs)
             .background(Theme.Colors.background)
 
             List {
@@ -365,8 +400,8 @@ struct HelpCentreView: View {
                             .font(Theme.Typography.body)
                             .foregroundStyle(Theme.Colors.secondaryText)
                     } else {
-                        ForEach(filteredFaq, id: \.self) { article in
-                            helpCentreMenuRowLink(article)
+                        ForEach(filteredFaq) { topic in
+                            helpCentreAccordionRow(topic)
                         }
                     }
                 } header: {
@@ -380,8 +415,8 @@ struct HelpCentreView: View {
                                 .font(Theme.Typography.body)
                                 .foregroundStyle(Theme.Colors.secondaryText)
                         } else {
-                            ForEach(filteredMore, id: \.self) { article in
-                                helpCentreMenuRowLink(article)
+                            ForEach(filteredMore) { topic in
+                                helpCentreAccordionRow(topic)
                             }
                         }
                     } header: {
@@ -414,22 +449,54 @@ struct HelpCentreView: View {
         }
         .navigationTitle(L10n.string("Help Centre"))
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: searchText) { _, _ in
+            expandedTopicId = nil
+        }
     }
 
-    /// Same visual language as `MenuView` rows: secondary icon + primary label; `List` supplies the chevron.
-    private func helpCentreMenuRowLink(_ article: HelpArticle) -> some View {
-        NavigationLink(destination: HostedWebArticleView(title: article.title, urlString: article.urlString)) {
-            HStack(alignment: .center, spacing: Theme.Spacing.md) {
-                Image(systemName: article.icon)
-                    .font(.body)
+    private func helpCentreAccordionRow(_ topic: HelpCentreTopic) -> some View {
+        let expanded = expandedTopicId == topic.id
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                HapticManager.selection()
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    expandedTopicId = expanded ? nil : topic.id
+                }
+            } label: {
+                HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                    Image(systemName: topic.icon)
+                        .font(.body)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                        .frame(width: 24, alignment: .leading)
+                    Text(topic.title)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.primaryText)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.tertiaryText)
+                        .rotationEffect(.degrees(expanded ? 180 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(topic.title)
+
+            if expanded {
+                Text(topic.answer)
+                    .font(Theme.Typography.subheadline)
                     .foregroundStyle(Theme.Colors.secondaryText)
-                    .frame(width: 24, alignment: .leading)
-                Text(article.title)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.primaryText)
-                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, Theme.Spacing.sm)
+                    .padding(.leading, 24 + Theme.Spacing.md)
+                    .padding(.trailing, Theme.Spacing.xs)
+                    .padding(.bottom, Theme.Spacing.sm)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .listRowInsets(EdgeInsets(top: 12, leading: Theme.Spacing.md, bottom: expanded ? 8 : 12, trailing: Theme.Spacing.md))
+        .animation(.easeInOut(duration: 0.22), value: expanded)
     }
 
     private func helpCentreListSectionHeader(_ title: String) -> some View {
@@ -437,6 +504,40 @@ struct HelpCentreView: View {
             .font(Theme.Typography.headline)
             .foregroundStyle(Theme.Colors.primaryText)
             .textCase(nil)
+    }
+
+    // MARK: - Answer copy (titles localize via L10n)
+
+    private var helpAnswerCancel: String {
+        "If your order has not shipped yet, open Order details and request cancellation. The seller can accept or decline. Once it is on the way, use return options where available, or tap Start a conversation for help."
+    }
+
+    private var helpAnswerRefund: String {
+        "After a refund is approved, the money usually reaches your account within 5 to 10 business days, depending on your bank or card. You can follow status in Order details."
+    }
+
+    private var helpAnswerReceive: String {
+        "Delivery time depends on the shipping method and when the seller hands the parcel to the carrier. After it ships, tracking updates appear in Order details."
+    }
+
+    private var helpAnswerShipped: String {
+        "You will get a notification and the order will show as Shipped or In transit in Order details. Turn on notifications in Settings if you do not see alerts."
+    }
+
+    private var helpAnswerCollection: String {
+        "Collection points let you pick up your parcel from a partner location instead of home delivery. Choose the option at checkout when it is available."
+    }
+
+    private var helpAnswerDeliveredNotReceived: String {
+        "Allow the carrier full delivery window, check with neighbours or safe places. If it is still missing, use Order details for help or tap Start a conversation so we can trace the parcel."
+    }
+
+    private var helpAnswerVacation: String {
+        "Vacation mode hides your listings from browse while you are away. Turn it on from Profile so buyers are not left waiting."
+    }
+
+    private var helpAnswerTrustedSeller: String {
+        "The trusted seller badge highlights consistently great service. Eligibility follows platform rules around history, ratings, and policy compliance. Ship on time and describe items accurately."
     }
 }
 

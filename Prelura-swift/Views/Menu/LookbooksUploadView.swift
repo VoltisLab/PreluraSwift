@@ -1425,14 +1425,6 @@ struct ProductSearchSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                DiscoverSearchField(
-                    text: $query,
-                    placeholder: "Search products",
-                    showClearButton: true,
-                    outerPadding: true
-                )
-                .onSubmit { if isSearchMode { runSearch() } }
-
                 if showEmptyState {
                     emptyStatePlaceholder
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1481,6 +1473,14 @@ struct ProductSearchSheet: View {
             }
             .navigationTitle("Tag product")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(
+                text: $query,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: Text("Search products")
+            )
+            .onSubmit(of: .search) {
+                if isSearchMode { runSearch() }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: onCancel)

@@ -1,7 +1,7 @@
 import SwiftUI
 import Shimmer
 
-/// Full-screen feed shimmer matching HomeView layout: logo area, search bar, category pills, 2-column grid. No forced minHeight so it doesn’t look zoomed out.
+/// Full-screen feed shimmer matching HomeView layout: category pills + grid (search lives in the navigation bar like the real feed).
 struct FeedShimmerView: View {
     var body: some View {
         VStack(spacing: 0) {
@@ -9,10 +9,14 @@ struct FeedShimmerView: View {
             Color.clear
                 .frame(height: 1)
 
-            // Search bar (matches FeedSearchField: horizontal md, top xs, bottom xs)
-            RoundedRectangle(cornerRadius: 30)
+            // Inline search bar (matches HomeFeedSearchField pill + hairline)
+            Capsule(style: .continuous)
                 .fill(Theme.Colors.secondaryBackground)
-                .frame(height: 44)
+                .frame(height: Theme.SearchField.singleLineHeight)
+                .overlay {
+                    Capsule(style: .continuous)
+                        .strokeBorder(Theme.Colors.glassBorder.opacity(0.65), lineWidth: 0.5)
+                }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.xs)
                 .padding(.bottom, Theme.Spacing.xs)

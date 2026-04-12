@@ -91,6 +91,14 @@ struct DiscoverView: View {
             VintageShopPromoFlowView()
                 .environmentObject(authService)
         }
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: Text(L10n.string("Search members"))
+        )
+        .onSubmit(of: .search) {
+            showSearchMembersResults = true
+        }
     }
 
     @ViewBuilder
@@ -123,21 +131,6 @@ struct DiscoverView: View {
     private var discoverMainStack: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: 1).id(topId)
-            DiscoverSearchField(
-                text: $searchText,
-                placeholder: L10n.string("Search members"),
-                animatedPlaceholders: [
-                    L10n.string("Search by name"),
-                    L10n.string("Find members"),
-                    L10n.string("Search username"),
-                    L10n.string("Discover people"),
-                    L10n.string("Find sellers"),
-                ],
-                onSubmit: { showSearchMembersResults = true },
-                topPadding: Theme.Spacing.xs
-            )
-            .padding(.trailing, Theme.Spacing.sm)
-            .padding(.bottom, 2)
             brandFiltersSection
             tryCartBanner
             vintageShopBanner
@@ -712,7 +705,7 @@ private struct AnimatedBrandRow: View {
                                         .strokeBorder(pillBorderColor, lineWidth: 0.5)
                                 )
                         }
-                        .buttonStyle(PlainTappableButtonStyle())
+                        .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
                         .simultaneousGesture(TapGesture().onEnded { _ in
                             animationStopped = true
                         })

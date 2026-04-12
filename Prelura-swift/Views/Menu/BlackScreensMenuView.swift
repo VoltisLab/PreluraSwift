@@ -1,79 +1,70 @@
 import SwiftUI
 
-/// Debug: menu of dark background hex codes. Tapping one opens a profile-style preview with that background.
+/// Debug: menu of dark background hex codes. Tapping a code opens a profile-style preview with that background.
 struct BlackScreensMenuView: View {
     @State private var selectedHexForModal: String?
 
-    /// Expanded grayscale palette for dark-theme comparison.
-    private static let colorCodes: [String] = [
-        "050505",
-        "080808",
-        "0A0A0A",
-        "1B1B1B",
-        "0C0C0C",
-        "101010",
-        "121212",
-        "141414",
-        "161616",
-        "171717",
-        "181818",
-        "191919",
-        "1C1C1C",
-        "1E1E1E",
-        "202020",
-        "212121",
-        "222222",
-        "232323",
-        "242424",
-        "252525",
-        "272727",
-        "292929",
-        "2B2B2B",
-        "2D2D2D",
-        "2F2F2F",
-        "303030",
-        "313638",
-        "343434",
-        "383838",
-        "3D3D3D",
-        "424242",
-        "4A4A4A",
-        "545454",
-        "002147"
+    /// Twenty curated dark-mode screen backgrounds (true black, OLED grays, iOS system surfaces, subtle tints).
+    private static let darkScreenSamples: [(name: String, hex: String)] = [
+        ("Pure black", "000000"),
+        ("OLED hairline", "010101"),
+        ("Deep charcoal", "050505"),
+        ("Near black", "080808"),
+        ("YouTube / OLED", "0F0F0F"),
+        ("App default (Prelura)", "0C0C0C"),
+        ("Soft black", "0A0A0A"),
+        ("Graphite", "0E0E0E"),
+        ("Carbon", "111111"),
+        ("Material dark", "121212"),
+        ("Elevated surface", "141414"),
+        ("Tile", "161616"),
+        ("Panel", "181818"),
+        ("iOS secondary system", "1C1C1E"),
+        ("iOS tertiary / grouped", "2C2C2E"),
+        ("Cool blue-black", "0B0D12"),
+        ("Warm brown-black", "0E0D0C"),
+        ("Blue tint black", "080A10"),
+        ("Green tint black", "0C100C"),
+        ("Purple tint black", "100818"),
     ]
 
     var body: some View {
         List {
             Section {
-                Text("Tap a code to see the profile layout on that dark background.")
+                Text("20 curated dark backgrounds — tap the row for a quick sheet, or Profile for full layout.")
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             } header: {
                 Text("Preview")
             }
             Section {
-                ForEach(Self.colorCodes, id: \.self) { hex in
+                ForEach(Self.darkScreenSamples, id: \.hex) { sample in
                     HStack(spacing: Theme.Spacing.md) {
                         Button {
-                            selectedHexForModal = hex
+                            selectedHexForModal = sample.hex
                         } label: {
                             HStack(spacing: Theme.Spacing.md) {
                                 RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color(hex: hex))
+                                    .fill(Color(hex: sample.hex))
                                     .frame(width: 44, height: 44)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 8)
                                             .stroke(Theme.Colors.glassBorder, lineWidth: 1)
                                     )
-                                Text(hex)
-                                    .font(Theme.Typography.headline)
-                                    .foregroundColor(Theme.Colors.primaryText)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(sample.name)
+                                        .font(Theme.Typography.body.weight(.semibold))
+                                        .foregroundColor(Theme.Colors.primaryText)
+                                    Text("#\(sample.hex)")
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(Theme.Colors.secondaryText)
+                                }
                             }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         Spacer()
-                        NavigationLink(destination: BlackScreenProfileView(hex: hex)) {
+                        NavigationLink(destination: BlackScreenProfileView(hex: sample.hex)) {
                             Text("Profile")
                                 .font(Theme.Typography.caption)
                                 .foregroundColor(Theme.primaryColor)
@@ -81,7 +72,7 @@ struct BlackScreensMenuView: View {
                     }
                 }
             } header: {
-                Text("Colour codes")
+                Text("20 variations")
             }
         }
         .listStyle(.insetGrouped)
@@ -143,4 +134,3 @@ private struct BlackScreenModalSheetsPreview: View {
         .presentationDragIndicator(.visible)
     }
 }
-

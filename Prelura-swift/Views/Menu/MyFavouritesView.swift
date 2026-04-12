@@ -63,12 +63,6 @@ struct MyFavouritesView: View {
             .padding(.top, Theme.Spacing.sm)
             .padding(.bottom, Theme.Spacing.xs)
 
-            DiscoverSearchField(
-                text: $searchText,
-                placeholder: isProductsTab ? L10n.string("Search favourites") : L10n.string("Search lookbook folders"),
-                topPadding: Theme.Spacing.xs
-            )
-
             if isProductsTab {
                 productsTabContent
             } else {
@@ -79,6 +73,11 @@ struct MyFavouritesView: View {
         .toolbar(.hidden, for: .tabBar)
         .navigationTitle(L10n.string("Favourites"))
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: Text(isProductsTab ? L10n.string("Search favourites") : L10n.string("Search lookbook folders"))
+        )
         .toolbar {
             if isProductsTab {
                 ToolbarItem(placement: .navigationBarTrailing) {

@@ -263,7 +263,21 @@ final class NotificationService {
         }
         return count
     }
-    
+
+    /// Marks every unread notification that counts toward the home bell badge as read (same rules and pagination cap as `countUnreadBellEligibleNotifications`). Call when the user opens the notifications list so the bell clears after viewing.
+    func markAllBellEligibleUnreadRead(pageCount: Int = 15, maxPages: Int = 8) async throws {
+        var ids: [Int] = []
+        for page in 1...maxPages {
+            let (batch, _) = try await getNotifications(pageCount: pageCount, pageNumber: page)
+            for n in batch where n.shouldCountTowardBellBadge {
+                if let id = Int(n.id) { ids.append(id) }
+            }
+            if batch.count < pageCount { break }
+        }
+        guard !ids.isEmpty else { return }
+        _ = try await readNotifications(notificationIds: ids)
+    }
+
     /// Mark notifications as read. Matches Flutter readNotification(notificationIds).
     func readNotifications(notificationIds: [Int]) async throws -> Bool {
         guard !notificationIds.isEmpty else { return true }

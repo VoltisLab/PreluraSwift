@@ -1,27 +1,18 @@
 import SwiftUI
 import Shimmer
 
-/// Full-screen Messages shimmer: matches ChatListView layout (nav bar, search bar, conversation rows). Use when loading; hide navigation bar so this is the only content.
+/// Full-screen Messages shimmer: matches ChatListView layout (nav + conversation rows; search is in the nav bar).
 struct InboxShimmerView: View {
     var body: some View {
         GeometryReader { geometry in
             let topInset = geometry.safeAreaInsets.top
             VStack(spacing: 0) {
-                // Nav bar + title area (replaces system nav so title/search not visible)
+                // Nav bar + title (search field is part of the real navigation bar)
                 RoundedRectangle(cornerRadius: 0)
                     .fill(Theme.Colors.secondaryBackground)
                     .frame(height: topInset + 44)
                     .frame(maxWidth: .infinity)
                     .ignoresSafeArea(edges: .top)
-
-                // Search bar (matches DiscoverSearchField: rounded, full width)
-                RoundedRectangle(cornerRadius: 30)
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(height: 44)
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.top, Theme.Spacing.xs)
-                    .padding(.trailing, Theme.Spacing.sm)
-                    .padding(.bottom, Theme.Spacing.sm)
 
                 // Conversation list (matches ChatRowView: avatar 50, name+time, message preview)
                 VStack(spacing: 0) {

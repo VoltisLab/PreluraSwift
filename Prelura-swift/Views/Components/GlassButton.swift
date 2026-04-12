@@ -101,7 +101,7 @@ struct GlassIconView: View {
     }
 }
 
-/// Toolbar bell: glass circle + **neutral** bell; shopper shows a **red count** badge (like Inbox tab); Console shows a small primary dot when the monitor is on.
+/// Toolbar bell: matches **WEARHOUSE Pro** admin sidebar (`bell.badge`) — **white/light bell**, **red** badge dot; shopper with unread shows a **red** count capsule + white `bell` (numeric badge replaces the dot).
 struct NotificationToolbarBellVisual: View {
     private enum Kind {
         case shopper(unreadCount: Int)
@@ -119,27 +119,53 @@ struct NotificationToolbarBellVisual: View {
         self.kind = .shopper(unreadCount: max(0, unreadCount))
     }
 
-    /// Wider canvas so the count badge stays inside the bar item (nav chrome clips overflow).
-    private static let toolbarCanvasWidth: CGFloat = 62
-    private static let toolbarCanvasHeight: CGFloat = 52
+    /// Same width as toolbar icon slots so Home AI + bell can sit tight in one `HStack` (was 62 and added a dead gap).
+    private static let toolbarCanvasWidth: CGFloat = 44
+    private static let toolbarCanvasHeight: CGFloat = 44
+    private static let bellTouchSize: CGFloat = 44
     /// Nudge badge onto the bell rim so it meets the glyph (was pinned to outer canvas and looked “floating”).
     private static let bellBadgeRimNudgeX: CGFloat = -3
     private static let bellBadgeRimNudgeY: CGFloat = 3
 
+    /// Admin / `NotificationIconDebugView.adminBellGlyph`: `bell.badge` palette — bell = label, dot = red.
+    private static let adminBellBadgeSymbol = "bell.badge"
+
+    /// Opaque fill: `Color.red` in toolbar + `glassEffect` can pick up bar vibrancy and look translucent over the bell.
+    private static let opaqueBadgeRed = Color(UIColor(red: 0.96, green: 0.26, blue: 0.21, alpha: 1))
+
     var body: some View {
         ZStack {
             ZStack(alignment: .topTrailing) {
-                Image(systemName: "bell")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(Theme.Colors.primaryText)
-                    .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                bellGlyph
+                    .frame(width: Self.bellTouchSize, height: Self.bellTouchSize)
                     .contentShape(Rectangle())
                 badgeLayer
                     .offset(x: Self.bellBadgeRimNudgeX, y: Self.bellBadgeRimNudgeY)
             }
-            .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+            .frame(width: Self.bellTouchSize, height: Self.bellTouchSize)
         }
         .frame(width: Self.toolbarCanvasWidth, height: Self.toolbarCanvasHeight)
+    }
+
+    @ViewBuilder
+    private var bellGlyph: some View {
+        switch kind {
+        case .shopper(let count):
+            if count > 0 {
+                Image(systemName: "bell")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Theme.Colors.primaryText)
+            } else {
+                Image(systemName: Self.adminBellBadgeSymbol)
+                    .font(.system(size: 18, weight: .medium))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(Self.opaqueBadgeRed, Theme.Colors.primaryText)
+            }
+        case .consoleMonitorOn(_):
+            Image(systemName: "bell")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(Theme.Colors.primaryText)
+        }
     }
 
     @ViewBuilder
@@ -163,9 +189,6 @@ struct NotificationToolbarBellVisual: View {
         }
     }
 
-    /// Opaque fill: `Color.red` in toolbar + `glassEffect` can pick up bar vibrancy and look translucent over the bell.
-    private static let opaqueBadgeRed = Color(UIColor(red: 0.96, green: 0.26, blue: 0.21, alpha: 1))
-
     private func shopperUnreadBadge(count: Int) -> some View {
         let label = count > 99 ? "99+" : "\(count)"
         return Text(label)
@@ -179,5 +202,35 @@ struct NotificationToolbarBellVisual: View {
             .background(Capsule().fill(Self.opaqueBadgeRed))
             .compositingGroup()
             .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Home toolbar (admin `bell.badge` look, no counter)
+
+/// Homepage-only: the real **`bell.badge`** SF Symbol when there is unread (dot **overlaps** the bell). For this glyph, **palette index 0 is the badge**, index 1 is the bell outline — use `(red, label)` so the bell stays light and the dot stays red (reversed order vs naive “left-to-right” reading).
+struct HomeToolbarNotificationBellVisual: View {
+    let unreadCount: Int
+
+    private static let toolbarWidth: CGFloat = 36
+    private static let toolbarHeight: CGFloat = 44
+    /// Matches admin sidebar / notification icon lab.
+    private static let bellPointSize: CGFloat = 17
+    private static let redDot = Color(UIColor(red: 0.96, green: 0.26, blue: 0.21, alpha: 1))
+
+    var body: some View {
+        Group {
+            if unreadCount > 0 {
+                Image(systemName: "bell.badge")
+                    .font(.system(size: Self.bellPointSize, weight: .regular))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(Self.redDot, Theme.Colors.primaryText)
+            } else {
+                Image(systemName: "bell")
+                    .font(.system(size: Self.bellPointSize, weight: .regular))
+                    .foregroundStyle(Theme.Colors.primaryText)
+            }
+        }
+        .frame(width: Self.toolbarWidth, height: Self.toolbarHeight)
+        .contentShape(Rectangle())
     }
 }

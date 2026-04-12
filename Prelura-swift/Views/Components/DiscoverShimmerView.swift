@@ -8,20 +8,12 @@ struct DiscoverShimmerView: View {
             let topInset = geometry.safeAreaInsets.top
             ScrollView {
                 VStack(spacing: 0) {
-                    // Nav bar + title area
+                    // Nav bar + title (member search uses the real navigation bar searchable)
                     RoundedRectangle(cornerRadius: 0)
                         .fill(Theme.Colors.secondaryBackground)
                         .frame(height: topInset + 44)
                         .frame(maxWidth: .infinity)
                         .ignoresSafeArea(edges: .top)
-
-                    // Search bar
-                    RoundedRectangle(cornerRadius: 24)
-                        .fill(Theme.Colors.secondaryBackground)
-                        .frame(height: 44)
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.top, Theme.Spacing.sm)
-                        .padding(.bottom, 0)
 
                     VStack(spacing: Theme.Spacing.lg) {
                         ScrollView(.horizontal, showsIndicators: false) {

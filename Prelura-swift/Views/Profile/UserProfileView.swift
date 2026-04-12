@@ -673,47 +673,33 @@ struct UserProfileView: View {
             detents: [.large],
             useCustomCornerRadius: false
         ) {
-            VStack(spacing: 0) {
-                HStack(spacing: Theme.Spacing.sm) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 16))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    TextField(L10n.string("Search shop"), text: $shopSearchQuery)
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .autocorrectionDisabled()
-                }
-                .padding(Theme.Spacing.sm)
-                .background(Theme.Colors.secondaryBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.sm)
-                .padding(.bottom, Theme.Spacing.xs)
-
-                NavigationStack {
-                    ScrollView {
-                        LazyVGrid(
-                            columns: [
-                                GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                                GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                            ],
-                            spacing: Theme.Spacing.md
-                        ) {
-                            ForEach(filteredItems) { item in
-                                NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
-                                    WardrobeItemCard(
-                                        item: item,
-                                        onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") }
-                                    )
-                                }
-                                .buttonStyle(PlainTappableButtonStyle())
+            NavigationStack {
+                ScrollView {
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                            GridItem(.flexible(), spacing: Theme.Spacing.sm)
+                        ],
+                        spacing: Theme.Spacing.md
+                    ) {
+                        ForEach(filteredItems) { item in
+                            NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
+                                WardrobeItemCard(
+                                    item: item,
+                                    onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") }
+                                )
                             }
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.vertical, Theme.Spacing.md)
                     }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.md)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .searchable(
+                    text: $shopSearchQuery,
+                    placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: Text(L10n.string("Search shop"))
+                )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }

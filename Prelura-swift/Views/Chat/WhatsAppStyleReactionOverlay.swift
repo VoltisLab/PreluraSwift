@@ -133,27 +133,6 @@ struct ExtendedEmojiReactionSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                HStack(spacing: Theme.Spacing.sm) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    TextField(L10n.string("Search emojis"), text: $searchText)
-                        .textFieldStyle(.plain)
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, 10)
-                .background(Theme.Colors.secondaryBackground.opacity(0.65))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Theme.Colors.glassBorder, lineWidth: 1)
-                )
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.sm)
-                .padding(.bottom, Theme.Spacing.xs)
-
                 ScrollView {
                     if filteredEmojis.isEmpty {
                         Text(L10n.string("No matching emojis"))
@@ -186,6 +165,11 @@ struct ExtendedEmojiReactionSheet: View {
             .background(Color.clear)
             .navigationTitle(L10n.string("Reactions"))
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: Text(L10n.string("Search emojis"))
+            )
             .toolbarBackground(.regularMaterial, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {

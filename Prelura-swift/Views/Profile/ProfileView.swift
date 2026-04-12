@@ -806,54 +806,40 @@ struct ProfileView: View {
             detents: [.large],
             useCustomCornerRadius: false
         ) {
-            VStack(spacing: 0) {
-                HStack(spacing: Theme.Spacing.sm) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 16))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    TextField(L10n.string("Search your shop"), text: $shopSearchQuery)
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .autocorrectionDisabled()
-                }
-                .padding(Theme.Spacing.sm)
-                .background(Theme.Colors.secondaryBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.sm)
-                .padding(.bottom, Theme.Spacing.xs)
-
-                NavigationStack {
-                    ScrollView {
-                        LazyVGrid(
-                            columns: [
-                                GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                                GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                            ],
-                            spacing: Theme.Spacing.md
-                        ) {
-                            ForEach(filteredItems) { item in
-                                NavigationLink(value: AppRoute.itemDetail(item)) {
-                                    WardrobeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
-                                }
-                                .buttonStyle(PlainTappableButtonStyle())
+            NavigationStack {
+                ScrollView {
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                            GridItem(.flexible(), spacing: Theme.Spacing.sm)
+                        ],
+                        spacing: Theme.Spacing.md
+                    ) {
+                        ForEach(filteredItems) { item in
+                            NavigationLink(value: AppRoute.itemDetail(item)) {
+                                WardrobeItemCard(item: item, onLikeTap: { viewModel.toggleLike(productId: item.productId ?? "") })
                             }
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.vertical, Theme.Spacing.md)
                     }
-                    .navigationDestination(for: AppRoute.self) { route in
-                        switch route {
-                        case .itemDetail(let item):
-                            ItemDetailView(item: item, authService: authService)
-                        case .conversation(_, _), .menu:
-                            EmptyView()
-                        case .reviews(let username, let rating):
-                            ReviewsView(username: username, rating: rating)
-                        }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.md)
+                }
+                .navigationDestination(for: AppRoute.self) { route in
+                    switch route {
+                    case .itemDetail(let item):
+                        ItemDetailView(item: item, authService: authService)
+                    case .conversation(_, _), .menu:
+                        EmptyView()
+                    case .reviews(let username, let rating):
+                        ReviewsView(username: username, rating: rating)
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .searchable(
+                    text: $shopSearchQuery,
+                    placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: Text(L10n.string("Search your shop"))
+                )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }

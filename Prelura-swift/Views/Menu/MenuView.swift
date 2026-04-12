@@ -11,6 +11,7 @@ struct MenuView: View {
 
     @State private var displayedMultiBuy: Bool = false
     @State private var displayedVacation: Bool = false
+    @State private var isStaffUser: Bool = false
     @State private var showLogoutConfirm = false
 
     private let userService = UserService()
@@ -35,12 +36,15 @@ struct MenuView: View {
                         .cornerRadius(4)
                 }
             }
-#if DEBUG
-            // Never ship this in Release: "Message delivery test" sends real DMs + pushes to the other participant.
+            if isStaffUser {
+                NavigationLink(destination: AdminMenuView()) {
+                    menuRow(L10n.string("Admin Dashboard"), icon: "gearshape.2")
+                }
+            }
+            // Submenu hides "Message delivery test" in Release (it sends real DMs + pushes).
             NavigationLink(destination: DebugMenuView()) {
                 menuRow(L10n.string("Debug"), icon: "ladybug")
             }
-#endif
             NavigationLink(destination: ShopValueView(listingCount: listingCount)) {
                 menuRow(L10n.string("Seller dashboard"), icon: "chart.bar")
             }
@@ -152,6 +156,7 @@ struct MenuView: View {
             await MainActor.run {
                 displayedMultiBuy = user.isMultibuyEnabled
                 displayedVacation = user.isVacationMode
+                isStaffUser = user.isStaff
             }
         } catch {
             // Keep displayed state from params / previous fetch

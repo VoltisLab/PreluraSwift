@@ -191,9 +191,8 @@ class HomeViewModel: ObservableObject {
         runSearch(search: query.isEmpty ? nil : query, category: selectedCategory)
     }
     
-    /// Clears the home search field and reloads the default feed (featured + first page).
-    func clearSearchAndReload() {
-        searchText = ""
+    /// After the user clears the system search field (or Home tab clears `searchText`), restore featured feed and hints.
+    func reloadFeedAfterSearchEmptied() {
         searchClosestMatchHint = nil
         loadData()
     }

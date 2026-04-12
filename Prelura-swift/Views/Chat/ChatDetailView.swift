@@ -612,15 +612,17 @@ struct ChatDetailView: View {
 
     private var messageInputBar: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
+            // Match `HomeFeedSearchField` inset (horizontal md, vertical sm) and `Theme.SearchField.singleLineHeight` for single-line height; center send with the field.
+            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                 TextField("Type a message...", text: $newMessage, axis: .vertical)
                     .textFieldStyle(.plain)
                     .focused($isMessageFieldFocused)
+                    .font(Theme.Typography.body)
                     .lineLimit(1...10)
                     .multilineTextAlignment(.leading)
-                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
-                    .padding(.vertical, Theme.TextInput.insetVerticalCompact)
-                    .frame(minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+                    .frame(minHeight: Theme.SearchField.singleLineHeight, alignment: .leading)
                     .background(Theme.Colors.secondaryBackground)
                     .cornerRadius(22)
                     .overlay(
@@ -630,9 +632,12 @@ struct ChatDetailView: View {
                     .foregroundColor(Theme.Colors.primaryText)
                 Button(action: sendMessage) {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 32))
+                        .font(.system(size: 28))
                         .foregroundColor(newMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Theme.Colors.secondaryText : Theme.primaryColor)
                 }
+                .buttonStyle(.plain)
+                .frame(width: Theme.SearchField.trailingActionSlotWidth, height: Theme.SearchField.trailingActionSlotHeight)
+                .contentShape(Rectangle())
                 .disabled(newMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
             }
         }

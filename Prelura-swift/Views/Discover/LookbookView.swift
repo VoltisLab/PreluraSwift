@@ -608,6 +608,8 @@ private struct LookbookFeedScreenView: View {
                 }
 
                 if !entries.isEmpty {
+                    // Liquid Glass FAB: constrain the container to the control size so hit-testing stays on the button
+                    // (an unconstrained `GlassEffectContainer` can expand and break grid ↔ list toggling).
                     GlassEffectContainer(spacing: 0) {
                         Button {
                             HapticManager.selection()
@@ -620,12 +622,15 @@ private struct LookbookFeedScreenView: View {
                                 .glassEffect(.regular, in: .circle)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
+                        .contentShape(Circle())
                     }
+                    .frame(width: 54, height: 54)
+                    .fixedSize()
                     .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
                     .padding(.trailing, Theme.Spacing.md)
                     .padding(.bottom, Theme.Spacing.lg)
                     .zIndex(1)
+                    .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1866,7 +1871,7 @@ private struct LookbookPostCardShimmer: View {
                     .frame(width: 44, height: 44)
             }
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, 10)
+            .padding(.vertical, 6)
             .background(Theme.Colors.background)
 
             Rectangle()
@@ -1920,8 +1925,8 @@ private struct LookbookCarouselPageDots: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.top, Theme.Spacing.sm)
-                .padding(.bottom, Theme.Spacing.xs)
+                .padding(.top, 4)
+                .padding(.bottom, 2)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Image \(clampedIndex + 1) of \(totalPages)")
             }
@@ -2024,8 +2029,8 @@ struct LookbookFeedPostActionBar: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.Spacing.md)
-        .padding(.top, 6)
-        .padding(.bottom, 8)
+        .padding(.top, 2)
+        .padding(.bottom, 6)
         .background(Theme.Colors.background)
     }
 }
@@ -2714,6 +2719,47 @@ private struct LookbookSendToShareSheet: View {
         return compact == "prelurasupport"
     }
 
+    /// Last activity within 7 days first; if fewer than 20 people, widen to 30 days; cap 20, most recent first.
+    private static let sendToRecentCap = 20
+    private static let sendToRecent7s: TimeInterval = 7 * 24 * 3600
+    private static let sendToRecent30s: TimeInterval = 30 * 24 * 3600
+
+    private static func recentUsersFromConversations(
+        sortedNewestFirst convs: [Conversation],
+        meLower: String,
+        excludeLower: String,
+        isBlocked: (User) -> Bool
+    ) -> [User] {
+        let now = Date()
+        let cutoff7 = now.addingTimeInterval(-sendToRecent7s)
+        let cutoff30 = now.addingTimeInterval(-sendToRecent30s)
+
+        func collect(since: Date) -> [User] {
+            var seen = Set<String>()
+            var out: [User] = []
+            for c in convs {
+                let activity = c.lastMessageTime ?? .distantPast
+                guard activity >= since else { continue }
+                let u = c.recipient
+                let key = u.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if key.isEmpty || key == meLower { continue }
+                if !excludeLower.isEmpty, key == excludeLower { continue }
+                if isBlocked(u) { continue }
+                guard !seen.contains(key) else { continue }
+                seen.insert(key)
+                out.append(u)
+                if out.count >= sendToRecentCap { break }
+            }
+            return out
+        }
+
+        let from7 = collect(since: cutoff7)
+        if from7.count >= sendToRecentCap {
+            return from7
+        }
+        return collect(since: cutoff30)
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -2728,19 +2774,6 @@ private struct LookbookSendToShareSheet: View {
                         .padding()
                 } else {
                     List {
-                        Section {
-                            DiscoverSearchField(
-                                text: $searchQuery,
-                                placeholder: L10n.string("Search username"),
-                                onSubmit: { Task { await runSearchNow() } },
-                                onChange: { _ in scheduleSearch() },
-                                outerPadding: false,
-                                topPadding: 0
-                            )
-                            .listRowInsets(EdgeInsets(top: Theme.Spacing.sm, leading: Theme.Spacing.md, bottom: Theme.Spacing.sm, trailing: Theme.Spacing.md))
-                            .listRowBackground(Theme.Colors.background)
-                            .listRowSeparator(.hidden)
-                        }
                         if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 {
                             Section {
                                 if searchLoading {
@@ -2797,6 +2830,17 @@ private struct LookbookSendToShareSheet: View {
             .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Send to"))
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(
+                text: $searchQuery,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: Text(L10n.string("Search username"))
+            )
+            .onSubmit(of: .search) {
+                Task { await runSearchNow() }
+            }
+            .onChange(of: searchQuery) { _, _ in
+                scheduleSearch()
+            }
             .toolbarBackground(Theme.Colors.background, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -2955,25 +2999,20 @@ private struct LookbookSendToShareSheet: View {
                 let db = b.lastMessageTime ?? .distantPast
                 return da > db
             }
-            var recentOrdered: [User] = []
-            var seenRecent = Set<String>()
-            for c in sortedConvs {
-                let u = c.recipient
-                let key = u.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                if key.isEmpty || key == meLower { continue }
-                if !excludeLower.isEmpty, key == excludeLower { continue }
-                if isBlockedPreluraSupportRecipient(u) { continue }
-                guard !seenRecent.contains(key) else { continue }
-                seenRecent.insert(key)
-                recentOrdered.append(u)
-                if recentOrdered.count >= 50 { break }
-            }
+            let recentOrdered = Self.recentUsersFromConversations(
+                sortedNewestFirst: sortedConvs,
+                meLower: meLower,
+                excludeLower: excludeLower,
+                isBlocked: isBlockedPreluraSupportRecipient
+            )
 
             let sortedFollowers = followers.sorted {
                 $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
             }
             var followerOrdered: [User] = []
-            var seenFollow = seenRecent
+            var seenFollow = Set(
+                recentOrdered.map { $0.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            )
             for u in sortedFollowers {
                 let key = u.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                 if key.isEmpty || key == meLower { continue }
@@ -2995,14 +3034,12 @@ private struct LookbookSendToShareSheet: View {
     }
 }
 
-// MARK: - Comments sheet presentation (match OptionsSheet / sort–filter modal surface)
+// MARK: - Comments sheet presentation (match `OptionsSheet` Sort / Filter: `navigationDone` + default detents)
 extension View {
     func lookbookCommentsPresentationChrome() -> some View {
-        presentationDetents([.fraction(0.44), .medium, .large])
+        presentationDetents([.fraction(0.58), .large])
             .presentationDragIndicator(.visible)
-            .presentationCornerRadius(22)
             .presentationBackground(Theme.Colors.modalSheetBackground)
-            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
     }
 }
 
@@ -3798,19 +3835,17 @@ private struct LookbookFeedSearchView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: Theme.Spacing.sm) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(Theme.Colors.secondaryText)
-                TextField(L10n.string("Search topics, hashtags, styles…"), text: $searchText)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .autocorrectionDisabled()
+            // Same inline search as Home (`HomeFeedSearchField`), not `.searchable` drawer.
+            VStack(spacing: 0) {
+                HomeFeedSearchField(
+                    text: $searchText,
+                    onSubmit: { _ in },
+                    onAITap: nil,
+                    topPadding: Theme.Spacing.xs
+                )
             }
-            .padding(Theme.Spacing.sm)
-            .background(Theme.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.top, Theme.Spacing.xs)
+            .background(Theme.Colors.background)
 
             if filteredBySearch.isEmpty, !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(L10n.string("No looks match your search."))

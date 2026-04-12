@@ -23,6 +23,8 @@ struct PillTag: View {
     var visualStyle: VisualStyle = .standard
     /// Set false for display-only tags (e.g. review highlights) to avoid haptics on tap.
     var playsSelectionHaptic: Bool = true
+    /// Unselected: clear fill + light border (Retro gradient); text follows `colorScheme`.
+    var unselectedOutlineOnRichBackground: Bool = false
     let action: () -> Void
 
     private var tagCornerRadius: CGFloat {
@@ -92,6 +94,9 @@ struct PillTag: View {
             return Theme.Colors.primaryText
         }
         if isSelected { return .white }
+        if unselectedOutlineOnRichBackground {
+            return colorScheme == .light ? Theme.Colors.primaryText : .white
+        }
         return colorScheme == .light ? Theme.Colors.primaryText : Theme.Colors.secondaryText
     }
 
@@ -101,6 +106,8 @@ struct PillTag: View {
             shape.fill(Color.clear)
         } else if isSelected {
             shape.fill(Theme.primaryColor)
+        } else if unselectedOutlineOnRichBackground {
+            shape.fill(Color.clear)
         } else if colorScheme == .light {
             shape.fill(Theme.Colors.background)
         } else {
@@ -115,10 +122,16 @@ struct PillTag: View {
             shape.strokeBorder(outlineTagBorderColor, lineWidth: 1)
         } else if isSelected {
             EmptyView()
+        } else if unselectedOutlineOnRichBackground {
+            shape.strokeBorder(richBackgroundUnselectedBorderColor, lineWidth: 1)
         } else {
             shape
                 .strokeBorder(inactiveBorderColor, lineWidth: 0.5)
         }
+    }
+
+    private var richBackgroundUnselectedBorderColor: Color {
+        colorScheme == .light ? Color.black.opacity(0.22) : Color.white.opacity(0.92)
     }
 
     private var outlineTagBorderColor: Color {

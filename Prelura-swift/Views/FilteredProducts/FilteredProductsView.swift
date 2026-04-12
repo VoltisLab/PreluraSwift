@@ -36,6 +36,7 @@ enum FilteredProductsActiveSheet: Identifiable, Equatable {
 }
 
 struct FilteredProductsView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authService: AuthService
     @StateObject private var viewModel: FilteredProductsViewModel
@@ -54,6 +55,15 @@ struct FilteredProductsView: View {
 
     private let productsScrollSpace = "filteredProductsScroll"
 
+    /// Match `HomeView` category strip rhythm: no extra top gap under `.searchable`, tight stack, minimal gap before grid.
+    private static let filterPageChipTopInset: CGFloat = 0
+    private static let filterPageChipBottomInset: CGFloat = Theme.Spacing.sm
+    private static let filterPageNestedRowVerticalInset: CGFloat = Theme.Spacing.xs
+    private static let filterPageFilterRowTopInset: CGFloat = Theme.Spacing.xs
+    private static let filterPageFilterRowBottomInset: CGFloat = 0
+    /// Last grid row clears the floating Shopping bag + home indicator (Try Cart / Retro only).
+    private static let shopAllScrollBottomClearance: CGFloat = 112
+
     let title: String
     let filterType: ProductFilterType
     /// When false, item detail shows only Buy now (no Send an offer). Used for Try Cart.
@@ -64,6 +74,39 @@ struct FilteredProductsView: View {
     /// Try Cart (or explicit flag): floating bag + pass `shopAllBag` into item detail for optional toolbar cart mode.
     private var tryCartShoppingEnabled: Bool {
         showAddToBag ?? filterType.isShopAllWithBag
+    }
+
+    private var isVintageRetroShop: Bool {
+        filterType == .shopAllVintageLocked
+    }
+
+    private var vintageToolbarLabelColor: Color {
+        colorScheme == .dark ? .white : Theme.Colors.primaryText
+    }
+
+    private var filterSortRowLabelColor: Color {
+        if isVintageRetroShop { return vintageToolbarLabelColor }
+        return Theme.Colors.secondaryText
+    }
+
+    @ViewBuilder
+    private var filterSortRowBackground: some View {
+        if isVintageRetroShop {
+            Color.clear
+        } else {
+            RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                .fill(Theme.Colors.secondaryBackground)
+        }
+    }
+
+    @ViewBuilder
+    private var filterSortRowOverlay: some View {
+        if isVintageRetroShop {
+            RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                .strokeBorder(colorScheme == .dark ? Color.white.opacity(0.9) : Color.black.opacity(0.22), lineWidth: 1)
+        } else {
+            EmptyView()
+        }
     }
 
     init(title: String, filterType: ProductFilterType, authService: AuthService? = nil, offersAllowed: Bool = true, showAddToBag: Bool? = nil) {
@@ -143,7 +186,8 @@ struct FilteredProductsView: View {
                                     }
                                     : nil,
                                 isInBag: inBag,
-                                onRemove: bagMode ? { shopAllBag.remove(item) } : nil
+                                onRemove: bagMode ? { shopAllBag.remove(item) } : nil,
+                                addToBagChromeStyle: isVintageRetroShop ? .retroCompactLightOutline : .standard
                             )
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
@@ -165,9 +209,8 @@ struct FilteredProductsView: View {
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.sm)
-                .padding(.bottom, Theme.Spacing.md)
-                .padding(.bottom, (tryCartShoppingEnabled && shopAllBagToolbarActive) ? 88 : 0)
+                .padding(.top, 0)
+                .padding(.bottom, (tryCartShoppingEnabled && shopAllBagToolbarActive) ? Self.shopAllScrollBottomClearance : 0)
                 .background(
                     GeometryReader { geo in
                         Color.clear.preference(
@@ -180,6 +223,7 @@ struct FilteredProductsView: View {
             // Header chrome lives outside this ScrollView; system scroll content margins would stack with
             // the grid's horizontal padding and make products look more inset than search/filter (Shop All).
             .contentMargins(.horizontal, 0, for: .scrollContent)
+            .contentMargins(.top, 0, for: .scrollContent)
             .coordinateSpace(name: productsScrollSpace)
             .refreshable {
                 await viewModel.refreshAsync()
@@ -191,16 +235,6 @@ struct FilteredProductsView: View {
     @ViewBuilder
     private var filteredProductsFixedHeader: some View {
         VStack(spacing: 0) {
-            // Search Bar (same position as feed / discover / inbox)
-            DiscoverSearchField(
-                text: Binding(get: { viewModel.searchText }, set: { viewModel.searchText = $0 }),
-                placeholder: tryCartShoppingEnabled ? "Search anything to add to bag" : L10n.string("Search items, brands or styles"),
-                showClearButton: true,
-                onClear: { viewModel.searchText = "" },
-                topPadding: Theme.Spacing.xs
-            )
-            .padding(.trailing, Theme.Spacing.sm)
-
             // Shop by style: pill tags under search bar for style filters.
             // Selected style is shown before "All" so the active filter stays visible without horizontal scrolling.
             if case .shopByStyle = filterType {
@@ -228,7 +262,8 @@ struct FilteredProductsView: View {
                         }
                         .padding(.horizontal, Theme.Spacing.md)
                     }
-                    .padding(.vertical, Theme.Spacing.sm)
+                    .padding(.top, Self.filterPageChipTopInset)
+                    .padding(.bottom, Self.filterPageChipBottomInset)
                     .onChange(of: viewModel.selectedStyle) { _, newValue in
                         withAnimation(.easeInOut(duration: 0.2)) {
                             if let raw = newValue {
@@ -253,6 +288,8 @@ struct FilteredProductsView: View {
                                 title: L10n.string("All"),
                                 isSelected: viewModel.selectedParentCategory == nil,
                                 accentWhenUnselected: true,
+                                showShadow: !isVintageRetroShop,
+                                unselectedOutlineOnRichBackground: isVintageRetroShop,
                                 action: {
                                     withAnimation(.easeInOut(duration: 0.25)) {
                                         viewModel.selectShopAllAll()
@@ -265,6 +302,8 @@ struct FilteredProductsView: View {
                                         title: L10n.string(category),
                                         isSelected: viewModel.selectedParentCategory == category,
                                         accentWhenUnselected: true,
+                                        showShadow: !isVintageRetroShop,
+                                        unselectedOutlineOnRichBackground: isVintageRetroShop,
                                         action: {
                                             withAnimation(.easeInOut(duration: 0.25)) {
                                                 viewModel.selectShopAllMain(category)
@@ -278,6 +317,8 @@ struct FilteredProductsView: View {
                                         title: L10n.string(category),
                                         isSelected: viewModel.selectedParentCategory == category,
                                         accentWhenUnselected: true,
+                                        showShadow: !isVintageRetroShop,
+                                        unselectedOutlineOnRichBackground: isVintageRetroShop,
                                         action: {
                                             withAnimation(.easeInOut(duration: 0.25)) {
                                                 viewModel.selectShopAllMain(category)
@@ -289,7 +330,8 @@ struct FilteredProductsView: View {
                         }
                         .padding(.horizontal, Theme.Spacing.md)
                     }
-                    .padding(.vertical, Theme.Spacing.sm)
+                    .padding(.top, Self.filterPageChipTopInset)
+                    .padding(.bottom, Self.filterPageChipBottomInset)
                     .fixedSize(horizontal: false, vertical: true)
 
                     // Row 2: subcategories (Try Cart Shop All only)
@@ -311,7 +353,7 @@ struct FilteredProductsView: View {
                             }
                             .padding(.horizontal, Theme.Spacing.md)
                         }
-                        .padding(.vertical, Theme.Spacing.sm)
+                        .padding(.vertical, Self.filterPageNestedRowVerticalInset)
                         .fixedSize(horizontal: false, vertical: true)
                         .transition(.asymmetric(
                             insertion: .move(edge: .top).combined(with: .opacity),
@@ -340,7 +382,7 @@ struct FilteredProductsView: View {
                             }
                             .padding(.horizontal, Theme.Spacing.md)
                         }
-                        .padding(.vertical, Theme.Spacing.sm)
+                        .padding(.vertical, Self.filterPageNestedRowVerticalInset)
                         .fixedSize(horizontal: false, vertical: true)
                         .transition(.asymmetric(
                             insertion: .move(edge: .top).combined(with: .opacity),
@@ -384,11 +426,12 @@ struct FilteredProductsView: View {
                     }
                     .padding(.horizontal, Theme.Spacing.md)
                 }
-                .padding(.vertical, Theme.Spacing.sm)
+                .padding(.top, Self.filterPageChipTopInset)
+                .padding(.bottom, Self.filterPageChipBottomInset)
                 .fixedSize(horizontal: false, vertical: true)
             }
 
-            // Filter / Sort row (grey pills, no shadow)
+            // Filter / Sort row (grey pills, no shadow; Retro = hairline border on gradient)
             HStack {
                 Button(action: { activeSheet = .filter }) {
                     HStack(spacing: Theme.Spacing.xs) {
@@ -397,13 +440,11 @@ struct FilteredProductsView: View {
                         Text(L10n.string("Filter"))
                             .font(Theme.Typography.subheadline)
                     }
-                    .foregroundColor(Theme.Colors.secondaryText)
+                    .foregroundColor(filterSortRowLabelColor)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                            .fill(Theme.Colors.secondaryBackground)
-                    )
+                    .background(filterSortRowBackground)
+                    .overlay(filterSortRowOverlay)
                 }
                 .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
 
@@ -416,39 +457,56 @@ struct FilteredProductsView: View {
                         Image(systemName: "arrow.up.arrow.down")
                             .font(.system(size: 12))
                     }
-                    .foregroundColor(Theme.Colors.secondaryText)
+                    .foregroundColor(filterSortRowLabelColor)
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                            .fill(Theme.Colors.secondaryBackground)
-                    )
+                    .background(filterSortRowBackground)
+                    .overlay(filterSortRowOverlay)
                 }
                 .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
             }
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-            .background(Theme.Colors.background)
+            .padding(.top, Self.filterPageFilterRowTopInset)
+            .padding(.bottom, Self.filterPageFilterRowBottomInset)
+            .background(isVintageRetroShop ? Color.clear : Theme.Colors.background)
+        }
+    }
+
+    /// Placeholder before `GeometryReader` measures the real header (wrong default caused a gap under the filter row or clipped the first grid row).
+    private var fallbackProductsHeaderHeight: CGFloat {
+        switch filterType {
+        case .shopAllVintageLocked: return 96
+        case .tryCartSearch: return 132
+        case .shopByStyle: return 100
+        case .byParentCategory: return 124
+        case .onSale, .shopBargains, .recentlyViewed, .brandsYouLove, .byBrand, .bySize:
+            /// Filter + sort row only (~52–58pt); keep modest until measured (intrinsic height used once `fixedSize` fixes GeometryReader).
+            return 58
         }
     }
 
     private var resolvedProductsHeaderHeight: CGFloat {
-        // Before the first layout pass, avoid a tall placeholder spacer (was 220pt) that mimicked “empty” space under the header.
-        productsHeaderHeight > 8 ? productsHeaderHeight : 160
+        productsHeaderHeight > 8 ? productsHeaderHeight : fallbackProductsHeaderHeight
     }
 
-    var body: some View {
+    /// When collapsing chrome hides the overlay, drop this to 0 so we do not keep a tall empty band above the grid (feed keeps header inside `ScrollView` instead).
+    private var headerSpacerHeight: CGFloat {
+        showProductsTopChrome ? resolvedProductsHeaderHeight : 0
+    }
+
+    private var filteredProductsRootStack: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
-                // Constant inset: toggling height made scroll offset jump and retriggered chrome visibility (feedback loop).
                 Color.clear
-                    .frame(height: resolvedProductsHeaderHeight)
+                    .frame(height: headerSpacerHeight)
+                    .animation(.spring(response: 0.38, dampingFraction: 0.88, blendDuration: 0.12), value: showProductsTopChrome)
                 productGridContent
             }
-            .clipped()
 
             filteredProductsFixedHeader
-                .background(Theme.Colors.background)
+                /// Prevent the header from receiving the full ZStack height; otherwise `GeometryReader` reports ~screen height and the top spacer leaves a huge gap under Filter/Sort.
+                .fixedSize(horizontal: false, vertical: true)
+                .background(isVintageRetroShop ? Color.clear : Theme.Colors.background)
                 .offset(y: showProductsTopChrome ? 0 : -resolvedProductsHeaderHeight)
                 .allowsHitTesting(showProductsTopChrome)
                 .background(
@@ -465,12 +523,44 @@ struct FilteredProductsView: View {
                 isVisible: $showProductsTopChrome
             )
         }
-        .background(Theme.Colors.background)
+    }
+
+    var body: some View {
+        Group {
+            if isVintageRetroShop {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+                    filteredProductsRootStack
+                        .background(
+                            VintageShopAnimatedBackground(animationDate: context.date)
+                                .ignoresSafeArea()
+                        )
+                        .toolbarBackground(
+                            LinearGradient(
+                                colors: VintageShopBannerGradient.colors(at: context.date, colorScheme: colorScheme),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            for: .navigationBar
+                        )
+                        .toolbarBackground(.visible, for: .navigationBar)
+                        .toolbarColorScheme(colorScheme, for: .navigationBar)
+                        .tint(colorScheme == .dark ? Color.white : Theme.primaryColor)
+                }
+            } else {
+                filteredProductsRootStack
+                    .background(Theme.Colors.background)
+                    .toolbarBackground(Theme.Colors.background, for: .navigationBar)
+            }
+        }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(false)
-        .toolbarBackground(Theme.Colors.background, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
+        .searchable(
+            text: Binding(get: { viewModel.searchText }, set: { viewModel.searchText = $0 }),
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: Text(tryCartShoppingEnabled ? "Search anything to add to bag" : L10n.string("Search items, brands or styles"))
+        )
         .onAppear {
             if authService.isAuthenticated {
                 viewModel.updateAuthToken(authService.authToken)
@@ -531,7 +621,11 @@ struct FilteredProductsView: View {
                     } label: {
                         Image(systemName: shopAllBagToolbarActive ? "bag.fill" : "bag")
                             .font(.system(size: 17, weight: .medium))
-                            .foregroundStyle(shopAllBagToolbarActive ? Theme.primaryColor : Theme.Colors.primaryText)
+                            .foregroundStyle(
+                                shopAllBagToolbarActive
+                                    ? Theme.primaryColor
+                                    : (isVintageRetroShop ? vintageToolbarLabelColor : Theme.Colors.primaryText)
+                            )
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
@@ -540,7 +634,7 @@ struct FilteredProductsView: View {
 
                     NavigationLink(destination: MyFavouritesView(fromShopAll: true)) {
                         Image(systemName: "heart")
-                            .foregroundColor(Theme.Colors.primaryText)
+                            .foregroundColor(isVintageRetroShop ? vintageToolbarLabelColor : Theme.Colors.primaryText)
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
@@ -548,7 +642,8 @@ struct FilteredProductsView: View {
                 }
             }
         }
-        .toolbar(showProductsTopChrome ? .visible : .hidden, for: .navigationBar)
+        // Keep navigation bar visible so system `.searchable` matches Debug (drawer animation); only the filter header offsets with scroll.
+        .toolbar(.visible, for: .navigationBar)
         .onChange(of: viewModel.items.isEmpty) { _, empty in
             if empty { showProductsTopChrome = true }
         }

@@ -12,12 +12,29 @@ enum VintageShopBannerGradient {
     private static let bottomShared = UIColor(red: 201 / 255, green: 167 / 255, blue: 52 / 255, alpha: 1)
 
     static func colors(at date: Date) -> [Color] {
+        colors(at: date, colorScheme: .dark)
+    }
+
+    /// Dark: saturated intro gradient. Light: softer pastels so the page follows system appearance.
+    static func colors(at date: Date, colorScheme: ColorScheme) -> [Color] {
         let elapsed = date.timeIntervalSinceReferenceDate
         let period = halfPeriodSeconds * 2
         let linearT = 0.5 - 0.5 * cos((2 * Double.pi * elapsed) / period)
-        let top = lerp(topFrameA, topFrameB, CGFloat(linearT))
-        return [Color(uiColor: top), Color(uiColor: bottomShared)]
+        switch colorScheme {
+        case .light:
+            let top = lerp(lightTopA, lightTopB, CGFloat(linearT))
+            return [Color(uiColor: top), Color(uiColor: lightBottom)]
+        case .dark:
+            fallthrough
+        @unknown default:
+            let top = lerp(topFrameA, topFrameB, CGFloat(linearT))
+            return [Color(uiColor: top), Color(uiColor: bottomShared)]
+        }
     }
+
+    private static let lightTopA = UIColor(red: 0.96, green: 0.90, blue: 0.90, alpha: 1)
+    private static let lightTopB = UIColor(red: 0.90, green: 0.96, blue: 0.88, alpha: 1)
+    private static let lightBottom = UIColor(red: 0.97, green: 0.94, blue: 0.88, alpha: 1)
 
     private static func lerp(_ a: UIColor, _ b: UIColor, _ t: CGFloat) -> UIColor {
         var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
@@ -69,13 +86,25 @@ struct VintageShopBannerForegroundStack: View {
 // MARK: - Reusable layers
 
 struct VintageShopAnimatedBackground: View {
+    /// When set, renders the gradient for this instant without an inner `TimelineView` (use with a parent `TimelineView` so the page and nav bar stay in sync).
+    var animationDate: Date?
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+        if let animationDate {
             LinearGradient(
-                colors: VintageShopBannerGradient.colors(at: context.date),
+                colors: VintageShopBannerGradient.colors(at: animationDate, colorScheme: colorScheme),
                 startPoint: .top,
                 endPoint: .bottom
             )
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+                LinearGradient(
+                    colors: VintageShopBannerGradient.colors(at: context.date, colorScheme: colorScheme),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
         }
     }
 }

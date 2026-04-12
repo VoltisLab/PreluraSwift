@@ -21,6 +21,7 @@ private enum DebugMenuItem: String, CaseIterable, Identifiable {
     case haptics
     case animatedScreen
     case blackScreens
+    case notificationIconLab
     case dashboard
     case orderScreen
     case shopTools
@@ -47,6 +48,7 @@ private enum DebugMenuItem: String, CaseIterable, Identifiable {
         case .haptics: return L10n.string("Haptics")
         case .animatedScreen: return "Animated screen"
         case .blackScreens: return "Black screens"
+        case .notificationIconLab: return "Notification icons (admin + retail)"
         case .dashboard: return "Dashboard"
         case .orderScreen: return "Order screen"
         case .shopTools: return L10n.string("Shop tools")
@@ -73,6 +75,7 @@ private enum DebugMenuItem: String, CaseIterable, Identifiable {
         case .haptics: return "waveform"
         case .animatedScreen: return "waveform.path.ecg"
         case .blackScreens: return "square.fill"
+        case .notificationIconLab: return "bell.badge.fill"
         case .dashboard: return "chart.bar.doc.horizontal"
         case .orderScreen: return "doc.text"
         case .shopTools: return "wrench.and.screwdriver"
@@ -83,12 +86,21 @@ private enum DebugMenuItem: String, CaseIterable, Identifiable {
 /// Debug menu screen – submenu for debug tools and component showcase.
 struct DebugMenuView: View {
     @State private var searchText: String = ""
-    @State private var isDebugSearchPresented: Bool = false
+
+    /// "Message delivery test" is DEBUG-only (sends real DMs); keep other tools in Release/TestFlight).
+    private static var debugMenuItemsForCurrentBuild: [DebugMenuItem] {
+        #if DEBUG
+        Array(DebugMenuItem.allCases)
+        #else
+        DebugMenuItem.allCases.filter { $0 != .messageDeliveryTest }
+        #endif
+    }
 
     private var filteredDebugItems: [DebugMenuItem] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return Array(DebugMenuItem.allCases) }
-        return DebugMenuItem.allCases.filter { $0.title.lowercased().contains(q) }
+        let base = Self.debugMenuItemsForCurrentBuild
+        guard !q.isEmpty else { return base }
+        return base.filter { $0.title.lowercased().contains(q) }
     }
 
     var body: some View {
@@ -130,27 +142,10 @@ struct DebugMenuView: View {
         .navigationTitle("Debug")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .searchable(
+        .appStandardSearchable(
             text: $searchText,
-            isPresented: $isDebugSearchPresented,
             prompt: Text(L10n.string("Search debug tools"))
         )
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    HapticManager.selection()
-                    isDebugSearchPresented = true
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(Theme.Colors.primaryText)
-                        .frame(minWidth: Theme.AppBar.buttonSize, minHeight: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L10n.string("Search debug tools"))
-            }
-        }
     }
 
     @ViewBuilder
@@ -161,7 +156,15 @@ struct DebugMenuView: View {
         case .messagePushTrace: MessageChatPushTraceDebugView()
         case .chatLiveUpdate: ChatThreadLiveUpdateDebugView()
         case .webSocketTest: WebSocketConnectionDebugView()
-        case .messageDeliveryTest: MessageDeliveryDebugView()
+        case .messageDeliveryTest:
+            #if DEBUG
+            MessageDeliveryDebugView()
+            #else
+            Text(L10n.string("This tool is only available in debug builds."))
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Colors.secondaryText)
+                .padding()
+            #endif
         case .notificationMatrix: NotificationTypeMatrixDebugView()
         case .orderChatMock: OrderChatMockDebugView()
         case .profileCards: ProfileCardsComponentsView()
@@ -174,6 +177,7 @@ struct DebugMenuView: View {
         case .haptics: HapticsDebugView()
         case .animatedScreen: AnimatedScreenDebugView()
         case .blackScreens: BlackScreensMenuView()
+        case .notificationIconLab: NotificationIconDebugView()
         case .dashboard: DashboardView()
         case .orderScreen: OrderScreenDebugView()
         case .shopTools: ShopToolsView()

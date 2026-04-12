@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Single-line text field styled like DiscoverSearchField (rounded, secondary background).
+/// Single-line text field with rounded secondary background (forms; not the navigation-bar search control).
 /// Use for Account Settings and other forms where search-field styling is desired.
 /// When bordered and focused, shows a primary-colour ring.
 struct SettingsTextField: View {

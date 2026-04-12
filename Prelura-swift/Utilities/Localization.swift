@@ -202,6 +202,7 @@ enum L10n {
         "Debug": "Εντοπισμός σφαλμάτων",
         "Search debug tools": "Αναζήτηση εργαλείων debug",
         "No matching tools": "Δεν βρέθηκαν εργαλεία",
+        "This tool is only available in debug builds.": "Αυτό το εργαλείο είναι διαθέσιμο μόνο σε debug builds.",
 
         // Home
         "Search items, brands or styles": "Αναζήτηση προϊόντων, εμπορικών σημάτων ή στυλ",
@@ -557,6 +558,7 @@ enum L10n {
         "Member reviews (%@)": "Κριτικές μελών (%@)",
         "Automatic reviews (%@)": "Αυτόματες κριτικές (%@)",
         "How reviews work": "Πώς λειτουργούν οι κριτικές",
+        "Discussed": "Συζητήθηκαν",
 
         // Followers / Following (Following key already in Profile section)
         "No followers yet": "Δεν υπάρχουν ακόμα οπαδοί",
@@ -737,7 +739,37 @@ extension L10n {
                 break
             }
         }
+        if let apiMessage = userFacingMessageFromNSErrorChain(error) {
+            return apiMessage
+        }
         return L10n.string("Something went wrong. Please try again.")
+    }
+
+    /// Mutations such as `rateUser` return `success: false` with a plain-language `message`; the client throws `NSError` with that string. Show it when it does not look like GraphQL/decoding noise.
+    private static func userFacingMessageFromNSErrorChain(_ error: Error) -> String? {
+        for e in unwindErrorChain(error) {
+            let ns = e as NSError
+            if ns.domain == NSURLErrorDomain { continue }
+            let desc = ns.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard userFacingNSErrorDescriptionLooksSafe(desc) else { continue }
+            return desc
+        }
+        return nil
+    }
+
+    private static func userFacingNSErrorDescriptionLooksSafe(_ desc: String) -> Bool {
+        if desc.isEmpty { return false }
+        if desc.count > 900 { return false }
+        if desc.rangeOfCharacter(from: .letters) == nil { return false }
+        let lower = desc.lowercased()
+        if lower.contains("graphql") { return false }
+        if lower.contains("json") && (lower.contains("decod") || lower.contains("serial")) { return false }
+        if lower.contains("variable") && lower.contains("$") { return false }
+        if lower.contains("operation") && lower.contains("document") { return false }
+        if lower.contains("swift.decoding") || lower.contains("swift/decoding") { return false }
+        if lower == "the operation couldn’t be completed." { return false }
+        if lower.hasPrefix("error domain=") { return false }
+        return true
     }
 
     /// Human-readable line under interactive order-review stars (0…5 in half-star steps).

@@ -12,20 +12,7 @@ struct BrowseView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // Custom Header with title centered
-                customHeader
-                
-                // Search (same position as feed / discover / inbox)
                 VStack(spacing: Theme.Spacing.md) {
-                    DiscoverSearchField(
-                        text: $searchText,
-                        placeholder: L10n.string("Search items, brands or styles"),
-                        onChange: { viewModel.setSearchText($0) },
-                        outerPadding: false,
-                        topPadding: Theme.Spacing.xs
-                    )
-                    .padding(.trailing, Theme.Spacing.sm)
-
                     // Category Filters
                     categoryFilters
                     
@@ -65,27 +52,22 @@ struct BrowseView: View {
                 }
             }
             .background(Theme.Colors.background)
-            .navigationBarHidden(true)
+            .navigationTitle(L10n.string("Browse"))
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: Text(L10n.string("Search items, brands or styles"))
+            )
+            .onChange(of: searchText) { _, newValue in
+                viewModel.setSearchText(newValue)
+            }
             .onAppear {
                 if let category = selectedCategory {
                     viewModel.selectCategory(category)
                 }
             }
         }
-    }
-    
-    private var customHeader: some View {
-        HStack {
-            Color.clear.frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-            Spacer()
-            Text(L10n.string("Browse"))
-                .font(Theme.Typography.title)
-                .foregroundColor(Theme.Colors.primaryText)
-            Spacer()
-            Color.clear.frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-        }
-        .padding(.horizontal, Theme.AppBar.horizontalPadding)
-        .padding(.vertical, Theme.AppBar.verticalPadding)
     }
     
     private var categoryFilters: some View {

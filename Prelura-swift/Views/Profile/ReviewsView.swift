@@ -25,11 +25,26 @@ struct ReviewsView: View {
         reviews.filter { $0.isPlatformAutomaticReview }
     }
 
+    /// Reviews with written detail beyond the default automatic line, or any highlight tags.
+    private var discussedReviews: [UserReview] {
+        reviews.filter { r in
+            if !r.highlights.isEmpty { return true }
+            let c = r.comment.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !c.isEmpty else { return false }
+            if r.isPlatformAutomaticReview,
+               c.caseInsensitiveCompare("Sale completed successfully") == .orderedSame {
+                return false
+            }
+            return true
+        }
+    }
+
     private var displayedReviews: [UserReview] {
         switch selectedFilter {
         case .all: return reviews
         case .fromMembers: return memberReviews
         case .automatic: return automaticReviews
+        case .discussed: return discussedReviews
         }
     }
 
@@ -38,10 +53,22 @@ struct ReviewsView: View {
         return Double(list.map(\.rating).reduce(0, +)) / Double(list.count)
     }
 
-    enum ReviewFilter: String, CaseIterable {
+    enum ReviewFilter: String, Equatable {
         case all = "All"
         case fromMembers = "Members"
         case automatic = "Automatic"
+        case discussed = "Discussed"
+    }
+
+    private static let primaryReviewFilters: [ReviewFilter] = [.all, .fromMembers, .automatic]
+
+    private func reviewFilterTitle(_ filter: ReviewFilter) -> String {
+        switch filter {
+        case .all: return L10n.string("All")
+        case .fromMembers: return L10n.string("Members")
+        case .automatic: return L10n.string("Automatic")
+        case .discussed: return L10n.string("Discussed")
+        }
     }
 
     var body: some View {
@@ -68,11 +95,13 @@ struct ReviewsView: View {
                                 .padding(.vertical, Theme.Spacing.xl)
                         } else {
                             LazyVStack(spacing: 0) {
-                                ForEach(displayedReviews) { review in
+                                ForEach(Array(displayedReviews.enumerated()), id: \.element.id) { index, review in
                                     reviewBlock(review)
                                         .padding(.horizontal, Theme.Spacing.md)
                                         .padding(.vertical, Theme.Spacing.sm)
-                                    ContentDivider()
+                                    if index < displayedReviews.count - 1 {
+                                        ContentDivider()
+                                    }
                                 }
                             }
                         }
@@ -99,17 +128,20 @@ struct ReviewsView: View {
     }
 
     private var headerSection: some View {
-        VStack(spacing: Theme.Spacing.sm) {
+        let cardShape = RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
+        return VStack(spacing: Theme.Spacing.sm) {
             Text(String(format: "%.1f", rating))
                 .font(Theme.Typography.title2)
                 .fontWeight(.bold)
                 .foregroundColor(Theme.Colors.primaryText)
+                .frame(maxWidth: .infinity)
             HStack(spacing: Theme.Spacing.xs) {
                 FractionalStarRatingDisplay(rating: rating, starSize: 14, spacing: 2)
                 Text("(\(totalNumber))")
                     .font(Theme.Typography.callout)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
+            .frame(maxWidth: .infinity)
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 reviewBreakdownRow(
                     title: L10n.string("Members"),
@@ -122,13 +154,13 @@ struct ReviewsView: View {
                     avg: averageRating(for: automaticReviews)
                 )
             }
-            .padding(Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.xs)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
-                    .stroke(Theme.Colors.glassBorder.opacity(0.85), lineWidth: 1)
-            )
-            .padding(.top, Theme.Spacing.sm)
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay {
+            cardShape.strokeBorder(Theme.Colors.glassBorder.opacity(0.85), lineWidth: 1)
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.top, Theme.Spacing.lg)
@@ -149,14 +181,25 @@ struct ReviewsView: View {
     }
 
     private var filterSection: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            ForEach(ReviewFilter.allCases, id: \.self) { filter in
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(spacing: Theme.Spacing.sm) {
+                ForEach(Self.primaryReviewFilters, id: \.self) { filter in
+                    PillTag(
+                        title: reviewFilterTitle(filter),
+                        isSelected: selectedFilter == filter,
+                        accentWhenUnselected: true,
+                        action: { selectedFilter = filter }
+                    )
+                }
+            }
+            HStack(spacing: Theme.Spacing.sm) {
                 PillTag(
-                    title: filter.rawValue,
-                    isSelected: selectedFilter == filter,
+                    title: reviewFilterTitle(.discussed),
+                    isSelected: selectedFilter == .discussed,
                     accentWhenUnselected: true,
-                    action: { selectedFilter = filter }
+                    action: { selectedFilter = .discussed }
                 )
+                Spacer(minLength: 0)
             }
         }
         .padding(.horizontal, Theme.Spacing.md)
@@ -183,6 +226,7 @@ struct ReviewsView: View {
                             playsSelectionHaptic: false,
                             action: {}
                         )
+                        .allowsHitTesting(false)
                     }
                 }
             }

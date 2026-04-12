@@ -116,6 +116,16 @@ struct Theme {
         static let insetVerticalCompact: CGFloat = Spacing.sm + 6
     }
 
+    /// Default search field chrome: matches the system navigation-bar search drawer (compact continuous corners, secondary background, caret-only focus — no thick accent ring).
+    struct SearchField {
+        static let cornerRadius: CGFloat = 12
+        static let singleLineHeight: CGFloat = 44
+        static let iconPointSize: CGFloat = 16
+        /// Matches the sparkles control footprint so screens without `onAITap` still mirror Home layout (~min tap target).
+        static let trailingActionSlotWidth: CGFloat = 44
+        static let trailingActionSlotHeight: CGFloat = 44
+    }
+
     /// Standard app bar / custom header layout so top-level icons and back buttons stay in the same position.
     struct AppBar {
         static let horizontalPadding: CGFloat = Spacing.md
@@ -168,6 +178,15 @@ extension View {
         overlay {
             Circle().stroke(Theme.Colors.avatarHairlineBorder, lineWidth: lineWidth)
         }
+    }
+
+    /// System-style search that uses the navigation bar drawer and moves into the nav bar when focused (`displayMode: .always` shows the field inline first).
+    func appStandardSearchable(text: Binding<String>, prompt: Text) -> some View {
+        searchable(
+            text: text,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: prompt
+        )
     }
 }
 

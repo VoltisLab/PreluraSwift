@@ -84,13 +84,6 @@ struct NotificationsListView: View {
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Notifications"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                NotificationToolbarBellVisual(unreadCount: bellUnreadStore.unreadCount)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-        }
         .refreshable {
             await reloadFromStart()
         }
@@ -116,10 +109,35 @@ struct NotificationsListView: View {
         defer { isLoading = false }
         do {
             try await fetchVisibleBatch(appending: false)
-            // Do not post here: opening this screen triggered a duplicate Home bell refresh that could race
-            // with an in-flight count and briefly show then clear the red dot. Post on disappear / read / delete instead.
         } catch {
             await MainActor.run { errorMessage = L10n.userFacingError(error) }
+            return
+        }
+        notificationService.updateAuthToken(authService.authToken)
+        do {
+            try await notificationService.markAllBellEligibleUnreadRead()
+            await MainActor.run {
+                notifications = notifications.map { n in
+                    guard n.shouldCountTowardBellBadge else { return n }
+                    return AppNotification(
+                        id: n.id,
+                        sender: n.sender,
+                        message: n.message,
+                        model: n.model,
+                        modelId: n.modelId,
+                        modelGroup: n.modelGroup,
+                        isRead: true,
+                        createdAt: n.createdAt,
+                        meta: n.meta
+                    )
+                }
+                NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
+            }
+            bellUnreadStore.scheduleRefresh(authService: authService)
+        } catch {
+            #if DEBUG
+            print("Wearhouse: markAllBellEligibleUnreadRead failed: \(error)")
+            #endif
         }
     }
 

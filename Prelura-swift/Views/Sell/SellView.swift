@@ -984,14 +984,6 @@ struct CategorySelectionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DiscoverSearchField(
-                text: $searchText,
-                placeholder: L10n.string("Search categories"),
-                outerPadding: true,
-                topPadding: Theme.Spacing.sm
-            )
-            .padding(.trailing, Theme.Spacing.sm)
-
             if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 searchResultsContent
             } else {
@@ -1001,6 +993,11 @@ struct CategorySelectionView: View {
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Select Category"))
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: Text(L10n.string("Search categories"))
+        )
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -1863,14 +1860,6 @@ struct StyleSelectionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DiscoverSearchField(
-                text: $searchText,
-                placeholder: L10n.string("Find a style"),
-                outerPadding: true,
-                topPadding: Theme.Spacing.sm
-            )
-            .padding(.trailing, Theme.Spacing.sm)
-
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(filteredStyles, id: \.self) { raw in
@@ -1885,6 +1874,11 @@ struct StyleSelectionView: View {
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Select Style"))
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: Text(L10n.string("Find a style"))
+        )
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -2541,7 +2535,6 @@ struct BrandInputView: View {
     @State private var hasMore: Bool = true
     @State private var isLoadingInitial: Bool = false
     @State private var isLoadingMore: Bool = false
-    @FocusState private var isFocused: Bool
 
     private let productService = ProductService()
     private let pageSize = 80
@@ -2549,15 +2542,6 @@ struct BrandInputView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DiscoverSearchField(
-                text: $brandText,
-                placeholder: L10n.string("Enter brand name"),
-                outerPadding: true,
-                topPadding: Theme.Spacing.xs
-            )
-            .padding(.trailing, Theme.Spacing.sm)
-            .onAppear { isFocused = true }
-
             if isLoadingInitial && fetchedBrands.isEmpty {
                 HStack {
                     ProgressView()
@@ -2636,6 +2620,11 @@ struct BrandInputView: View {
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Brand"))
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(
+            text: $brandText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: Text(L10n.string("Enter brand name"))
+        )
         .toolbar(.hidden, for: .tabBar)
         .tint(Theme.primaryColor)
         .onAppear {

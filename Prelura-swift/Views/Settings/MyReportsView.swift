@@ -96,6 +96,7 @@ struct MyReportsView: View {
             HStack(spacing: Theme.Spacing.xs) {
                 ForEach(ReportTypeFilter.allCases, id: \.rawValue) { filter in
                     Button {
+                        HapticManager.selection()
                         selectedType = filter
                     } label: {
                         Text(filter.rawValue)
