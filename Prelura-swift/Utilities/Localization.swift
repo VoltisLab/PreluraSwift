@@ -67,6 +67,7 @@ enum L10n {
         "Orders": "Παραγγελίες",
         "Order details": "Λεπτομέρειες παραγγελίας",
         "Leave a review": "Αφήστε κριτική",
+        "Thanks! Your review was submitted.": "Ευχαριστούμε! Η κριτική σας υποβλήθηκε.",
         "Rating": "Βαθμολογία",
         "What went well?": "Τι πήγε καλά;",
         "Comment (optional)": "Σχόλιο (προαιρετικό)",

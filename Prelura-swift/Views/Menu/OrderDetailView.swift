@@ -45,6 +45,7 @@ struct OrderDetailView: View {
     @State private var showLeaveFeedbackSheet = false
     @State private var feedbackSheetRole: OrderFeedbackSheetRole = .buyerRatesSeller
     @State private var leaveFeedbackRefreshToken = UUID()
+    @State private var showReviewSubmittedFeedback = false
 
     init(order: Order, isSeller: Bool? = nil, suppressBuyerHelpAndCancelActions: Bool = false) {
         self.order = order
@@ -249,6 +250,31 @@ struct OrderDetailView: View {
         .navigationTitle(L10n.string("Order details"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .overlay(alignment: .bottom) {
+            if showReviewSubmittedFeedback {
+                Text(L10n.string("Thanks! Your review was submitted."))
+                    .font(Theme.Typography.subheadline.weight(.medium))
+                    .foregroundStyle(Theme.Colors.primaryText)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.bottom, canShowSellerShipping ? 88 : 32)
+                    .allowsHitTesting(false)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: showReviewSubmittedFeedback)
+        .onChange(of: showReviewSubmittedFeedback) { _, on in
+            guard on else { return }
+            Task {
+                try? await Task.sleep(nanoseconds: 2_200_000_000)
+                await MainActor.run {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showReviewSubmittedFeedback = false
+                    }
+                }
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             if canShowSellerShipping {
                 shippingActionSheet
@@ -307,6 +333,9 @@ struct OrderDetailView: View {
                     onFinished: {
                         showLeaveFeedbackSheet = false
                         leaveFeedbackRefreshToken = UUID()
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            showReviewSubmittedFeedback = true
+                        }
                         Task { await hydrateOrderIfNeeded(force: true) }
                     }
                 )
@@ -1423,6 +1452,7 @@ private struct LeaveOrderFeedbackSheet: View {
             )
             await MainActor.run {
                 busy = false
+                HapticManager.success()
                 dismiss()
                 onFinished()
             }
