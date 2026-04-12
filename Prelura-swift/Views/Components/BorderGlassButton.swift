@@ -6,8 +6,9 @@ struct BorderGlassButton: View {
     @Environment(\.colorScheme) private var colorScheme
 
     enum ChromeStyle {
+        /// Primary-outline styling (e.g. Try Cart, Shop All, Favourites).
         case standard
-        /// Tighter vertical size (aligned with filter row); white stroke on dark Retro gradient, adaptive in light mode.
+        /// Same **dimensions** as `standard`; only stroke/label colors differ (white on Retro gradient, adaptive in light).
         case retroCompactLightOutline
     }
 
@@ -52,21 +53,14 @@ struct BorderGlassButton: View {
         }
     }
 
-    private var iconPointSize: CGFloat {
-        chromeStyle == .retroCompactLightOutline ? 14 : 16
-    }
+    /// Shared compact outline metrics (matches Retro grid “Add to bag”); all `ChromeStyle` values use the same layout.
+    private var iconPointSize: CGFloat { 14 }
 
-    private var titleFont: Font {
-        chromeStyle == .retroCompactLightOutline ? Theme.Typography.subheadline : Theme.Typography.headline
-    }
+    private var titleFont: Font { Theme.Typography.subheadline }
 
-    private var horizontalPadding: CGFloat {
-        chromeStyle == .retroCompactLightOutline ? Theme.Spacing.md : Theme.Spacing.lg
-    }
+    private var horizontalPadding: CGFloat { Theme.Spacing.md }
 
-    private var verticalPadding: CGFloat {
-        chromeStyle == .retroCompactLightOutline ? Theme.Spacing.sm : Theme.Spacing.md
-    }
+    private var verticalPadding: CGFloat { Theme.Spacing.sm }
 
     var body: some View {
         Button(action: {

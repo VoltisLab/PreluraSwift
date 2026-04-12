@@ -25,6 +25,16 @@ extension ProductFilterType {
         default: return false
         }
     }
+
+    /// Discover push destinations with only the Filter/Sort row under search (no chip rows).
+    var isDiscoverFilterSortOnlyHeader: Bool {
+        switch self {
+        case .onSale, .shopBargains, .recentlyViewed, .brandsYouLove, .byBrand, .bySize:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 /// One active modal (sort / filter / styles). Avoids stacking multiple `.sheet` presentations.
@@ -480,13 +490,25 @@ struct FilteredProductsView: View {
         case .shopByStyle: return 100
         case .byParentCategory: return 124
         case .onSale, .shopBargains, .recentlyViewed, .brandsYouLove, .byBrand, .bySize:
-            /// Filter + sort row only (~52–58pt); keep modest until measured (intrinsic height used once `fixedSize` fixes GeometryReader).
-            return 58
+            /// Filter + sort row only; tuned with `normalizedHeaderMeasurement` slack trim.
+            return 48
         }
     }
 
+    /// Measured height can still include a few points of extra slack under Filter/Sort on Discover-only layouts.
+    private func normalizedHeaderMeasurement(_ reported: CGFloat) -> CGFloat {
+        guard reported > 8 else { return reported }
+        if filterType.isDiscoverFilterSortOnlyHeader {
+            return max(0, reported - 12)
+        }
+        return reported
+    }
+
     private var resolvedProductsHeaderHeight: CGFloat {
-        productsHeaderHeight > 8 ? productsHeaderHeight : fallbackProductsHeaderHeight
+        if productsHeaderHeight > 8 {
+            return normalizedHeaderMeasurement(productsHeaderHeight)
+        }
+        return fallbackProductsHeaderHeight
     }
 
     /// When collapsing chrome hides the overlay, drop this to 0 so we do not keep a tall empty band above the grid (feed keeps header inside `ScrollView` instead).
