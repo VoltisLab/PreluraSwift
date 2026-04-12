@@ -228,6 +228,8 @@ struct OrderChatMockDebugView: View {
             EmptyView()
         case .soldBanner:
             EmptyView()
+        case .review:
+            EmptyView()
         }
     }
 

@@ -91,12 +91,6 @@ struct ChatListView: View {
             } else {
                 ScrollViewReader { proxy in
                     VStack(spacing: 0) {
-                        DiscoverSearchField(
-                            text: $searchText,
-                            placeholder: L10n.string("Search conversations"),
-                            topPadding: Theme.Spacing.xs
-                        )
-
                         List {
                             ForEach(Array(filteredConversations.enumerated()), id: \.element.id) { index, conversation in
                                 Button(action: {
@@ -179,6 +173,11 @@ struct ChatListView: View {
                     .refreshable {
                         await loadInboxConversations()
                     }
+                    .searchable(
+                        text: $searchText,
+                        placement: .navigationBarDrawer(displayMode: .always),
+                        prompt: Text(L10n.string("Search conversations"))
+                    )
                     .overlay(alignment: .bottom) {
                         if archiveUndoConversation != nil {
                             ArchiveUndoToast(onUndo: undoLastArchiveSwipe)
@@ -709,6 +708,11 @@ struct ChatRowView: View {
             case "order_cancellation_outcome":
                 let approved = (json["approved"] as? Bool) ?? false
                 return approved ? "Order cancellation was approved" : "Order cancellation was declined"
+            case "user_review":
+                if usernamesMatch(conversation.lastMessageSenderUsername, currentUsername) {
+                    return "You left a review"
+                }
+                return "Left a review"
             default: return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
             }
         }

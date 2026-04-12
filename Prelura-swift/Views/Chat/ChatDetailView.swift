@@ -205,6 +205,7 @@ enum ChatItem: Hashable {
     case offer(String)
     case sold(OrderInfo)
     case soldBanner(Date)
+    case review(UUID)
 
     var id: String {
         switch self {
@@ -212,6 +213,7 @@ enum ChatItem: Hashable {
         case .offer(let o): return "offer-\(o)"
         case .sold(let o): return "sold-\(o.id)"
         case .soldBanner(let d): return "sold-banner-\(Int(d.timeIntervalSince1970))"
+        case .review(let r): return "review-\(r.uuidString)"
         }
     }
 
@@ -225,6 +227,10 @@ enum ChatItem: Hashable {
     }
     var isSoldBanner: Bool {
         if case .soldBanner = self { return true }
+        return false
+    }
+    var isReview: Bool {
+        if case .review = self { return true }
         return false
     }
 }
@@ -432,7 +438,7 @@ struct ChatDetailView: View {
                 continue
             }
             if !isCurrentUser(username: localMsg.senderUsername) {
-                if localMsg.isOfferContent || localMsg.isSoldConfirmation || localMsg.isOrderIssue
+                if localMsg.isOfferContent || localMsg.isSoldConfirmation || localMsg.isUserReview || localMsg.isOrderIssue
                     || localMsg.isOrderCancellationRequest || localMsg.isOrderCancellationOutcome { continue }
                 let trimmedPeer = localMsg.content.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmedPeer.isEmpty else { continue }
@@ -444,7 +450,7 @@ struct ChatDetailView: View {
                 if !peerDup { result.append(localMsg) }
                 continue
             }
-            if localMsg.isOfferContent || localMsg.isSoldConfirmation || localMsg.isOrderIssue
+            if localMsg.isOfferContent || localMsg.isSoldConfirmation || localMsg.isUserReview || localMsg.isOrderIssue
                 || localMsg.isOrderCancellationRequest || localMsg.isOrderCancellationOutcome { continue }
             let trimmed = localMsg.content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
@@ -546,7 +552,7 @@ struct ChatDetailView: View {
     /// Hide sold_confirmation message bubbles (order is shown by OrderConfirmationCardView banner only).
     /// Collapse duplicate `order_issue` payloads (same issue id / public id / identical JSON) so support threads don’t show twin report cards.
     private var displayedMessages: [Message] {
-        var list = messages.filter { !$0.isSoldConfirmation }
+        var list = messages.filter { !$0.isSoldConfirmation && !$0.isUserReview }
         if displayedConversation.offer != nil {
             list = list.filter { !$0.isOfferContent }
         }
@@ -646,7 +652,7 @@ struct ChatDetailView: View {
         guard isOther else { return false }
         if index == 0 { return true }
         let prev = list[index - 1]
-        if prev.isSoldConfirmation { return true }
+        if prev.isSoldConfirmation || prev.isUserReview { return true }
         return isCurrentUser(username: prev.senderUsername)
     }
 
@@ -876,6 +882,39 @@ struct ChatDetailView: View {
             let topPadding: CGFloat = timelineIndex == 0 ? 0 : (prevIsOfferOrSold ? 0 : Theme.Spacing.md)
             itemSoldPersistentBanner
                 .padding(.top, topPadding)
+        case .review(let messageId):
+            if let message = messages.first(where: { $0.id == messageId }),
+               let payload = message.parsedUserReviewPayload {
+                let isFromOther = !isCurrentUser(username: message.senderUsername)
+                let prevIsCard = (timelineIndex > 0 && timelineIndex - 1 < timelineOrder.count) && {
+                    let p = timelineOrder[timelineIndex - 1]
+                    return p.isOffer || p.isSold || p.isSoldBanner || p.isReview
+                }()
+                let topPadding: CGFloat = timelineIndex == 0 ? 0 : (prevIsCard ? 0 : Theme.Spacing.md)
+                let card = UserReviewChatCardView(
+                    message: message,
+                    payload: payload,
+                    currentUsername: authService.username
+                )
+                .padding(.vertical, Theme.Spacing.sm)
+                .background(Theme.Colors.background)
+                .id("review_\(payload.reviewId)")
+                Group {
+                    if isFromOther {
+                        HStack(alignment: .top, spacing: 4) {
+                            chatTitleAvatar(url: displayedConversation.recipient.avatarURL, username: displayedConversation.recipient.username)
+                            card
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        card
+                            .padding(.leading, Theme.Spacing.xs)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(.top, topPadding)
+            }
         }
     }
 
@@ -1752,6 +1791,9 @@ struct ChatDetailView: View {
         }
         for m in msgs {
             entries.append((m.timestamp, .message(m.id)))
+        }
+        for m in messages where m.isUserReview {
+            entries.append((m.timestamp, .review(m.id)))
         }
         if let order = displayedConversation.order, !isSupportConversation {
             let parties = inferPartiesForSoldBanner()
@@ -3084,6 +3126,85 @@ struct ChatDetailView: View {
         } else {
             recordIfNeededAndSend()
         }
+    }
+}
+
+// MARK: - User review card (order thread)
+
+/// Inline card when buyer/seller submits a `UserReview` — mirrors offer/sale WebSocket + push behaviour.
+private struct UserReviewChatCardView: View {
+    let message: Message
+    let payload: UserReviewChatPayload
+    let currentUsername: String?
+
+    private var isFromCurrentUser: Bool {
+        guard let me = currentUsername?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !me.isEmpty else { return false }
+        return message.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == me
+    }
+
+    private var roleLine: String {
+        let reviewed = payload.reviewedUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isFromCurrentUser {
+            return "You rated @\(reviewed)"
+        }
+        let who = message.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        return who.isEmpty ? "You were reviewed" : "@\(who) rated you"
+    }
+
+    private var starsLine: String {
+        let r = min(5, max(0, payload.rating))
+        return String(repeating: "\u{2605}", count: r) + String(repeating: "\u{2606}", count: max(0, 5 - r))
+    }
+
+    private static func relativeTimestamp(for date: Date) -> String {
+        let now = Date()
+        if now.timeIntervalSince(date) < 60 { return "Just now" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        let str = formatter.localizedString(for: date, relativeTo: now)
+        if str.hasPrefix("in ") { return "Just now" }
+        return str
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                Image(systemName: "star.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Theme.primaryColor)
+                Text("Review")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.primaryText)
+            }
+            Text(roleLine)
+                .font(Theme.Typography.body)
+                .fontWeight(.semibold)
+                .foregroundStyle(Theme.Colors.primaryText)
+            Text(starsLine)
+                .font(.system(size: 16))
+                .foregroundStyle(Theme.primaryColor)
+            let trimmed = payload.comment.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                Text(trimmed)
+                    .font(Theme.Typography.subheadline)
+                    .foregroundStyle(Theme.Colors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Spacer(minLength: 0)
+                Text(Self.relativeTimestamp(for: message.timestamp))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.secondaryText)
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.chatInlineCardBackground)
+        .cornerRadius(24)
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+        )
     }
 }
 

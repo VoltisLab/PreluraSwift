@@ -9,6 +9,15 @@ struct LookbookShareChatPayload: Equatable {
     let posterUsername: String
 }
 
+/// Backend `user_review` chat row (`order_offer_chat.add_user_review_chat_message`).
+struct UserReviewChatPayload: Equatable {
+    let reviewId: Int
+    let orderId: Int
+    let rating: Int
+    let comment: String
+    let reviewedUsername: String
+}
+
 struct Message: Identifiable {
     let id: UUID
     /// Backend message ID (for mark-as-read API).
@@ -96,6 +105,7 @@ struct Message: Identifiable {
             case "account_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             case "product_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             case "lookbook_share": return "Post shared"
+            case "user_review": return "Left a review"
             default: break
             }
         }
@@ -192,6 +202,10 @@ struct Message: Identifiable {
                     return c.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
                 return "Shared a look"
+            case "user_review":
+                if isFromCurrentUser { return "You left a review" }
+                let u = senderUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+                return u.isEmpty ? "Left a review" : "\(u) left a review"
             default: break
             }
         }
@@ -215,6 +229,53 @@ struct Message: Identifiable {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let t = json["type"] as? String else { return false }
         return t == "sold_confirmation"
+    }
+
+    /// Structured review card in the order thread (`item_type=user_review`).
+    var isUserReview: Bool {
+        if type == "user_review" { return true }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let t = json["type"] as? String else { return false }
+        return t == "user_review"
+    }
+
+    var parsedUserReviewPayload: UserReviewChatPayload? {
+        guard isUserReview else { return nil }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (json["type"] as? String) == "user_review" else { return nil }
+        let rid: Int? = {
+            if let n = json["review_id"] as? Int { return n }
+            if let s = json["review_id"] as? String { return Int(s) }
+            return nil
+        }()
+        let oid: Int? = {
+            if let n = json["order_id"] as? Int { return n }
+            if let s = json["order_id"] as? String { return Int(s) }
+            return nil
+        }()
+        let rating: Int = {
+            if let n = json["rating"] as? Int { return n }
+            if let n = json["rating"] as? NSNumber { return n.intValue }
+            if let s = json["rating"] as? String { return Int(s) ?? 0 }
+            return 0
+        }()
+        let comment = (json["comment"] as? String) ?? ""
+        let reviewed = ((json["reviewed_username"] as? String) ?? (json["reviewedUsername"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let reviewId = rid, let orderId = oid, !reviewed.isEmpty else { return nil }
+        return UserReviewChatPayload(
+            reviewId: reviewId,
+            orderId: orderId,
+            rating: min(5, max(1, rating)),
+            comment: comment,
+            reviewedUsername: reviewed
+        )
     }
 
     /// Backend `sold_confirmation` JSON (`order_offer_chat.add_sold_confirmation_message`): order_id, buyer_subtotal, etc.
