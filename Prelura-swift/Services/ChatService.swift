@@ -115,6 +115,41 @@ class ChatService: ObservableObject {
         return Self.mapConversationDataRows(response.archivedConversations)
     }
 
+    /// GraphQL `UserType.id` is an integer; expose as `User.userId` for order detail, reviews, etc.
+    private static func backendUserId(from anyId: AnyCodable?) -> Int? {
+        guard let anyId else { return nil }
+        if let i = anyId.value as? Int { return i }
+        if let d = anyId.value as? Double, d.rounded() == d { return Int(d) }
+        if let s = anyId.value as? String {
+            return Int(s.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return nil
+    }
+
+    private static func userFromRecipientRow(
+        id: AnyCodable?,
+        username: String,
+        displayName: String,
+        profilePictureUrl: String?
+    ) -> User {
+        let backendId = backendUserId(from: id)
+        let swiftUUID: UUID
+        if let b = backendId {
+            swiftUUID = User.stableIdForSeller(backendUserId: b)
+        } else if let id, let s = id.value as? String, let u = UUID(uuidString: s) {
+            swiftUUID = u
+        } else {
+            swiftUUID = UUID()
+        }
+        return User(
+            id: swiftUUID,
+            userId: backendId,
+            username: username,
+            displayName: displayName,
+            avatarURL: profilePictureUrl
+        )
+    }
+
     private static func mapConversationOrderData(_ o: ConversationOrderData) -> ConversationOrder? {
         guard let orderIdStr = Conversation.idString(from: o.id), !orderIdStr.isEmpty else { return nil }
         let total = o.priceTotalDouble
@@ -149,14 +184,6 @@ class ChatService: ObservableObject {
     private static func mapConversationDataRows(_ rows: [ConversationData]?) -> [Conversation] {
         rows?.compactMap { conv in
             guard let idString = Conversation.idString(from: conv.id) else { return nil }
-            let recipientIdString: String
-            if let recipientId = conv.recipient?.id {
-                if let intValue = recipientId.value as? Int { recipientIdString = String(intValue) }
-                else if let stringValue = recipientId.value as? String { recipientIdString = stringValue }
-                else { recipientIdString = String(describing: recipientId.value) }
-            } else {
-                recipientIdString = ""
-            }
             let offer: OfferInfo? = conv.offer.flatMap { Conversation.offerInfo(from: $0) }
             let order: ConversationOrder? = conv.order.flatMap { Self.mapConversationOrderData($0) }
             let lastTime = parseGraphQLDateString(conv.lastMessage?.createdAt)
@@ -164,11 +191,11 @@ class ChatService: ObservableObject {
                 ?? offer?.createdAt
             return Conversation(
                 id: idString,
-                recipient: User(
-                    id: UUID(uuidString: recipientIdString) ?? UUID(),
+                recipient: Self.userFromRecipientRow(
+                    id: conv.recipient?.id,
                     username: conv.recipient?.username ?? "",
                     displayName: conv.recipient?.displayName ?? "",
-                    avatarURL: conv.recipient?.profilePictureUrl
+                    profilePictureUrl: conv.recipient?.profilePictureUrl
                 ),
                 lastMessage: conv.lastMessage?.text,
                 lastMessageSenderUsername: conv.lastMessage?.sender?.username,
@@ -246,14 +273,6 @@ class ChatService: ObservableObject {
         )
         guard let conv = response.conversationById else { return nil }
         guard let idString = Conversation.idString(from: conv.id) else { return nil }
-        let recipientIdString: String
-        if let recipientId = conv.recipient?.id {
-            if let intValue = recipientId.value as? Int { recipientIdString = String(intValue) }
-            else if let stringValue = recipientId.value as? String { recipientIdString = stringValue }
-            else { recipientIdString = String(describing: recipientId.value) }
-        } else {
-            recipientIdString = ""
-        }
         let offer: OfferInfo? = conv.offer.flatMap { Conversation.offerInfo(from: $0) }
         let order: ConversationOrder? = conv.order.flatMap { Self.mapConversationOrderData($0) }
         let lastTime = parseGraphQLDateString(conv.lastMessage?.createdAt) ?? order?.createdAt
@@ -263,11 +282,11 @@ class ChatService: ObservableObject {
         }()
         return Conversation(
             id: idString,
-            recipient: User(
-                id: UUID(uuidString: recipientIdString) ?? UUID(),
+            recipient: Self.userFromRecipientRow(
+                id: conv.recipient?.id,
                 username: conv.recipient?.username ?? "",
                 displayName: conv.recipient?.displayName ?? "",
-                avatarURL: conv.recipient?.profilePictureUrl
+                profilePictureUrl: conv.recipient?.profilePictureUrl
             ),
             lastMessage: conv.lastMessage?.text,
             lastMessageSenderUsername: conv.lastMessage?.sender?.username,
@@ -456,27 +475,13 @@ class ChatService: ObservableObject {
         } else {
             throw ChatError.invalidResponse
         }
-        // Extract recipient id
-        let recipientIdString: String
-        if let recipientId = chat.recipient?.id {
-            if let intValue = recipientId.value as? Int {
-                recipientIdString = String(intValue)
-            } else if let stringValue = recipientId.value as? String {
-                recipientIdString = stringValue
-            } else {
-                recipientIdString = String(describing: recipientId.value)
-            }
-        } else {
-            recipientIdString = ""
-        }
-        
         return Conversation(
             id: idString,
-            recipient: User(
-                id: UUID(uuidString: recipientIdString) ?? UUID(),
+            recipient: Self.userFromRecipientRow(
+                id: chat.recipient?.id,
                 username: chat.recipient?.username ?? "",
                 displayName: chat.recipient?.displayName ?? "",
-                avatarURL: chat.recipient?.profilePictureUrl
+                profilePictureUrl: chat.recipient?.profilePictureUrl
             ),
             lastMessage: nil,
             lastMessageTime: nil,

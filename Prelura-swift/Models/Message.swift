@@ -105,7 +105,7 @@ struct Message: Identifiable {
             case "account_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             case "product_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             case "lookbook_share": return "Post shared"
-            case "user_review": return "Left a review"
+            case "user_review": return L10n.string("Left a feedback.")
             default: break
             }
         }
@@ -203,9 +203,11 @@ struct Message: Identifiable {
                 }
                 return "Shared a look"
             case "user_review":
-                if isFromCurrentUser { return "You left a review" }
+                if isFromCurrentUser { return L10n.string("You left a feedback.") }
                 let u = senderUsername.trimmingCharacters(in: .whitespacesAndNewlines)
-                return u.isEmpty ? "Left a review" : "\(u) left a review"
+                guard !u.isEmpty else { return L10n.string("Left a feedback.") }
+                let name = u.hasPrefix("@") ? String(u.dropFirst()) : u
+                return String(format: L10n.string("%@ left a feedback."), name)
             default: break
             }
         }

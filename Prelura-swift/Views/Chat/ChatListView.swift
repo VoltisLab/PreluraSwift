@@ -710,9 +710,13 @@ struct ChatRowView: View {
                 return approved ? "Order cancellation was approved" : "Order cancellation was declined"
             case "user_review":
                 if usernamesMatch(conversation.lastMessageSenderUsername, currentUsername) {
-                    return "You left a review"
+                    return L10n.string("You left a feedback.")
                 }
-                return "Left a review"
+                if let sender = conversation.lastMessageSenderUsername?.trimmingCharacters(in: .whitespacesAndNewlines), !sender.isEmpty {
+                    let name = sender.hasPrefix("@") ? String(sender.dropFirst()) : sender
+                    return String(format: L10n.string("%@ left a feedback."), name)
+                }
+                return L10n.string("Left a feedback.")
             default: return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
             }
         }

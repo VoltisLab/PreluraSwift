@@ -1945,6 +1945,8 @@ struct LookbookFeedPostActionBar: View {
     let entry: LookbookEntry
     let currentDisplayImageURL: String?
     let isBookmarked: Bool
+    /// When true, heart stays tappable but the numeric like count is hidden (local “Hide likes” for this post).
+    var hideLikeCount: Bool = false
     let onLikeTap: () -> Void
     let onCommentsTap: () -> Void
     let onSendTap: () -> Void
@@ -1967,8 +1969,10 @@ struct LookbookFeedPostActionBar: View {
                     action: onLikeTap,
                     onDarkOverlay: false,
                     heartPointSize: 20,
-                    likeCountFormatting: LookbookFeedEngagementCountFormatting.short
+                    likeCountFormatting: LookbookFeedEngagementCountFormatting.short,
+                    showLikeCount: !hideLikeCount
                 )
+                .padding(.leading, -Theme.Spacing.sm)
 
                 Button {
                     HapticManager.tap()
@@ -2126,6 +2130,7 @@ struct LookbookFeedRowView: View {
 
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
+    @EnvironmentObject private var hideLikeCountsStore: LookbookHideLikeCountsStore
     /// Horizontal page for multi-image posts (paged `ScrollView`, not `TabView` — TabView steals taps on the row below).
     @State private var carouselScrollId: Int? = 0
     @State private var sharePayload: LookbookSharePayload?
@@ -2217,6 +2222,10 @@ struct LookbookFeedRowView: View {
     private var isCurrentUserPost: Bool {
         guard let u = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines), !u.isEmpty else { return false }
         return u.caseInsensitiveCompare(entry.posterUsername.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+    }
+
+    private var isHidingLikeCountForPost: Bool {
+        hideLikeCountsStore.hidesLikeCount(forPostKey: entry.lookbookPostKey)
     }
 
     private func performDeletePost() {
@@ -2312,9 +2321,10 @@ struct LookbookFeedRowView: View {
                         Text(LookbookFeedEngagementCountFormatting.fullCommentCountPhrase(entry.commentsCount))
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Colors.secondaryText)
-                            .padding(.leading, commentPreviewAvatarSize + 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, Theme.Spacing.md)
                     }
-                    HStack(alignment: .top, spacing: 8) {
+                    HStack(alignment: .center, spacing: 8) {
                         LookbookCommentAvatar(profilePictureUrl: c.profilePictureUrl, username: c.username, size: commentPreviewAvatarSize)
                         (Text(c.username).fontWeight(.semibold) + Text(" ") + Text(c.text))
                             .font(Theme.Typography.subheadline)
@@ -2322,12 +2332,12 @@ struct LookbookFeedRowView: View {
                             .lineLimit(3)
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    .padding(.horizontal, Theme.Spacing.md)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, 4)
-                .padding(.bottom, 2)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -2371,9 +2381,16 @@ struct LookbookFeedRowView: View {
                 }
                 Spacer(minLength: 0)
                 lookbookFeedPostOptionsMenu
+                    .padding(.trailing, Theme.Spacing.sm - 2)
             }
             .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, 10)
+            .padding(.top, 6)
+            .padding(.bottom, 10)
+
+            Rectangle()
+                .fill(Theme.Colors.glassBorder.opacity(0.35))
+                .frame(height: 1)
+                .frame(maxWidth: .infinity)
 
             lookbookSandboxMediaBlock
                 .zIndex(0)
@@ -2384,10 +2401,16 @@ struct LookbookFeedRowView: View {
                 LookbookCarouselPageDots(pageIndex: carouselPageIndex, totalPages: carouselImageURLs.count)
             }
 
+            Rectangle()
+                .fill(Theme.Colors.glassBorder.opacity(0.35))
+                .frame(height: 1)
+                .frame(maxWidth: .infinity)
+
             LookbookFeedPostActionBar(
                 entry: entry,
                 currentDisplayImageURL: currentDisplayImageURL,
                 isBookmarked: savedLookbookFavorites.isSaved(postId: entry.apiPostId),
+                hideLikeCount: isHidingLikeCountForPost,
                 onLikeTap: { onLikeTap(entry) },
                 onCommentsTap: { onCommentsTap(entry) },
                 onSendTap: { openSendForward() },
@@ -2397,13 +2420,6 @@ struct LookbookFeedRowView: View {
             .zIndex(20)
 
             latestCommentPreviewSection
-
-            Rectangle()
-                .fill(Theme.Colors.glassBorder.opacity(0.35))
-                .frame(height: 0.5)
-                .padding(.leading, Theme.Spacing.md)
-                .padding(.top, Theme.Spacing.sm)
-                .padding(.bottom, Theme.Spacing.md)
         }
         .background(Theme.Colors.background)
         .overlay(alignment: .bottom) {
@@ -2508,6 +2524,17 @@ struct LookbookFeedRowView: View {
                     onOpenAnalytics(entry)
                 } label: {
                     Label(L10n.string("Analytics"), systemImage: "chart.bar")
+                }
+            }
+            if isCurrentUserPost {
+                Button {
+                    HapticManager.tap()
+                    hideLikeCountsStore.setHideLikeCount(!isHidingLikeCountForPost, forPostKey: entry.lookbookPostKey)
+                } label: {
+                    Label(
+                        isHidingLikeCountForPost ? L10n.string("Show likes") : L10n.string("Hide likes"),
+                        systemImage: isHidingLikeCountForPost ? "eye" : "eye.slash"
+                    )
                 }
             }
             if isCurrentUserPost, onPostDeleted != nil {
@@ -3969,6 +3996,7 @@ struct LookbookView_Previews: PreviewProvider {
         NavigationStack {
             LookbookView()
                 .environmentObject(AuthService())
+                .environmentObject(LookbookHideLikeCountsStore.shared)
         }
     }
 }

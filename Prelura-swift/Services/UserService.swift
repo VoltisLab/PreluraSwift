@@ -1424,6 +1424,28 @@ class UserService: ObservableObject {
         }
     }
 
+    /// Buyer (`order.user`): advance shipment to **DELIVERED** after the parcel arrives. Matches Flutter `updateOrderStatus`.
+    /// Required before `rateUser` when the order is still `SHIPPED` / `IN_TRANSIT` / `READY_FOR_PICKUP` and tracking never moves the status automatically.
+    func updateOrderStatus(orderId: Int, status: String) async throws {
+        let mutation = """
+        mutation UpdateOrderStatus($orderId: Int!, $status: OrderStatusEnum!) {
+          updateOrderStatus(orderId: $orderId, status: $status) {
+            success
+          }
+        }
+        """
+        struct Payload: Decodable { let updateOrderStatus: UpdateOrderStatusPayload? }
+        struct UpdateOrderStatusPayload: Decodable { let success: Bool? }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["orderId": orderId, "status": status],
+            responseType: Payload.self
+        )
+        if response.updateOrderStatus?.success != true {
+            throw NSError(domain: "UpdateOrderStatus", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not update order status"])
+        }
+    }
+
     // MARK: - Multi-buy discounts (matches Flutter userMultibuyDiscounts / createMultibuyDiscount / deactivateMultibuyDiscounts)
 
     /// Fetch current user multi-buy discount tiers. userId nil = current user.
@@ -1680,12 +1702,13 @@ class UserService: ObservableObject {
         let response: Payload = try await client.execute(query: query, variables: variables, responseType: Payload.self)
         let rows = response.userOrders ?? []
         let orders = rows.compactMap { row -> Order? in
-            guard let idVal = row.id?.value else { return nil }
-            let idStr = (idVal as? Int).map { String($0) } ?? (idVal as? String) ?? String(describing: idVal)
+            guard let idCodable = row.id else { return nil }
+            let idStr = Self.graphQLStringId(idCodable) ?? String(describing: idCodable.value)
+            if idStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return nil }
             // Sold: counterparty is buyer (`user`). Bought: counterparty is seller (`seller`).
             let counterpartyRow: OrderUserRow? = isSeller ? row.user : row.seller
             let otherParty: User? = counterpartyRow.map { u in
-                let uid = (u.id?.value as? Int) ?? (u.id?.value as? String).flatMap { Int($0) }
+                let uid = Self.graphQLIntId(u.id)
                 return User(
                     userId: uid,
                     username: u.username ?? "",
@@ -1724,16 +1747,14 @@ class UserService: ObservableObject {
                 return OrderCancellationSummary(status: st.uppercased(), requestedBySeller: co.requestedBySeller ?? false)
             }()
             let orderReviews: [OrderReviewSummary] = (row.reviews ?? []).compactMap { rev in
-                let rv = (rev.reviewer?.id?.value as? Int) ?? (rev.reviewer?.id?.value as? String).flatMap { Int($0) }
-                let td = (rev.reviewed?.id?.value as? Int) ?? (rev.reviewed?.id?.value as? String).flatMap { Int($0) }
-                guard let rv, let td else { return nil }
-                return OrderReviewSummary(reviewerUserId: rv, reviewedUserId: td, isAutoReview: rev.isAutoReview ?? false)
+                guard let rv = Self.graphQLIntId(rev.reviewer?.id),
+                      let td = Self.graphQLIntId(rev.reviewed?.id) else { return nil }
+                return OrderReviewSummary(reviewerUserId: rv, reviewedUserId: td, isAutoReview: rev.isAutoReview)
             }
             let openOrderIssue: OrderOpenIssueSummary? = {
                 let pending = (row.issues ?? []).first { ($0.status ?? "").uppercased() == "PENDING" }
                 guard let p = pending else { return nil }
-                let iid = (p.id?.value as? Int) ?? (p.id?.value as? String).flatMap { Int($0) }
-                guard let iid else { return nil }
+                guard let iid = Self.graphQLIntId(p.id) else { return nil }
                 return OrderOpenIssueSummary(
                     issueId: iid,
                     publicId: p.publicId,
@@ -1742,6 +1763,8 @@ class UserService: ObservableObject {
                     status: p.status ?? "PENDING"
                 )
             }()
+            let buyerUserId: Int? = row.user.flatMap { Self.graphQLIntId($0.id) }
+            let sellerUserId: Int? = row.seller.flatMap { Self.graphQLIntId($0.id) }
             return Order(
                 id: idStr,
                 publicId: row.publicId,
@@ -1758,6 +1781,8 @@ class UserService: ObservableObject {
                 trackingUrl: row.trackingUrl,
                 buyerOrderCountWithSeller: row.buyerOrderCountWithSeller,
                 cancellation: cancellation,
+                buyerUserId: buyerUserId,
+                sellerUserId: sellerUserId,
                 buyerHasLeftReview: row.buyerHasLeftReview ?? false,
                 hasOpenOrderIssue: row.hasOpenOrderIssue ?? false,
                 deliveredAt: row.deliveredAt?.date,
@@ -1994,6 +2019,10 @@ class UserService: ObservableObject {
     private static func graphQLStringId(_ codable: AnyCodable?) -> String? {
         guard let v = codable?.value else { return nil }
         if let i = v as? Int { return String(i) }
+        if let d = v as? Double {
+            if d.rounded() == d { return String(Int(d)) }
+            return String(d)
+        }
         if let s = v as? String, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return s }
         return nil
     }
@@ -2001,6 +2030,7 @@ class UserService: ObservableObject {
     private static func graphQLIntId(_ codable: AnyCodable?) -> Int? {
         guard let v = codable?.value else { return nil }
         if let i = v as? Int { return i }
+        if let d = v as? Double { return Int(d) }
         if let s = v as? String { return Int(s.trimmingCharacters(in: .whitespacesAndNewlines)) }
         return nil
     }
@@ -2413,6 +2443,8 @@ public struct AnyCodable: Decodable {
         let container = try decoder.singleValueContainer()
         if let intValue = try? container.decode(Int.self) {
             value = intValue
+        } else if let doubleValue = try? container.decode(Double.self) {
+            value = doubleValue
         } else if let stringValue = try? container.decode(String.self) {
             value = stringValue
         } else {
@@ -2636,7 +2668,8 @@ struct OrderCancellationSummary: Equatable, Sendable {
 struct OrderReviewSummary: Equatable, Sendable {
     let reviewerUserId: Int
     let reviewedUserId: Int
-    let isAutoReview: Bool
+    /// When `nil`, the API omitted the flag — do **not** treat as manual (see order-detail review CTA).
+    let isAutoReview: Bool?
 }
 
 /// First open (PENDING) issue from `userOrders` → `issues`, for order-detail summary UI.
@@ -2667,6 +2700,10 @@ struct Order: Identifiable {
     let buyerOrderCountWithSeller: Int?
     /// When present, buyer/seller cancellation request flow (PENDING needs counterparty action).
     let cancellation: OrderCancellationSummary?
+    /// From `userOrders.user.id` — buyer on this order (stable id for review UI; does not depend on `viewMe`).
+    let buyerUserId: Int?
+    /// From `userOrders.seller.id` — seller on this order.
+    let sellerUserId: Int?
     /// From `userOrders`: buyer submitted a review (or auto-review after feedback window).
     let buyerHasLeftReview: Bool
     /// From `userOrders`: PENDING order issue — feedback and payout pause.
@@ -2694,6 +2731,8 @@ struct Order: Identifiable {
         trackingUrl: String?,
         buyerOrderCountWithSeller: Int?,
         cancellation: OrderCancellationSummary?,
+        buyerUserId: Int? = nil,
+        sellerUserId: Int? = nil,
         buyerHasLeftReview: Bool = false,
         hasOpenOrderIssue: Bool = false,
         deliveredAt: Date? = nil,
@@ -2715,6 +2754,8 @@ struct Order: Identifiable {
         self.trackingUrl = trackingUrl
         self.buyerOrderCountWithSeller = buyerOrderCountWithSeller
         self.cancellation = cancellation
+        self.buyerUserId = buyerUserId
+        self.sellerUserId = sellerUserId
         self.buyerHasLeftReview = buyerHasLeftReview
         self.hasOpenOrderIssue = hasOpenOrderIssue
         self.deliveredAt = deliveredAt

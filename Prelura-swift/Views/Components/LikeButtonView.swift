@@ -4,7 +4,7 @@ import SwiftUI
 enum LookbookFeedEngagementCountFormatting {
     /// Full phrase for comment count labels (e.g. feed preview line, accessibility).
     static func fullCommentCountPhrase(_ n: Int) -> String {
-        if n == 1 { return L10n.string("1 comment") }
+        if n == 1 { return L10n.string("1 Comment") }
         return String(format: L10n.string("%d comments"), n)
     }
 
@@ -33,6 +33,8 @@ struct LikeButtonView: View {
     var heartPointSize: CGFloat = 14
     /// When set, replaces `\(likeCount)` so wide counts do not blow out feed toolbars (e.g. "12.4k").
     var likeCountFormatting: ((Int) -> String)? = nil
+    /// When false, only the heart is shown (e.g. poster chose “Hide likes” on their lookbook post).
+    var showLikeCount: Bool = true
 
     private static let minTapSize: CGFloat = 56
 
@@ -63,8 +65,10 @@ struct LikeButtonView: View {
         HStack(spacing: Theme.Spacing.xs) {
             Image(systemName: isLiked ? "heart.fill" : "heart")
                 .font(.system(size: heartPointSize, weight: .medium))
-            Text(displayedLikeCount)
-                .font(.system(size: likeCountPointSize, weight: .medium))
+            if showLikeCount {
+                Text(displayedLikeCount)
+                    .font(.system(size: likeCountPointSize, weight: .medium))
+            }
         }
         .foregroundColor(isLiked ? .red : (onDarkOverlay ? .white : Theme.Colors.primaryText))
         .shadow(color: onDarkOverlay ? .black.opacity(0.4) : .clear, radius: 1, x: 0, y: 1)

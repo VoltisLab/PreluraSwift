@@ -37,18 +37,24 @@ struct AIChatView: View {
     @State private var inputText: String = ""
     @FocusState private var isInputFocused: Bool
     @State private var isBotThinking: Bool = false
-    /// Full-sentence prompts so users are encouraged to type naturally, not just keywords.
-    private static let conversationStarters: [String] = [
-        "I'm looking for a navy blazer.",
-        "Do you have a floral dress under £30?",
-        "I need a pink skirt for a wedding.",
-        "Have you got a black jacket?",
-        "I'm after a green hoodie.",
-        "Looking for white trainers.",
-        "Any denim jeans in size 10?",
-        "Do you have a leather bag?",
-        "I want a striped top.",
-        "I need a wool coat for winter."
+
+    private struct LennyQuickChip: Identifiable {
+        let id: String
+        let label: String
+        /// Full message sent when the chip is tapped.
+        let message: String
+    }
+
+    /// Short on-screen labels; sending uses a clear full sentence for search.
+    private static let lennyQuickChips: [LennyQuickChip] = [
+        LennyQuickChip(id: "blazer", label: "Navy blazer", message: "I'm looking for a navy blazer."),
+        LennyQuickChip(id: "dress", label: "Summer dress", message: "Show me summer dresses."),
+        LennyQuickChip(id: "jacket", label: "Black jacket", message: "I need a black jacket."),
+        LennyQuickChip(id: "trainers", label: "White trainers", message: "Looking for white trainers."),
+        LennyQuickChip(id: "budget", label: "Under £30", message: "What can you show me under £30?"),
+        LennyQuickChip(id: "jeans", label: "Denim jeans", message: "I'm looking for denim jeans."),
+        LennyQuickChip(id: "bag", label: "Leather bag", message: "Do you have leather bags?"),
+        LennyQuickChip(id: "coat", label: "Winter coat", message: "I need a warm winter coat."),
     ]
 
     private let aiSearch = AISearchService()
@@ -60,6 +66,9 @@ struct AIChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             messageList
+            if messages.isEmpty {
+                lennyQuickChipsBar
+            }
             inputBar
         }
         .background(Theme.Colors.background)
@@ -135,32 +144,51 @@ struct AIChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Messages-style input: same padding and style as ChatDetailView (taller field). Before first message, shows animated conversation starters in the field.
-    private var inputBar: some View {
-        HStack(alignment: .center, spacing: Theme.Spacing.sm) {
-            ZStack(alignment: .leading) {
-                TextField(placeholderForInputBar, text: $inputText, axis: .vertical)
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
-                    .focused($isInputFocused)
-                    .lineLimit(1...6)
-                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
-                    .padding(.vertical, Theme.TextInput.insetVerticalCompact)
-                    .background(Theme.Colors.secondaryBackground)
-                    .cornerRadius(30)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 30)
-                            .stroke(isInputFocused ? Theme.primaryColor : Color.clear, lineWidth: 2)
-                    )
-
-                if messages.isEmpty && inputText.isEmpty {
-                    ConversationStarterOverlay(
-                        starters: Self.conversationStarters,
-                        onTap: { isInputFocused = true }
-                    )
+    private var lennyQuickChipsBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.Spacing.sm) {
+                ForEach(Self.lennyQuickChips) { chip in
+                    Button {
+                        sendQuickMessage(chip.message)
+                    } label: {
+                        Text(chip.label)
+                            .font(Theme.Typography.subheadline.weight(.medium))
+                            .foregroundColor(Theme.primaryColor)
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.sm)
+                            .background(Theme.Colors.secondaryBackground)
+                            .clipShape(Capsule())
+                            .overlay(
+                                Capsule()
+                                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
+                    .disabled(isBotThinking)
                 }
             }
+            .padding(.horizontal, Theme.Spacing.md)
+        }
+        .padding(.bottom, Theme.Spacing.xs)
+    }
+
+    /// Messages-style input: same padding and style as ChatDetailView (taller field).
+    private var inputBar: some View {
+        HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+            TextField(placeholderForInputBar, text: $inputText, axis: .vertical)
+                .textFieldStyle(PlainTextFieldStyle())
+                .font(Theme.Typography.body)
+                .foregroundColor(Theme.Colors.primaryText)
+                .focused($isInputFocused)
+                .lineLimit(1...6)
+                .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                .padding(.vertical, Theme.TextInput.insetVerticalCompact)
+                .background(Theme.Colors.secondaryBackground)
+                .cornerRadius(30)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 30)
+                        .stroke(isInputFocused ? Theme.primaryColor : Color.clear, lineWidth: 2)
+                )
 
             Button(action: sendMessage) {
                 Image(systemName: "arrow.up.circle.fill")
@@ -180,13 +208,17 @@ struct AIChatView: View {
         )
     }
 
-    /// When the overlay is showing (empty chat, no text), use no placeholder so only the animated prompt is visible.
     private var placeholderForInputBar: String {
-        (messages.isEmpty && inputText.isEmpty) ? "" : L10n.string("Type a message...")
+        L10n.string("Type a message...")
     }
 
     private var canSend: Bool {
         !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func sendQuickMessage(_ raw: String) {
+        inputText = raw
+        sendMessage()
     }
 
     private func sendMessage() {

@@ -8,14 +8,21 @@ struct BorderGlassButton: View {
     enum ChromeStyle {
         /// Primary-outline styling (e.g. Try Cart, Shop All, Favourites).
         case standard
-        /// Same **dimensions** as `standard`; only stroke/label colors differ (white on Retro gradient, adaptive in light).
+        /// Outline colors for Retro grid; pair with `layout: .compact` — do not change dimensions by style alone.
         case retroCompactLightOutline
+    }
+
+    /// Vertical metrics: **compact** = product-grid “Add to bag”; **bar** = bottom-bar / search-field height (44).
+    enum Layout {
+        case compact
+        case bar
     }
 
     let title: String
     var icon: String? = nil
     var isEnabled: Bool = true
     var chromeStyle: ChromeStyle = .standard
+    var layout: Layout = .bar
     let action: () -> Void
 
     private let cornerRadius: CGFloat = 30
@@ -26,12 +33,14 @@ struct BorderGlassButton: View {
         icon: String? = nil,
         isEnabled: Bool = true,
         chromeStyle: ChromeStyle = .standard,
+        layout: Layout = .bar,
         action: @escaping () -> Void
     ) {
         self.title = title
         self.icon = icon
         self.isEnabled = isEnabled
         self.chromeStyle = chromeStyle
+        self.layout = layout
         self.action = action
     }
 
@@ -53,14 +62,30 @@ struct BorderGlassButton: View {
         }
     }
 
-    /// Shared compact outline metrics (matches Retro grid “Add to bag”); all `ChromeStyle` values use the same layout.
-    private var iconPointSize: CGFloat { 14 }
+    private var iconPointSize: CGFloat {
+        switch layout {
+        case .compact: return 14
+        case .bar: return 16
+        }
+    }
 
     private var titleFont: Font { Theme.Typography.subheadline }
 
     private var horizontalPadding: CGFloat { Theme.Spacing.md }
 
-    private var verticalPadding: CGFloat { Theme.Spacing.sm }
+    private var verticalPadding: CGFloat {
+        switch layout {
+        case .compact: return Theme.Spacing.sm
+        case .bar: return 0
+        }
+    }
+
+    private var minBarHeight: CGFloat? {
+        switch layout {
+        case .compact: return nil
+        case .bar: return Theme.SearchField.singleLineHeight
+        }
+    }
 
     var body: some View {
         Button(action: {
@@ -76,7 +101,7 @@ struct BorderGlassButton: View {
                     .font(titleFont)
             }
             .foregroundStyle(labelColor)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: minBarHeight)
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical, verticalPadding)
             .contentShape(RoundedRectangle(cornerRadius: cornerRadius))

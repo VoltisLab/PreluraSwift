@@ -854,13 +854,13 @@ struct ItemDetailView: View {
             if let bag = activeShopAllBag {
                 let isInBag = bag.items.contains(where: { $0.id == effectiveItem.id })
                 if isInBag {
-                    BorderGlassButton(L10n.string("Remove"), icon: "minus.circle", action: {
+                    BorderGlassButton(L10n.string("Remove"), icon: "minus.circle", layout: .compact, action: {
                         bag.remove(effectiveItem)
                         dismiss()
                     })
                     .frame(maxWidth: .infinity)
                 } else {
-                    BorderGlassButton(L10n.string("Add to bag"), icon: "bag.badge.plus", action: {
+                    BorderGlassButton(L10n.string("Add to bag"), icon: "bag.badge.plus", layout: .compact, action: {
                         bag.add(effectiveItem)
                         dismiss()
                     })
@@ -869,12 +869,12 @@ struct ItemDetailView: View {
             } else {
                 HStack(spacing: Theme.Spacing.sm) {
                     if offersAllowed {
-                        BorderGlassButton("Send an Offer", action: {
+                        BorderGlassButton("Send an Offer", layout: .bar, action: {
                             showSendOfferSheet = true
                         })
                         .frame(maxWidth: .infinity)
                     }
-                    PrimaryGlassButton("Buy now", action: {
+                    PrimaryGlassButton("Buy now", layout: .bar, action: {
                         showPaymentSheet = true
                     })
                     .frame(maxWidth: .infinity)

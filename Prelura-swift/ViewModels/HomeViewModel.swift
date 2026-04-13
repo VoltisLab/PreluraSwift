@@ -95,6 +95,17 @@ class HomeViewModel: ObservableObject {
         return out
     }
 
+    /// Staff-curated featured list for "See all" (deduped, no count cap).
+    static func allFeaturedItems(from featured: [Item]) -> [Item] {
+        let f = featured.excludingVacationModeSellers().excludingSold()
+        var seen = Set<UUID>()
+        var out: [Item] = []
+        for item in f {
+            if seen.insert(item.id).inserted { out.append(item) }
+        }
+        return out
+    }
+
     func loadData() {
         isLoading = true
         clearNetworkError()

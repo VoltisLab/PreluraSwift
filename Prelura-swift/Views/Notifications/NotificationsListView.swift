@@ -442,9 +442,20 @@ private struct NotificationRowView: View {
 
     /// Slightly larger than `Theme.Typography.caption` (13pt) for readability.
     private static let lineFontSize: CGFloat = 15
+    /// Portrait thumbnail width; height follows 3:4 for listing photos.
+    private static let productThumbWidth: CGFloat = 48
+    private static let productThumbHeight: CGFloat = 64
 
     private var senderUsername: String? {
         notification.sender?.username
+    }
+
+    private var modelGroupLower: String {
+        (notification.modelGroup ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var isLikedItemSoldNotification: Bool {
+        notification.meta?["is_liked_item_sold"] == "true"
     }
 
     private var isSupportNotification: Bool {
@@ -460,13 +471,48 @@ private struct NotificationRowView: View {
             || m.range(of: "SOLD!", options: .caseInsensitive) != nil
     }
 
+    /// New offer on your listing(s) — shorten list copy.
+    private var isNewOfferOnListingMessage: Bool {
+        notification.message.lowercased().contains("made an offer on your product")
+    }
+
+    /// Someone liked your product — tighten wording.
+    private var isProductLikeMessage: Bool {
+        modelGroupLower == "product" && notification.message.lowercased().contains("liked your product")
+    }
+
+    /// First product image from notification meta (server sends `media_thumbnail` for likes, offers, liked-item-sold, many order rows).
+    private var productThumbnailURL: URL? {
+        guard let meta = notification.meta else { return nil }
+        for key in ["media_thumbnail", "product_image", "product_image_url"] {
+            if let raw = meta[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+               let u = URL(string: raw) {
+                return u
+            }
+        }
+        return nil
+    }
+
     /// Bell list line: always show who it’s from. If the API omits the username in `message`, prepend `sender.username`.
     private var displayMessage: String {
         let msg = notification.message.trimmingCharacters(in: .whitespacesAndNewlines)
         if isSupportNotification { return msg }
+        if isLikedItemSoldNotification {
+            return L10n.string("An item you liked has sold. Here are similar listings to explore.")
+        }
         if isLegacySellerSaleRow,
            let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
             return "\(username) bought your item"
+        }
+        if isNewOfferOnListingMessage,
+           let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
+            let name = username.hasPrefix("@") ? String(username.dropFirst()) : username
+            return String(format: L10n.string("%@ sent you an offer."), name)
+        }
+        if isProductLikeMessage,
+           let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
+            let name = username.hasPrefix("@") ? String(username.dropFirst()) : username
+            return String(format: L10n.string("%@ likes your item."), name)
         }
         guard let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty else {
             return msg
@@ -522,38 +568,57 @@ private struct NotificationRowView: View {
         }
     }
 
+    @ViewBuilder
+    private var leadingThumbnail: some View {
+        let corner: CGFloat = 8
+        if isSupportNotification {
+            WearhouseSupportBranding.supportAvatar(size: Self.productThumbHeight)
+        } else if let url = productThumbnailURL {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                case .failure:
+                    productPlaceholderIcon
+                default:
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .fill(Theme.Colors.secondaryBackground)
+                        .overlay(ProgressView().scaleEffect(0.7))
+                }
+            }
+            .frame(width: Self.productThumbWidth, height: Self.productThumbHeight)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+            )
+        } else {
+            productPlaceholderIcon
+                .frame(width: Self.productThumbWidth, height: Self.productThumbHeight)
+                .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+                )
+        }
+    }
+
+    private var productPlaceholderIcon: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Theme.Colors.secondaryBackground)
+            .overlay(
+                Image(systemName: "tshirt")
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundStyle(Theme.Colors.secondaryText)
+            )
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: Theme.Spacing.md) {
-            if isSupportNotification {
-                WearhouseSupportBranding.supportAvatar(size: 44)
-            } else if let sender = notification.sender, let urlString = sender.profilePictureUrl, let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    default:
-                        Circle()
-                            .fill(Theme.primaryColor.opacity(0.3))
-                            .overlay(
-                                Text(String((sender.username ?? "?").prefix(1)).uppercased())
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.white)
-                            )
-                    }
-                }
-                .frame(width: 44, height: 44)
-                .clipShape(Circle())
-                .circularAvatarHairlineBorder()
-            } else {
-                Circle()
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Image(systemName: "person")
-                            .foregroundColor(Theme.Colors.secondaryText)
-                    )
-                    .circularAvatarHairlineBorder()
-            }
+            leadingThumbnail
             HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                 messageText
                     .frame(maxWidth: .infinity, alignment: .leading)

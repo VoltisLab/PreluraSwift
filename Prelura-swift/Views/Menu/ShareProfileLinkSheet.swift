@@ -2,6 +2,82 @@ import CoreImage
 import SwiftUI
 import UIKit
 
+// MARK: - Share profile background (animated; distinct from Retro’s coral / mint / gold)
+
+private enum ShareProfileGradientPalette {
+    /// Retro uses ~10s half-period; use a different tempo so motion feels separate.
+    private static let halfPeriodSeconds: Double = 14
+
+    private static func phase(at date: Date) -> CGFloat {
+        let elapsed = date.timeIntervalSinceReferenceDate
+        let period = halfPeriodSeconds * 2
+        return CGFloat(0.5 - 0.5 * cos((2 * Double.pi * elapsed) / period))
+    }
+
+    /// Cool violet → indigo → deep blue (not Retro’s warm coral / green / gold).
+    static func colors(at date: Date, colorScheme: ColorScheme) -> [Color] {
+        let t = phase(at: date)
+        switch colorScheme {
+        case .light:
+            let top = lerp(lightTopA, lightTopB, t)
+            let mid = lerp(lightMidA, lightMidB, t)
+            let bottom = lerp(lightBottomA, lightBottomB, t)
+            return [Color(uiColor: top), Color(uiColor: mid), Color(uiColor: bottom)]
+        case .dark:
+            fallthrough
+        @unknown default:
+            let top = lerp(darkTopA, darkTopB, t)
+            let mid = lerp(darkMidA, darkMidB, t)
+            let bottom = lerp(darkBottomA, darkBottomB, t)
+            return [Color(uiColor: top), Color(uiColor: mid), Color(uiColor: bottom)]
+        }
+    }
+
+    // Dark: rich purple / indigo / midnight blue
+    private static let darkTopA = UIColor(red: 0.38, green: 0.20, blue: 0.58, alpha: 1)
+    private static let darkTopB = UIColor(red: 0.22, green: 0.32, blue: 0.62, alpha: 1)
+    private static let darkMidA = UIColor(red: 0.26, green: 0.22, blue: 0.52, alpha: 1)
+    private static let darkMidB = UIColor(red: 0.18, green: 0.36, blue: 0.55, alpha: 1)
+    private static let darkBottomA = UIColor(red: 0.10, green: 0.14, blue: 0.32, alpha: 1)
+    private static let darkBottomB = UIColor(red: 0.08, green: 0.22, blue: 0.38, alpha: 1)
+
+    // Light: airy lavender / periwinkle (still readable with dark primary text)
+    private static let lightTopA = UIColor(red: 0.93, green: 0.90, blue: 0.99, alpha: 1)
+    private static let lightTopB = UIColor(red: 0.88, green: 0.92, blue: 1.0, alpha: 1)
+    private static let lightMidA = UIColor(red: 0.86, green: 0.89, blue: 0.99, alpha: 1)
+    private static let lightMidB = UIColor(red: 0.82, green: 0.93, blue: 0.98, alpha: 1)
+    private static let lightBottomA = UIColor(red: 0.80, green: 0.90, blue: 0.97, alpha: 1)
+    private static let lightBottomB = UIColor(red: 0.78, green: 0.88, blue: 0.95, alpha: 1)
+
+    private static func lerp(_ a: UIColor, _ b: UIColor, _ t: CGFloat) -> UIColor {
+        let u = max(0, min(1, t))
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        a.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        return UIColor(
+            red: r1 + (r2 - r1) * u,
+            green: g1 + (g2 - g1) * u,
+            blue: b1 + (b2 - b1) * u,
+            alpha: 1
+        )
+    }
+}
+
+private struct ShareProfileAnimatedBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+            LinearGradient(
+                colors: ShareProfileGradientPalette.colors(at: context.date, colorScheme: colorScheme),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+}
+
 /// Modal: avatar, username, stats, QR for profile URL, and copyable link field.
 struct ShareProfileLinkSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -17,28 +93,34 @@ struct ShareProfileLinkSheet: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let loadError {
-                    Text(loadError)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                        .multilineTextAlignment(.center)
-                        .padding(Theme.Spacing.lg)
-                } else if let user {
-                    content(for: user)
-                } else {
-                    Text(L10n.string("Couldn't load profile"))
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.secondaryText)
+            ZStack {
+                ShareProfileAnimatedBackground()
+                    .ignoresSafeArea()
+
+                Group {
+                    if isLoading {
+                        ProgressView()
+                            .tint(Theme.primaryColor)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if let loadError {
+                        Text(loadError)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(Theme.Spacing.lg)
+                    } else if let user {
+                        content(for: user)
+                    } else {
+                        Text(L10n.string("Couldn't load profile"))
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.Colors.background)
             .navigationTitle(L10n.string("Share profile"))
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L10n.string("Done")) { dismiss() }

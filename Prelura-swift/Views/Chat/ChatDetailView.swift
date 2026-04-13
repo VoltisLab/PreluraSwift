@@ -314,6 +314,8 @@ struct ChatDetailView: View {
     @State private var hasAutoScrolledToBottomForThisChat = false
     /// Bumps after each `loadConversationAndMessagesFromBackend` so order-issue cards refetch live status.
     @State private var orderIssueLiveRefreshTick: Int = 0
+    /// Preloads peer numeric id for **Order details** so the review row doesn’t wait on a second request after navigation.
+    @State private var prefetchedCounterpartyNumericUserId: Int?
     /// Stable id at end of scroll content so `scrollTo` works with `LazyVStack` (last message id may not be laid out yet).
     private static let chatBottomAnchorId = "chat_bottom_anchor"
     private static let chatPeerTypingScrollId = "chat_peer_typing_inline"
@@ -594,6 +596,34 @@ struct ChatDetailView: View {
             return isCurrentUser(username: orderInfo.sellerUsername)
         }
         return isSeller
+    }
+
+    /// Bumps `.task` when thread, peer, or order header changes so we prefetch before **Order details** is opened.
+    private var counterpartyNumericIdPrefetchTaskKey: String {
+        let oid = displayedConversation.order?.id ?? ""
+        let rid = displayedConversation.recipient.userId.map(String.init) ?? ""
+        return "\(displayedConversation.id)|\(displayedConversation.recipient.username)|\(oid)|\(rid)"
+    }
+
+    private func normalizedPeerUsernameForOrderDetailLookup(_ raw: String) -> String? {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return nil }
+        if t.hasPrefix("@") {
+            let rest = String(t.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+            return rest.isEmpty ? nil : rest
+        }
+        return t
+    }
+
+    private func prefetchCounterpartyNumericUserIdForOrderDetailIfNeeded() async {
+        await MainActor.run { prefetchedCounterpartyNumericUserId = nil }
+        guard displayedConversation.order != nil else { return }
+        if let u = displayedConversation.recipient.userId, u != 0 { return }
+        guard let username = normalizedPeerUsernameForOrderDetailLookup(displayedConversation.recipient.username) else { return }
+        orderCancellationUserService.updateAuthToken(authService.authToken)
+        guard let profile = try? await orderCancellationUserService.getUserByUsername(username),
+              let uid = profile.userId, uid != 0 else { return }
+        await MainActor.run { prefetchedCounterpartyNumericUserId = uid }
     }
 
     /// Shown inside the message `ScrollView` above the bottom anchor so it scrolls with the thread and never sits on top of bubbles (typing in `safeAreaInset` overlapped the last rows).
@@ -899,7 +929,7 @@ struct ChatDetailView: View {
                 let card = UserReviewChatCardView(
                     message: message,
                     payload: payload,
-                    currentUsername: authService.username
+                    isFromCurrentUser: isCurrentUser(username: message.senderUsername)
                 )
                 .padding(.vertical, Theme.Spacing.sm)
                 .background(Theme.Colors.background)
@@ -1081,6 +1111,9 @@ struct ChatDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
+        .task(id: counterpartyNumericIdPrefetchTaskKey) {
+            await prefetchCounterpartyNumericUserIdForOrderDetailIfNeeded()
+        }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(false)
         .toolbar {
@@ -2291,6 +2324,7 @@ struct ChatDetailView: View {
             )
             return [product]
         }()
+        let peerNumericId = displayedConversation.recipient.userId ?? prefetchedCounterpartyNumericUserId
         return Order(
             id: order.id,
             publicId: order.publicId,
@@ -2306,7 +2340,9 @@ struct ChatDetailView: View {
             trackingNumber: nil,
             trackingUrl: nil,
             buyerOrderCountWithSeller: nil,
-            cancellation: nil
+            cancellation: nil,
+            buyerUserId: isSellerForOrderDetail ? peerNumericId : nil,
+            sellerUserId: isSellerForOrderDetail ? nil : peerNumericId
         )
     }
 
@@ -3140,25 +3176,42 @@ struct ChatDetailView: View {
 private struct UserReviewChatCardView: View {
     let message: Message
     let payload: UserReviewChatPayload
-    let currentUsername: String?
+    let isFromCurrentUser: Bool
 
-    private var isFromCurrentUser: Bool {
-        guard let me = currentUsername?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !me.isEmpty else { return false }
-        return message.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == me
-    }
-
-    private var roleLine: String {
-        let reviewed = payload.reviewedUsername.trimmingCharacters(in: .whitespacesAndNewlines)
-        if isFromCurrentUser {
-            return "You rated @\(reviewed)"
+    /// 1–2 → negative, 3 → neutral, 4–5 → positive.
+    private var feedbackPolarity: FeedbackPolarity {
+        switch payload.rating {
+        case 1...2: return .negative
+        case 3: return .neutral
+        default: return .positive
         }
-        let who = message.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines)
-        return who.isEmpty ? "You were reviewed" : "@\(who) rated you"
     }
 
-    private var starsLine: String {
-        let r = min(5, max(0, payload.rating))
-        return String(repeating: "\u{2605}", count: r) + String(repeating: "\u{2606}", count: max(0, 5 - r))
+    private enum FeedbackPolarity {
+        case positive, neutral, negative
+    }
+
+    private var bannerText: String {
+        switch feedbackPolarity {
+        case .positive:
+            return isFromCurrentUser
+                ? L10n.string("You left a positive feedback.")
+                : String(format: L10n.string("%@ left a positive feedback."), senderDisplayName)
+        case .neutral:
+            return isFromCurrentUser
+                ? L10n.string("You left a neutral feedback.")
+                : String(format: L10n.string("%@ left a neutral feedback."), senderDisplayName)
+        case .negative:
+            return isFromCurrentUser
+                ? L10n.string("You left a negative feedback.")
+                : String(format: L10n.string("%@ left a negative feedback."), senderDisplayName)
+        }
+    }
+
+    private var senderDisplayName: String {
+        let u = message.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !u.isEmpty else { return "—" }
+        return u.hasPrefix("@") ? String(u.dropFirst()) : u
     }
 
     private static func relativeTimestamp(for date: Date) -> String {
@@ -3172,42 +3225,36 @@ private struct UserReviewChatCardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
-                Image(systemName: "star.circle.fill")
-                    .font(.system(size: 22))
-                    .foregroundStyle(Theme.primaryColor)
-                Text("Review")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.primaryText)
-            }
-            Text(roleLine)
-                .font(Theme.Typography.body)
-                .fontWeight(.semibold)
-                .foregroundStyle(Theme.Colors.primaryText)
-            Text(starsLine)
-                .font(.system(size: 16))
-                .foregroundStyle(Theme.primaryColor)
-            let trimmed = payload.comment.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                Text(trimmed)
+        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+            SingleStarPortionView(
+                fill: 1,
+                starSize: 15,
+                filledColor: Color(red: 1, green: 0.8, blue: 0),
+                emptyColor: Color.primary.opacity(0.2)
+            )
+            .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(bannerText)
                     .font(Theme.Typography.subheadline)
-                    .foregroundStyle(Theme.Colors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(Theme.Colors.primaryText)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack {
+                    Spacer(minLength: 0)
+                    Text(Self.relativeTimestamp(for: message.timestamp))
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                }
             }
-            HStack {
-                Spacer(minLength: 0)
-                Text(Self.relativeTimestamp(for: message.timestamp))
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.secondaryText)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(Theme.Spacing.md)
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm + 2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.Colors.chatInlineCardBackground)
-        .cornerRadius(24)
+        .cornerRadius(18)
         .overlay(
-            RoundedRectangle(cornerRadius: 24)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Theme.Colors.glassBorder, lineWidth: 1)
         )
     }
@@ -3568,6 +3615,11 @@ struct OrderConfirmationCardView: View {
         }
     }
 
+    private var canShowReportIssueLink: Bool {
+        let st = order.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return st != "COMPLETED" && st != "CANCELLED" && st != "REFUNDED"
+    }
+
     private static func relativeTimestamp(for date: Date) -> String {
         let now = Date()
         if now.timeIntervalSince(date) < 60 { return "Just now" }
@@ -3599,18 +3651,20 @@ struct OrderConfirmationCardView: View {
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
-            if let name = order.firstProductName, !name.isEmpty {
+                       if let name = order.firstProductName, !name.isEmpty {
                 Text(name)
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.secondaryText)
                     .lineLimit(2)
             }
-            NavigationLink(destination: OrderHelpView(orderId: order.id, conversationId: "")) {
-                Text("Report an issue")
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.primaryColor)
+            if canShowReportIssueLink {
+                NavigationLink(destination: OrderHelpView(orderId: order.id, conversationId: "")) {
+                    Text("Report an issue")
+                        .font(Theme.Typography.subheadline)
+                        .foregroundColor(Theme.primaryColor)
+                }
+                .buttonStyle(PlainTappableButtonStyle())
             }
-            .buttonStyle(PlainTappableButtonStyle())
             HStack {
                 Spacer(minLength: 0)
                 Text(order.createdAt.map { Self.relativeTimestamp(for: $0) } ?? "—")
@@ -3721,6 +3775,13 @@ struct SoldConfirmationCardView: View {
         } ?? false
     }
 
+    /// Hide buyer/seller “I have a problem” once the order is closed (matches `OrderDetailView` help gating).
+    private var shouldShowIHaveAProblemOnSoldCard: Bool {
+        guard let d = detailOrder else { return true }
+        let st = d.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return st != "COMPLETED" && st != "CANCELLED" && st != "REFUNDED"
+    }
+
     private static func relativeTimestamp(for date: Date) -> String {
         let now = Date()
         if now.timeIntervalSince(date) < 60 { return "Just now" }
@@ -3754,7 +3815,7 @@ struct SoldConfirmationCardView: View {
                 if order.rolesConfirmed {
                     Text(
                         isSeller
-                            ? "This item has sold"
+                            ? L10n.string("Congratulations, You made a sale! 🎉")
                             : (isBuyer ? "Payment successful!" : "\(order.buyerUsername) bought this")
                     )
                     .font(Theme.Typography.headline)
@@ -3769,19 +3830,21 @@ struct SoldConfirmationCardView: View {
                 }
             }
             HStack {
-                Button(action: {
-                    if isSeller {
-                        showSellerOptions = true
-                    } else {
-                        showBuyerHelp = true
+                if shouldShowIHaveAProblemOnSoldCard {
+                    Button(action: {
+                        if isSeller {
+                            showSellerOptions = true
+                        } else {
+                            showBuyerHelp = true
+                        }
+                    }) {
+                        Text("I have a problem")
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
                     }
-                }) {
-                    Text("I have a problem")
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.secondaryText)
+                    .buttonStyle(PlainTappableButtonStyle())
+                    .disabled(!order.rolesConfirmed)
                 }
-                .buttonStyle(PlainTappableButtonStyle())
-                .disabled(!order.rolesConfirmed)
                 Spacer(minLength: Theme.Spacing.sm)
                 Text(Self.relativeTimestamp(for: order.createdAt))
                     .font(Theme.Typography.caption)

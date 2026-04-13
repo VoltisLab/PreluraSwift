@@ -8,8 +8,6 @@ private enum OrderFeedbackSheetRole {
 
 /// Order details: status, seller/buyer, items, summary. Matches reference design with section labels and rounded cards.
 struct OrderDetailView: View {
-    private static var orderSnapshotCache: [String: Order] = [:]
-
     let order: Order
     /// When viewing from My Orders: true = sold (so other party is Buyer), false = bought (so other party is Seller). When nil (e.g. from chat), section shows "Other party".
     var isSeller: Bool? = nil
@@ -35,8 +33,6 @@ struct OrderDetailView: View {
     @State private var showTrackingWeb = false
     @State private var trackingWebURL: URL?
     @State private var isTrackingWebLoading = false
-    @State private var isInitialPageLoading = true
-    @State private var hasLoadedOnce = false
     @State private var showTrackingCopiedToast = false
     @State private var cancellationBusy = false
     @State private var cancellationActionError: String?
@@ -46,14 +42,21 @@ struct OrderDetailView: View {
     @State private var feedbackSheetRole: OrderFeedbackSheetRole = .buyerRatesSeller
     @State private var leaveFeedbackRefreshToken = UUID()
     @State private var showReviewSubmittedFeedback = false
+    @State private var showConfirmMarkDelivered = false
+    @State private var markDeliveredBusy = false
+    @State private var markDeliveredError: String?
+    /// When `userOrders` / chat omits numeric ids on `otherParty`, resolve via `getUser(username)`.
+    @State private var resolvedCounterpartyNumericUserId: Int?
+    /// When false, buyer review hints stay hidden so we don’t flash “missing id” before hydrate / lookup finishes.
+    @State private var didFinishOrderDetailBootstrap = false
 
     init(order: Order, isSeller: Bool? = nil, suppressBuyerHelpAndCancelActions: Bool = false) {
         self.order = order
         self.isSeller = isSeller
         self.suppressBuyerHelpAndCancelActions = suppressBuyerHelpAndCancelActions
-        let cached = Self.orderSnapshotCache[order.id]
-        _hydratedOrder = State(initialValue: cached)
-        _isInitialPageLoading = State(initialValue: cached == nil)
+        // Do not seed `hydratedOrder` from a snapshot cache: a stale copy kept the UI on an old
+        // status (e.g. CONFIRMED) so “Leave a review” never appeared after the order reached DELIVERED.
+        _hydratedOrder = State(initialValue: nil)
     }
 
     private var dateFormatter: DateFormatter {
@@ -83,36 +86,50 @@ struct OrderDetailView: View {
 
     private var effectiveOrder: Order { hydratedOrder ?? order }
 
+    /// My Orders passes an explicit role; chat / deep links may use `nil` — infer from numeric ids once `currentUser` is loaded.
+    private var viewerIsOrderBuyer: Bool {
+        if let s = isSeller { return !s }
+        guard let me = currentUser?.userId, me != 0 else { return false }
+        if let bid = effectiveOrder.buyerUserId, bid == me { return true }
+        // Chat / partial payloads: seller id known, buyer id missing — if we're not the seller, we're the buyer.
+        let sellerId = effectiveOrder.sellerUserId ?? effectiveOrder.otherParty?.userId
+        if let sid = sellerId, sid != 0, me != sid {
+            if let bid = effectiveOrder.buyerUserId, bid != 0, bid != me { return false }
+            return true
+        }
+        return false
+    }
+
+    private var viewerIsOrderSeller: Bool {
+        if let s = isSeller { return s }
+        guard let me = currentUser?.userId, me != 0 else { return false }
+        if let sid = effectiveOrder.sellerUserId, sid == me { return true }
+        return false
+    }
+
     var body: some View {
-        Group {
-            if isInitialPageLoading {
-                VStack(spacing: Theme.Spacing.md) {
-                    ProgressView()
-                    Text("Loading order details...")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.secondaryText)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                headerSection
+                processingCard
+                productCard
+                sellerPayoutNoticeIfNeeded
+                if effectiveOrder.otherParty != nil {
+                    sectionLabel(otherPartySectionTitle)
+                    outlinedPartyCard
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .background(Theme.Colors.background)
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                        headerSection
-                        processingCard
-                        productCard
-                        sellerPayoutNoticeIfNeeded
-                        if effectiveOrder.otherParty != nil {
-                            sectionLabel(otherPartySectionTitle)
-                            outlinedPartyCard
-                        }
-                        sectionLabel(L10n.string("Shipping Address"))
-                        shippingAddressAndDeliverySection
-                        sectionLabel("Tracking details")
-                        shippingSelectedCard
+                sectionLabel(L10n.string("Shipping Address"))
+                shippingAddressAndDeliverySection
+                sectionLabel("Tracking details")
+                shippingSelectedCard
 
-                        leaveReviewSectionIfNeeded
+                buyerMarkDeliveredSectionIfNeeded
 
-                        if canShowBuyerOrderHelp, !suppressBuyerHelpAndCancelActions {
+                sellerLeaveReviewSectionIfNeeded
+
+                buyerLeaveReviewSection
+
+                if canShowBuyerOrderHelp, !suppressBuyerHelpAndCancelActions {
                             if effectiveOrder.hasOpenOrderIssue {
                                 buyerReportedProblemSummary
                             } else if shouldPickProductBeforeOrderHelp {
@@ -242,11 +259,11 @@ struct OrderDetailView: View {
                             }
                             .buttonStyle(PlainTappableButtonStyle())
                         }
-                    }
-                    .padding(Theme.Spacing.md)
-                    .padding(.bottom, canShowSellerShipping ? Theme.Spacing.md : Theme.Spacing.xl)
-                }
+
+                bothPartiesReviewedSummaryIfNeeded
             }
+            .padding(Theme.Spacing.md)
+            .padding(.bottom, canShowSellerShipping ? Theme.Spacing.md : Theme.Spacing.xl)
         }
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Order details"))
@@ -282,21 +299,19 @@ struct OrderDetailView: View {
                 shippingActionSheet
             }
         }
-        .task {
-            guard !hasLoadedOnce else { return }
-            hasLoadedOnce = true
+        .task(id: order.id) {
             userService.updateAuthToken(authService.authToken)
+            await MainActor.run {
+                resolvedCounterpartyNumericUserId = nil
+                didFinishOrderDetailBootstrap = false
+            }
 
             currentUser = try? await userService.getUser(username: nil)
 
-            // Keep page content stable once loaded: only fetch full hydration the first time.
-            if hydratedOrder == nil {
-                await hydrateOrderIfNeeded()
-                isInitialPageLoading = false
-            }
-
-            // Tracking details is the only section that should re-check on each open.
+            await hydrateOrderIfNeeded(force: true)
             await refreshTrackingDetailsIfNeeded()
+            await resolveCounterpartyNumericUserIdIfNeeded()
+            await MainActor.run { didFinishOrderDetailBootstrap = true }
         }
         .sheet(isPresented: $showTrackingWeb) {
             if let trackingWebURL {
@@ -325,8 +340,8 @@ struct OrderDetailView: View {
             OrderHelpView(orderId: effectiveOrder.id, conversationId: "", helpContextProduct: product)
         }
         .sheet(isPresented: $showLeaveFeedbackSheet) {
-            if let oid = Int(effectiveOrder.id),
-               let rateeId = effectiveOrder.otherParty?.userId {
+            if let oid = numericOrderIdIfAvailable,
+               let rateeId = rateeUserIdForFeedbackSheet {
                 LeaveOrderFeedbackSheet(
                     orderId: oid,
                     rateeUserId: rateeId,
@@ -352,11 +367,141 @@ struct OrderDetailView: View {
         }
     }
 
+    /// Buyer confirms the parcel arrived so the order can move to **DELIVERED** (enables review). Parity with Flutter chat `updateOrderStatus`.
+    /// Includes **CONFIRMED**: backend only allows `CONFIRMED → SHIPPED → DELIVERED`, not `CONFIRMED → DELIVERED` (fixes “Invalid status transition”).
+    private var shouldShowBuyerMarkDeliveredButton: Bool {
+        guard viewerIsOrderBuyer else { return false }
+        guard !suppressBuyerHelpAndCancelActions else { return false }
+        guard !effectiveOrder.hasOpenOrderIssue else { return false }
+        guard numericOrderIdIfAvailable != nil else { return false }
+        let st = orderStatusUppercased
+        return st == "CONFIRMED" || st == "SHIPPED" || st == "IN_TRANSIT" || st == "READY_FOR_PICKUP"
+    }
+
     @ViewBuilder
-    private var leaveReviewSectionIfNeeded: some View {
-        if shouldShowLeaveReviewForBuyer || shouldShowLeaveReviewForSeller {
+    private var buyerMarkDeliveredSectionIfNeeded: some View {
+        if shouldShowBuyerMarkDeliveredButton {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                Button {
+                    showConfirmMarkDelivered = true
+                } label: {
+                    HStack {
+                        Image(systemName: "shippingbox.and.arrow.backward")
+                        Text(L10n.string("I've received this item"))
+                    }
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.primaryColor)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Theme.Spacing.md)
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
+                }
+                .buttonStyle(PlainTappableButtonStyle())
+                .disabled(markDeliveredBusy)
+
+                if markDeliveredBusy {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if let err = markDeliveredError, !err.isEmpty {
+                    Text(err)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.error)
+                }
+            }
+            .confirmationDialog(
+                L10n.string("Confirm receipt"),
+                isPresented: $showConfirmMarkDelivered,
+                titleVisibility: .visible
+            ) {
+                Button(L10n.string("Confirm")) {
+                    Task { await markOrderDelivered() }
+                }
+                Button(L10n.string("Cancel"), role: .cancel) {}
+            } message: {
+                Text(
+                    L10n.string(
+                        "Please confirm you received the correct item. You can leave a review after this. This cannot be undone."
+                    )
+                )
+            }
+        }
+    }
+
+    /// Show the buyer review row whenever the order may receive a review later; gate tapping with `shouldShowLeaveReviewForBuyer`.
+    /// Matches the Seller card: if you see a counterparty, you should see this row (even while ids or status still catch up).
+    private var canShowBuyerLeaveReviewRow: Bool {
+        guard viewerIsOrderBuyer else { return false }
+        let st = orderStatusUppercased
+        guard st != "CANCELLED" && st != "REFUNDED" else { return false }
+        guard !effectiveOrder.buyerHasLeftReview else { return false }
+        guard effectiveOrder.otherParty != nil else { return false }
+
+        let sellerId = effectiveSellerNumericIdForBuyerReview
+        let buyerId = effectiveOrder.buyerUserId ?? currentUser?.userId
+        if let sellerId, let buyerId, buyerId != 0 {
+            let leftManualBuyerReview = effectiveOrder.orderReviews.contains {
+                $0.isAutoReview == false && $0.reviewerUserId == buyerId && $0.reviewedUserId == sellerId
+            }
+            if leftManualBuyerReview { return false }
+        }
+        return true
+    }
+
+    private var buyerLeaveReviewDisabledHint: String? {
+        guard canShowBuyerLeaveReviewRow, !shouldShowLeaveReviewForBuyer else { return nil }
+        guard didFinishOrderDetailBootstrap else { return nil }
+        let sellerId = effectiveSellerNumericIdForBuyerReview
+        if numericOrderIdIfAvailable == nil {
+            return L10n.string("We couldn't read this order's ID. Open it from My orders or pull to refresh.")
+        }
+        if sellerId == nil {
+            return L10n.string("The seller is shown above, but we still need their account ID from the server to submit a review. Pull to refresh or open from My orders.")
+        }
+        if effectiveOrder.hasOpenOrderIssue {
+            return L10n.string("You can't leave a review while a problem report is open.")
+        }
+        return L10n.string("You can leave a review once your order has been delivered.")
+    }
+
+    @ViewBuilder
+    private var buyerLeaveReviewSection: some View {
+        if canShowBuyerLeaveReviewRow {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Button {
+                    guard shouldShowLeaveReviewForBuyer else { return }
+                    feedbackSheetRole = .buyerRatesSeller
+                    showLeaveFeedbackSheet = true
+                } label: {
+                    HStack {
+                        Image(systemName: "star.bubble")
+                        Text(L10n.string("Leave a review"))
+                    }
+                    .font(Theme.Typography.body)
+                    .foregroundColor(shouldShowLeaveReviewForBuyer ? Theme.primaryColor : Theme.Colors.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Theme.Spacing.md)
+                    .background(Theme.Colors.secondaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
+                }
+                .buttonStyle(PlainTappableButtonStyle())
+                .disabled(!shouldShowLeaveReviewForBuyer)
+
+                if let hint = buyerLeaveReviewDisabledHint {
+                    Text(hint)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sellerLeaveReviewSectionIfNeeded: some View {
+        if shouldShowLeaveReviewForSeller {
             Button {
-                feedbackSheetRole = shouldShowLeaveReviewForSeller ? .sellerRatesBuyer : .buyerRatesSeller
+                feedbackSheetRole = .sellerRatesBuyer
                 showLeaveFeedbackSheet = true
             } label: {
                 HStack {
@@ -471,28 +616,112 @@ struct OrderDetailView: View {
         effectiveOrder.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     }
 
+    private var numericOrderIdIfAvailable: Int? {
+        Int(effectiveOrder.id.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private func normalizedOtherPartyUsernameForLookup() -> String? {
+        let raw = effectiveOrder.otherParty?.username.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !raw.isEmpty else { return nil }
+        if raw.hasPrefix("@") {
+            let rest = String(raw.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+            return rest.isEmpty ? nil : rest
+        }
+        return raw
+    }
+
+    /// Seller's backend user id for buyer→seller review (order fields, then profile lookup).
+    private var effectiveSellerNumericIdForBuyerReview: Int? {
+        let v = effectiveOrder.sellerUserId ?? effectiveOrder.otherParty?.userId ?? resolvedCounterpartyNumericUserId
+        guard let v, v != 0 else { return nil }
+        return v
+    }
+
+    /// Buyer's backend user id for seller→buyer review.
+    private var effectiveBuyerNumericIdForSellerReview: Int? {
+        let v = effectiveOrder.buyerUserId ?? effectiveOrder.otherParty?.userId ?? resolvedCounterpartyNumericUserId
+        guard let v, v != 0 else { return nil }
+        return v
+    }
+
+    /// Who receives the star rating in the feedback sheet (must match `userOrders` party ids when `otherParty.userId` is missing).
+    private var rateeUserIdForFeedbackSheet: Int? {
+        switch feedbackSheetRole {
+        case .buyerRatesSeller:
+            return effectiveSellerNumericIdForBuyerReview
+        case .sellerRatesBuyer:
+            return effectiveBuyerNumericIdForSellerReview
+        }
+    }
+
     /// Buyer rates seller: delivered (completes order) or completed if a review is still outstanding.
+    /// Uses `userOrders` buyer/seller ids (not `viewMe`) so the button works even when `getUser` fails or omits numeric id.
+    /// Hide only when a **manual** buyer→seller row exists in `orderReviews`.
     private var shouldShowLeaveReviewForBuyer: Bool {
-        guard isSeller == false else { return false }
+        guard viewerIsOrderBuyer else { return false }
         let st = orderStatusUppercased
         guard st == "DELIVERED" || st == "COMPLETED" else { return false }
-        guard !effectiveOrder.buyerHasLeftReview else { return false }
         guard !effectiveOrder.hasOpenOrderIssue else { return false }
-        return effectiveOrder.otherParty?.userId != nil && Int(effectiveOrder.id) != nil
+        guard !effectiveOrder.buyerHasLeftReview else { return false }
+        guard numericOrderIdIfAvailable != nil else { return false }
+        guard let sellerId = effectiveSellerNumericIdForBuyerReview else { return false }
+        let buyerId = effectiveOrder.buyerUserId ?? currentUser?.userId
+        if let buyerId, buyerId != 0 {
+            let leftManualBuyerReview = effectiveOrder.orderReviews.contains {
+                // Only `false` means “buyer left a real review”. `true` = platform auto; `nil` = unknown — keep CTA visible.
+                $0.isAutoReview == false && $0.reviewerUserId == buyerId && $0.reviewedUserId == sellerId
+            }
+            if leftManualBuyerReview { return false }
+        }
+        return true
     }
 
     /// Seller rates buyer after the order is completed (manual review only; ignores platform auto-reviews).
     private var shouldShowLeaveReviewForSeller: Bool {
-        guard isSeller == true else { return false }
+        guard viewerIsOrderSeller else { return false }
         guard orderStatusUppercased == "COMPLETED" else { return false }
         guard !effectiveOrder.hasOpenOrderIssue else { return false }
-        guard let buyerId = effectiveOrder.otherParty?.userId, buyerId != 0 else { return false }
-        guard let myId = currentUser?.userId else { return false }
-        guard Int(effectiveOrder.id) != nil else { return false }
-        let already = effectiveOrder.orderReviews.contains {
-            !$0.isAutoReview && $0.reviewerUserId == myId && $0.reviewedUserId == buyerId
+        guard numericOrderIdIfAvailable != nil else { return false }
+        guard let buyerId = effectiveBuyerNumericIdForSellerReview else { return false }
+        let sellerId = effectiveOrder.sellerUserId ?? currentUser?.userId
+        if let sellerId, sellerId != 0 {
+            let already = effectiveOrder.orderReviews.contains {
+                $0.isAutoReview == false && $0.reviewerUserId == sellerId && $0.reviewedUserId == buyerId
+            }
+            if already { return false }
         }
-        return !already
+        return true
+    }
+
+    /// Manual buyer→seller and seller→buyer rows in `orderReviews` (same rules as review CTAs).
+    private var bothPartiesSubmittedManualReviews: Bool {
+        let buyerId = effectiveOrder.buyerUserId
+            ?? (viewerIsOrderBuyer ? currentUser?.userId : nil)
+            ?? (viewerIsOrderSeller ? effectiveOrder.otherParty?.userId : nil)
+        let sellerId = effectiveOrder.sellerUserId
+            ?? (viewerIsOrderSeller ? currentUser?.userId : nil)
+            ?? (viewerIsOrderBuyer ? effectiveOrder.otherParty?.userId : nil)
+        guard let bid = buyerId, bid != 0, let sid = sellerId, sid != 0 else { return false }
+        let buyerRatedSeller = effectiveOrder.orderReviews.contains {
+            $0.isAutoReview == false && $0.reviewerUserId == bid && $0.reviewedUserId == sid
+        }
+        let sellerRatedBuyer = effectiveOrder.orderReviews.contains {
+            $0.isAutoReview == false && $0.reviewerUserId == sid && $0.reviewedUserId == bid
+        }
+        return buyerRatedSeller && sellerRatedBuyer
+    }
+
+    @ViewBuilder
+    private var bothPartiesReviewedSummaryIfNeeded: some View {
+        if bothPartiesSubmittedManualReviews {
+            Text(L10n.string("You and the other party have both left reviews for this order."))
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Theme.Spacing.md)
+                .background(Theme.Colors.secondaryBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
+        }
     }
 
     private func sectionLabel(_ title: String) -> some View {
@@ -1045,11 +1274,13 @@ struct OrderDetailView: View {
         .cornerRadius(12)
     }
 
-    /// Buyer help entry (same destinations as chat order card): not for cancelled/refunded orders.
+    /// Buyer help entry (same destinations as chat order card): buyer only; hide when order is done, cancelled, or both parties have finished reviewing.
     private var canShowBuyerOrderHelp: Bool {
-        guard isSeller == false else { return false }
+        guard viewerIsOrderBuyer else { return false }
+        if bothPartiesSubmittedManualReviews { return false }
         let st = effectiveOrder.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        return st != "CANCELLED" && st != "REFUNDED"
+        guard st != "CANCELLED" && st != "REFUNDED" && st != "COMPLETED" else { return false }
+        return true
     }
 
     /// Multibuy: buyer must pick which line item the issue is about before opening help.
@@ -1224,7 +1455,7 @@ struct OrderDetailView: View {
     }
 
     private func generateLabel() async {
-        guard let orderId = Int(effectiveOrder.id) else { return }
+        guard let orderId = numericOrderIdIfAvailable else { return }
         shippingLabelError = nil
         shippingLabelLoading = true
         defer { shippingLabelLoading = false }
@@ -1242,7 +1473,7 @@ struct OrderDetailView: View {
     }
 
     private func submitConfirmShipping() async {
-        guard let orderId = Int(effectiveOrder.id) else { return }
+        guard let orderId = numericOrderIdIfAvailable else { return }
         let carrier = confirmShippingCarrier.trimmingCharacters(in: .whitespaces)
         let tracking = confirmShippingTracking.trimmingCharacters(in: .whitespaces)
         let trackingURL = confirmShippingTrackingURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1271,7 +1502,7 @@ struct OrderDetailView: View {
     }
 
     private func respondToCancellationRequest(approve: Bool) async {
-        guard let orderId = Int(effectiveOrder.id) else { return }
+        guard let orderId = numericOrderIdIfAvailable else { return }
         await MainActor.run {
             cancellationBusy = true
             cancellationActionError = nil
@@ -1293,13 +1524,78 @@ struct OrderDetailView: View {
         await MainActor.run { cancellationBusy = false }
     }
 
+    private func markOrderDelivered() async {
+        guard let orderId = numericOrderIdIfAvailable else { return }
+        await MainActor.run {
+            markDeliveredBusy = true
+            markDeliveredError = nil
+        }
+        userService.updateAuthToken(authService.authToken)
+        do {
+            await hydrateOrderIfNeeded(force: true)
+            var st = orderStatusUppercased
+            if st == "CONFIRMED" {
+                try await userService.updateOrderStatus(orderId: orderId, status: "SHIPPED")
+                await hydrateOrderIfNeeded(force: true)
+                st = orderStatusUppercased
+            }
+            if st != "DELIVERED" && st != "COMPLETED" {
+                try await userService.updateOrderStatus(orderId: orderId, status: "DELIVERED")
+            }
+            await hydrateOrderIfNeeded(force: true)
+            await refreshTrackingDetailsIfNeeded()
+            await MainActor.run {
+                markDeliveredBusy = false
+                presentLeaveReviewSheetAfterDeliveryIfEligible()
+            }
+        } catch {
+            await MainActor.run {
+                markDeliveredError = L10n.userFacingError(error)
+                markDeliveredBusy = false
+            }
+        }
+    }
+
+    /// After a successful “received item” flow, open the same sheet as “Leave a review” when the buyer may rate the seller.
+    private func presentLeaveReviewSheetAfterDeliveryIfEligible() {
+        guard viewerIsOrderBuyer else { return }
+        let st = orderStatusUppercased
+        guard st == "DELIVERED" || st == "COMPLETED" else { return }
+        guard !effectiveOrder.hasOpenOrderIssue else { return }
+        guard !effectiveOrder.buyerHasLeftReview else { return }
+        guard numericOrderIdIfAvailable != nil else { return }
+        guard let sellerId = effectiveSellerNumericIdForBuyerReview else { return }
+        let buyerId = effectiveOrder.buyerUserId ?? currentUser?.userId
+        if let buyerId, buyerId != 0 {
+            let leftManualBuyerReview = effectiveOrder.orderReviews.contains {
+                $0.isAutoReview == false && $0.reviewerUserId == buyerId && $0.reviewedUserId == sellerId
+            }
+            if leftManualBuyerReview { return }
+        }
+        feedbackSheetRole = .buyerRatesSeller
+        showLeaveFeedbackSheet = true
+    }
+
+    /// Fills `resolvedCounterpartyNumericUserId` when the order row shows the counterparty by username but omits numeric `userId` (needed for `rateUser`).
+    private func resolveCounterpartyNumericUserIdIfNeeded() async {
+        guard resolvedCounterpartyNumericUserId == nil else { return }
+        guard let username = normalizedOtherPartyUsernameForLookup() else { return }
+        let rawSellerId = effectiveOrder.sellerUserId ?? effectiveOrder.otherParty?.userId
+        let rawBuyerId = effectiveOrder.buyerUserId ?? effectiveOrder.otherParty?.userId
+        let missingSellerId = viewerIsOrderBuyer && (rawSellerId == nil || rawSellerId == 0)
+        let missingBuyerId = viewerIsOrderSeller && (rawBuyerId == nil || rawBuyerId == 0)
+        guard missingSellerId || missingBuyerId else { return }
+        userService.updateAuthToken(authService.authToken)
+        guard let profile = try? await userService.getUserByUsername(username), let uid = profile.userId, uid != 0 else { return }
+        await MainActor.run { resolvedCounterpartyNumericUserId = uid }
+    }
+
     private func hydrateOrderIfNeeded(force: Bool = false) async {
         guard force || hydratedOrder == nil else { return }
         let sold = (try? await userService.getUserOrders(isSeller: true, pageNumber: 1, pageCount: 100).orders) ?? []
         if let found = sold.first(where: { $0.id == order.id }) {
             await MainActor.run {
                 hydratedOrder = found
-                Self.orderSnapshotCache[order.id] = found
             }
             return
         }
@@ -1307,7 +1603,17 @@ struct OrderDetailView: View {
         if let found = bought.first(where: { $0.id == order.id }) {
             await MainActor.run {
                 hydratedOrder = found
-                Self.orderSnapshotCache[order.id] = found
+            }
+            return
+        }
+        let pub = order.publicId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !pub.isEmpty {
+            if let found = sold.first(where: { ($0.publicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == pub }) {
+                await MainActor.run { hydratedOrder = found }
+                return
+            }
+            if let found = bought.first(where: { ($0.publicId ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == pub }) {
+                await MainActor.run { hydratedOrder = found }
             }
         }
     }
@@ -1321,7 +1627,6 @@ struct OrderDetailView: View {
         if let found = sold.first(where: { $0.id == order.id }) {
             await MainActor.run {
                 hydratedOrder = found
-                Self.orderSnapshotCache[order.id] = found
             }
             return
         }
@@ -1329,7 +1634,6 @@ struct OrderDetailView: View {
         if let found = bought.first(where: { $0.id == order.id }) {
             await MainActor.run {
                 hydratedOrder = found
-                Self.orderSnapshotCache[order.id] = found
             }
         }
     }

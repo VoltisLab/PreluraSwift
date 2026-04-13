@@ -11,6 +11,7 @@ struct LikedItemSoldSimilarView: View {
 
     @State private var similar: [Item] = []
     @State private var searchItems: [Item] = []
+    @State private var soldListing: Item?
     @State private var isLoading = true
     @State private var errorText: String?
 
@@ -31,13 +32,6 @@ struct LikedItemSoldSimilarView: View {
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let err = errorText, combined.isEmpty {
-                Text(err)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .padding(Theme.Spacing.md)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -51,21 +45,88 @@ struct LikedItemSoldSimilarView: View {
                             .foregroundStyle(Theme.Colors.secondaryText)
                             .padding(.horizontal, Theme.Spacing.md)
 
-                        LazyVGrid(
-                            columns: [
-                                GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                                GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                            ],
-                            spacing: Theme.Spacing.md
-                        ) {
-                            ForEach(combined) { item in
-                                NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
-                                    HomeItemCard(item: item, onLikeTap: nil, hideLikeButton: true)
+                        if let sold = soldListing {
+                            NavigationLink(destination: ItemDetailView(item: sold, authService: authService)) {
+                                HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                                    if let urlStr = sold.thumbnailURLForChrome, let url = URL(string: urlStr) {
+                                        AsyncImage(url: url) { phase in
+                                            switch phase {
+                                            case .success(let image):
+                                                image
+                                                    .resizable()
+                                                    .aspectRatio(contentMode: .fill)
+                                            default:
+                                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                    .fill(Theme.Colors.secondaryBackground)
+                                            }
+                                        }
+                                        .frame(width: 56, height: 74)
+                                        .clipped()
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+                                        )
+                                    } else {
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .fill(Theme.Colors.secondaryBackground)
+                                            .frame(width: 56, height: 74)
+                                    }
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(sold.title)
+                                            .font(Theme.Typography.subheadline.weight(.semibold))
+                                            .foregroundStyle(Theme.Colors.primaryText)
+                                            .multilineTextAlignment(.leading)
+                                            .lineLimit(2)
+                                        Text(sold.formattedPrice)
+                                            .font(Theme.Typography.subheadline)
+                                            .foregroundStyle(Theme.primaryColor)
+                                        Text(L10n.string("Sold"))
+                                            .font(Theme.Typography.caption)
+                                            .foregroundStyle(Theme.Colors.secondaryText)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Theme.Colors.secondaryText)
                                 }
-                                .buttonStyle(PlainTappableButtonStyle())
+                                .padding(Theme.Spacing.md)
+                                .background(Theme.Colors.secondaryBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous)
+                                        .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+                                )
                             }
+                            .buttonStyle(PlainTappableButtonStyle())
+                            .padding(.horizontal, Theme.Spacing.md)
                         }
-                        .padding(.horizontal, Theme.Spacing.md)
+
+                        if combined.isEmpty {
+                            Text(errorText ?? L10n.string("No similar items available yet"))
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(Theme.Colors.secondaryText)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity)
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.top, Theme.Spacing.sm)
+                        } else {
+                            LazyVGrid(
+                                columns: [
+                                    GridItem(.flexible(), spacing: Theme.Spacing.sm),
+                                    GridItem(.flexible(), spacing: Theme.Spacing.sm)
+                                ],
+                                spacing: Theme.Spacing.md
+                            ) {
+                                ForEach(combined) { item in
+                                    NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
+                                        HomeItemCard(item: item, onLikeTap: nil, hideLikeButton: true)
+                                    }
+                                    .buttonStyle(PlainTappableButtonStyle())
+                                }
+                            }
+                            .padding(.horizontal, Theme.Spacing.md)
+                        }
                     }
                     .padding(.vertical, Theme.Spacing.md)
                 }
@@ -117,6 +178,11 @@ struct LikedItemSoldSimilarView: View {
         let simRes = await similarTask
         let seaRes = await searchTask
 
+        var loadedSold: Item?
+        if let pid = Int(soldProductId) {
+            loadedSold = try? await productService.getProduct(id: pid)
+        }
+
         let sItems: [Item] = {
             switch simRes {
             case .success(let v): return v.filter { $0.productId != soldProductId }
@@ -131,12 +197,11 @@ struct LikedItemSoldSimilarView: View {
         }()
 
         await MainActor.run {
+            soldListing = loadedSold
             similar = sItems
             searchItems = tItems
             if case .failure(let err) = simRes, case .failure = seaRes {
                 errorText = L10n.userFacingError(err)
-            } else if combined.isEmpty {
-                errorText = L10n.string("No similar items available yet")
             } else {
                 errorText = nil
             }

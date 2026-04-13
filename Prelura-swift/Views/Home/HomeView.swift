@@ -283,10 +283,23 @@ struct HomeView: View {
         Group {
             if !viewModel.featuredItems.isEmpty && viewModel.searchText.isEmpty {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text(L10n.string("Featured"))
-                        .font(Theme.Typography.headline)
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .padding(.horizontal, Theme.Spacing.md)
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                        Text(L10n.string("Featured"))
+                            .font(Theme.Typography.headline)
+                            .foregroundColor(Theme.Colors.primaryText)
+                        Spacer(minLength: 0)
+                        NavigationLink {
+                            FeaturedSeeAllView()
+                                .environmentObject(authService)
+                        } label: {
+                            Text(L10n.string("See all"))
+                                .font(Theme.Typography.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Theme.primaryColor)
+                        }
+                        .buttonStyle(HapticTapButtonStyle())
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: Theme.Spacing.sm) {
                             ForEach(viewModel.featuredItems) { item in
@@ -530,11 +543,11 @@ struct HomeItemCard: View {
             
             if showAddToBag {
                 if isInBag, let onRemove = onRemove {
-                    BorderGlassButton(L10n.string("Remove"), icon: "minus.circle", chromeStyle: addToBagChromeStyle, action: onRemove)
+                    BorderGlassButton(L10n.string("Remove"), icon: "minus.circle", chromeStyle: addToBagChromeStyle, layout: .compact, action: onRemove)
                         .frame(maxWidth: .infinity)
                         .padding(.top, Theme.Spacing.xs)
                 } else if let onAddToBag = onAddToBag {
-                    BorderGlassButton(L10n.string("Add to bag"), icon: "bag.badge.plus", chromeStyle: addToBagChromeStyle, action: onAddToBag)
+                    BorderGlassButton(L10n.string("Add to bag"), icon: "bag.badge.plus", chromeStyle: addToBagChromeStyle, layout: .compact, action: onAddToBag)
                         .frame(maxWidth: .infinity)
                         .padding(.top, Theme.Spacing.xs)
                 }

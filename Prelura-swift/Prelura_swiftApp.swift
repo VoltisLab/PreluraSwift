@@ -177,6 +177,7 @@ struct AppearanceRootView: View {
             DeepLinkOverlayView(item: item, onDismiss: { appRouter.clearPending() })
                 .environmentObject(authService)
                 .environmentObject(SavedLookbookFavoritesStore.shared)
+                .environmentObject(LookbookHideLikeCountsStore.shared)
             }
             .onAppear { registerPushTokenIfNeeded(authService: authService) }
             .onChange(of: authService.isAuthenticated) { _, _ in registerPushTokenIfNeeded(authService: authService) }
@@ -304,6 +305,7 @@ struct MainTabView: View {
         .accentColor(Theme.primaryColor)
         .environmentObject(shopAllBagStore)
         .environmentObject(SavedLookbookFavoritesStore.shared)
+        .environmentObject(LookbookHideLikeCountsStore.shared)
         .environmentObject(bellUnreadStore)
         .onAppear {
             applyTabBarAppearance()
