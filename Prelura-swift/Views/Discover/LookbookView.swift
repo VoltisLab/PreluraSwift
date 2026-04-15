@@ -615,6 +615,7 @@ private func lookbookShuffledEntriesFromPosts(_ posts: [ServerLookbookPost], loc
 }
 
 private struct LookbookFeedScreenView: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authService: AuthService
     @ObservedObject private var immersiveScrollFeelStore = LookbookImmersiveScrollFeelStore.shared
     @State private var entries: [LookbookEntry] = []
@@ -730,11 +731,25 @@ private struct LookbookFeedScreenView: View {
         )
     }
 
-    /// Shortcuts row: explore → search → create / my items / settings. Grid/list toggle is only in the nav bar trailing slot.
+    /// Shortcuts row: back (pop lookbook or exit immersive) → explore → create / my items / settings. Search + grid/list live in the nav bar.
     /// Per-icon `.glassEffect` only (same as `lookbookFeedCollapseToggle`). `GlassEffectContainer` adds grouped elevation/shadow that the standalone chevron does not get.
     @ViewBuilder
     private var lookbookFeedQuickActionsIconCluster: some View {
         HStack(spacing: 8) {
+            Button {
+                HapticManager.selection()
+                if immersiveFeedInitialPostId != nil {
+                    dismissLookbookFeedImmersive()
+                } else {
+                    dismiss()
+                }
+            } label: {
+                lookbookFeedGlassCircleLabel(systemName: "chevron.backward")
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+            .accessibilityLabel(L10n.string("Back"))
+
             NavigationLink {
                 LookbookExploreScreenView()
             } label: {
@@ -743,15 +758,6 @@ private struct LookbookFeedScreenView: View {
             .buttonStyle(.plain)
             .contentShape(Circle())
             .accessibilityLabel(L10n.string("Explore"))
-
-            NavigationLink {
-                LookbookFeedSearchView(entries: entries)
-            } label: {
-                lookbookFeedGlassCircleLabel(systemName: "magnifyingglass")
-            }
-            .buttonStyle(.plain)
-            .contentShape(Circle())
-            .accessibilityLabel(L10n.string("Search"))
 
             NavigationLink {
                 LookbooksUploadView()
@@ -924,23 +930,9 @@ private struct LookbookFeedScreenView: View {
         .animation(.easeOut(duration: 0.2), value: immersiveFeedInitialPostId)
         .navigationTitle(L10n.string("Lookbook"))
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(immersiveFeedInitialPostId != nil)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
-            if immersiveFeedInitialPostId != nil {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        HapticManager.selection()
-                        dismissLookbookFeedImmersive()
-                    } label: {
-                        Image(systemName: "chevron.backward")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Theme.Colors.primaryText)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(L10n.string("Back"))
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarLeading) {
                 Button {
                     HapticManager.selection()
                     useGrid.toggle()
@@ -951,6 +943,17 @@ private struct LookbookFeedScreenView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    LookbookFeedSearchView(entries: entries)
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("Search"))
             }
         }
         .background {
