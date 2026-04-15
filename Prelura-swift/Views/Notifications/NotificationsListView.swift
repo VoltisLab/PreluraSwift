@@ -2,6 +2,9 @@ import SwiftUI
 
 /// List of in-app notifications (Flutter NotificationsScreen + NotificationsTab).
 struct NotificationsListView: View {
+    /// Matches `NotificationRowView` vertical tightening (20% less than former 4pt).
+    private static let listRowInsetVertical: CGFloat = 4 * 0.8
+
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var bellUnreadStore: BellUnreadStore
     @Environment(\.dismiss) private var dismiss
@@ -56,7 +59,14 @@ struct NotificationsListView: View {
                         }
                         .buttonStyle(PlainTappableButtonStyle())
                         .listRowBackground(Theme.Colors.background)
-                        .listRowInsets(EdgeInsets(top: 4, leading: Theme.Spacing.md, bottom: 4, trailing: Theme.Spacing.md))
+                        .listRowInsets(
+                            EdgeInsets(
+                                top: Self.listRowInsetVertical,
+                                leading: Theme.Spacing.md,
+                                bottom: Self.listRowInsetVertical,
+                                trailing: Theme.Spacing.md
+                            )
+                        )
                         .navigationLinkIndicatorVisibility(.hidden)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
@@ -442,9 +452,13 @@ private struct NotificationRowView: View {
 
     /// Slightly larger than `Theme.Typography.caption` (13pt) for readability.
     private static let lineFontSize: CGFloat = 15
-    /// Portrait thumbnail width; height follows 3:4 for listing photos.
-    private static let productThumbWidth: CGFloat = 48
-    private static let productThumbHeight: CGFloat = 64
+    /// Portrait thumbnail (20% smaller than former 48×64).
+    private static let productThumbWidth: CGFloat = 48 * 0.8
+    private static let productThumbHeight: CGFloat = 64 * 0.8
+    private static let thumbCornerRadius: CGFloat = 8 * 0.8
+    private static let placeholderSymbolPointSize: CGFloat = 22 * 0.8
+    /// 20% tighter than former `Theme.Spacing.sm` row padding.
+    private static let rowVerticalPadding: CGFloat = Theme.Spacing.sm * 0.8
 
     private var senderUsername: String? {
         notification.sender?.username
@@ -570,7 +584,7 @@ private struct NotificationRowView: View {
 
     @ViewBuilder
     private var leadingThumbnail: some View {
-        let corner: CGFloat = 8
+        let corner = Self.thumbCornerRadius
         if isSupportNotification {
             WearhouseSupportBranding.supportAvatar(size: Self.productThumbHeight)
         } else if let url = productThumbnailURL {
@@ -607,19 +621,19 @@ private struct NotificationRowView: View {
     }
 
     private var productPlaceholderIcon: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
+        RoundedRectangle(cornerRadius: Self.thumbCornerRadius, style: .continuous)
             .fill(Theme.Colors.secondaryBackground)
             .overlay(
                 Image(systemName: "tshirt")
-                    .font(.system(size: 22, weight: .regular))
+                    .font(.system(size: Self.placeholderSymbolPointSize, weight: .regular))
                     .foregroundStyle(Theme.Colors.secondaryText)
             )
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: Theme.Spacing.md) {
+        HStack(alignment: .center, spacing: Theme.Spacing.md * 0.8) {
             leadingThumbnail
-            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .center, spacing: Theme.Spacing.sm * 0.8) {
                 messageText
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if let date = notification.createdAt {
@@ -631,7 +645,7 @@ private struct NotificationRowView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, Theme.Spacing.sm)
+        .padding(.vertical, Self.rowVerticalPadding)
     }
 
     private func formatDate(_ date: Date) -> String {
