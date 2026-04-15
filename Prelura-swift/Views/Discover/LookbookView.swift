@@ -4794,13 +4794,43 @@ private struct LookbookFullscreenImage: View {
     }
 }
 
-// MARK: - Feed search (pushed): topics, hashtags, styles, captions — not usernames
+// MARK: - Feed search (pushed): accounts, hashtags, products, captions & styles
 
-/// Match query against caption (incl. hashtags), style topics, and tagged product titles — not poster usernames.
+/// `#word` tokens as they appear in captions (includes `#`).
+private func lookbookCaptionHashtagTokens(from caption: String?) -> [String] {
+    guard let caption, !caption.isEmpty else { return [] }
+    var out: [String] = []
+    var i = caption.startIndex
+    while i < caption.endIndex {
+        if caption[i] == "#" {
+            let hashStart = i
+            i = caption.index(after: i)
+            let bodyStart = i
+            while i < caption.endIndex {
+                let ch = caption[i]
+                if ch.isLetter || ch.isNumber || ch == "_" {
+                    i = caption.index(after: i)
+                } else {
+                    break
+                }
+            }
+            if i > bodyStart {
+                out.append(String(caption[hashStart..<i]))
+            }
+        } else {
+            i = caption.index(after: i)
+        }
+    }
+    return out
+}
+
+/// Match query against poster username, caption (incl. hashtags), style topics, and tagged product titles.
 private func lookbookEntryMatchesContentSearch(_ entry: LookbookEntry, query raw: String) -> Bool {
     let q = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if q.isEmpty { return true }
     let qNoHash = q.hasPrefix("#") ? String(q.dropFirst()) : q
+    let poster = entry.posterUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if !poster.isEmpty, poster.contains(q) { return true }
     if let cap = entry.caption, !cap.isEmpty {
         let c = cap.lowercased()
         if c.contains(q) { return true }
@@ -4818,6 +4848,83 @@ private func lookbookEntryMatchesContentSearch(_ entry: LookbookEntry, query raw
         }
     }
     return false
+}
+
+private struct LookbookFeedSearchGrouped {
+    let accounts: [(user: User, entry: LookbookEntry)]
+    let hashtags: [(display: String, key: String, count: Int, sample: LookbookEntry)]
+    let products: [(snapshot: LookbookProductSnapshot, entry: LookbookEntry)]
+    let looks: [LookbookEntry]
+}
+
+private func lookbookFeedSearchGrouped(entries: [LookbookEntry], query raw: String) -> LookbookFeedSearchGrouped {
+    let q = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if q.isEmpty {
+        return LookbookFeedSearchGrouped(accounts: [], hashtags: [], products: [], looks: [])
+    }
+    let qBody = q.hasPrefix("#") ? String(q.dropFirst()) : q
+    guard !qBody.isEmpty else {
+        return LookbookFeedSearchGrouped(accounts: [], hashtags: [], products: [], looks: entries.filter { lookbookEntryMatchesContentSearch($0, query: raw) })
+    }
+
+    var seenUser = Set<String>()
+    var accounts: [(User, LookbookEntry)] = []
+    for e in entries {
+        let un = e.posterUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !un.isEmpty else { continue }
+        if un.lowercased().contains(qBody), seenUser.insert(un.lowercased()).inserted {
+            let av = e.posterProfilePictureUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let user = User(username: un, displayName: un, avatarURL: av.isEmpty ? nil : av)
+            accounts.append((user, e))
+        }
+    }
+
+    var tagCount: [String: Int] = [:]
+    var tagDisplay: [String: String] = [:]
+    var tagSample: [String: LookbookEntry] = [:]
+    for e in entries {
+        for tok in lookbookCaptionHashtagTokens(from: e.caption) {
+            let body = tok.hasPrefix("#") ? String(tok.dropFirst()).lowercased() : tok.lowercased()
+            guard !body.isEmpty else { continue }
+            guard body.contains(qBody) || qBody.contains(body) || body.hasPrefix(qBody) else { continue }
+            let key = body
+            tagCount[key, default: 0] += 1
+            if tagDisplay[key] == nil {
+                tagDisplay[key] = tok.hasPrefix("#") ? tok : "#\(tok)"
+            }
+            if tagSample[key] == nil {
+                tagSample[key] = e
+            }
+        }
+    }
+    let hashtags: [(String, String, Int, LookbookEntry)] = tagCount.keys.sorted().compactMap { key in
+        guard let c = tagCount[key], let d = tagDisplay[key], let s = tagSample[key] else { return nil }
+        return (d, key, c, s)
+    }
+
+    var seenPid = Set<String>()
+    var products: [(LookbookProductSnapshot, LookbookEntry)] = []
+    for e in entries {
+        guard let snaps = e.productSnapshots else { continue }
+        for snap in snaps.values {
+            if snap.title.lowercased().contains(qBody), seenPid.insert(snap.productId).inserted {
+                products.append((snap, e))
+            }
+        }
+    }
+
+    let looks = entries.filter { lookbookEntryMatchesContentSearch($0, query: raw) }
+    return LookbookFeedSearchGrouped(accounts: accounts, hashtags: hashtags, products: products, looks: looks)
+}
+
+private func lookbookSearchSectionHeader(_ title: String) -> some View {
+    Text(title)
+        .font(Theme.Typography.headline)
+        .foregroundStyle(Theme.Colors.primaryText)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.top, Theme.Spacing.md)
+        .padding(.bottom, Theme.Spacing.xs)
 }
 
 private func lookbookFeedSearchResultTitle(_ entry: LookbookEntry) -> String {
@@ -4838,30 +4945,96 @@ private func lookbookFeedSearchResultSubtitle(_ entry: LookbookEntry) -> String?
     return nil
 }
 
+private struct LookbookFeedSearchAccountRow: Identifiable {
+    let id: String
+    let user: User
+    let entry: LookbookEntry
+}
+
+private struct LookbookFeedSearchHashtagRow: Identifiable {
+    let id: String
+    let display: String
+    let count: Int
+    let sample: LookbookEntry
+}
+
+private struct LookbookFeedSearchProductRow: Identifiable {
+    let id: String
+    let snapshot: LookbookProductSnapshot
+    let entry: LookbookEntry
+}
+
 private struct LookbookFeedSearchView: View {
     let entries: [LookbookEntry]
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var authService: AuthService
     @State private var searchText: String = ""
+    @State private var selectedProduct: ProductIdNavigator?
 
-    private var filteredBySearch: [LookbookEntry] {
-        entries.filter { lookbookEntryMatchesContentSearch($0, query: searchText) }
+    private let productService = ProductService()
+
+    private var trimmedQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var grouped: LookbookFeedSearchGrouped {
+        lookbookFeedSearchGrouped(entries: entries, query: searchText)
+    }
+
+    private var accountRows: [LookbookFeedSearchAccountRow] {
+        grouped.accounts.map { pair in
+            LookbookFeedSearchAccountRow(
+                id: pair.user.username.lowercased(),
+                user: pair.user,
+                entry: pair.entry
+            )
+        }
+    }
+
+    private var hashtagRows: [LookbookFeedSearchHashtagRow] {
+        grouped.hashtags.map { row in
+            LookbookFeedSearchHashtagRow(id: row.key, display: row.display, count: row.count, sample: row.sample)
+        }
+    }
+
+    private var productRows: [LookbookFeedSearchProductRow] {
+        grouped.products.map { pair in
+            LookbookFeedSearchProductRow(id: pair.snapshot.productId, snapshot: pair.snapshot, entry: pair.entry)
+        }
+    }
+
+    private var hasAnyResults: Bool {
+        !grouped.accounts.isEmpty || !grouped.hashtags.isEmpty || !grouped.products.isEmpty || !grouped.looks.isEmpty
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Same inline search as Home (`HomeFeedSearchField`), not `.searchable` drawer.
             VStack(spacing: 0) {
                 HomeFeedSearchField(
                     text: $searchText,
                     onSubmit: { _ in },
                     onAITap: nil,
-                    topPadding: Theme.Spacing.xs
+                    topPadding: Theme.Spacing.xs,
+                    placeholderCarousel: [
+                        L10n.string("Search usernames, hashtags & products"),
+                        L10n.string("Try a username"),
+                        L10n.string("Try a hashtag"),
+                        L10n.string("Try a product name"),
+                    ]
                 )
             }
             .padding(.top, Theme.Spacing.xs)
             .background(Theme.Colors.background)
 
-            if filteredBySearch.isEmpty, !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if trimmedQuery.isEmpty {
+                Spacer(minLength: 0)
+                Text(L10n.string("Search this feed by username, hashtag, or product."))
+                    .font(Theme.Typography.subheadline)
+                    .foregroundStyle(Theme.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Theme.Spacing.lg)
+                Spacer(minLength: 0)
+            } else if !hasAnyResults {
                 Text(L10n.string("No looks match your search."))
                     .font(Theme.Typography.subheadline)
                     .foregroundStyle(Theme.Colors.secondaryText)
@@ -4871,32 +5044,135 @@ private struct LookbookFeedSearchView: View {
                 Spacer(minLength: 0)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: Theme.Spacing.sm) {
-                        ForEach(filteredBySearch) { entry in
-                            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                                LookbookEntryThumbnail(entry: entry)
-                                    .frame(width: 50, height: 50)
-                                    .clipped()
-                                    .cornerRadius(8)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(lookbookFeedSearchResultTitle(entry))
-                                        .font(Theme.Typography.body)
-                                        .foregroundColor(Theme.Colors.primaryText)
-                                        .lineLimit(3)
-                                        .multilineTextAlignment(.leading)
-                                    if let sub = lookbookFeedSearchResultSubtitle(entry) {
-                                        Text(sub)
-                                            .font(Theme.Typography.caption)
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if !accountRows.isEmpty {
+                            lookbookSearchSectionHeader(L10n.string("Accounts"))
+                            ForEach(accountRows) { row in
+                                NavigationLink {
+                                    UserProfileView(seller: row.user, authService: authService)
+                                } label: {
+                                    HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                                        LookbookEntryThumbnail(entry: row.entry)
+                                            .frame(width: 50, height: 50)
+                                            .clipped()
+                                            .cornerRadius(8)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("@\(row.user.username)")
+                                                .font(Theme.Typography.body)
+                                                .foregroundStyle(Theme.Colors.primaryText)
+                                                .lineLimit(1)
+                                            Text(L10n.string("In this feed"))
+                                                .font(Theme.Typography.caption)
+                                                .foregroundStyle(Theme.Colors.secondaryText)
+                                                .lineLimit(1)
+                                        }
+                                        Spacer(minLength: 0)
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.semibold))
                                             .foregroundStyle(Theme.Colors.secondaryText)
-                                            .lineLimit(2)
+                                            .padding(.top, 4)
                                     }
+                                    .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.vertical, Theme.Spacing.xs)
                                 }
-                                Spacer(minLength: 0)
+                                .buttonStyle(.plain)
                             }
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .padding(.vertical, Theme.Spacing.xs)
+                        }
+
+                        if !hashtagRows.isEmpty {
+                            lookbookSearchSectionHeader(L10n.string("Hashtags"))
+                            ForEach(hashtagRows) { row in
+                                Button {
+                                    searchText = row.display
+                                } label: {
+                                    HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                                        LookbookEntryThumbnail(entry: row.sample)
+                                            .frame(width: 50, height: 50)
+                                            .clipped()
+                                            .cornerRadius(8)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(row.display)
+                                                .font(Theme.Typography.body)
+                                                .foregroundStyle(Theme.Colors.primaryText)
+                                                .lineLimit(2)
+                                                .multilineTextAlignment(.leading)
+                                            if row.count > 1 {
+                                                Text(String(format: L10n.string("In %d looks"), row.count))
+                                                    .font(Theme.Typography.caption)
+                                                    .foregroundStyle(Theme.Colors.secondaryText)
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.vertical, Theme.Spacing.xs)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        if !productRows.isEmpty {
+                            lookbookSearchSectionHeader(L10n.string("Products"))
+                            ForEach(productRows) { row in
+                                Button {
+                                    selectedProduct = ProductIdNavigator(id: row.snapshot.productId)
+                                } label: {
+                                    HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                                        lookbookFeedSearchProductThumb(snapshot: row.snapshot, fallbackEntry: row.entry)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(row.snapshot.title)
+                                                .font(Theme.Typography.body)
+                                                .foregroundStyle(Theme.Colors.primaryText)
+                                                .lineLimit(3)
+                                                .multilineTextAlignment(.leading)
+                                            Text(L10n.string("Tagged in look"))
+                                                .font(Theme.Typography.caption)
+                                                .foregroundStyle(Theme.Colors.secondaryText)
+                                                .lineLimit(1)
+                                        }
+                                        Spacer(minLength: 0)
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(Theme.Colors.secondaryText)
+                                            .padding(.top, 4)
+                                    }
+                                    .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.vertical, Theme.Spacing.xs)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        if !grouped.looks.isEmpty {
+                            lookbookSearchSectionHeader(L10n.string("Looks"))
+                            ForEach(grouped.looks) { entry in
+                                HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                                    LookbookEntryThumbnail(entry: entry)
+                                        .frame(width: 50, height: 50)
+                                        .clipped()
+                                        .cornerRadius(8)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(lookbookFeedSearchResultTitle(entry))
+                                            .font(Theme.Typography.body)
+                                            .foregroundStyle(Theme.Colors.primaryText)
+                                            .lineLimit(3)
+                                            .multilineTextAlignment(.leading)
+                                        if let sub = lookbookFeedSearchResultSubtitle(entry) {
+                                            Text(sub)
+                                                .font(Theme.Typography.caption)
+                                                .foregroundStyle(Theme.Colors.secondaryText)
+                                                .lineLimit(2)
+                                        }
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.vertical, Theme.Spacing.xs)
+                            }
                         }
                     }
+                    .padding(.bottom, Theme.Spacing.xl)
                 }
             }
         }
@@ -4904,6 +5180,9 @@ private struct LookbookFeedSearchView: View {
         .navigationTitle(L10n.string("Search"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.Colors.background, for: .navigationBar)
+        .navigationDestination(item: $selectedProduct) { nav in
+            LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             PrimaryButtonBar {
                 PrimaryGlassButton(L10n.string("Done")) {
@@ -4912,6 +5191,26 @@ private struct LookbookFeedSearchView: View {
             }
         }
     }
+}
+
+private func lookbookFeedSearchProductThumb(snapshot: LookbookProductSnapshot, fallbackEntry: LookbookEntry) -> some View {
+    let trimmed = snapshot.imageUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return Group {
+        if !trimmed.isEmpty, let url = URL(string: trimmed) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image): image.resizable().scaledToFill()
+                case .failure: LookbookEntryThumbnail(entry: fallbackEntry)
+                default: ProgressView()
+                }
+            }
+        } else {
+            LookbookEntryThumbnail(entry: fallbackEntry)
+        }
+    }
+    .frame(width: 50, height: 50)
+    .clipped()
+    .cornerRadius(8)
 }
 
 extension SavedLookbookPhoto {
