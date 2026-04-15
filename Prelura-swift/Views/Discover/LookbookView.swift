@@ -476,6 +476,7 @@ struct LookbookView: View {
 
     var body: some View {
         LookbookFeedScreenView()
+            .toolbar(.hidden, for: .tabBar)
             .onAppear { scheduleLookbooksOnboardingIfNeeded() }
             .overlay {
                 if showLookbooksOnboarding {
