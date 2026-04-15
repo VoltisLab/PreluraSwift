@@ -43,7 +43,13 @@ final class SavedLookbookFavoritesStore: ObservableObject {
     private let storageKey = "saved_lookbook_photo_favorites_v2"
 
     private init() {
-        load()
+        loadFromUserDefaults()
+    }
+
+    /// Re-reads disk into memory and notifies observers (e.g. after app updates that fix decoding, or to resync if another view mutated defaults).
+    func reloadFromPersistence() {
+        loadFromUserDefaults()
+        objectWillChange.send()
     }
 
     /// Unique posts saved in any folder, newest first by `savedAt`.
@@ -185,13 +191,19 @@ final class SavedLookbookFavoritesStore: ObservableObject {
         return idSet.count
     }
 
-    private func load() {
-        if let data = UserDefaults.standard.data(forKey: storageKey),
-           let decoded = try? JSONDecoder().decode(LookbookFavoritesV2Payload.self, from: data) {
-            folders = decoded.folders
-            photoById = decoded.photoById
-            folderPosts = decoded.folderPosts
-            return
+    private func loadFromUserDefaults() {
+        if let data = UserDefaults.standard.data(forKey: storageKey), !data.isEmpty {
+            do {
+                let decoded = try JSONDecoder().decode(LookbookFavoritesV2Payload.self, from: data)
+                folders = decoded.folders
+                photoById = decoded.photoById
+                folderPosts = decoded.folderPosts
+                return
+            } catch {
+                #if DEBUG
+                print("SavedLookbookFavoritesStore: v2 decode failed (\(error.localizedDescription)). Trying legacy store.")
+                #endif
+            }
         }
         if let legacyData = UserDefaults.standard.data(forKey: legacyStorageKey),
            let legacy = try? JSONDecoder().decode([SavedLookbookPhoto].self, from: legacyData) {

@@ -45,7 +45,7 @@ struct LookbookSettingsView: View {
             } footer: {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     Text(L10n.string("When this is on, like counts are hidden on all lookbook posts. On your own posts, open the more options menu on a post and choose Show likes to show the count for that post only."))
-                    Text(L10n.string("Scroll controls fullscreen Lookbook paging: Sticky snaps firmly between posts; Smooth allows a slightly looser glide."))
+                    Text(L10n.string("Scroll: Smooth uses a free-scrolling feed; Sticky snaps each post into place. Fullscreen Lookbook: Smooth pages by post; Sticky uses a looser view-aligned glide."))
                 }
                 .font(Theme.Typography.caption)
             }

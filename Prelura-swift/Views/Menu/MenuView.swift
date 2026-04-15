@@ -8,7 +8,10 @@ struct MenuView: View {
     var isMultiBuyEnabled: Bool = false
     var isVacationMode: Bool = false
     var username: String? = nil
+    /// From `ProfileViewModel` before Menu opens; refreshed in `refreshUserState`.
+    var prefetchedMultibuyDiscounts: [MultibuyDiscount] = []
 
+    @State private var multibuyTierCache: [MultibuyDiscount] = []
     @State private var displayedMultiBuy: Bool = false
     @State private var displayedVacation: Bool = false
     @State private var isStaffUser: Bool = false
@@ -54,7 +57,10 @@ struct MenuView: View {
             NavigationLink(destination: MyFavouritesView()) {
                 menuRow(L10n.string("Favourites"), icon: "heart")
             }
-            NavigationLink(destination: MultiBuyDiscountView()) {
+            NavigationLink(destination: MultiBuyDiscountView(
+                prefetchedDiscounts: multibuyTierCache,
+                prefetchedIsMultibuyEnabled: displayedMultiBuy
+            )) {
                 HStack {
                     menuRow(L10n.string("Multi-buy discounts"), icon: "tag")
                     Spacer()
@@ -108,6 +114,7 @@ struct MenuView: View {
         .onAppear {
             displayedMultiBuy = isMultiBuyEnabled
             displayedVacation = isVacationMode
+            multibuyTierCache = prefetchedMultibuyDiscounts
             Task { await refreshUserState() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .wearhouseUserProfileDidUpdate)) { _ in
@@ -151,12 +158,20 @@ struct MenuView: View {
 
     private func refreshUserState() async {
         userService.updateAuthToken(authService.authToken)
+        let cachedTiers = await MainActor.run { multibuyTierCache }
         do {
             let user = try await userService.getUser()
+            var tiers: [MultibuyDiscount] = []
+            do {
+                tiers = try await userService.getMultibuyDiscounts(userId: nil)
+            } catch {
+                tiers = cachedTiers
+            }
             await MainActor.run {
                 displayedMultiBuy = user.isMultibuyEnabled
                 displayedVacation = user.isVacationMode
                 isStaffUser = user.isStaff
+                multibuyTierCache = tiers
             }
         } catch {
             // Keep displayed state from params / previous fetch

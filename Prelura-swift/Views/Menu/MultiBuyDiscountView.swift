@@ -2,18 +2,32 @@ import SwiftUI
 
 /// Multi-buy discounts: fetch/save tiers via UserService. Matches Flutter multi_buy_discount.dart.
 struct MultiBuyDiscountView: View {
-    @State private var isEnabled: Bool = false
-    @State private var tier2Percent: String = "0"
-    @State private var tier5Percent: String = "0"
-    @State private var tier10Percent: String = "0"
-    @State private var discounts: [MultibuyDiscount] = []
-    @State private var isLoading = true
+    /// Seeded from Profile + Menu prefetch so the first paint does not depend on a cold `userMultibuyDiscounts` round-trip.
+    var prefetchedDiscounts: [MultibuyDiscount] = []
+    var prefetchedIsMultibuyEnabled: Bool = false
+
+    @State private var isEnabled: Bool
+    @State private var tier2Percent: String
+    @State private var tier5Percent: String
+    @State private var tier10Percent: String
+    @State private var discounts: [MultibuyDiscount]
+    @State private var isLoading: Bool
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var successMessage: String?
 
     private let userService = UserService()
-    private let tierMinItems = [2, 5, 10]
+
+    init(prefetchedDiscounts: [MultibuyDiscount] = [], prefetchedIsMultibuyEnabled: Bool = false) {
+        self.prefetchedDiscounts = prefetchedDiscounts
+        self.prefetchedIsMultibuyEnabled = prefetchedIsMultibuyEnabled
+        _isEnabled = State(initialValue: prefetchedIsMultibuyEnabled)
+        _discounts = State(initialValue: prefetchedDiscounts)
+        _tier2Percent = State(initialValue: Self.percentString(for: prefetchedDiscounts, minItems: 2))
+        _tier5Percent = State(initialValue: Self.percentString(for: prefetchedDiscounts, minItems: 5))
+        _tier10Percent = State(initialValue: Self.percentString(for: prefetchedDiscounts, minItems: 10))
+        _isLoading = State(initialValue: prefetchedDiscounts.isEmpty && !prefetchedIsMultibuyEnabled)
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -87,8 +101,16 @@ struct MultiBuyDiscountView: View {
         }
     }
 
+    private static func percentString(for discounts: [MultibuyDiscount], minItems: Int) -> String {
+        let d = discounts.first { $0.minItems == minItems }
+        guard let d = d else { return "0" }
+        let pct = Double(d.discountValue) ?? 0
+        return String(Int(pct))
+    }
+
     private func load() async {
-        isLoading = true
+        let hadData = !discounts.isEmpty
+        if !hadData { isLoading = true }
         errorMessage = nil
         defer { isLoading = false }
         do {
@@ -101,10 +123,13 @@ struct MultiBuyDiscountView: View {
                 tier2Percent = percentFor(minItems: 2)
                 tier5Percent = percentFor(minItems: 5)
                 tier10Percent = percentFor(minItems: 10)
+                errorMessage = nil
             }
         } catch {
             await MainActor.run {
-                errorMessage = L10n.userFacingError(error)
+                if discounts.isEmpty {
+                    errorMessage = L10n.userFacingError(error)
+                }
             }
         }
     }

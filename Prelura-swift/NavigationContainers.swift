@@ -101,7 +101,8 @@ struct ProfileNavigation: View {
                             listingCount: context.listingCount,
                             isMultiBuyEnabled: context.isMultiBuyEnabled,
                             isVacationMode: context.isVacationMode,
-                            username: context.username
+                            username: context.username,
+                            prefetchedMultibuyDiscounts: context.multibuyDiscounts
                         )
                     case .reviews(let username, let rating):
                         ReviewsView(username: username, rating: rating)

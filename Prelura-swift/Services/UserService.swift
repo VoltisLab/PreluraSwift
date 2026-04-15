@@ -2555,7 +2555,7 @@ struct SendSmsOtpPayload: Decodable {
 }
 
 /// One multi-buy discount tier (minItems → discount %). Matches MultibuyDiscountType.
-struct MultibuyDiscount {
+struct MultibuyDiscount: Hashable {
     let id: Int?
     let minItems: Int
     let discountValue: String

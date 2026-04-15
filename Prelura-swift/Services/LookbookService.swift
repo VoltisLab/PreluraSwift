@@ -62,7 +62,7 @@ struct ServerLookbookPost: Decodable {
     var userLiked: Bool?
     var productLinkClicks: Int?
     var shopLinkClicks: Int?
-    /// Distinct tagged products when `LookbookPostType` exposes `taggedProductCount` (grid badge for all viewers). Queries omit the field automatically if the schema rejects it.
+    /// Distinct tagged products from API (`taggedProductCount` / `productTags`). When the schema lacks extended fields, each request retries without them (no process-wide latch).
     var taggedProductCount: Int?
     /// Pin coordinates when backend persists tags (all viewers).
     var productTags: [ServerLookbookProductTag]?
@@ -114,19 +114,6 @@ struct LookbooksConnection: Decodable {
 
 struct LookbookEdge: Decodable {
     let node: ServerLookbookPost?
-}
-
-/// When extended lookbook fields are absent from the schema, GraphQL rejects the document. We retry without those fields for the **current process only** so a stale UserDefaults flag cannot permanently hide product tags/badges after the backend is fixed (or after a transient error).
-private enum LookbookTaggedProductCountSchemaProbe {
-    private static var suppressExtendedLookbookFieldsForProcess = false
-
-    static var includeTaggedProductCountInQueries: Bool {
-        !suppressExtendedLookbookFieldsForProcess
-    }
-
-    static func recordFieldUnsupportedBySchema() {
-        suppressExtendedLookbookFieldsForProcess = true
-    }
 }
 
 private func graphQLRejectsExtendedLookbookPostFields(_ error: Error) -> Bool {
@@ -289,18 +276,16 @@ final class LookbookService {
         tags: [LookbookTagData]? = nil,
         productSnapshots: [String: LookbookProductSnapshot]? = nil
     ) async throws -> ServerLookbookPost {
-        let useExt = LookbookTaggedProductCountSchemaProbe.includeTaggedProductCountInQueries
         do {
             return try await createLookbook(
                 imageUrl: imageUrl,
                 caption: caption,
                 tags: tags,
                 productSnapshots: productSnapshots,
-                includeExtended: useExt
+                includeExtended: true
             )
         } catch {
-            if useExt, graphQLRejectsExtendedLookbookPostFields(error) {
-                LookbookTaggedProductCountSchemaProbe.recordFieldUnsupportedBySchema()
+            if graphQLRejectsExtendedLookbookPostFields(error) {
                 return try await createLookbook(
                     imageUrl: imageUrl,
                     caption: caption,
@@ -390,15 +375,13 @@ final class LookbookService {
 
     /// Updates caption on an existing post (author-only on server). Requires backend `updateLookbookPost` mutation.
     func updateLookbookPost(postId: String, caption: String?) async throws -> ServerLookbookPost {
-        let useTag = LookbookTaggedProductCountSchemaProbe.includeTaggedProductCountInQueries
         do {
-            return try await updateLookbookPost(postId: postId, caption: caption, includeTaggedProductCount: useTag)
+            return try await updateLookbookPost(postId: postId, caption: caption, includeTaggedProductCount: true)
         } catch {
             if graphQLRejectsUpdateLookbookPost(error) {
                 throw lookbookUpdateMutationNotDeployedError()
             }
-            if useTag, graphQLRejectsExtendedLookbookPostFields(error) {
-                LookbookTaggedProductCountSchemaProbe.recordFieldUnsupportedBySchema()
+            if graphQLRejectsExtendedLookbookPostFields(error) {
                 do {
                     return try await updateLookbookPost(postId: postId, caption: caption, includeTaggedProductCount: false)
                 } catch {
@@ -456,8 +439,23 @@ final class LookbookService {
 
     /// Replaces product pins on an existing post (author-only). Falls back silently when the backend has not deployed `setLookbookProductTags`.
     func setLookbookProductTags(postId: String, tags: [LookbookTagData], productSnapshots: [String: LookbookProductSnapshot]?) async throws -> ServerLookbookPost {
-        let useTag = LookbookTaggedProductCountSchemaProbe.includeTaggedProductCountInQueries
-        let lf = lookbookPostGraphQLFields(includeExtended: useTag)
+        do {
+            return try await setLookbookProductTags(postId: postId, tags: tags, productSnapshots: productSnapshots, includeExtended: true)
+        } catch {
+            if graphQLRejectsExtendedLookbookPostFields(error) {
+                return try await setLookbookProductTags(postId: postId, tags: tags, productSnapshots: productSnapshots, includeExtended: false)
+            }
+            throw error
+        }
+    }
+
+    private func setLookbookProductTags(
+        postId: String,
+        tags: [LookbookTagData],
+        productSnapshots: [String: LookbookProductSnapshot]?,
+        includeExtended: Bool
+    ) async throws -> ServerLookbookPost {
+        let lf = lookbookPostGraphQLFields(includeExtended: includeExtended)
         let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
         let tagRows = tags.map { t -> [String: Any] in
             [
@@ -526,12 +524,10 @@ final class LookbookService {
 
     /// Fetch lookbooks from the server. Returns empty array when query is not yet deployed or fails.
     func fetchLookbooks(first: Int = 50) async throws -> [ServerLookbookPost] {
-        let useTag = LookbookTaggedProductCountSchemaProbe.includeTaggedProductCountInQueries
         do {
-            return try await fetchLookbooks(first: first, includeTaggedProductCount: useTag)
+            return try await fetchLookbooks(first: first, includeTaggedProductCount: true)
         } catch {
-            if useTag, graphQLRejectsExtendedLookbookPostFields(error) {
-                LookbookTaggedProductCountSchemaProbe.recordFieldUnsupportedBySchema()
+            if graphQLRejectsExtendedLookbookPostFields(error) {
                 return try await fetchLookbooks(first: first, includeTaggedProductCount: false)
             }
             throw error
@@ -573,12 +569,10 @@ final class LookbookService {
 
     /// Fetches a single lookbook post (e.g. universal link / deep link).
     func fetchLookbookPost(postId: String) async throws -> ServerLookbookPost? {
-        let useTag = LookbookTaggedProductCountSchemaProbe.includeTaggedProductCountInQueries
         do {
-            return try await fetchLookbookPost(postId: postId, includeTaggedProductCount: useTag)
+            return try await fetchLookbookPost(postId: postId, includeTaggedProductCount: true)
         } catch {
-            if useTag, graphQLRejectsExtendedLookbookPostFields(error) {
-                LookbookTaggedProductCountSchemaProbe.recordFieldUnsupportedBySchema()
+            if graphQLRejectsExtendedLookbookPostFields(error) {
                 return try await fetchLookbookPost(postId: postId, includeTaggedProductCount: false)
             }
             throw error

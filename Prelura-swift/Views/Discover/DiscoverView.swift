@@ -132,6 +132,7 @@ struct DiscoverView: View {
         VStack(spacing: 0) {
             Color.clear.frame(height: 1).id(topId)
             brandFiltersSection
+            exploreLookbookBanner
             tryCartBanner
             vintageShopBanner
             VStack(alignment: .leading, spacing: 0) {
@@ -190,6 +191,38 @@ struct DiscoverView: View {
         }
     }
     
+    // MARK: - Explore Lookbook banner (grid collage + dim overlay → Lookbook feed)
+    private static let exploreLookbookBannerHeight: CGFloat = 168
+
+    private var exploreLookbookBanner: some View {
+        NavigationLink(destination: LookbookView()) {
+            ZStack {
+                Image("DiscoverExploreLookbookBanner")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: Self.exploreLookbookBannerHeight)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                Color.black.opacity(0.45)
+                    .frame(height: Self.exploreLookbookBannerHeight)
+                    .frame(maxWidth: .infinity)
+                Text(L10n.string("Explore Lookbook"))
+                    .font(Theme.Typography.title2)
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.4), radius: 6, x: 0, y: 2)
+                    .multilineTextAlignment(.center)
+                    .padding(Theme.Spacing.md)
+            }
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainTappableButtonStyle())
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.top, Theme.Spacing.sm)
+        .padding(.bottom, Theme.Spacing.xs)
+    }
+
     // MARK: - Try Cart banner (below pill tags; Rectangle 11 2 image + overlay + typewriter text → Shop All page; height 150pt)
     private var tryCartBanner: some View {
         NavigationLink(destination: FilteredProductsView(

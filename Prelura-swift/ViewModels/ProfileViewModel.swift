@@ -7,6 +7,8 @@ import UIKit
 class ProfileViewModel: ObservableObject {
     @Published var user: User?
     @Published var userItems: [Item] = []
+    /// Prefetched with `getUser` so seller multi-buy settings open without a cold `userMultibuyDiscounts` call.
+    @Published var multibuyDiscounts: [MultibuyDiscount] = []
     @Published var isMenuVisible: Bool = false
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
@@ -73,6 +75,7 @@ class ProfileViewModel: ObservableObject {
             errorBannerTitle = nil
         }
         
+        let previousMultibuyTiers = multibuyDiscounts
         do {
             // Load profile and listings in parallel. `viewMe` stays allowed under suspension/ban;
             // `userProducts` is not — if we `try await` both together, a blocked listings query
@@ -81,9 +84,16 @@ class ProfileViewModel: ObservableObject {
             async let productsTask = userService.getUserProducts()
             let fetchedUser = try await userTask
             let products = (try? await productsTask) ?? []
+            var tiers: [MultibuyDiscount] = []
+            do {
+                tiers = try await userService.getMultibuyDiscounts(userId: nil)
+            } catch {
+                tiers = previousMultibuyTiers
+            }
             await MainActor.run {
                 self.user = fetchedUser
                 self.userItems = products
+                self.multibuyDiscounts = tiers
                 self.isLoading = false
             }
         } catch {

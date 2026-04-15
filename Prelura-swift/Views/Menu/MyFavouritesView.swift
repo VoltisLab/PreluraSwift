@@ -25,8 +25,8 @@ struct MyFavouritesView: View {
     private let productService = ProductService()
     private let pageCount = 20
     private let columns = [
-        GridItem(.flexible(), spacing: Theme.Spacing.md),
-        GridItem(.flexible(), spacing: Theme.Spacing.md)
+        GridItem(.flexible(), spacing: Theme.Spacing.sm),
+        GridItem(.flexible(), spacing: Theme.Spacing.sm)
     ]
     /// Two folder tiles per row (square thumbs, banner corner radius).
     private let lookbookFolderGridColumns = [
@@ -136,6 +136,9 @@ struct MyFavouritesView: View {
                 await load(resetPage: true)
             }
         }
+        .onAppear {
+            savedLookbookFavorites.reloadFromPersistence()
+        }
         .onChange(of: favouritesSegment) { _, newValue in
             guard !lookbookOnly else { return }
             if newValue == 0 {
@@ -201,39 +204,7 @@ struct MyFavouritesView: View {
                     pinnedViews: []
                 ) {
                     ForEach(filteredItems) { item in
-                        let inBag = shopAllBag.items.contains(where: { $0.id == item.id })
-                        NavigationLink(destination: ItemDetailView(
-                            item: item,
-                            authService: authService,
-                            offersAllowed: !(fromShopAll || shopAllBagToolbarActive),
-                            shopAllBag: shopAllBagToolbarActive ? shopAllBag : nil,
-                            activateShopBagActionsInitially: shopAllBagToolbarActive
-                        )) {
-                            HomeItemCard(
-                                item: item,
-                                onLikeTap: { unfavourite(item) },
-                                naturalThumbnailAspect: true,
-                                showAddToBag: shopAllBagToolbarActive,
-                                onAddToBag: shopAllBagToolbarActive
-                                    ? {
-                                        if !shopAllBag.items.contains(where: { $0.id == item.id }) {
-                                            shopAllBag.add(item)
-                                        }
-                                    }
-                                    : nil,
-                                isInBag: inBag,
-                                onRemove: shopAllBagToolbarActive
-                                    ? { shopAllBag.remove(item) }
-                                    : nil
-                            )
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                        }
-                        .buttonStyle(PlainTappableButtonStyle())
-                        .onAppear {
-                            if item.id == filteredItems.last?.id {
-                                loadMoreIfNeeded()
-                            }
-                        }
+                        favouritesProductCell(item: item)
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -295,6 +266,64 @@ struct MyFavouritesView: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.lg)
+            }
+        }
+    }
+
+    /// Same grid cell structure as `HomeView.homeProductCore`: stable `.id(item.id)` avoids `LazyVGrid` recycling glitches; like control sits above the image like Home.
+    @ViewBuilder
+    private func favouritesProductCell(item: Item) -> some View {
+        let inBag = shopAllBag.items.contains(where: { $0.id == item.id })
+        ZStack(alignment: .topLeading) {
+            NavigationLink(destination: ItemDetailView(
+                item: item,
+                authService: authService,
+                offersAllowed: !(fromShopAll || shopAllBagToolbarActive),
+                shopAllBag: shopAllBagToolbarActive ? shopAllBag : nil,
+                activateShopBagActionsInitially: shopAllBagToolbarActive
+            )) {
+                HomeItemCard(
+                    item: item,
+                    onLikeTap: nil,
+                    hideLikeButton: true,
+                    showAddToBag: shopAllBagToolbarActive,
+                    onAddToBag: shopAllBagToolbarActive
+                        ? {
+                            if !shopAllBag.items.contains(where: { $0.id == item.id }) {
+                                shopAllBag.add(item)
+                            }
+                        }
+                        : nil,
+                    isInBag: inBag,
+                    onRemove: shopAllBagToolbarActive
+                        ? { shopAllBag.remove(item) }
+                        : nil
+                )
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .buttonStyle(PlainTappableButtonStyle())
+            VStack(spacing: 0) {
+                Color.clear.frame(height: 28)
+                VStack(spacing: 0) {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: {
+                            unfavourite(item)
+                        })
+                        .padding(Theme.Spacing.xs)
+                    }
+                }
+                .aspectRatio(1.0 / 1.3, contentMode: .fit)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .allowsHitTesting(true)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .id(item.id)
+        .onAppear {
+            if item.id == filteredItems.last?.id {
+                loadMoreIfNeeded()
             }
         }
     }

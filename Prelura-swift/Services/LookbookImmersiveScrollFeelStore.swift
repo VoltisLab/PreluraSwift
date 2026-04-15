@@ -1,21 +1,12 @@
 import Combine
 import Foundation
-import UIKit
 
-/// How vertical paging feels in the fullscreen Lookbook feed (`UICollectionView` immersive pager).
+/// How vertical scrolling feels in Lookbook: main **list** feed and the fullscreen immersive pager.
 enum LookbookImmersiveScrollFeel: String, CaseIterable {
-    /// Strong snap between posts (`UIScrollView.DecelerationRate.fast`).
+    /// List: `scrollTargetLayout` + `.viewAligned(limitBehavior: .always)`. Immersive: `.viewAligned`.
     case sticky
-    /// Longer coast between posts (slower deceleration than `.normal`) so one flick can cross many posts.
+    /// List: no snap (plain scroll). Immersive: `.paging`.
     case smooth
-
-    var decelerationRate: UIScrollView.DecelerationRate {
-        switch self {
-        case .sticky: return .fast
-        // Higher raw value = less friction vs `.normal` (0.998); keeps momentum closer to a typical feed.
-        case .smooth: return UIScrollView.DecelerationRate(rawValue: 0.999)
-        }
-    }
 
     var displayTitle: String {
         switch self {
@@ -31,20 +22,18 @@ final class LookbookImmersiveScrollFeelStore: ObservableObject {
 
     private let storageKey = "lookbook_immersive_scroll_feel"
 
-    @Published private(set) var revision: UInt64 = 0
+    /// Published so every `@ObservedObject` view reliably refreshes (a computed `feel` + side `revision` was easy for SwiftUI to miss for scroll internals).
+    @Published private(set) var feel: LookbookImmersiveScrollFeel
 
-    private init() {}
-
-    var feel: LookbookImmersiveScrollFeel {
-        _ = revision
+    private init() {
         let raw = UserDefaults.standard.string(forKey: storageKey) ?? LookbookImmersiveScrollFeel.sticky.rawValue
-        return LookbookImmersiveScrollFeel(rawValue: raw) ?? .sticky
+        feel = LookbookImmersiveScrollFeel(rawValue: raw) ?? .sticky
     }
 
     /// Cycles **Sticky** ↔ **Smooth** (settings row tap).
     func cycleToNext() {
         let next: LookbookImmersiveScrollFeel = feel == .sticky ? .smooth : .sticky
         UserDefaults.standard.set(next.rawValue, forKey: storageKey)
-        revision &+= 1
+        feel = next
     }
 }

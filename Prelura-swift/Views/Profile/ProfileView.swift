@@ -177,7 +177,8 @@ struct ProfileView: View {
                         listingCount: viewModel.user?.listingsCount ?? 0,
                         isMultiBuyEnabled: viewModel.user?.isMultibuyEnabled ?? isMultiBuyEnabled,
                         isVacationMode: viewModel.user?.isVacationMode ?? isVacationMode,
-                        username: viewModel.user?.username
+                        username: viewModel.user?.username,
+                        multibuyDiscounts: viewModel.multibuyDiscounts
                     ))) {
                         Image(systemName: "line.3.horizontal")
                             .foregroundColor(Theme.Colors.primaryText)

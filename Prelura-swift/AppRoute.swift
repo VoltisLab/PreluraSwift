@@ -15,4 +15,6 @@ struct MenuContext: Hashable {
     var isMultiBuyEnabled: Bool
     var isVacationMode: Bool
     var username: String?
+    /// Fetched with profile so Menu / Multi-buy settings are warm before tap.
+    var multibuyDiscounts: [MultibuyDiscount] = []
 }
