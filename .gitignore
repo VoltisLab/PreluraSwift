@@ -4,6 +4,9 @@ scripts/testflight-credentials.json
 # GitHub token for /push (never commit)
 scripts/github-token
 
+# Pinnacle Flutter app — separate repo (github.com/VoltisLab/Pinnacle)
+pinnacle/
+
 # Build
 build/
 DerivedData/
