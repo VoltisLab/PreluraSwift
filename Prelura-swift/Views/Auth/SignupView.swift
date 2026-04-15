@@ -78,7 +78,9 @@ struct SignupView: View {
                                 HStack(spacing: Theme.Spacing.sm) {
                                     TextField("Choose a username", text: $username)
                                         .textFieldStyle(PlainTextFieldStyle())
-                                        .autocapitalization(.none)
+                                        .textContentType(.username)
+                                        .textInputAutocapitalization(.never)
+                                        .autocorrectionDisabled()
                                         .foregroundColor(Theme.Colors.primaryText)
                                         .onChange(of: username) { _, newValue in
                                             usernameIsValid = isUsernameFormatValid(newValue)
