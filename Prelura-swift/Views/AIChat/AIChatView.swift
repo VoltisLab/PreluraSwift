@@ -40,21 +40,21 @@ struct AIChatView: View {
 
     private struct LennyQuickChip: Identifiable {
         let id: String
-        let label: String
-        /// Full message sent when the chip is tapped.
-        let message: String
+        /// Full phrase shown on the pill and sent when tapped.
+        let phrase: String
     }
 
-    /// Short on-screen labels; sending uses a clear full sentence for search.
+    /// Up to three starter phrases; stacked above the composer when the thread is empty.
     private static let lennyQuickChips: [LennyQuickChip] = [
-        LennyQuickChip(id: "blazer", label: "Navy blazer", message: "I'm looking for a navy blazer."),
-        LennyQuickChip(id: "dress", label: "Summer dress", message: "Show me summer dresses."),
-        LennyQuickChip(id: "jacket", label: "Black jacket", message: "I need a black jacket."),
-        LennyQuickChip(id: "trainers", label: "White trainers", message: "Looking for white trainers."),
-        LennyQuickChip(id: "budget", label: "Under £30", message: "What can you show me under £30?"),
-        LennyQuickChip(id: "jeans", label: "Denim jeans", message: "I'm looking for denim jeans."),
-        LennyQuickChip(id: "bag", label: "Leather bag", message: "Do you have leather bags?"),
-        LennyQuickChip(id: "coat", label: "Winter coat", message: "I need a warm winter coat."),
+        LennyQuickChip(id: "green_blazer", phrase: "I'm looking for a green blazer."),
+        LennyQuickChip(
+            id: "skirts_size_s",
+            phrase: "Show me size S skirts but blue and green only."
+        ),
+        LennyQuickChip(
+            id: "trainers_budget",
+            phrase: "I'm after white trainers under £40 in good condition."
+        ),
     ]
 
     private let aiSearch = AISearchService()
@@ -145,30 +145,31 @@ struct AIChatView: View {
     }
 
     private var lennyQuickChipsBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Spacing.sm) {
-                ForEach(Self.lennyQuickChips) { chip in
-                    Button {
-                        sendQuickMessage(chip.message)
-                    } label: {
-                        Text(chip.label)
-                            .font(Theme.Typography.subheadline.weight(.medium))
-                            .foregroundColor(Theme.primaryColor)
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .padding(.vertical, Theme.Spacing.sm)
-                            .background(Theme.Colors.secondaryBackground)
-                            .clipShape(Capsule())
-                            .overlay(
-                                Capsule()
-                                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
-                    .disabled(isBotThinking)
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            ForEach(Self.lennyQuickChips) { chip in
+                Button {
+                    sendQuickMessage(chip.phrase)
+                } label: {
+                    Text(chip.phrase)
+                        .font(Theme.Typography.subheadline.weight(.medium))
+                        .foregroundColor(Theme.primaryColor)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.sm)
+                        .background(Theme.Colors.secondaryBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+                        )
                 }
+                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
+                .disabled(isBotThinking)
             }
-            .padding(.horizontal, Theme.Spacing.md)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Spacing.md)
         .padding(.bottom, Theme.Spacing.xs)
     }
 
