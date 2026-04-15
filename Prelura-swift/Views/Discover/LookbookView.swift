@@ -730,7 +730,7 @@ private struct LookbookFeedScreenView: View {
         )
     }
 
-    /// Shortcuts row: explore → search → grid-list → create / my items / settings. Grid/list also lives in the nav bar (swapped with search).
+    /// Shortcuts row: explore → search → create / my items / settings. Grid/list toggle is only in the nav bar trailing slot.
     /// Per-icon `.glassEffect` only (same as `lookbookFeedCollapseToggle`). `GlassEffectContainer` adds grouped elevation/shadow that the standalone chevron does not get.
     @ViewBuilder
     private var lookbookFeedQuickActionsIconCluster: some View {
@@ -752,22 +752,6 @@ private struct LookbookFeedScreenView: View {
             .buttonStyle(.plain)
             .contentShape(Circle())
             .accessibilityLabel(L10n.string("Search"))
-
-            Button {
-                HapticManager.selection()
-                useGrid.toggle()
-            } label: {
-                Image(systemName: useGrid ? "list.bullet" : "square.grid.3x3")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Theme.Colors.primaryText)
-                    .frame(width: 54, height: 54)
-                    .glassEffect(.regular.interactive(false), in: .ellipse)
-            }
-            .buttonStyle(.plain)
-            .contentShape(Circle())
-            .frame(width: 54, height: 54)
-            .fixedSize()
-            .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
 
             NavigationLink {
                 LookbooksUploadView()
