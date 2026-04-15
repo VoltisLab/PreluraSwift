@@ -721,11 +721,29 @@ private struct LookbookFeedScreenView: View {
         )
     }
 
-    /// Shortcuts row only (grid / explore / create / my items / settings). Kept in one stable `HStack` so show/hide does not swap branches that re-layout the whole screen.
+    /// Shortcuts row: explore → search → grid-list → create / my items / settings. Grid/list also lives in the nav bar (swapped with search).
     /// Per-icon `.glassEffect` only (same as `lookbookFeedCollapseToggle`). `GlassEffectContainer` adds grouped elevation/shadow that the standalone chevron does not get.
     @ViewBuilder
     private var lookbookFeedQuickActionsIconCluster: some View {
         HStack(spacing: 8) {
+            NavigationLink {
+                LookbookExploreScreenView()
+            } label: {
+                lookbookFeedGlassCircleLabel(systemName: "sparkles.rectangle.stack")
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+            .accessibilityLabel(L10n.string("Explore"))
+
+            NavigationLink {
+                LookbookFeedSearchView(entries: entries)
+            } label: {
+                lookbookFeedGlassCircleLabel(systemName: "magnifyingglass")
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+            .accessibilityLabel(L10n.string("Search"))
+
             Button {
                 HapticManager.selection()
                 useGrid.toggle()
@@ -741,15 +759,6 @@ private struct LookbookFeedScreenView: View {
             .frame(width: 54, height: 54)
             .fixedSize()
             .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
-
-            NavigationLink {
-                LookbookExploreScreenView()
-            } label: {
-                lookbookFeedGlassCircleLabel(systemName: "sparkles.rectangle.stack")
-            }
-            .buttonStyle(.plain)
-            .contentShape(Circle())
-            .accessibilityLabel(L10n.string("Explore"))
 
             NavigationLink {
                 LookbooksUploadView()
@@ -939,14 +948,16 @@ private struct LookbookFeedScreenView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink {
-                    LookbookFeedSearchView(entries: entries)
+                Button {
+                    HapticManager.selection()
+                    useGrid.toggle()
                 } label: {
-                    Image(systemName: "magnifyingglass")
+                    Image(systemName: useGrid ? "list.bullet" : "square.grid.3x3")
                         .font(.system(size: 20, weight: .medium))
                         .foregroundStyle(Theme.Colors.primaryText)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
             }
         }
         .background {
