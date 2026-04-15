@@ -30,6 +30,22 @@ enum LookbookPostIdFormatting {
     }
 }
 
+/// Product pin from API (`LookbookProductTag` / `productTags`).
+struct ServerLookbookProductTag: Decodable {
+    let productId: String
+    let x: Double
+    let y: Double
+    let imageIndex: Int?
+    let clientId: String?
+}
+
+/// Snapshot row from API (`productSnapshots` list).
+struct ServerLookbookProductSnapshot: Decodable {
+    let productId: String
+    let title: String
+    let imageUrl: String?
+}
+
 /// Server lookbook post (matches backend spec).
 struct ServerLookbookPost: Decodable {
     let id: String
@@ -46,6 +62,11 @@ struct ServerLookbookPost: Decodable {
     var userLiked: Bool?
     var productLinkClicks: Int?
     var shopLinkClicks: Int?
+    /// Distinct tagged products when `LookbookPostType` exposes `taggedProductCount` (grid badge for all viewers). Queries omit the field automatically if the schema rejects it.
+    var taggedProductCount: Int?
+    /// Pin coordinates when backend persists tags (all viewers).
+    var productTags: [ServerLookbookProductTag]?
+    var productSnapshots: [ServerLookbookProductSnapshot]?
 }
 
 struct ServerLookbookComment: Decodable, Identifiable {
@@ -95,6 +116,61 @@ struct LookbookEdge: Decodable {
     let node: ServerLookbookPost?
 }
 
+/// When extended lookbook fields are absent from the schema, GraphQL rejects the document. We retry without those fields for the **current process only** so a stale UserDefaults flag cannot permanently hide product tags/badges after the backend is fixed (or after a transient error).
+private enum LookbookTaggedProductCountSchemaProbe {
+    private static var suppressExtendedLookbookFieldsForProcess = false
+
+    static var includeTaggedProductCountInQueries: Bool {
+        !suppressExtendedLookbookFieldsForProcess
+    }
+
+    static func recordFieldUnsupportedBySchema() {
+        suppressExtendedLookbookFieldsForProcess = true
+    }
+}
+
+private func graphQLRejectsExtendedLookbookPostFields(_ error: Error) -> Bool {
+    guard case GraphQLError.graphQLErrors(let errs) = error else { return false }
+    return errs.contains { e in
+        let m = e.message.lowercased()
+        guard m.contains("cannot query field") || m.contains("unknown field") || m.contains("unknown argument") else { return false }
+        return m.contains("taggedproductcount")
+            || m.contains("producttags")
+            || m.contains("productsnapshots")
+            || m.contains("lookbooktaginput")
+            || m.contains("lookbookproductsnapshotinput")
+    }
+}
+
+private func graphQLRejectsSetLookbookProductTags(_ error: Error) -> Bool {
+    guard case GraphQLError.graphQLErrors(let errs) = error else { return false }
+    return errs.contains { e in
+        let m = e.message.lowercased()
+        guard m.contains("unknown") || m.contains("cannot query field") else { return false }
+        return m.contains("setlookbookproducttags")
+    }
+}
+
+/// True when the API schema has no `updateLookbookPost` mutation (backend not deployed / wrong environment).
+private func graphQLRejectsUpdateLookbookPost(_ error: Error) -> Bool {
+    guard case GraphQLError.graphQLErrors(let errs) = error else { return false }
+    return errs.contains { e in
+        let m = e.message.lowercased()
+        guard m.contains("cannot query field") || m.contains("unknown field") else { return false }
+        return m.contains("updatelookbookpost")
+    }
+}
+
+private func lookbookUpdateMutationNotDeployedError() -> NSError {
+    NSError(
+        domain: "LookbookService",
+        code: -2,
+        userInfo: [
+            NSLocalizedDescriptionKey: "Lookbook edits aren’t supported on this server yet. Deploy the updateLookbookPost API (see docs/lookbooks-backend-spec.md).",
+        ]
+    )
+}
+
 /// Service for server-side lookbooks. Requires backend to implement the API described in docs/lookbooks-backend-spec.md.
 final class LookbookService {
     private let client: GraphQLClient
@@ -113,6 +189,14 @@ final class LookbookService {
 
     func setAuthToken(_ token: String?) {
         authToken = token
+    }
+
+    /// GraphQL selection for `LookbookPost` / `ServerLookbookPost` (extended = count + pins from server).
+    private func lookbookPostGraphQLFields(includeExtended: Bool) -> String {
+        if includeExtended {
+            return "id imageUrl thumbnailUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked productLinkClicks shopLinkClicks taggedProductCount productTags { productId x y imageIndex clientId } productSnapshots { productId title imageUrl }"
+        }
+        return "id imageUrl thumbnailUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked productLinkClicks shopLinkClicks"
     }
 
     /// Upload a single image with fileType LOOKBOOK. Returns the image URL. Fails when backend has no LOOKBOOK type yet.
@@ -198,21 +282,91 @@ final class LookbookService {
         return baseUrl.hasSuffix("/") ? baseUrl + imagePath : baseUrl + "/" + imagePath
     }
 
-    /// Create a lookbook post on the server. Fails when mutation is not yet deployed.
-    func createLookbook(imageUrl: String, caption: String?) async throws -> ServerLookbookPost {
-        let query = """
-        mutation CreateLookbook($imageUrl: String!, $caption: String) {
-          createLookbook(imageUrl: $imageUrl, caption: $caption) {
-            lookbookPost { id imageUrl thumbnailUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked }
-            success
-            message
-          }
+    /// Create a lookbook post on the server. Sends `tags` / `productSnapshots` when the schema supports them.
+    func createLookbook(
+        imageUrl: String,
+        caption: String?,
+        tags: [LookbookTagData]? = nil,
+        productSnapshots: [String: LookbookProductSnapshot]? = nil
+    ) async throws -> ServerLookbookPost {
+        let useExt = LookbookTaggedProductCountSchemaProbe.includeTaggedProductCountInQueries
+        do {
+            return try await createLookbook(
+                imageUrl: imageUrl,
+                caption: caption,
+                tags: tags,
+                productSnapshots: productSnapshots,
+                includeExtended: useExt
+            )
+        } catch {
+            if useExt, graphQLRejectsExtendedLookbookPostFields(error) {
+                LookbookTaggedProductCountSchemaProbe.recordFieldUnsupportedBySchema()
+                return try await createLookbook(
+                    imageUrl: imageUrl,
+                    caption: caption,
+                    tags: tags,
+                    productSnapshots: productSnapshots,
+                    includeExtended: false
+                )
+            }
+            throw error
         }
-        """
-        let variables: [String: Any] = [
-            "imageUrl": imageUrl,
-            "caption": caption as Any
-        ]
+    }
+
+    private func createLookbook(
+        imageUrl: String,
+        caption: String?,
+        tags: [LookbookTagData]?,
+        productSnapshots: [String: LookbookProductSnapshot]?,
+        includeExtended: Bool
+    ) async throws -> ServerLookbookPost {
+        let fields = lookbookPostGraphQLFields(includeExtended: includeExtended)
+        let hasTagPayload = includeExtended
+            && (!(tags ?? []).isEmpty || !((productSnapshots ?? [:]).isEmpty))
+        let query: String
+        if hasTagPayload {
+            query = """
+            mutation CreateLookbook($imageUrl: String!, $caption: String, $tags: [LookbookTagInput!], $productSnapshots: [LookbookProductSnapshotInput!]) {
+              createLookbook(imageUrl: $imageUrl, caption: $caption, tags: $tags, productSnapshots: $productSnapshots) {
+                lookbookPost { \(fields) }
+                success
+                message
+              }
+            }
+            """
+        } else {
+            query = """
+            mutation CreateLookbook($imageUrl: String!, $caption: String) {
+              createLookbook(imageUrl: $imageUrl, caption: $caption) {
+                lookbookPost { \(fields) }
+                success
+                message
+              }
+            }
+            """
+        }
+        var variables: [String: Any] = ["imageUrl": imageUrl]
+        if let c = caption, !c.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            variables["caption"] = c
+        }
+        if hasTagPayload {
+            let tagRows = (tags ?? []).map { t -> [String: Any] in
+                [
+                    "productId": t.productId,
+                    "x": t.x,
+                    "y": t.y,
+                    "imageIndex": t.imageIndex,
+                    "clientId": t.clientId,
+                ]
+            }
+            let snapRows = (productSnapshots ?? [:]).values.map { s -> [String: Any] in
+                var row: [String: Any] = ["productId": s.productId, "title": s.title]
+                if let u = s.imageUrl { row["imageUrl"] = u }
+                return row
+            }
+            variables["tags"] = tagRows
+            variables["productSnapshots"] = snapRows
+        }
         struct Response: Decodable {
             let createLookbook: Payload?
         }
@@ -234,13 +388,163 @@ final class LookbookService {
         return post
     }
 
+    /// Updates caption on an existing post (author-only on server). Requires backend `updateLookbookPost` mutation.
+    func updateLookbookPost(postId: String, caption: String?) async throws -> ServerLookbookPost {
+        let useTag = LookbookTaggedProductCountSchemaProbe.includeTaggedProductCountInQueries
+        do {
+            return try await updateLookbookPost(postId: postId, caption: caption, includeTaggedProductCount: useTag)
+        } catch {
+            if graphQLRejectsUpdateLookbookPost(error) {
+                throw lookbookUpdateMutationNotDeployedError()
+            }
+            if useTag, graphQLRejectsExtendedLookbookPostFields(error) {
+                LookbookTaggedProductCountSchemaProbe.recordFieldUnsupportedBySchema()
+                do {
+                    return try await updateLookbookPost(postId: postId, caption: caption, includeTaggedProductCount: false)
+                } catch {
+                    if graphQLRejectsUpdateLookbookPost(error) {
+                        throw lookbookUpdateMutationNotDeployedError()
+                    }
+                    throw error
+                }
+            }
+            throw error
+        }
+    }
+
+    private func updateLookbookPost(postId: String, caption: String?, includeTaggedProductCount: Bool) async throws -> ServerLookbookPost {
+        let lf = lookbookPostGraphQLFields(includeExtended: includeTaggedProductCount)
+        let query = """
+        mutation UpdateLookbookPost($postId: UUID!, $caption: String) {
+          updateLookbookPost(postId: $postId, caption: $caption) {
+            lookbookPost { \(lf) }
+            success
+            message
+          }
+        }
+        """
+        let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
+        var variables: [String: Any] = ["postId": normalized]
+        let trimmed = caption?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty {
+            variables["caption"] = NSNull()
+        } else {
+            variables["caption"] = trimmed
+        }
+        struct Response: Decodable {
+            let updateLookbookPost: Payload?
+        }
+        struct Payload: Decodable {
+            let lookbookPost: ServerLookbookPost?
+            let success: Bool?
+            let message: String?
+        }
+        let response: Response = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "UpdateLookbookPost",
+            responseType: Response.self
+        )
+        guard let payload = response.updateLookbookPost,
+              payload.success == true,
+              let post = payload.lookbookPost else {
+            let msg = response.updateLookbookPost?.message ?? "Update lookbook failed"
+            throw NSError(domain: "LookbookService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+        return post
+    }
+
+    /// Replaces product pins on an existing post (author-only). Falls back silently when the backend has not deployed `setLookbookProductTags`.
+    func setLookbookProductTags(postId: String, tags: [LookbookTagData], productSnapshots: [String: LookbookProductSnapshot]?) async throws -> ServerLookbookPost {
+        let useTag = LookbookTaggedProductCountSchemaProbe.includeTaggedProductCountInQueries
+        let lf = lookbookPostGraphQLFields(includeExtended: useTag)
+        let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
+        let tagRows = tags.map { t -> [String: Any] in
+            [
+                "productId": t.productId,
+                "x": t.x,
+                "y": t.y,
+                "imageIndex": t.imageIndex,
+                "clientId": t.clientId,
+            ]
+        }
+        let snapRows: [[String: Any]] = (productSnapshots.map { Array($0.values) } ?? []).map { s -> [String: Any] in
+            var row: [String: Any] = ["productId": s.productId, "title": s.title]
+            if let u = s.imageUrl { row["imageUrl"] = u }
+            return row
+        }
+        var variables: [String: Any] = ["postId": normalized, "tags": tagRows]
+        if snapRows.isEmpty {
+            variables["productSnapshots"] = NSNull()
+        } else {
+            variables["productSnapshots"] = snapRows
+        }
+        let query = """
+        mutation SetLookbookProductTags($postId: UUID!, $tags: [LookbookTagInput!]!, $productSnapshots: [LookbookProductSnapshotInput!]) {
+          setLookbookProductTags(postId: $postId, tags: $tags, productSnapshots: $productSnapshots) {
+            lookbookPost { \(lf) }
+            success
+            message
+          }
+        }
+        """
+        struct Response: Decodable {
+            let setLookbookProductTags: Payload?
+        }
+        struct Payload: Decodable {
+            let lookbookPost: ServerLookbookPost?
+            let success: Bool?
+            let message: String?
+        }
+        let response: Response = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "SetLookbookProductTags",
+            responseType: Response.self
+        )
+        guard let payload = response.setLookbookProductTags,
+              payload.success == true,
+              let post = payload.lookbookPost else {
+            let msg = response.setLookbookProductTags?.message ?? "Update product tags failed"
+            throw NSError(domain: "LookbookService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+        return post
+    }
+
+    /// Caption first, then product tags when supported. Returns the latest `lookbookPost` when tag mutation succeeds; otherwise the caption-only update result.
+    func saveLookbookPostEdits(postId: String, caption: String?, tags: [LookbookTagData], productSnapshots: [String: LookbookProductSnapshot]?) async throws -> ServerLookbookPost {
+        let captionPost = try await updateLookbookPost(postId: postId, caption: caption)
+        do {
+            return try await setLookbookProductTags(postId: postId, tags: tags, productSnapshots: productSnapshots)
+        } catch {
+            if graphQLRejectsSetLookbookProductTags(error) {
+                return captionPost
+            }
+            throw error
+        }
+    }
+
     /// Fetch lookbooks from the server. Returns empty array when query is not yet deployed or fails.
     func fetchLookbooks(first: Int = 50) async throws -> [ServerLookbookPost] {
+        let useTag = LookbookTaggedProductCountSchemaProbe.includeTaggedProductCountInQueries
+        do {
+            return try await fetchLookbooks(first: first, includeTaggedProductCount: useTag)
+        } catch {
+            if useTag, graphQLRejectsExtendedLookbookPostFields(error) {
+                LookbookTaggedProductCountSchemaProbe.recordFieldUnsupportedBySchema()
+                return try await fetchLookbooks(first: first, includeTaggedProductCount: false)
+            }
+            throw error
+        }
+    }
+
+    private func fetchLookbooks(first: Int, includeTaggedProductCount: Bool) async throws -> [ServerLookbookPost] {
+        let lf = lookbookPostGraphQLFields(includeExtended: includeTaggedProductCount)
         let query = """
         query Lookbooks($first: Int) {
           lookbooks(first: $first) {
-            nodes { id imageUrl thumbnailUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked productLinkClicks shopLinkClicks }
-            edges { node { id imageUrl thumbnailUrl caption username profilePictureUrl createdAt likesCount commentsCount userLiked productLinkClicks shopLinkClicks } }
+            nodes { \(lf) }
+            edges { node { \(lf) } }
           }
         }
         """
@@ -269,22 +573,23 @@ final class LookbookService {
 
     /// Fetches a single lookbook post (e.g. universal link / deep link).
     func fetchLookbookPost(postId: String) async throws -> ServerLookbookPost? {
+        let useTag = LookbookTaggedProductCountSchemaProbe.includeTaggedProductCountInQueries
+        do {
+            return try await fetchLookbookPost(postId: postId, includeTaggedProductCount: useTag)
+        } catch {
+            if useTag, graphQLRejectsExtendedLookbookPostFields(error) {
+                LookbookTaggedProductCountSchemaProbe.recordFieldUnsupportedBySchema()
+                return try await fetchLookbookPost(postId: postId, includeTaggedProductCount: false)
+            }
+            throw error
+        }
+    }
+
+    private func fetchLookbookPost(postId: String, includeTaggedProductCount: Bool) async throws -> ServerLookbookPost? {
+        let lf = lookbookPostGraphQLFields(includeExtended: includeTaggedProductCount)
         let query = """
         query LookbookPost($postId: UUID!) {
-          lookbookPost(postId: $postId) {
-            id
-            imageUrl
-            thumbnailUrl
-            caption
-            username
-            profilePictureUrl
-            createdAt
-            likesCount
-            commentsCount
-            userLiked
-            productLinkClicks
-            shopLinkClicks
-          }
+          lookbookPost(postId: $postId) { \(lf) }
         }
         """
         let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)

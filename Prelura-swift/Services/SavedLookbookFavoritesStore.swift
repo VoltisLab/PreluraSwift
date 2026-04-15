@@ -153,6 +153,19 @@ final class SavedLookbookFavoritesStore: ObservableObject {
         removeFromAllFolders(postId: id)
     }
 
+    /// Keeps saved-folder captions in sync after the owner edits the post on the server.
+    func updateCaptionForSavedPost(postId: String, caption: String?) {
+        let norm = LookbookPostIdFormatting.graphQLUUIDString(from: postId).lowercased()
+        guard !norm.isEmpty else { return }
+        guard let key = photoById.keys.first(where: {
+            LookbookPostIdFormatting.graphQLUUIDString(from: $0).lowercased() == norm
+        }) else { return }
+        var photo = photoById[key]!
+        photo.caption = caption
+        photoById[key] = photo
+        persist()
+    }
+
     /// Deletes folders by id, removes their post lists, and drops photos that are no longer referenced in any folder.
     @discardableResult
     func deleteFolders(withIds ids: [String]) -> Int {

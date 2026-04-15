@@ -33,6 +33,8 @@ extension Notification.Name {
     static let wearhouseInAppNotificationsDidChange = Notification.Name("WearhouseInAppNotificationsDidChange")
     /// GraphQL returned ACCOUNT_SUSPENDED / ACCOUNT_BANNED — refresh `viewMe` moderation flags.
     static let wearhouseAccountRestrictionShouldRefresh = Notification.Name("WearhouseAccountRestrictionShouldRefresh")
+    /// GraphQL reported the access (or refresh) token is no longer valid — sign out instead of trapping the user on error banners.
+    static let wearhouseAuthSessionInvalidShouldSignOut = Notification.Name("WearhouseAuthSessionInvalidShouldSignOut")
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {

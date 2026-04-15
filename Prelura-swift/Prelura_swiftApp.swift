@@ -126,6 +126,12 @@ struct Prelura_swiftApp: App {
             .onReceive(NotificationCenter.default.publisher(for: .wearhouseDeviceTokenDidUpdate)) { _ in
                 registerPushTokenIfNeeded(authService: authService)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .wearhouseAuthSessionInvalidShouldSignOut)) { _ in
+                Task { @MainActor in
+                    guard authService.isAuthenticated, !authService.isGuestMode else { return }
+                    await authService.logout()
+                }
+            }
         }
     }
 }

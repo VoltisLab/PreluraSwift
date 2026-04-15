@@ -376,8 +376,10 @@ struct HomeView: View {
 struct HomeItemCard: View {
     let item: Item
     var onLikeTap: (() -> Void)? = nil
-    /// When true, the product image uses a 1:1 slot (e.g. Favourites grid). Default is a slightly taller portrait slot.
+    /// When true, the product image uses a 1:1 slot (e.g. Favourites grid). Default is a slightly taller portrait slot. Ignored when `naturalThumbnailAspect` is true.
     var squareImageSlot: Bool = false
+    /// When true, thumbnail uses full cell width and keeps the image aspect ratio (e.g. Favourites → Products).
+    var naturalThumbnailAspect: Bool = false
     /// When true, the like overlay is hidden (caller draws it outside NavigationLink so it's tappable).
     var hideLikeButton: Bool = false
     /// When true, show "Add to bag" / "Remove" (secondary border). Tap adds via onAddToBag or removes via onRemove.
@@ -445,16 +447,27 @@ struct HomeItemCard: View {
             .padding(.horizontal, Theme.Spacing.xs)
             .padding(.bottom, Theme.Spacing.xs)
             
-            // Image: avoid a bare `GeometryReader` as the grid cell’s main flexible child (it confuses `LazyVGrid` sizing and can cause scroll clipping glitches). Resolve size from a fixed aspect-ratio slot, then measure inside the overlay.
-            Color.clear
-                .aspectRatio(squareImageSlot ? 1.0 : 1.0 / 1.3, contentMode: .fit)
-                .frame(maxWidth: .infinity)
-                .overlay {
-                    GeometryReader { geometry in
-                        let imageWidth = geometry.size.width
-                        let imageHeight = geometry.size.height
-                        ZStack(alignment: .bottomTrailing) {
-                            RoundedRectangle(cornerRadius: 8)
+            // Image: avoid a bare `GeometryReader` as the grid cell’s main flexible child (it confuses `LazyVGrid` sizing and can cause scroll clipping glitches). Resolve size from a fixed aspect-ratio slot, then measure inside the overlay — unless we preserve listing aspect ratio at full width (`naturalThumbnailAspect`).
+            Group {
+                if naturalThumbnailAspect {
+                    ZStack(alignment: .bottomTrailing) {
+                        RetryAsyncImage(
+                            url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
+                            width: 1,
+                            height: 1,
+                            cornerRadius: 0,
+                            fillsFixedFrame: false,
+                            placeholder: {
+                                ImageShimmerPlaceholderFilled(cornerRadius: 0)
+                            },
+                            failurePlaceholder: {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(Theme.primaryColor.opacity(0.5))
+                            }
+                        )
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .fill(
                                     LinearGradient(
                                         colors: [
@@ -465,30 +478,59 @@ struct HomeItemCard: View {
                                         endPoint: .bottomTrailing
                                     )
                                 )
-                                .frame(width: imageWidth, height: imageHeight)
-                            RetryAsyncImage(
-                                url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
-                                width: imageWidth,
-                                height: imageHeight,
-                                cornerRadius: 8,
-                                placeholder: {
-                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
-                                        .frame(width: imageWidth, height: imageHeight)
-                                },
-                                failurePlaceholder: {
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
-                                        .frame(width: imageWidth, height: imageHeight)
-                                }
-                            )
-                            if !hideLikeButton {
-                                likeButtonContent
-                            }
+                        )
+                        if !hideLikeButton {
+                            likeButtonContent
                         }
                     }
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                } else {
+                    Color.clear
+                        .aspectRatio(squareImageSlot ? 1.0 : 1.0 / 1.3, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .overlay {
+                            GeometryReader { geometry in
+                                let imageWidth = geometry.size.width
+                                let imageHeight = geometry.size.height
+                                ZStack(alignment: .bottomTrailing) {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [
+                                                    Theme.primaryColor.opacity(0.3),
+                                                    Theme.primaryColor.opacity(0.1)
+                                                ],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .frame(width: imageWidth, height: imageHeight)
+                                    RetryAsyncImage(
+                                        url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
+                                        width: imageWidth,
+                                        height: imageHeight,
+                                        cornerRadius: 8,
+                                        placeholder: {
+                                            ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                                                .frame(width: imageWidth, height: imageHeight)
+                                        },
+                                        failurePlaceholder: {
+                                            Image(systemName: "photo")
+                                                .font(.system(size: 40))
+                                                .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                                .frame(width: imageWidth, height: imageHeight)
+                                        }
+                                    )
+                                    if !hideLikeButton {
+                                        likeButtonContent
+                                    }
+                                }
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
             
             // Product details — tight to image (spacing was visually too large)
             VStack(alignment: .leading, spacing: 4) {

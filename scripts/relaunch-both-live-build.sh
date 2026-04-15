@@ -15,15 +15,16 @@ echo "Live stream (Cursor terminal tab):  tail -f \"$LOG\""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 cd "$ROOT"
-set -o pipefail
-# xcodebuild sometimes exits non-zero with "failed without specifying errors" even after
-# a valid signed .app is produced; we only fail if there is no app bundle.
-xcodebuild \
+
+if ! xcodebuild \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
   -destination 'generic/platform=iOS Simulator' \
   -configuration Debug \
-  build 2>&1 | tee "$LOG" || true
+  build 2>&1 | tee "$LOG"; then
+  echo "xcodebuild failed. See: $LOG"
+  exit 1
+fi
 
 APP="$(ls -td "$HOME"/Library/Developer/Xcode/DerivedData/Prelura-swift-*/Build/Products/Debug-iphonesimulator/Prelura-swift.app 2>/dev/null | head -1)"
 if [[ ! -d "$APP" ]]; then
@@ -33,15 +34,34 @@ if [[ ! -d "$APP" ]]; then
 fi
 echo "Using: $APP"
 
-for DEV in "iPhone 14" "iPhone 14 Alt"; do
-  if xcrun simctl list devices available | grep -qF "$DEV"; then
-    xcrun simctl boot "$DEV" 2>/dev/null || true
-    xcrun simctl terminate "$DEV" "$BUNDLE" 2>/dev/null || true
-    xcrun simctl install "$DEV" "$APP"
-    echo "Launch $DEV: $(xcrun simctl launch "$DEV" "$BUNDLE")"
-  else
-    echo "Skip (not found): $DEV"
+open -a Simulator 2>/dev/null || true
+
+sim_device_available() {
+  local name="$1"
+  xcrun simctl list devices available 2>/dev/null | grep -F "    ${name} (" >/dev/null
+}
+
+boot_and_run() {
+  local dev="$1"
+  echo "Device: $dev"
+  xcrun simctl boot "$dev" 2>/dev/null || true
+  xcrun simctl bootstatus "$dev" -b 2>/dev/null || true
+  xcrun simctl terminate "$dev" "$BUNDLE" 2>/dev/null || true
+  if ! xcrun simctl install "$dev" "$APP" 2>&1; then
+    echo "simctl install failed for $dev"
+    exit 1
   fi
-done
+  local out
+  if ! out=$(xcrun simctl launch "$dev" "$BUNDLE" 2>&1); then
+    echo "simctl launch failed for $dev: $out"
+    exit 1
+  fi
+  echo "Launch $dev: $out"
+}
+
+# Exact names only (grep -F "iPhone 14" wrongly matches "iPhone 14 alt").
+if sim_device_available "iPhone 14"; then boot_and_run "iPhone 14"; else echo "Skip (not found): iPhone 14"; fi
+if sim_device_available "iPhone 14 Alt"; then boot_and_run "iPhone 14 Alt"; else echo "Skip (not found): iPhone 14 Alt"; fi
+if sim_device_available "iPhone 14 alt"; then boot_and_run "iPhone 14 alt"; else echo "Skip (not found): iPhone 14 alt"; fi
 
 echo "Build log (full): $LOG"

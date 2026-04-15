@@ -8,6 +8,45 @@
 import SwiftUI
 import Shimmer
 import UIKit
+
+/// Strips query + fragment so presigned CDN URLs from different sessions still match local upload records.
+fileprivate func lookbookNormalizedMediaURLString(_ raw: String) -> String {
+    let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let u = URL(string: t), var c = URLComponents(url: u, resolvingAgainstBaseURL: false) else { return t }
+    c.query = nil
+    c.fragment = nil
+    return c.url?.absoluteString ?? t
+}
+
+/// Matches `LookbookFeedStore` records to API posts even when id/image string formatting differs.
+func lookbookFeedLocalRecord(for post: ServerLookbookPost, records: [LookbookUploadRecord]) -> LookbookUploadRecord? {
+    let pid = LookbookPostIdFormatting.graphQLUUIDString(from: post.id).lowercased()
+    let surl = lookbookNormalizedMediaURLString(post.imageUrl)
+    let sthumb = (post.thumbnailUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let sthumbNorm = sthumb.isEmpty ? "" : lookbookNormalizedMediaURLString(sthumb)
+    let sLast = URL(string: surl)?.lastPathComponent ?? URL(string: post.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines))?.lastPathComponent ?? surl
+
+    return records.first { r in
+        let rid = LookbookPostIdFormatting.graphQLUUIDString(from: r.id).lowercased()
+        if rid == pid { return true }
+        var recordUrls: [String] = [lookbookNormalizedMediaURLString(r.imagePath)]
+        if let extra = r.imageUrls {
+            recordUrls.append(contentsOf: extra.map { lookbookNormalizedMediaURLString($0) })
+        }
+        for rurl in recordUrls {
+            let trimmed = rurl.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if trimmed == surl { return true }
+            if !sthumbNorm.isEmpty, trimmed == sthumbNorm { return true }
+            if surl.hasSuffix(trimmed) || trimmed.hasSuffix(surl) { return true }
+            if !sthumbNorm.isEmpty, sthumbNorm.hasSuffix(trimmed) || trimmed.hasSuffix(sthumbNorm) { return true }
+            let rLast = URL(string: trimmed)?.lastPathComponent ?? trimmed
+            if !sLast.isEmpty && !rLast.isEmpty && sLast == rLast { return true }
+        }
+        return false
+    }
+}
+
 /// One lookbook post: image(s), poster, comments, styles for filtering. Remote URLs in `imageUrls` (carousel), or legacy document/asset.
 /// Optional tags + productSnapshots come from local LookbookFeedStore (merged when post id / URL matches).
 struct LookbookEntry: Identifiable {
@@ -26,7 +65,9 @@ struct LookbookEntry: Identifiable {
     let posterUsername: String
     /// Remote avatar URL for the poster when the API provides it.
     let posterProfilePictureUrl: String?
-    let caption: String?
+    var caption: String?
+    /// ISO8601 from API (`createdAt`); used for relative post time under caption.
+    let createdAt: String?
     var likesCount: Int
     var isLiked: Bool
     var commentsCount: Int
@@ -39,6 +80,8 @@ struct LookbookEntry: Identifiable {
     let tags: [LookbookTagData]?
     /// productId -> snapshot for thumbnails; from local store when available.
     let productSnapshots: [String: LookbookProductSnapshot]?
+    /// From API when exposed (`taggedProductCount`); lets all viewers see grid product badge without local upload record.
+    let serverTaggedProductCount: Int?
 
     /// GraphQL `UUID` argument for this post (server id when available).
     var apiPostId: String {
@@ -52,7 +95,7 @@ struct LookbookEntry: Identifiable {
         LookbookPostIdFormatting.graphQLUUIDString(from: apiPostId).lowercased()
     }
 
-    init(id: UUID? = nil, serverPostId: String? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, thumbnailUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, likesCount: Int = 0, isLiked: Bool = false, commentsCount: Int, productLinkClicks: Int = 0, shopLinkClicks: Int = 0, styles: [String], tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
+    init(id: UUID? = nil, serverPostId: String? = nil, imageNames: [String], documentImagePath: String? = nil, imageUrl: String? = nil, thumbnailUrl: String? = nil, posterUsername: String, posterProfilePictureUrl: String? = nil, caption: String? = nil, createdAt: String? = nil, likesCount: Int = 0, isLiked: Bool = false, commentsCount: Int, productLinkClicks: Int = 0, shopLinkClicks: Int = 0, styles: [String], serverTaggedProductCount: Int? = nil, tags: [LookbookTagData]? = nil, productSnapshots: [String: LookbookProductSnapshot]? = nil) {
         self.id = id ?? UUID()
         self.serverPostId = serverPostId
         self.imageNames = imageNames
@@ -66,12 +109,14 @@ struct LookbookEntry: Identifiable {
         self.posterUsername = posterUsername
         self.posterProfilePictureUrl = posterProfilePictureUrl
         self.caption = caption
+        self.createdAt = createdAt
         self.likesCount = likesCount
         self.isLiked = isLiked
         self.commentsCount = commentsCount
         self.productLinkClicks = productLinkClicks
         self.shopLinkClicks = shopLinkClicks
         self.styles = styles
+        self.serverTaggedProductCount = serverTaggedProductCount
         self.tags = tags
         self.productSnapshots = productSnapshots
     }
@@ -106,16 +151,82 @@ struct LookbookEntry: Identifiable {
         }
         self.posterUsername = serverPost.username
         self.posterProfilePictureUrl = serverPost.profilePictureUrl
-        self.caption = serverPost.caption
+        let serverCaptionTrimmed = serverPost.caption?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let localCaptionTrimmed = localRecord?.caption?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !serverCaptionTrimmed.isEmpty {
+            self.caption = serverPost.caption
+        } else if !localCaptionTrimmed.isEmpty {
+            self.caption = localRecord?.caption
+        } else {
+            self.caption = nil
+        }
+        self.createdAt = serverPost.createdAt
         self.likesCount = serverPost.likesCount ?? 0
         self.isLiked = serverPost.userLiked ?? false
         self.commentsCount = serverPost.commentsCount ?? 0
         self.productLinkClicks = serverPost.productLinkClicks ?? 0
         self.shopLinkClicks = serverPost.shopLinkClicks ?? 0
         self.styles = localRecord?.styles ?? []
-        self.tags = localRecord?.tags
-        self.productSnapshots = localRecord?.productSnapshots
+        self.serverTaggedProductCount = serverPost.taggedProductCount
+
+        let fromServerTags: [LookbookTagData]? = serverPost.productTags?.map { t in
+            let cid = t.clientId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return LookbookTagData(
+                clientId: cid.isEmpty ? UUID().uuidString : cid,
+                productId: t.productId,
+                x: t.x,
+                y: t.y,
+                imageIndex: t.imageIndex ?? 0
+            )
+        }
+        let fromServerSnaps: [String: LookbookProductSnapshot]? = {
+            guard let ps = serverPost.productSnapshots, !ps.isEmpty else { return nil }
+            var m: [String: LookbookProductSnapshot] = [:]
+            for s in ps {
+                let k = s.productId.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !k.isEmpty else { continue }
+                m[k] = LookbookProductSnapshot(productId: k, title: s.title, imageUrl: s.imageUrl)
+            }
+            return m.isEmpty ? nil : m
+        }()
+
+        if let lt = fromServerTags, !lt.isEmpty {
+            self.tags = lt
+        } else {
+            self.tags = localRecord?.tags
+        }
+        if let fs = fromServerSnaps, !fs.isEmpty {
+            self.productSnapshots = fs
+        } else {
+            self.productSnapshots = localRecord?.productSnapshots
+        }
     }
+}
+
+extension LookbookEntry {
+    /// Distinct product ids from local tag pins (upload device only); does not require `productSnapshots`.
+    fileprivate var localDistinctTaggedProductCount: Int {
+        guard let tags = tags, !tags.isEmpty else { return 0 }
+        let ids = tags.map { $0.productId.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return Set(ids).count
+    }
+
+    /// Grid bag badge: prefer API count for all viewers; else local pins; else imply ≥1 if product/shop taps were recorded.
+    fileprivate var gridThumbnailTaggedProductCount: Int {
+        let fromServer = serverTaggedProductCount ?? 0
+        let local = localDistinctTaggedProductCount
+        var n = max(fromServer, local)
+        if n == 0, productLinkClicks + shopLinkClicks > 0 { n = 1 }
+        return n
+    }
+
+    /// Stable key for fullscreen grid → vertical pager (`scrollPosition`); avoids `UUID()` fallback collisions on `id`.
+    fileprivate var lookbookImmersiveScrollKey: String {
+        let k = lookbookPostKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !k.isEmpty { return k }
+        return id.uuidString
+    }
+
 }
 
 /// Vertical rhythm between major feed blocks (slightly looser than before).
@@ -255,77 +366,22 @@ struct ProductIdNavigator: Identifiable, Hashable {
     let id: String
 }
 
-/// Lookbooks entry: create post, Feed, Explore, My items, Settings (onboarding on first open).
-/// Hub uses a compact grid; icon tiles use brand primary while pressed.
+/// Lookbook entry from Menu / Discover: opens straight into the feed. Onboarding on first open.
 struct LookbookView: View {
-    @EnvironmentObject private var authService: AuthService
     @State private var showLookbooksOnboarding = false
     @State private var didScheduleLookbooksOnboarding = false
 
-    private let hubGridSpacing: CGFloat = 12
-    private var hubGridColumns: [GridItem] {
-        [
-            GridItem(.flexible(), spacing: hubGridSpacing),
-            GridItem(.flexible(), spacing: hubGridSpacing)
-        ]
-    }
-
     var body: some View {
-        ScrollView {
-            LazyVGrid(columns: hubGridColumns, spacing: hubGridSpacing) {
-                LookbookHubGridTile(
-                    kind: .createPost,
-                    title: L10n.string("Create a post"),
-                    subtitle: L10n.string("Upload photos, crop your look, and share it with followers.")
-                ) {
-                    LookbooksUploadView()
+        LookbookFeedScreenView()
+            .onAppear { scheduleLookbooksOnboardingIfNeeded() }
+            .overlay {
+                if showLookbooksOnboarding {
+                    LookbooksOnboardingPopupOverlay(onComplete: finishLookbooksOnboarding)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                        .zIndex(900)
                 }
-                LookbookHubGridTile(
-                    kind: .feed,
-                    title: L10n.string("Feed"),
-                    subtitle: L10n.string("Latest looks from people you follow and the community.")
-                ) {
-                    LookbookFeedScreenView()
-                }
-                LookbookHubGridTile(
-                    kind: .explore,
-                    title: L10n.string("Explore"),
-                    subtitle: L10n.string("Browse by style, communities, and editorial picks.")
-                ) {
-                    LookbookExploreScreenView()
-                }
-                LookbookHubGridTile(
-                    kind: .myItems,
-                    title: L10n.string("My items"),
-                    subtitle: L10n.string("Your uploads — switch between feed and a 3-column grid.")
-                ) {
-                    LookbookMyItemsScreenView()
-                }
-                LookbookHubGridTile(
-                    kind: .settings,
-                    title: L10n.string("Settings"),
-                    subtitle: L10n.string("Lookbook hub settings subtitle")
-                ) {
-                    LookbookSettingsView()
-                }
-                .gridCellColumns(2)
             }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.lg)
-        }
-        .scrollContentBackground(.hidden)
-        .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("Lookbook"))
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear { scheduleLookbooksOnboardingIfNeeded() }
-        .overlay {
-            if showLookbooksOnboarding {
-                LookbooksOnboardingPopupOverlay(onComplete: finishLookbooksOnboarding)
-                    .ignoresSafeArea()
-                    .transition(.opacity)
-                    .zIndex(900)
-            }
-        }
     }
 
     private func scheduleLookbooksOnboardingIfNeeded() {
@@ -347,152 +403,6 @@ struct LookbookView: View {
         withAnimation(.easeOut(duration: 0.2)) {
             showLookbooksOnboarding = false
         }
-    }
-}
-
-private enum LookbookHubBannerKind {
-    case feed, explore, myItems, createPost, settings
-
-    fileprivate var symbol: String {
-        switch self {
-        case .feed: return "rectangle.stack"
-        case .explore: return "sparkles.rectangle.stack"
-        case .myItems: return "person.crop.square"
-        case .createPost: return "plus.circle.fill"
-        case .settings: return "gearshape.fill"
-        }
-    }
-
-    /// Tile idle accent; while pressed, icons use `Theme.primaryColor`.
-    fileprivate var accent: Color {
-        switch self {
-        case .feed: return Theme.primaryColor
-        case .explore: return Color(red: 0.58, green: 0.38, blue: 0.98)
-        case .myItems: return Color(red: 0.98, green: 0.48, blue: 0.42)
-        case .createPost: return Color(red: 0.35, green: 0.78, blue: 0.52)
-        case .settings: return Color(red: 0.48, green: 0.48, blue: 0.52)
-        }
-    }
-}
-
-// MARK: - Lookbook hub grid
-
-private struct LookbookHubTilePressStyle: ButtonStyle {
-    let kind: LookbookHubBannerKind
-    let title: String
-    let subtitle: String
-
-    func makeBody(configuration: Configuration) -> some View {
-        LookbookHubGridTileLabel(kind: kind, title: title, subtitle: subtitle, isPressed: configuration.isPressed)
-    }
-}
-
-private struct LookbookHubGridTile<Destination: View>: View {
-    let kind: LookbookHubBannerKind
-    let title: String
-    let subtitle: String
-    @ViewBuilder var destination: () -> Destination
-
-    var body: some View {
-        NavigationLink(destination: destination()) {
-            Color.clear
-                .frame(maxWidth: .infinity, minHeight: 1)
-                .accessibilityHidden(true)
-        }
-        .buttonStyle(LookbookHubTilePressStyle(kind: kind, title: title, subtitle: subtitle))
-        .accessibilityLabel("\(title). \(subtitle)")
-    }
-}
-
-private struct LookbookHubGridTileLabel: View {
-    let kind: LookbookHubBannerKind
-    let title: String
-    let subtitle: String
-    var isPressed: Bool
-
-    private let corner: CGFloat = 16
-    private let iconBox: CGFloat = 44
-    private let iconGlyph: CGFloat = 20
-
-    private var effectiveAccent: Color {
-        isPressed ? Theme.primaryColor : kind.accent
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(alignment: .top) {
-                lookbookHubIcon
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.Colors.tertiaryText)
-                    .padding(.top, 4)
-            }
-            Text(title)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Theme.Colors.primaryText)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-            Text(subtitle)
-                .font(.system(size: 12, weight: .regular))
-                .foregroundStyle(Theme.Colors.secondaryText)
-                .lineLimit(3)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.md + 2)
-        .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: corner, style: .continuous)
-                .fill(Theme.Colors.secondaryBackground)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: corner, style: .continuous)
-                .strokeBorder(
-                    isPressed ? Theme.primaryColor : Theme.Colors.glassBorder,
-                    lineWidth: isPressed ? 2 : 1
-                )
-        )
-        .shadow(color: Color.black.opacity(isPressed ? 0.12 : 0.06), radius: isPressed ? 10 : 6, x: 0, y: isPressed ? 5 : 3)
-        .animation(.easeOut(duration: 0.16), value: isPressed)
-    }
-
-    private var lookbookHubIcon: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            effectiveAccent.opacity(0.72),
-                            effectiveAccent.opacity(0.28),
-                            Theme.Colors.tertiaryBackground.opacity(0.95)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [.white.opacity(0.42), effectiveAccent.opacity(0.45)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-            Image(systemName: kind.symbol)
-                .font(.system(size: iconGlyph, weight: .semibold))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [.white, .white.opacity(0.88)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .shadow(color: effectiveAccent.opacity(0.45), radius: 6, x: 0, y: 2)
-        }
-        .frame(width: iconBox, height: iconBox)
     }
 }
 
@@ -523,26 +433,274 @@ private func lookbookFollowingSetFingerprint(_ set: Set<String>) -> String {
     return set.sorted().joined(separator: "\u{1E}")
 }
 
+/// While immersive lookbook is open, disables the nav stack edge-swipe so the first Back dismisses the overlay (custom leading item), not the whole screen.
+private struct LookbookNavigationInteractivePopGate: UIViewRepresentable {
+    var disablesInteractivePop: Bool
+
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView(frame: .zero)
+        v.isUserInteractionEnabled = false
+        v.backgroundColor = .clear
+        return v
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        let disable = disablesInteractivePop
+        DispatchQueue.main.async {
+            guard let nav = uiView.lookbookNearestNavigationController() else { return }
+            nav.interactivePopGestureRecognizer?.isEnabled = !disable
+        }
+    }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: ()) {
+        DispatchQueue.main.async {
+            guard let nav = uiView.lookbookNearestNavigationController() else { return }
+            nav.interactivePopGestureRecognizer?.isEnabled = true
+        }
+    }
+}
+
+private extension UIView {
+    func lookbookNearestNavigationController() -> UINavigationController? {
+        var r: UIResponder? = self
+        while let cur = r {
+            if let vc = cur as? UIViewController {
+                return vc.navigationController
+            }
+            r = cur.next
+        }
+        return nil
+    }
+}
+
+private struct LookbookImmersiveScrollContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+/// One immersive pager page. Height is **intrinsic** (no filler below the post) so stacked cells sit flush; taller than `pageHeight` scrolls inside. Short posts disable inner scroll so the outer feed receives vertical swipes.
+private struct LookbookImmersivePagerPageView<Row: View>: View {
+    let pageHeight: CGFloat
+    /// Disambiguates the **inner** per-page `ScrollView` state (prefixed id so it never matches outer pager `scrollPosition` indices).
+    let pageScrollKey: String
+    @ViewBuilder var row: () -> Row
+
+    @State private var scrollContentHeight: CGFloat = 0
+
+    private var innerScrollDisabled: Bool {
+        scrollContentHeight == 0 || scrollContentHeight <= pageHeight + 1
+    }
+
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            LookbookScrollImmediateTouchesAnchor()
+                .frame(width: 0, height: 0)
+            row()
+                .frame(maxWidth: .infinity)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: LookbookImmersiveScrollContentHeightKey.self,
+                            value: proxy.size.height
+                        )
+                    }
+                )
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollDisabled(innerScrollDisabled)
+        .frame(maxWidth: .infinity, maxHeight: pageHeight)
+        .clipped()
+        .id("lookbook-imm-inner-\(pageScrollKey)")
+        .onPreferenceChange(LookbookImmersiveScrollContentHeightKey.self) { scrollContentHeight = $0 }
+    }
+}
+
 private struct LookbookFeedScreenView: View {
     @EnvironmentObject private var authService: AuthService
-    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var immersiveScrollFeelStore = LookbookImmersiveScrollFeelStore.shared
     @State private var entries: [LookbookEntry] = []
     @State private var followedCommentBoostUsernames: Set<String> = []
     @State private var feedLoading = false
     @State private var feedError: String?
     @State private var feedErrorBannerTitle: String?
-       @State private var scrollPosition: String? = lookbookTopId
+    @State private var scrollPosition: String? = lookbookTopId
     @State private var commentsEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
-    @State private var useGrid = false
+    @State private var useGrid = true
     @State private var immersiveFeedInitialPostId: String?
-    @State private var immersiveScrollTargetId: UUID?
+    /// Current page in the vertical immersive pager (UIKit `UIPageViewController`).
+    @State private var immersiveScrollPageIndex: Int = 0
+    /// When true, only the show/hide control is visible; swipe L→R on the bar (or tap chevron) to collapse, tap again to expand.
+    @State private var lookbookQuickActionsCollapsed = false
     private let productService = ProductService()
+
+    private var lookbookQuickActionsSpring: Animation {
+        .spring(response: 0.38, dampingFraction: 0.86)
+    }
+
+    /// Show quick actions whenever we are not in the initial loading-empty state (so empty / error still gets shortcuts).
+    private var showLookbookFeedFloatingActions: Bool {
+        !(feedLoading && entries.isEmpty)
+    }
+
+    private func lookbookFeedGlassCircleLabel(systemName: String) -> some View {
+        GlassEffectContainer(spacing: 0) {
+            Image(systemName: systemName)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Theme.Colors.primaryText)
+                .frame(width: 54, height: 54)
+                .glassEffect(.regular, in: .circle)
+        }
+        .frame(width: 54, height: 54)
+        .fixedSize()
+        .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
+    }
+
+    /// Bottom inset for the floating shortcut row. Immersive bar uses `ignoresSafeArea(.bottom)` so this must include the **full** home-indicator inset plus a small margin (avoids stacking extra padding on top of an already safe-aligned overlay).
+    private func lookbookFeedFloatingBarBottomInset(_ geometry: GeometryProxy, immersive: Bool) -> CGFloat {
+        let s = geometry.safeAreaInsets.bottom
+        if immersive {
+            return s + 2
+        }
+        if s >= 60 {
+            return Theme.Spacing.sm + Theme.Spacing.xs
+        }
+        return min(44, max(2, s - 48))
+    }
+
+    private func dismissLookbookFeedImmersive() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            immersiveFeedInitialPostId = nil
+            immersiveScrollPageIndex = 0
+        }
+    }
+
+    @ViewBuilder
+    private var lookbookFeedCollapseToggle: some View {
+        GlassEffectContainer(spacing: 0) {
+            Button {
+                HapticManager.selection()
+                lookbookQuickActionsCollapsed.toggle()
+            } label: {
+                Image(systemName: lookbookQuickActionsCollapsed ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.primaryText)
+                    .frame(width: 54, height: 54)
+                    .glassEffect(.regular, in: .circle)
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+        }
+        .frame(width: 54, height: 54)
+        .fixedSize()
+        .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
+        .accessibilityLabel(
+            lookbookQuickActionsCollapsed
+                ? L10n.string("Show lookbook shortcuts")
+                : L10n.string("Hide lookbook shortcuts")
+        )
+    }
+
+    /// Shortcuts row only (grid / explore / create / my items / settings). Kept in one stable `HStack` so show/hide does not swap branches that re-layout the whole screen.
+    @ViewBuilder
+    private var lookbookFeedQuickActionsIconCluster: some View {
+        HStack(spacing: 8) {
+            GlassEffectContainer(spacing: 0) {
+                Button {
+                    HapticManager.selection()
+                    useGrid.toggle()
+                } label: {
+                    Image(systemName: useGrid ? "list.bullet" : "square.grid.3x3")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                        .frame(width: 54, height: 54)
+                        .glassEffect(.regular, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Circle())
+            }
+            .frame(width: 54, height: 54)
+            .fixedSize()
+            .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
+            .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
+
+            NavigationLink {
+                LookbookExploreScreenView()
+            } label: {
+                lookbookFeedGlassCircleLabel(systemName: "sparkles.rectangle.stack")
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+            .accessibilityLabel(L10n.string("Explore"))
+
+            NavigationLink {
+                LookbooksUploadView()
+            } label: {
+                lookbookFeedGlassCircleLabel(systemName: "plus.circle.fill")
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+            .accessibilityLabel(L10n.string("Create a post"))
+
+            NavigationLink {
+                LookbookMyItemsScreenView()
+            } label: {
+                lookbookFeedGlassCircleLabel(systemName: "person.crop.square")
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+            .accessibilityLabel(L10n.string("My items"))
+
+            NavigationLink {
+                LookbookSettingsView()
+            } label: {
+                lookbookFeedGlassCircleLabel(systemName: "gearshape.fill")
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+            .accessibilityLabel(L10n.string("Settings"))
+        }
+    }
+
+    @ViewBuilder
+    private func lookbookFeedFloatingQuickActionsBar(bottomInset: CGFloat) -> some View {
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: lookbookQuickActionsCollapsed ? 0 : 8) {
+                lookbookFeedQuickActionsIconCluster
+                    .opacity(lookbookQuickActionsCollapsed ? 0 : 1)
+                    .offset(x: lookbookQuickActionsCollapsed ? 14 : 0, y: lookbookQuickActionsCollapsed ? 6 : 0)
+                    .scaleEffect(lookbookQuickActionsCollapsed ? 0.88 : 1, anchor: .trailing)
+                    .frame(width: lookbookQuickActionsCollapsed ? 0 : nil, alignment: .trailing)
+                    .clipped()
+                    .allowsHitTesting(!lookbookQuickActionsCollapsed)
+                    .accessibilityHidden(lookbookQuickActionsCollapsed)
+
+                lookbookFeedCollapseToggle
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .animation(lookbookQuickActionsSpring, value: lookbookQuickActionsCollapsed)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 28)
+                    .onEnded { value in
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        guard dx > 52, abs(dy) < 56 else { return }
+                        HapticManager.selection()
+                        lookbookQuickActionsCollapsed = true
+                    }
+            )
+        }
+        .padding(.bottom, bottomInset)
+    }
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack(alignment: .bottomTrailing) {
+            let barBottomInset = lookbookFeedFloatingBarBottomInset(geometry, immersive: immersiveFeedInitialPostId != nil)
+            ZStack(alignment: .bottom) {
                 Group {
                     if feedLoading && entries.isEmpty {
                         LookbookFeedOnlyShimmerView()
@@ -554,7 +712,10 @@ private struct LookbookFeedScreenView: View {
                             LazyVGrid(columns: LookbookThreeColumnGrid.columns, spacing: LookbookThreeColumnGrid.gutter) {
                                 ForEach(entries) { entry in
                                     Button {
-                                        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                                        var tx = Transaction()
+                                        tx.animation = nil
+                                        withTransaction(tx) {
+                                            immersiveScrollPageIndex = entries.firstIndex(where: { $0.id == entry.id }) ?? 0
                                             immersiveFeedInitialPostId = entry.apiPostId
                                         }
                                     } label: {
@@ -589,6 +750,8 @@ private struct LookbookFeedScreenView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .compositingGroup()
+                .animation(nil, value: lookbookQuickActionsCollapsed)
 
                 if immersiveFeedInitialPostId != nil {
                     GeometryReader { geo in
@@ -600,74 +763,50 @@ private struct LookbookFeedScreenView: View {
                         }
                     }
                     .ignoresSafeArea()
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .center)),
-                        removal: .opacity
-                    ))
+                    .transition(.opacity)
                     .zIndex(2)
-                }
-
-                if !entries.isEmpty {
-                    // Liquid Glass FAB: constrain the container to the control size so hit-testing stays on the button
-                    // (an unconstrained `GlassEffectContainer` can expand and break grid ↔ list toggling).
-                    GlassEffectContainer(spacing: 0) {
-                        Button {
-                            HapticManager.selection()
-                            useGrid.toggle()
-                        } label: {
-                            Image(systemName: useGrid ? "list.bullet" : "square.grid.3x3")
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundStyle(Theme.Colors.primaryText)
-                                .frame(width: 54, height: 54)
-                                .glassEffect(.regular, in: .circle)
-                        }
-                        .buttonStyle(.plain)
-                        .contentShape(Circle())
-                    }
-                    .frame(width: 54, height: 54)
-                    .fixedSize()
-                    .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
-                    .padding(.trailing, Theme.Spacing.md)
-                    .padding(.bottom, Theme.Spacing.lg)
-                    .zIndex(1)
-                    .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: immersiveFeedInitialPostId)
-        .navigationTitle(L10n.string("Feed"))
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.backward")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(Theme.Colors.primaryText)
+            .overlay(alignment: .bottom) {
+                if showLookbookFeedFloatingActions {
+                    lookbookFeedFloatingQuickActionsBar(bottomInset: barBottomInset)
+                        .ignoresSafeArea(edges: immersiveFeedInitialPostId != nil ? .bottom : [])
                 }
-                .accessibilityLabel(L10n.string("Back"))
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: Theme.Spacing.sm) {
-                    NavigationLink(destination: LookbooksUploadView()) {
-                        Image(systemName: "plus.circle")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundStyle(Theme.Colors.primaryText)
-                    }
-                    .buttonStyle(HapticTapButtonStyle())
-                    NavigationLink {
-                        LookbookFeedSearchView(entries: entries)
+        }
+        .animation(.easeOut(duration: 0.2), value: immersiveFeedInitialPostId)
+        .navigationTitle(L10n.string("Lookbook"))
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(immersiveFeedInitialPostId != nil)
+        .toolbar {
+            if immersiveFeedInitialPostId != nil {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        HapticManager.selection()
+                        dismissLookbookFeedImmersive()
                     } label: {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 20, weight: .medium))
+                        Image(systemName: "chevron.backward")
+                            .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(Theme.Colors.primaryText)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.string("Back"))
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    LookbookFeedSearchView(entries: entries)
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background {
+            LookbookNavigationInteractivePopGate(disablesInteractivePop: immersiveFeedInitialPostId != nil)
         }
         .sheet(item: $commentsEntry) { entry in
             LookbookCommentsSheet(entry: entry) { newCount in
@@ -722,7 +861,7 @@ private struct LookbookFeedScreenView: View {
             await MainActor.run {
                 followedCommentBoostUsernames = followedSet
                 entries = posts.map { post in
-                    LookbookEntry(from: post, localRecord: localRecords.first { r in r.id == post.id || r.imagePath == post.imageUrl })
+                    LookbookEntry(from: post, localRecord: lookbookFeedLocalRecord(for: post, records: localRecords))
                 }
                 feedLoading = false
                 feedError = nil
@@ -774,33 +913,20 @@ private struct LookbookFeedScreenView: View {
 
     @ViewBuilder
     private func feedImmersivePagerPage(entry: LookbookEntry, pageHeight: CGFloat) -> some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            LookbookScrollImmediateTouchesAnchor()
-                .frame(width: 0, height: 0)
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                lookbookFeedRow(
-                    model: LookbookFeedRowModel(
-                        id: "imm-\(lookbookFeedRowStableId(for: entry))",
-                        entry: entry
-                    ),
-                    immersive: true
-                )
-                Spacer(minLength: 0)
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, minHeight: pageHeight)
+        LookbookImmersivePagerPageView(pageHeight: pageHeight, pageScrollKey: entry.id.uuidString) {
+            lookbookFeedRow(
+                model: LookbookFeedRowModel(
+                    id: "imm-\(lookbookFeedRowStableId(for: entry))",
+                    entry: entry
+                ),
+                immersive: true
+            )
         }
-        .frame(maxWidth: .infinity, minHeight: pageHeight, maxHeight: pageHeight)
-        .clipped()
-        .id(entry.id)
     }
 
     private var feedImmersiveDismissButton: some View {
         Button {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                immersiveFeedInitialPostId = nil
-                immersiveScrollTargetId = nil
-            }
+            dismissLookbookFeedImmersive()
         } label: {
             Image(systemName: "chevron.down")
                 .font(.system(size: 17, weight: .semibold))
@@ -814,34 +940,20 @@ private struct LookbookFeedScreenView: View {
     }
 
     private func feedImmersiveVerticalPager(pageHeight: CGFloat) -> some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LookbookScrollImmediateTouchesAnchor()
-                .frame(width: 0, height: 0)
-            VStack(spacing: 0) {
-                ForEach(entries) { entry in
-                    feedImmersivePagerPage(entry: entry, pageHeight: pageHeight)
-                }
-            }
-            .scrollTargetLayout()
+        LookbookVerticalImmersivePager(
+            currentPage: $immersiveScrollPageIndex,
+            pageCount: entries.count,
+            scrollFeel: immersiveScrollFeelStore.feel
+        ) { idx in
+            feedImmersivePagerPage(entry: entries[idx], pageHeight: pageHeight)
         }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $immersiveScrollTargetId, anchor: .center)
-        .task(id: immersiveFeedInitialPostId) {
-            guard let pid = immersiveFeedInitialPostId else {
-                await MainActor.run { immersiveScrollTargetId = nil }
-                return
-            }
-            await Task.yield()
-            await Task.yield()
-            await MainActor.run {
-                immersiveScrollTargetId = entries.first { $0.apiPostId.lowercased() == pid.lowercased() }?.id
-                    ?? entries.first?.id
-            }
-        }
+        .id(immersiveFeedInitialPostId ?? "lookbook-immersive-feed")
         .onChange(of: entries.count) { _, newCount in
             if newCount == 0 {
                 immersiveFeedInitialPostId = nil
-                immersiveScrollTargetId = nil
+                immersiveScrollPageIndex = 0
+            } else if immersiveScrollPageIndex >= newCount {
+                immersiveScrollPageIndex = max(0, newCount - 1)
             }
         }
     }
@@ -858,7 +970,14 @@ private struct LookbookFeedScreenView: View {
             onOpenAnalytics: { analyticsEntry = $0 },
             onLikeTap: { tapped in
                 handleLookbookFeedLikeTap(tapped, authService: authService, entries: $entries)
-            }
+            },
+            onPostCaptionUpdated: { updated in
+                let k = updated.lookbookPostKey
+                if let idx = entries.firstIndex(where: { $0.lookbookPostKey == k }) {
+                    entries[idx] = updated
+                }
+            },
+            immersive: immersive
         )
         .padding(.bottom, immersive ? 0 : lookbookSpacing)
     }
@@ -951,6 +1070,12 @@ struct LookbookSinglePostFeedPresentedView: View {
             onOpenAnalytics: { analyticsEntry = $0 },
             onLikeTap: { tapped in
                 handleLookbookFeedLikeTap(tapped, authService: authService, entries: $entries)
+            },
+            onPostCaptionUpdated: { updated in
+                let k = updated.lookbookPostKey
+                if let idx = entries.firstIndex(where: { $0.lookbookPostKey == k }) {
+                    entries[idx] = updated
+                }
             }
         )
         .padding(.bottom, lookbookSpacing)
@@ -996,6 +1121,7 @@ private struct LookbookExploreScreenView: View {
 
 private struct LookbookMyItemsScreenView: View {
     @EnvironmentObject private var authService: AuthService
+    @ObservedObject private var immersiveScrollFeelStore = LookbookImmersiveScrollFeelStore.shared
     @State private var entries: [LookbookEntry] = []
     @State private var followedCommentBoostUsernames: Set<String> = []
     @State private var feedLoading = false
@@ -1005,7 +1131,7 @@ private struct LookbookMyItemsScreenView: View {
     @State private var commentsEntry: LookbookEntry?
     /// When set, shows a full-screen vertical pager (Instagram/TikTok-style) starting at this post id.
     @State private var immersiveFeedInitialPostId: String?
-    @State private var immersiveScrollTargetId: UUID?
+    @State private var immersiveScrollPageIndex: Int = 0
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
     private let productService = ProductService()
@@ -1015,36 +1141,49 @@ private struct LookbookMyItemsScreenView: View {
         return entries.filter { $0.posterUsername.lowercased() == me }
     }
 
+    private var showMyItemsGridListFAB: Bool {
+        immersiveFeedInitialPostId == nil && !(feedLoading && entries.isEmpty)
+    }
+
+    private var myItemsScrollBottomPadding: CGFloat {
+        if immersiveFeedInitialPostId != nil { return Theme.Spacing.xl }
+        if !showMyItemsGridListFAB { return Theme.Spacing.xl }
+        return Theme.Spacing.xl + 64
+    }
+
+    /// Same idea as `lookbookFeedFloatingBarBottomInset`: avoid oversized `safeArea.bottom - 36` on tabbed devices.
+    private func lookbookMyItemsFABBottomInset(_ geometry: GeometryProxy) -> CGFloat {
+        let s = geometry.safeAreaInsets.bottom
+        if s >= 60 {
+            return Theme.Spacing.sm + Theme.Spacing.xs
+        }
+        return min(50, max(Theme.Spacing.xs, s - 36))
+    }
+
     /// One fullscreen page: full-width media like the main feed; inner scroll only when the post is taller than the viewport (centers short posts).
     @ViewBuilder
     private func immersivePagerPage(entry: LookbookEntry, pageHeight: CGFloat) -> some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            LookbookScrollImmediateTouchesAnchor()
-                .frame(width: 0, height: 0)
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                lookbookFeedRow(
-                    model: LookbookFeedRowModel(
-                        id: "imm-\(lookbookFeedRowStableId(for: entry))",
-                        entry: entry
-                    ),
-                    immersive: true
-                )
-                Spacer(minLength: 0)
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, minHeight: pageHeight)
+        LookbookImmersivePagerPageView(pageHeight: pageHeight, pageScrollKey: entry.id.uuidString) {
+            lookbookFeedRow(
+                model: LookbookFeedRowModel(
+                    id: "imm-\(lookbookFeedRowStableId(for: entry))",
+                    entry: entry
+                ),
+                immersive: true
+            )
         }
-        .frame(maxWidth: .infinity, minHeight: pageHeight, maxHeight: pageHeight)
-        .clipped()
-        .id(entry.id)
+    }
+
+    private func dismissMyItemsImmersive() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            immersiveFeedInitialPostId = nil
+            immersiveScrollPageIndex = 0
+        }
     }
 
     private var immersivePagerDismissButton: some View {
         Button {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                immersiveFeedInitialPostId = nil
-                immersiveScrollTargetId = nil
-            }
+            dismissMyItemsImmersive()
         } label: {
             Image(systemName: "chevron.down")
                 .font(.system(size: 17, weight: .semibold))
@@ -1059,124 +1198,147 @@ private struct LookbookMyItemsScreenView: View {
 
     @ViewBuilder
     private func immersiveVerticalPager(pageHeight: CGFloat) -> some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LookbookScrollImmediateTouchesAnchor()
-                .frame(width: 0, height: 0)
-            VStack(spacing: 0) {
-                ForEach(myEntries) { entry in
-                    immersivePagerPage(entry: entry, pageHeight: pageHeight)
-                }
-            }
-            .scrollTargetLayout()
+        LookbookVerticalImmersivePager(
+            currentPage: $immersiveScrollPageIndex,
+            pageCount: myEntries.count,
+            scrollFeel: immersiveScrollFeelStore.feel
+        ) { idx in
+            immersivePagerPage(entry: myEntries[idx], pageHeight: pageHeight)
         }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $immersiveScrollTargetId, anchor: .center)
-        .task(id: immersiveFeedInitialPostId) {
-            guard let pid = immersiveFeedInitialPostId else {
-                await MainActor.run { immersiveScrollTargetId = nil }
-                return
-            }
-            await Task.yield()
-            await Task.yield()
-            await MainActor.run {
-                immersiveScrollTargetId = myEntries.first { $0.apiPostId.lowercased() == pid.lowercased() }?.id
-                    ?? myEntries.first?.id
-            }
-        }
+        .id(immersiveFeedInitialPostId ?? "lookbook-immersive-myitems")
         .onChange(of: myEntries.count) { _, newCount in
             if newCount == 0 {
                 immersiveFeedInitialPostId = nil
-                immersiveScrollTargetId = nil
+                immersiveScrollPageIndex = 0
+            } else if immersiveScrollPageIndex >= newCount {
+                immersiveScrollPageIndex = max(0, newCount - 1)
             }
         }
     }
 
     var body: some View {
-        ZStack {
-            Group {
-                if feedLoading && entries.isEmpty {
-                    LookbookFeedOnlyShimmerView()
-                } else if myEntries.isEmpty {
-                    myItemsEmpty
-                } else if useGrid {
-                    ScrollView {
-                        LazyVGrid(columns: LookbookThreeColumnGrid.columns, spacing: LookbookThreeColumnGrid.gutter) {
-                            ForEach(myEntries) { entry in
-                                Button {
-                                    withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                                        immersiveFeedInitialPostId = entry.apiPostId
+        GeometryReader { geometry in
+            ZStack(alignment: .bottomTrailing) {
+                ZStack {
+                    Group {
+                        if feedLoading && entries.isEmpty {
+                            LookbookFeedOnlyShimmerView()
+                        } else if myEntries.isEmpty {
+                            myItemsEmpty
+                        } else if useGrid {
+                            ScrollView {
+                                LazyVGrid(columns: LookbookThreeColumnGrid.columns, spacing: LookbookThreeColumnGrid.gutter) {
+                                    ForEach(myEntries) { entry in
+                                        Button {
+                                            var tx = Transaction()
+                                            tx.animation = nil
+                                            withTransaction(tx) {
+                                                immersiveScrollPageIndex = myEntries.firstIndex(where: { $0.id == entry.id }) ?? 0
+                                                immersiveFeedInitialPostId = entry.apiPostId
+                                            }
+                                        } label: {
+                                            LookbookSquareGridThumbnail(entry: entry)
+                                                .padding(1)
+                                                .background(Theme.Colors.background)
+                                                .aspectRatio(1, contentMode: .fit)
+                                                .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                } label: {
-                                    LookbookSquareGridThumbnail(entry: entry)
-                                        .padding(1)
-                                        .background(Theme.Colors.background)
-                                        .aspectRatio(1, contentMode: .fit)
-                                        .contentShape(Rectangle())
                                 }
-                                .buttonStyle(.plain)
+                                .padding(2)
+                                .padding(.bottom, showMyItemsGridListFAB ? 56 : 0)
                             }
-                        }
-                        .padding(2)
-                    }
-                    .scrollContentBackground(.hidden)
-                    .background(Theme.Colors.background)
-                } else {
-                    ScrollView {
-                        LookbookScrollImmediateTouchesAnchor()
-                            .frame(width: 0, height: 0)
-                        LazyVStack(spacing: 0) {
-                            ForEach(buildLookbookFeedRows(from: myEntries)) { row in
-                                lookbookFeedRow(model: row)
+                            .scrollContentBackground(.hidden)
+                            .background(Theme.Colors.background)
+                        } else {
+                            ScrollView {
+                                LookbookScrollImmediateTouchesAnchor()
+                                    .frame(width: 0, height: 0)
+                                LazyVStack(spacing: 0) {
+                                    ForEach(buildLookbookFeedRows(from: myEntries)) { row in
+                                        lookbookFeedRow(model: row)
+                                    }
+                                }
+                                .padding(.bottom, myItemsScrollBottomPadding)
                             }
+                            .scrollContentBackground(.hidden)
+                            .background(Theme.Colors.background)
                         }
-                        .padding(.bottom, Theme.Spacing.xl)
                     }
-                    .scrollContentBackground(.hidden)
-                    .background(Theme.Colors.background)
-                }
-            }
 
-            if immersiveFeedInitialPostId != nil {
-                GeometryReader { geo in
-                    let pageHeight = geo.size.height
-                    ZStack(alignment: .topTrailing) {
-                        Theme.Colors.background.ignoresSafeArea()
-                        immersiveVerticalPager(pageHeight: pageHeight)
-                        immersivePagerDismissButton
+                    if immersiveFeedInitialPostId != nil {
+                        GeometryReader { geo in
+                            let pageHeight = geo.size.height
+                            ZStack(alignment: .topTrailing) {
+                                Theme.Colors.background.ignoresSafeArea()
+                                immersiveVerticalPager(pageHeight: pageHeight)
+                                immersivePagerDismissButton
+                            }
+                        }
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                        .zIndex(2)
                     }
                 }
-                .ignoresSafeArea()
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .center)),
-                    removal: .opacity
-                ))
-                .zIndex(2)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if showMyItemsGridListFAB {
+                    GlassEffectContainer(spacing: 0) {
+                        Button {
+                            HapticManager.selection()
+                            useGrid.toggle()
+                        } label: {
+                            Image(systemName: useGrid ? "list.bullet" : "square.grid.3x3")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(Theme.Colors.primaryText)
+                                .frame(width: 54, height: 54)
+                                .glassEffect(.regular, in: .circle)
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Circle())
+                    }
+                    .frame(width: 54, height: 54)
+                    .fixedSize()
+                    .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
+                    .padding(.trailing, Theme.Spacing.md)
+                    .padding(.bottom, lookbookMyItemsFABBottomInset(geometry))
+                    .zIndex(1)
+                    .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
+                }
             }
         }
-        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: immersiveFeedInitialPostId)
+        .animation(.easeOut(duration: 0.2), value: immersiveFeedInitialPostId)
         .navigationTitle(L10n.string("My items"))
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(immersiveFeedInitialPostId != nil)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: Theme.Spacing.sm) {
+            if immersiveFeedInitialPostId != nil {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
                         HapticManager.selection()
-                        useGrid.toggle()
+                        dismissMyItemsImmersive()
                     } label: {
-                        Image(systemName: useGrid ? "list.bullet" : "square.grid.3x3")
-                            .font(.system(size: 20, weight: .medium))
+                        Image(systemName: "chevron.backward")
+                            .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(Theme.Colors.primaryText)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(useGrid ? L10n.string("List view") : L10n.string("Grid view"))
-                    NavigationLink(destination: LookbooksUploadView()) {
-                        Image(systemName: "plus.circle")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundStyle(Theme.Colors.primaryText)
-                    }
-                    .buttonStyle(HapticTapButtonStyle())
+                    .accessibilityLabel(L10n.string("Back"))
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(destination: MyFavouritesView(lookbookOnly: true)) {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                }
+                .buttonStyle(HapticTapButtonStyle())
+                .accessibilityLabel(L10n.string("Favourites"))
+            }
+        }
+        .background {
+            LookbookNavigationInteractivePopGate(disablesInteractivePop: immersiveFeedInitialPostId != nil)
         }
         .sheet(item: $commentsEntry) { entry in
             LookbookCommentsSheet(entry: entry) { newCount in
@@ -1220,7 +1382,7 @@ private struct LookbookMyItemsScreenView: View {
                     Text(L10n.string("No uploads yet"))
                         .font(Theme.Typography.title3)
                         .foregroundColor(Theme.Colors.primaryText)
-                    Text(L10n.string("Post a look from the plus button — it will show up here."))
+                    Text(L10n.string("Create a look from Lookbook — it will show up here."))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .multilineTextAlignment(.center)
@@ -1263,7 +1425,7 @@ private struct LookbookMyItemsScreenView: View {
             await MainActor.run {
                 followedCommentBoostUsernames = followedSet
                 entries = posts.map { post in
-                    LookbookEntry(from: post, localRecord: localRecords.first { r in r.id == post.id || r.imagePath == post.imageUrl })
+                    LookbookEntry(from: post, localRecord: lookbookFeedLocalRecord(for: post, records: localRecords))
                 }
                 feedLoading = false
                 feedError = nil
@@ -1291,7 +1453,14 @@ private struct LookbookMyItemsScreenView: View {
             onOpenAnalytics: { analyticsEntry = $0 },
             onLikeTap: { tapped in
                 handleLookbookFeedLikeTap(tapped, authService: authService, entries: $entries)
-            }
+            },
+            onPostCaptionUpdated: { updated in
+                let k = updated.lookbookPostKey
+                if let idx = entries.firstIndex(where: { $0.lookbookPostKey == k }) {
+                    entries[idx] = updated
+                }
+            },
+            immersive: immersive
         )
         .padding(.bottom, immersive ? 0 : lookbookSpacing)
     }
@@ -1428,6 +1597,12 @@ private struct LookbookTopicFeedView: View {
             onOpenAnalytics: { analyticsEntry = $0 },
             onLikeTap: { tapped in
                 handleLookbookFeedLikeTap(tapped, authService: authService, entries: $entries)
+            },
+            onPostCaptionUpdated: { updated in
+                let k = updated.lookbookPostKey
+                if let idx = entries.firstIndex(where: { $0.lookbookPostKey == k }) {
+                    entries[idx] = updated
+                }
             }
         )
         .padding(.bottom, lookbookSpacing)
@@ -1464,7 +1639,7 @@ private struct LookbookTopicFeedView: View {
             await MainActor.run {
                 followedCommentBoostUsernames = followedSet
                 entries = posts.map { post in
-                    LookbookEntry(from: post, localRecord: localRecords.first { r in r.id == post.id || r.imagePath == post.imageUrl })
+                    LookbookEntry(from: post, localRecord: lookbookFeedLocalRecord(for: post, records: localRecords))
                 }
                 feedLoading = false
                 feedError = nil
@@ -1945,7 +2120,7 @@ struct LookbookFeedPostActionBar: View {
     let entry: LookbookEntry
     let currentDisplayImageURL: String?
     let isBookmarked: Bool
-    /// When true, heart stays tappable but the numeric like count is hidden (local “Hide likes” for this post).
+    /// When true, heart stays tappable but the numeric like count is hidden (per-post or global lookbook setting).
     var hideLikeCount: Bool = false
     let onLikeTap: () -> Void
     let onCommentsTap: () -> Void
@@ -2033,8 +2208,8 @@ struct LookbookFeedPostActionBar: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.Spacing.md)
-        .padding(.top, 2)
-        .padding(.bottom, 6)
+        .padding(.top, 0)
+        .padding(.bottom, 0)
         .background(Theme.Colors.background)
     }
 }
@@ -2115,6 +2290,192 @@ private struct LookbookFeedRowRemoteImage: View {
     }
 }
 
+// MARK: - Lookbook feed caption (chunks + 2-line trim without tail ellipsis)
+
+fileprivate enum LookbookCaptionBodyChunk {
+    case plain(String)
+    case tag(String)
+}
+
+fileprivate func lookbookFeedCaptionBodyChunks(_ caption: String) -> [LookbookCaptionBodyChunk] {
+    var chunks: [LookbookCaptionBodyChunk] = []
+    var i = caption.startIndex
+    while i < caption.endIndex {
+        if caption[i] == "#" {
+            let start = i
+            i = caption.index(after: i)
+            while i < caption.endIndex, !caption[i].isWhitespace, caption[i] != "#" {
+                i = caption.index(after: i)
+            }
+            chunks.append(.tag(String(caption[start..<i])))
+        } else {
+            let start = i
+            while i < caption.endIndex, caption[i] != "#" {
+                i = caption.index(after: i)
+            }
+            let plain = String(caption[start..<i])
+            if !plain.isEmpty { chunks.append(.plain(plain)) }
+        }
+    }
+    return chunks
+}
+
+/// Matches `Theme.primaryColor` (#AB28B2).
+fileprivate let lookbookFeedCaptionHashtagUIColor = UIColor(red: 171 / 255, green: 40 / 255, blue: 178 / 255, alpha: 1)
+
+fileprivate func lookbookFeedCaptionParagraphStyle() -> NSParagraphStyle {
+    let p = NSMutableParagraphStyle()
+    // Slight extra line metrics so emoji aren’t clipped by tight UILabel/Text layout (cap ≤ ~3pt effective slack).
+    p.lineSpacing = 3
+    return p
+}
+
+fileprivate func lookbookFeedFullCaptionMutableAttributed(username: String, captionBody: String) -> NSMutableAttributedString {
+    let m = NSMutableAttributedString()
+    let bold = UIFont.systemFont(ofSize: 15, weight: .bold)
+    let reg = UIFont.systemFont(ofSize: 15, weight: .regular)
+    let primary = UIColor.label
+    m.append(NSAttributedString(string: username, attributes: [.font: bold, .foregroundColor: primary]))
+    m.append(NSAttributedString(string: "  ", attributes: [.font: reg, .foregroundColor: primary]))
+    for chunk in lookbookFeedCaptionBodyChunks(captionBody) {
+        switch chunk {
+        case .plain(let s):
+            m.append(NSAttributedString(string: s, attributes: [.font: reg, .foregroundColor: primary]))
+        case .tag(let s):
+            m.append(NSAttributedString(string: s, attributes: [.font: reg, .foregroundColor: lookbookFeedCaptionHashtagUIColor]))
+        }
+    }
+    let para = lookbookFeedCaptionParagraphStyle()
+    m.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: m.length))
+    return m
+}
+
+/// Trailing space for the grey fold control: intrinsic width at caption font size + ~8pt gap so body text does not touch “...more”.
+fileprivate func lookbookFeedCaptionFoldControlTrailingReserve() -> CGFloat {
+    let font = UIFont.systemFont(ofSize: 15, weight: .regular)
+    let gap: CGFloat = 8
+    let wMore = ceil((L10n.string("...more") as NSString).size(withAttributes: [.font: font]).width)
+    let wLess = ceil((L10n.string("...less") as NSString).size(withAttributes: [.font: font]).width)
+    return max(wMore, wLess) + gap
+}
+
+fileprivate func lookbookFeedCaptionBoundingHeight(_ attr: NSAttributedString, width: CGFloat) -> CGFloat {
+    guard width > 0, attr.length > 0 else { return 0 }
+    let rect = attr.boundingRect(
+        with: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude),
+        options: [.usesLineFragmentOrigin, .usesFontLeading],
+        context: nil
+    )
+    return ceil(rect.height)
+}
+
+/// Two-line cap for collapsed feed caption: **full width**, **no** Unicode "…" tail (the separate "...more" control covers overflow).
+fileprivate func lookbookFeedTrimCaptionAttributed(username: String, captionBody: String, width: CGFloat, maxLines: Int) -> NSAttributedString {
+    let full = lookbookFeedFullCaptionMutableAttributed(username: username, captionBody: captionBody)
+    let len = full.length
+    guard width > 1, len > 0, maxLines > 0 else { return full }
+
+    let reg = UIFont.systemFont(ofSize: 15, weight: .regular)
+    let cal = NSMutableAttributedString()
+    for lineIdx in 0..<maxLines {
+        if lineIdx > 0 {
+            cal.append(NSAttributedString(string: "\n", attributes: [.font: reg]))
+        }
+        cal.append(NSAttributedString(string: "Hg", attributes: [.font: reg]))
+    }
+    let capPara = lookbookFeedCaptionParagraphStyle()
+    cal.addAttribute(.paragraphStyle, value: capPara, range: NSRange(location: 0, length: cal.length))
+    let maxH = lookbookFeedCaptionBoundingHeight(cal, width: width)
+
+    func height(upTo utf16Count: Int) -> CGFloat {
+        let n = max(0, min(utf16Count, len))
+        guard n > 0 else { return 0 }
+        let sub = full.attributedSubstring(from: NSRange(location: 0, length: n))
+        return lookbookFeedCaptionBoundingHeight(sub, width: width)
+    }
+
+    if height(upTo: len) <= maxH { return full }
+
+    var lo = 0
+    var hi = len
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2
+        if height(upTo: mid) <= maxH {
+            lo = mid
+        } else {
+            hi = mid - 1
+        }
+    }
+
+    var end = lo
+    if end < len, end > 0 {
+        let ns = full.string as NSString
+        var i = end
+        let floor = max(0, end - 72)
+        while i > floor {
+            let ch = ns.character(at: i - 1)
+            if ch == 32 || ch == 10 || ch == 13 || ch == 9 || ch == 0x2028 || ch == 0x2029 {
+                end = i
+                break
+            }
+            i -= 1
+        }
+    }
+
+    return full.attributedSubstring(from: NSRange(location: 0, length: end))
+}
+
+private final class LookbookFeedCaptionSizingLabel: UILabel {
+    // UILabel used with preferredMaxLayoutWidth + sizeThatFits from the representable.
+}
+
+/// Collapsed, “read more” caption: measures at proposed width and trims to two lines without an ellipsis run.
+private struct LookbookFeedCollapsedCaptionLabel: UIViewRepresentable {
+    var username: String
+    var captionBody: String
+    /// When > 0, text wraps and trims to this width (e.g. row width minus fold control reserve). When0, uses the proposed width from SwiftUI.
+    var trimLayoutWidth: CGFloat
+
+    func makeUIView(context: Context) -> LookbookFeedCaptionSizingLabel {
+        let l = LookbookFeedCaptionSizingLabel()
+        l.numberOfLines = 0
+        l.lineBreakMode = .byWordWrapping
+        l.setContentCompressionResistancePriority(.required, for: .vertical)
+        l.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        return l
+    }
+
+    func updateUIView(_ uiView: LookbookFeedCaptionSizingLabel, context: Context) {
+        let layoutW = trimLayoutWidth > 0 ? trimLayoutWidth : uiView.preferredMaxLayoutWidth
+        guard layoutW > 0 else { return }
+        uiView.preferredMaxLayoutWidth = layoutW
+        uiView.attributedText = lookbookFeedTrimCaptionAttributed(
+            username: username,
+            captionBody: captionBody,
+            width: layoutW,
+            maxLines: 2
+        )
+    }
+
+    @available(iOS 16.0, *)
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: LookbookFeedCaptionSizingLabel, context: Context) -> CGSize? {
+        let rowW = max(1, proposal.width ?? UIView.layoutFittingExpandedSize.width)
+        let layoutW = trimLayoutWidth > 0 ? trimLayoutWidth : rowW
+        uiView.preferredMaxLayoutWidth = layoutW
+        let t = lookbookFeedTrimCaptionAttributed(username: username, captionBody: captionBody, width: layoutW, maxLines: 2)
+        uiView.attributedText = t
+        let h = uiView.sizeThatFits(CGSize(width: layoutW, height: UIView.layoutFittingExpandedSize.height)).height
+        return CGSize(width: rowW, height: max(1, h))
+    }
+}
+
+fileprivate struct LookbookFeedCaptionLineWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 // MARK: - Feed row (full-width media: natural aspect, no crop; like / comment / send, save trailing)
 struct LookbookFeedRowView: View {
     let entry: LookbookEntry
@@ -2127,6 +2488,10 @@ struct LookbookFeedRowView: View {
     let onLikeTap: (LookbookEntry) -> Void
     /// Remove from the current saved folder only (does not delete the post on the server).
     var onRemoveFromFolder: (() -> Void)? = nil
+    /// When set, owner can edit caption; receives merged entry after a successful save.
+    var onPostCaptionUpdated: ((LookbookEntry) -> Void)? = nil
+    /// Fullscreen grid → pager: suppress avatar `AsyncImage` cross-fade and disambiguate view identity.
+    var immersive: Bool = false
 
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
@@ -2141,6 +2506,11 @@ struct LookbookFeedRowView: View {
     @State private var latestCommentPreview: ServerLookbookComment?
     @State private var showSaveFolderSheet = false
     @State private var saveFeedbackToast: String?
+    /// Tagged-product pins + thumbnails (upload screen parity); hidden until user taps the grid affordance.
+    @State private var revealTaggedProductsOnImage = false
+    @State private var showEditPostSheet = false
+    @State private var lookbookCaptionExpanded = false
+    @State private var lookbookCaptionLineWidth: CGFloat = 0
 
     private let avatarSize: CGFloat = 40
     private let commentPreviewAvatarSize: CGFloat = 28
@@ -2205,6 +2575,10 @@ struct LookbookFeedRowView: View {
     private func styleSubtitle(for entry: LookbookEntry) -> String? {
         guard let first = entry.styles.first, !first.isEmpty else { return nil }
         return StyleSelectionView.displayName(for: first)
+    }
+
+    private var lookbookFeedPostTimeLabel: String {
+        LookbookCommentTimeFormatting.shortRelative(iso: entry.createdAt)
     }
 
     private var carouselImageURLs: [String] {
@@ -2278,6 +2652,10 @@ struct LookbookFeedRowView: View {
         }
         .frame(width: avatarSize, height: avatarSize)
         .clipShape(Circle())
+        .id("lookbook-poster-avatar-\(entry.lookbookImmersiveScrollKey)")
+        .transaction { txn in
+            if immersive { txn.disablesAnimations = true }
+        }
     }
 
     private var avatarPlaceholder: some View {
@@ -2401,11 +2779,6 @@ struct LookbookFeedRowView: View {
                 LookbookCarouselPageDots(pageIndex: carouselPageIndex, totalPages: carouselImageURLs.count)
             }
 
-            Rectangle()
-                .fill(Theme.Colors.glassBorder.opacity(0.35))
-                .frame(height: 1)
-                .frame(maxWidth: .infinity)
-
             LookbookFeedPostActionBar(
                 entry: entry,
                 currentDisplayImageURL: currentDisplayImageURL,
@@ -2418,6 +2791,79 @@ struct LookbookFeedRowView: View {
                 onBookmarkTap: { showSaveFolderSheet = true }
             )
             .zIndex(20)
+
+            if let cap = entry.caption?.trimmingCharacters(in: .whitespacesAndNewlines), !cap.isEmpty {
+                let sub = Theme.Typography.subheadline
+                let fullAttr = lookbookFeedFullCaptionMutableAttributed(username: entry.posterUsername, captionBody: cap)
+                let w = lookbookCaptionLineWidth
+                let trimAttr = w > 0
+                    ? lookbookFeedTrimCaptionAttributed(username: entry.posterUsername, captionBody: cap, width: w, maxLines: 2)
+                    : fullAttr
+                let overflowsTwoLines = w > 0
+                    ? trimAttr.length < fullAttr.length
+                    : Self.lookbookFeedCaptionLikelyExceedsTwoLines(cap)
+                let showFoldControl = overflowsTwoLines || lookbookCaptionExpanded
+                let foldReserve = (showFoldControl && !lookbookCaptionExpanded) ? lookbookFeedCaptionFoldControlTrailingReserve() : 0
+                let collapsedTrimW: CGFloat = {
+                    guard foldReserve > 0, w > foldReserve else { return 0 }
+                    return w - foldReserve
+                }()
+                VStack(alignment: .leading, spacing: 4) {
+                    ZStack(alignment: .bottomTrailing) {
+                        if lookbookCaptionExpanded {
+                            (
+                                Text(entry.posterUsername)
+                                    .font(sub)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(Theme.Colors.primaryText)
+                                    + Text("  ")
+                                    .font(sub)
+                                    .foregroundStyle(Theme.Colors.primaryText)
+                                    + lookbookFeedStyledCaptionBodyText(cap)
+                            )
+                            .multilineTextAlignment(.leading)
+                            .lineSpacing(3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            LookbookFeedCollapsedCaptionLabel(
+                                username: entry.posterUsername,
+                                captionBody: cap,
+                                trimLayoutWidth: collapsedTrimW
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if showFoldControl {
+                            Button {
+                                HapticManager.tap()
+                                lookbookCaptionExpanded.toggle()
+                            } label: {
+                                Text(lookbookCaptionExpanded ? L10n.string("...less") : L10n.string("...more"))
+                                    .font(sub)
+                                    .foregroundStyle(Theme.Colors.secondaryText)
+                                    .padding(.top, 2)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        GeometryReader { g in
+                            Color.clear.preference(key: LookbookFeedCaptionLineWidthKey.self, value: g.size.width)
+                        }
+                    )
+                    .onPreferenceChange(LookbookFeedCaptionLineWidthKey.self) { lookbookCaptionLineWidth = $0 }
+                    if !lookbookFeedPostTimeLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(lookbookFeedPostTimeLabel)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, 3)
+                .padding(.bottom, 4)
+            }
 
             latestCommentPreviewSection
         }
@@ -2469,11 +2915,25 @@ struct LookbookFeedRowView: View {
                 .environmentObject(authService)
             }
         }
+        .sheet(isPresented: $showEditPostSheet) {
+            NavigationStack {
+                LookbooksUploadView(editingEntry: entry, onEditComplete: { updated in
+                    onPostCaptionUpdated?(updated)
+                })
+                .environmentObject(authService)
+            }
+        }
         .task(id: "\(entry.lookbookPostKey)-\(entry.commentsCount)-\(lookbookFollowingSetFingerprint(followedCommentBoostUsernames))") {
             await refreshLatestCommentPreview()
         }
         .onChange(of: entry.id) { _, _ in
             carouselScrollId = 0
+        }
+        .onChange(of: entry.lookbookPostKey) { _, _ in
+            revealTaggedProductsOnImage = false
+        }
+        .onChange(of: entry.caption ?? "") { _, _ in
+            lookbookCaptionExpanded = false
         }
         .onChange(of: entry.imageUrls.count) { _, newCount in
             let idx = carouselPageIndex
@@ -2482,6 +2942,9 @@ struct LookbookFeedRowView: View {
             } else if idx >= newCount {
                 carouselScrollId = max(0, newCount - 1)
             }
+        }
+        .onChange(of: carouselPageIndex) { _, _ in
+            revealTaggedProductsOnImage = false
         }
         .alert(L10n.string("Delete this post?"), isPresented: $showDeletePostConfirm) {
             Button(L10n.string("Cancel"), role: .cancel) {}
@@ -2498,6 +2961,28 @@ struct LookbookFeedRowView: View {
             Button(L10n.string("OK"), role: .cancel) { deletePostErrorMessage = nil }
         } message: {
             Text(deletePostErrorMessage ?? "")
+        }
+    }
+
+    /// Heuristic: when true, collapsed caption shows a grey “...more” control (2-line cap).
+    private static func lookbookFeedCaptionLikelyExceedsTwoLines(_ s: String) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return false }
+        let lines = t.split(separator: "\n", omittingEmptySubsequences: false)
+        if lines.count >= 2 { return true }
+        return t.count > 88
+    }
+
+    /// Body text with `#hashtags` in primary accent; everything else in primary label color.
+    private func lookbookFeedStyledCaptionBodyText(_ caption: String) -> Text {
+        let font = Theme.Typography.subheadline
+        return lookbookFeedCaptionBodyChunks(caption).reduce(Text("")) { acc, chunk in
+            switch chunk {
+            case .plain(let s):
+                return acc + Text(s).font(font).foregroundStyle(Theme.Colors.primaryText)
+            case .tag(let s):
+                return acc + Text(s).font(font).foregroundStyle(Theme.primaryColor)
+            }
         }
     }
 
@@ -2518,6 +3003,14 @@ struct LookbookFeedRowView: View {
                     Label(L10n.string("Copy link"), systemImage: "link")
                 }
             }
+            if isCurrentUserPost, onPostCaptionUpdated != nil {
+                Button {
+                    HapticManager.tap()
+                    showEditPostSheet = true
+                } label: {
+                    Label(L10n.string("Edit post"), systemImage: "square.and.pencil")
+                }
+            }
             if isCurrentUserPost, let onOpenAnalytics {
                 Button {
                     HapticManager.tap()
@@ -2532,7 +3025,7 @@ struct LookbookFeedRowView: View {
                     hideLikeCountsStore.setHideLikeCount(!isHidingLikeCountForPost, forPostKey: entry.lookbookPostKey)
                 } label: {
                     Label(
-                        isHidingLikeCountForPost ? L10n.string("Show likes") : L10n.string("Hide likes"),
+                        isHidingLikeCountForPost ? L10n.string("Show likes") : L10n.string("Hide likes count"),
                         systemImage: isHidingLikeCountForPost ? "eye" : "eye.slash"
                     )
                 }
@@ -2562,8 +3055,8 @@ struct LookbookFeedRowView: View {
         let urls = carouselImageURLs
         Group {
             if urls.isEmpty {
-                // Local document, bundled name, or empty — `lookbookSandboxSingleMedia` resolves each case.
                 lookbookSandboxSingleMedia(urlString: "", documentPath: entry.documentImagePath)
+                    .overlay { lookbookFeedTaggedProductsOverlay() }
             } else if urls.count > 1 {
                 Color.clear
                     .aspectRatio(carouselSlotAspect, contentMode: .fit)
@@ -2571,28 +3064,31 @@ struct LookbookFeedRowView: View {
                         GeometryReader { geo in
                             let w = max(1, geo.size.width)
                             let h = max(1, geo.size.height)
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 0) {
-                                    LookbookScrollImmediateTouchesAnchor()
-                                        .frame(width: 0, height: 0)
-                                    ForEach(Array(urls.enumerated()), id: \.offset) { idx, urlString in
-                                        lookbookSandboxSingleMedia(
-                                            urlString: urlString,
-                                            documentPath: idx == 0 ? entry.documentImagePath : nil,
-                                            carouselPageWidth: w,
-                                            carouselPageHeight: h
-                                        )
-                                        .frame(width: w, height: h)
-                                        .clipped()
-                                        .id(idx)
+                            ZStack(alignment: .bottomTrailing) {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 0) {
+                                        LookbookScrollImmediateTouchesAnchor()
+                                            .frame(width: 0, height: 0)
+                                        ForEach(Array(urls.enumerated()), id: \.offset) { idx, urlString in
+                                            lookbookSandboxSingleMedia(
+                                                urlString: urlString,
+                                                documentPath: idx == 0 ? entry.documentImagePath : nil,
+                                                carouselPageWidth: w,
+                                                carouselPageHeight: h
+                                            )
+                                            .frame(width: w, height: h)
+                                            .clipped()
+                                            .id(idx)
+                                        }
                                     }
+                                    .scrollTargetLayout()
                                 }
-                                .scrollTargetLayout()
+                                .scrollTargetBehavior(.paging)
+                                .scrollPosition(id: $carouselScrollId, anchor: .leading)
+                                .frame(width: w, height: h)
+                                .clipped()
+                                lookbookFeedTaggedProductsChrome(width: w, height: h, slideIndex: carouselPageIndex)
                             }
-                            .scrollTargetBehavior(.paging)
-                            .scrollPosition(id: $carouselScrollId, anchor: .leading)
-                            .frame(width: w, height: h)
-                            .clipped()
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -2600,9 +3096,142 @@ struct LookbookFeedRowView: View {
                     .clipShape(Rectangle())
             } else {
                 lookbookSandboxSingleMedia(urlString: urls[0], documentPath: entry.documentImagePath)
+                    .overlay { lookbookFeedTaggedProductsOverlay() }
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Tag coordinates are normalized per carousel slide (`imageIndex`); `slideIndex` is zero-based.
+    private func lookbookFeedProductTagPinItems(forSlideIndex slide: Int) -> [(tag: LookbookTagData, snapshot: LookbookProductSnapshot)] {
+        guard let tags = entry.tags, !tags.isEmpty else { return [] }
+        let snaps = entry.productSnapshots ?? [:]
+        let slideTags = tags.filter { $0.imageIndex == slide }
+        return slideTags.compactMap { t -> (LookbookTagData, LookbookProductSnapshot)? in
+            let pid = t.productId.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !pid.isEmpty else { return nil }
+            if let s = snaps[pid] { return (t, s) }
+            if let s = snaps.first(where: { $0.key.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(pid) == .orderedSame })?.value {
+                return (t, s)
+            }
+            let placeholder = LookbookProductSnapshot(productId: pid, title: "\u{00A0}", imageUrl: nil)
+            return (t, placeholder)
+        }
+    }
+
+    private func lookbookFeedTaggedProductsOverlay() -> some View {
+        GeometryReader { geo in
+            lookbookFeedTaggedProductsChrome(width: geo.size.width, height: geo.size.height, slideIndex: 0)
+        }
+    }
+
+    @ViewBuilder
+    private func lookbookFeedTaggedProductsChrome(width: CGFloat, height: CGFloat, slideIndex: Int) -> some View {
+        let w = max(1, width)
+        let h = max(1, height)
+        let items = lookbookFeedProductTagPinItems(forSlideIndex: slideIndex)
+        ZStack {
+            Color.clear
+                .frame(width: w, height: h)
+                .allowsHitTesting(false)
+            if revealTaggedProductsOnImage {
+                ForEach(items, id: \.tag.clientId) { pair in
+                    lookbookFeedExpandedProductTagBadge(tag: pair.tag, snapshot: pair.snapshot, imageWidth: w, imageHeight: h)
+                }
+            }
+        }
+        .frame(width: w, height: h)
+        .overlay(alignment: .bottomTrailing) {
+            if entry.gridThumbnailTaggedProductCount > 0 {
+                Button {
+                    HapticManager.tap()
+                    revealTaggedProductsOnImage.toggle()
+                } label: {
+                    Image(systemName: revealTaggedProductsOnImage ? "xmark.circle.fill" : "bag.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(Color.black.opacity(0.5)))
+                }
+                .buttonStyle(.plain)
+                .padding(12)
+                .accessibilityLabel(revealTaggedProductsOnImage ? "Hide product tags" : "Show product tags")
+            }
+        }
+    }
+
+    /// Snapshot image for `AsyncImage` (absolute URL only).
+    private func lookbookFeedProductSnapshotImageURL(_ snapshot: LookbookProductSnapshot) -> URL? {
+        let raw = snapshot.imageUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !raw.isEmpty, let u = URL(string: raw), u.scheme != nil else { return nil }
+        return u
+    }
+
+    /// Same layout as upload tagging: orange anchor + thumbnail + title, positioned so the anchor sits on `(x,y)`.
+    private func lookbookFeedExpandedProductTagBadge(
+        tag: LookbookTagData,
+        snapshot: LookbookProductSnapshot,
+        imageWidth: CGFloat,
+        imageHeight: CGFloat
+    ) -> some View {
+        let pointerSize: CGFloat = 24
+        let thumbSize: CGFloat = 32
+        let cardWidth: CGFloat = 100
+        let spacing: CGFloat = 6
+        let totalWidth = pointerSize + spacing + cardWidth
+        let w = max(1, imageWidth)
+        let h = max(1, imageHeight)
+        return Button {
+            HapticManager.tap()
+            onProductTap(tag.productId)
+        } label: {
+            HStack(alignment: .center, spacing: spacing) {
+                Circle()
+                    .fill(Color.orange.opacity(0.9))
+                    .frame(width: pointerSize, height: pointerSize)
+                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                HStack(spacing: 6) {
+                    Group {
+                        if let url = lookbookFeedProductSnapshotImageURL(snapshot) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let img): img.resizable().scaledToFill()
+                                case .failure, .empty:
+                                    Rectangle()
+                                        .fill(Theme.Colors.secondaryBackground)
+                                        .overlay(Image(systemName: "photo").font(.caption2).foregroundColor(Theme.Colors.secondaryText))
+                                @unknown default: EmptyView()
+                                }
+                            }
+                        } else {
+                            Rectangle()
+                                .fill(Theme.Colors.secondaryBackground)
+                                .overlay(Image(systemName: "photo").font(.caption2).foregroundColor(Theme.Colors.secondaryText))
+                        }
+                    }
+                    .frame(width: thumbSize, height: thumbSize)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    Text(snapshot.title)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(Color.black.opacity(0.75))
+                .cornerRadius(8)
+                .frame(width: cardWidth, alignment: .leading)
+            }
+            .frame(width: totalWidth, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(snapshot.title)
+        .position(
+            x: w * CGFloat(tag.x) - pointerSize / 2 + totalWidth / 2,
+            y: h * CGFloat(tag.y)
+        )
     }
 
     @ViewBuilder
@@ -3573,12 +4202,7 @@ private struct LookbookSquareGridRemoteImage: View {
 private struct LookbookSquareGridThumbnail: View {
     let entry: LookbookEntry
 
-    /// Tags with a local product snapshot count as tagged products.
-    private var taggedProductCount: Int {
-        guard let tags = entry.tags, let snaps = entry.productSnapshots else { return 0 }
-        let ids = tags.map(\.productId).filter { snaps[$0] != nil }
-        return Set(ids).count
-    }
+    private var taggedProductCount: Int { entry.gridThumbnailTaggedProductCount }
 
     var body: some View {
         Color.clear
@@ -3917,23 +4541,11 @@ private struct LookbookFeedSearchView: View {
         .navigationTitle(L10n.string("Search"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.Colors.background, for: .navigationBar)
-        .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 0) {
-                Divider().opacity(0.35)
-                Button {
-                    HapticManager.tap()
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            PrimaryButtonBar {
+                PrimaryGlassButton(L10n.string("Done")) {
                     dismiss()
-                } label: {
-                    Text(L10n.string("Done"))
-                        .font(Theme.Typography.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.primaryColor)
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.sm)
-                .background(Theme.Colors.background)
             }
         }
     }
@@ -3960,12 +4572,14 @@ extension SavedLookbookPhoto {
             posterUsername: posterUsername,
             posterProfilePictureUrl: posterProfilePictureUrl,
             caption: caption,
+            createdAt: nil,
             likesCount: likesCount ?? 0,
             isLiked: isLiked ?? false,
             commentsCount: commentsCount ?? 0,
             productLinkClicks: 0,
             shopLinkClicks: 0,
             styles: styles ?? [],
+            serverTaggedProductCount: nil,
             tags: nil,
             productSnapshots: nil
         )
@@ -3987,6 +4601,315 @@ extension LookbookEntry: Hashable {
         hasher.combine(likesCount)
         hasher.combine(isLiked)
         hasher.combine(commentsCount)
+    }
+}
+
+// MARK: - Vertical immersive pager (UIKit)
+
+private final class LookbookIndexedPageHost: UIHostingController<AnyView> {
+    var pageIndex: Int = 0
+}
+
+// MARK: Full-feed vertical collection (replaces `UIPageViewController`, which only ever scrolls one adjacent page)
+
+private final class LookbookImmersiveHostCell: UICollectionViewCell {
+    static let reuseId = "LookbookImmersiveHostCell"
+
+    private(set) weak var embeddedHost: LookbookIndexedPageHost?
+
+    func embed(_ host: LookbookIndexedPageHost, parent: UIViewController) {
+        if embeddedHost === host {
+            host.view.frame = contentView.bounds
+            return
+        }
+        cleanup()
+        embeddedHost = host
+        if host.parent !== parent {
+            host.removeFromParent()
+            parent.addChild(host)
+        }
+        host.view.frame = contentView.bounds
+        host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        contentView.addSubview(host.view)
+        host.didMove(toParent: parent)
+    }
+
+    func cleanup() {
+        guard let host = embeddedHost else { return }
+        host.willMove(toParent: nil)
+        host.view.removeFromSuperview()
+        host.removeFromParent()
+        embeddedHost = nil
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        cleanup()
+    }
+}
+
+private final class LookbookImmersiveCollectionContainer: UIViewController {
+    private(set) var collectionView: UICollectionView!
+
+    override func loadView() {
+        view = UIView()
+        view.backgroundColor = .clear
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .vertical
+        layout.minimumLineSpacing = 0
+        layout.minimumInteritemSpacing = 0
+        collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        collectionView.backgroundColor = .clear
+        collectionView.alwaysBounceVertical = true
+        collectionView.showsVerticalScrollIndicator = false
+        collectionView.register(LookbookImmersiveHostCell.self, forCellWithReuseIdentifier: LookbookImmersiveHostCell.reuseId)
+        view.addSubview(collectionView)
+        NSLayoutConstraint.activate([
+            collectionView.topAnchor.constraint(equalTo: view.topAnchor),
+            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+    }
+
+    func applyScrollFeel(_ feel: LookbookImmersiveScrollFeel) {
+        let cv = collectionView!
+        // Item heights vary; sticky snapping is handled in `scrollViewWillEndDragging`.
+        cv.isPagingEnabled = false
+        cv.decelerationRate = feel.decelerationRate
+    }
+}
+
+private final class LookbookImmersiveCollectionCoordinator<Page: View>: NSObject, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout, UICollectionViewDataSourcePrefetching {
+    var currentPage: Binding<Int>
+    var pageCount: Int
+    var pageView: (Int) -> Page
+    var scrollFeel: LookbookImmersiveScrollFeel = .sticky
+    weak var collectionController: LookbookImmersiveCollectionContainer?
+    private var cache: [Int: LookbookIndexedPageHost] = [:]
+    var lastAppliedPageCount: Int = -1
+    /// Measured SwiftUI heights per post (capped at viewport height). Cleared when width or content changes.
+    private var itemHeights: [Int: CGFloat] = [:]
+    private var cachedLayoutWidth: CGFloat = 0
+
+    init(currentPage: Binding<Int>, pageCount: Int, pageView: @escaping (Int) -> Page) {
+        self.currentPage = currentPage
+        self.pageCount = pageCount
+        self.pageView = pageView
+    }
+
+    func attach(to controller: LookbookImmersiveCollectionContainer) {
+        collectionController = controller
+        // `collectionView` is created in `loadView`; SwiftUI can call `makeUIViewController` before the view loads.
+        controller.loadViewIfNeeded()
+        let cv = controller.collectionView!
+        cv.dataSource = self
+        cv.delegate = self
+        cv.prefetchDataSource = self
+    }
+
+    func purgeCacheIfNeeded() {
+        if pageCount <= 0 {
+            cache.removeAll()
+            itemHeights.removeAll()
+            return
+        }
+        cache = cache.filter { $0.key >= 0 && $0.key < pageCount }
+        itemHeights = itemHeights.filter { $0.key >= 0 && $0.key < pageCount }
+    }
+
+    private func noteWidthAndMaybeClearHeights(collectionView: UICollectionView) {
+        let w = collectionView.bounds.width
+        guard w > 0 else { return }
+        if abs(w - cachedLayoutWidth) > 0.5 {
+            cachedLayoutWidth = w
+            itemHeights.removeAll()
+        }
+    }
+
+    private func measurePageHeight(host: LookbookIndexedPageHost, width: CGFloat, cap: CGFloat) -> CGFloat {
+        host.view.bounds = CGRect(x: 0, y: 0, width: width, height: 0)
+        host.view.frame = host.view.bounds
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        let fitting = host.sizeThatFits(in: CGSize(width: width, height: UIView.layoutFittingExpandedSize.height))
+        let raw = ceil(fitting.height)
+        if raw < 2 { return cap }
+        return min(raw, cap)
+    }
+
+    func indexAtContentCenter(_ cv: UICollectionView) -> Int? {
+        let pt = CGPoint(x: cv.bounds.midX, y: cv.bounds.midY)
+        return cv.indexPathForItem(at: pt)?.item
+    }
+
+    func resetItemMeasurementCache() {
+        itemHeights.removeAll()
+    }
+
+    func viewControllerForPage(_ index: Int) -> LookbookIndexedPageHost {
+        if let existing = cache[index] {
+            existing.rootView = AnyView(pageView(index))
+            existing.pageIndex = index
+            return existing
+        }
+        let h = LookbookIndexedPageHost(rootView: AnyView(pageView(index)))
+        h.pageIndex = index
+        h.view.backgroundColor = .clear
+        cache[index] = h
+        return h
+    }
+
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        pageCount
+    }
+
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: LookbookImmersiveHostCell.reuseId, for: indexPath) as! LookbookImmersiveHostCell
+        let host = viewControllerForPage(indexPath.item)
+        if let parent = collectionController {
+            cell.embed(host, parent: parent)
+        }
+        return cell
+    }
+
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+        let w = collectionView.bounds.width
+        let cap = collectionView.bounds.height
+        guard w > 0, cap > 0 else { return CGSize(width: max(w, 1), height: max(cap, 1)) }
+        noteWidthAndMaybeClearHeights(collectionView: collectionView)
+        let idx = indexPath.item
+        if let h = itemHeights[idx] {
+            return CGSize(width: w, height: h)
+        }
+        let host = viewControllerForPage(idx)
+        let h = measurePageHeight(host: host, width: w, cap: cap)
+        itemHeights[idx] = h
+        return CGSize(width: w, height: h)
+    }
+
+    func scrollViewWillEndDragging(
+        _ scrollView: UIScrollView,
+        withVelocity velocity: CGPoint,
+        targetContentOffset: UnsafeMutablePointer<CGPoint>
+    ) {
+        guard scrollFeel == .sticky, let cv = scrollView as? UICollectionView else { return }
+        cv.layoutIfNeeded()
+        guard let layout = cv.collectionViewLayout as? UICollectionViewFlowLayout else { return }
+        let proposed = targetContentOffset.pointee.y
+        let maxY = max(0, scrollView.contentSize.height - scrollView.bounds.height)
+        var bestY = proposed
+        var bestDist: CGFloat = .infinity
+        for i in 0..<pageCount {
+            let path = IndexPath(item: i, section: 0)
+            guard let attr = layout.layoutAttributesForItem(at: path) else { continue }
+            let top = attr.frame.minY
+            let dist = abs(top - proposed)
+            if dist < bestDist {
+                bestDist = dist
+                bestY = top
+            }
+        }
+        targetContentOffset.pointee.y = min(max(0, bestY), maxY)
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        syncCurrentPage(from: scrollView)
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { syncCurrentPage(from: scrollView) }
+    }
+
+    private func syncCurrentPage(from scrollView: UIScrollView) {
+        guard pageCount > 0, let cv = scrollView as? UICollectionView else { return }
+        guard let idx = indexAtContentCenter(cv) else { return }
+        let clamped = min(max(0, idx), pageCount - 1)
+        if currentPage.wrappedValue != clamped {
+            currentPage.wrappedValue = clamped
+        }
+    }
+
+    func scrollToPage(_ index: Int, animated: Bool) {
+        guard let cv = collectionController?.collectionView, pageCount > 0 else { return }
+        let idx = min(max(0, index), pageCount - 1)
+        cv.layoutIfNeeded()
+        let path = IndexPath(item: idx, section: 0)
+        cv.scrollToItem(at: path, at: .top, animated: animated)
+    }
+
+    func refreshVisibleCells(in collectionView: UICollectionView) {
+        for path in collectionView.indexPathsForVisibleItems {
+            let i = path.item
+            guard i >= 0, i < pageCount else { continue }
+            if let host = cache[i] {
+                host.rootView = AnyView(pageView(i))
+            }
+        }
+    }
+
+    func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
+        for path in indexPaths {
+            let i = path.item
+            guard i >= 0, i < pageCount else { continue }
+            _ = viewControllerForPage(i)
+        }
+    }
+
+    func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {}
+}
+
+/// Vertical immersive feed: `UICollectionView` with **per-post intrinsic heights** (capped at viewport) so posts stack without black filler; smooth flings still work across cells.
+private struct LookbookVerticalImmersivePager<Page: View>: UIViewControllerRepresentable {
+    @Binding var currentPage: Int
+    var pageCount: Int
+    var scrollFeel: LookbookImmersiveScrollFeel
+    var pageView: (Int) -> Page
+
+    func makeCoordinator() -> LookbookImmersiveCollectionCoordinator<Page> {
+        LookbookImmersiveCollectionCoordinator(currentPage: $currentPage, pageCount: pageCount, pageView: pageView)
+    }
+
+    func makeUIViewController(context: Context) -> LookbookImmersiveCollectionContainer {
+        let vc = LookbookImmersiveCollectionContainer()
+        context.coordinator.attach(to: vc)
+        return vc
+    }
+
+    func updateUIViewController(_ vc: LookbookImmersiveCollectionContainer, context: Context) {
+        let c = context.coordinator
+        c.currentPage = $currentPage
+        c.pageCount = pageCount
+        c.pageView = pageView
+        c.scrollFeel = scrollFeel
+        c.purgeCacheIfNeeded()
+        vc.applyScrollFeel(scrollFeel)
+
+        guard pageCount > 0 else {
+            c.lastAppliedPageCount = 0
+            vc.collectionView.reloadData()
+            return
+        }
+
+        if c.lastAppliedPageCount != pageCount {
+            c.resetItemMeasurementCache()
+            c.lastAppliedPageCount = pageCount
+            vc.collectionView.reloadData()
+            vc.collectionView.layoutIfNeeded()
+            c.scrollToPage(min(max(currentPage, 0), pageCount - 1), animated: false)
+        } else {
+            guard let cv = vc.collectionView else { return }
+            if !cv.isDragging && !cv.isDecelerating {
+                c.refreshVisibleCells(in: cv)
+            }
+            if cv.isDragging || cv.isDecelerating { return }
+            let target = min(max(currentPage, 0), pageCount - 1)
+            let onIdx = c.indexAtContentCenter(cv) ?? target
+            if onIdx != target {
+                c.scrollToPage(target, animated: false)
+            }
+        }
     }
 }
 

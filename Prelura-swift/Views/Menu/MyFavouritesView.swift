@@ -7,6 +7,8 @@ struct MyFavouritesView: View {
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
     /// When true, opened from Shop All (e.g. Try Cart rules already apply from that flow).
     var fromShopAll: Bool = false
+    /// When true, only saved Lookbook folders (no product favourites tab or product API load).
+    var lookbookOnly: Bool = false
     @State private var shopAllBagToolbarActive = false
     @State private var favouritesSegment: Int = 0
     @State private var searchText: String = ""
@@ -32,7 +34,7 @@ struct MyFavouritesView: View {
         GridItem(.flexible(), spacing: Theme.Spacing.md)
     ]
 
-    private var isProductsTab: Bool { favouritesSegment == 0 }
+    private var isProductsTab: Bool { !lookbookOnly && favouritesSegment == 0 }
 
     private var filteredItems: [Item] {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
@@ -54,14 +56,16 @@ struct MyFavouritesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $favouritesSegment) {
-                Text(L10n.string("Products")).tag(0)
-                Text(L10n.string("Lookbook")).tag(1)
+            if !lookbookOnly {
+                Picker("", selection: $favouritesSegment) {
+                    Text(L10n.string("Products")).tag(0)
+                    Text(L10n.string("Lookbook")).tag(1)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.sm)
+                .padding(.bottom, Theme.Spacing.xs)
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.top, Theme.Spacing.sm)
-            .padding(.bottom, Theme.Spacing.xs)
 
             if isProductsTab {
                 productsTabContent
@@ -123,14 +127,17 @@ struct MyFavouritesView: View {
             }
         }
         .refreshable {
-            if isProductsTab {
+            if !lookbookOnly && isProductsTab {
                 await load(resetPage: true)
             }
         }
         .task {
-            await load(resetPage: true)
+            if !lookbookOnly {
+                await load(resetPage: true)
+            }
         }
         .onChange(of: favouritesSegment) { _, newValue in
+            guard !lookbookOnly else { return }
             if newValue == 0 {
                 lookbookFolderSelectionMode = false
                 selectedLookbookFolderIds.removeAll()
@@ -205,7 +212,7 @@ struct MyFavouritesView: View {
                             HomeItemCard(
                                 item: item,
                                 onLikeTap: { unfavourite(item) },
-                                squareImageSlot: true,
+                                naturalThumbnailAspect: true,
                                 showAddToBag: shopAllBagToolbarActive,
                                 onAddToBag: shopAllBagToolbarActive
                                     ? {
@@ -527,7 +534,13 @@ private struct SavedLookbookFavoritesFeedView: View {
                                             ? nil
                                             : {
                                                 removeConfirmPostId = model.entry.apiPostId
+                                            },
+                                        onPostCaptionUpdated: { updated in
+                                            let k = updated.lookbookPostKey
+                                            if let idx = feedEntries.firstIndex(where: { $0.lookbookPostKey == k }) {
+                                                feedEntries[idx] = updated
                                             }
+                                        }
                                     )
                                     .allowsHitTesting(!isSaveSelectionMode)
                                     .padding(.bottom, lookbookListRowBottomPadding)

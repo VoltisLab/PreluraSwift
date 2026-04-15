@@ -289,6 +289,8 @@ enum L10n {
         "Lookbook settings": "Ρυθμίσεις Lookbook",
         "Lookbook hub settings subtitle": "Προτιμήσεις και επιλογές για το Lookbook.",
         "Lookbook settings footer": "Εδώ θα εμφανίζονται επιλογές που αφορούν τις δημοσιεύσεις και την εμπειρία Lookbook.",
+        "Show lookbook shortcuts": "Εμφάνιση συντομεύσεων Lookbook",
+        "Hide lookbook shortcuts": "Απόκρυψη συντομεύσεων Lookbook",
         "Products": "Προϊόντα",
         "Photos": "Φωτογραφίες",
         "No saved Lookbook photos yet": "Δεν έχετε αποθηκεύσει φωτογραφίες Lookbook ακόμα",
@@ -298,6 +300,7 @@ enum L10n {
         "Photo": "Φωτογραφία",
         "Lookbook": "Lookbook",
         "No Lookbook posts yet": "Δεν υπάρχουν δημοσιεύσεις Lookbook ακόμα",
+        "Create a look from Lookbook — it will show up here.": "Δημιουργήστε ένα look από το Lookbook — θα εμφανιστεί εδώ.",
         "Search": "Αναζήτηση",
         "Lookbook post": "Δημοσίευση Lookbook",
         "Search topics, hashtags, styles…": "Αναζήτηση θεμάτων, hashtag, στυλ…",
@@ -308,6 +311,13 @@ enum L10n {
         "%d comments": "%d σχόλια",
         "Hide likes": "Απόκρυψη μου αρέσει",
         "Show likes": "Εμφάνιση μου αρέσει",
+        "Hide likes count": "Απόκρυψη αριθμού μου αρέσει",
+        "Hide all like counts": "Απόκρυψη όλων των αριθμών μου αρέσει",
+        "When this is on, like counts are hidden on all lookbook posts. On your own posts, open the more options menu on a post and choose Show likes to show the count for that post only.": "Όταν είναι ενεργό, οι αριθμοί μου αρέσει αποκρύπτονται σε όλες τις δημοσιεύσεις lookbook. Στις δικές σας δημοσιεύσεις, ανοίξτε το μενού περισσότερων επιλογών σε μια δημοσίευση και επιλέξτε «Εμφάνιση μου αρέσει» για να εμφανίσετε τον αριθμό μόνο σε εκείνη τη δημοσίευση.",
+        "Scroll": "Κύλιση",
+        "Sticky": "Σταθερό",
+        "Smooth": "Ομαλό",
+        "Scroll controls fullscreen Lookbook paging: Sticky snaps firmly between posts; Smooth allows a slightly looser glide.": "Η κύλιση ελέγχει την εμπειρία πλήρους οθόνης στο Lookbook: το Σταθερό κλειδώνει ανάμεσα στις δημοσιεύσεις· το Ομαλό επιτρέπει λίγο πιο ελεύθερη ολίσθηση.",
         "Add a comment": "Πρόσθεσε σχόλιο",
         "Send": "Αποστολή",
         "Reply": "Απάντηση",
@@ -323,6 +333,14 @@ enum L10n {
         "Grid view": "Προβολή πλέγματος",
         "Tap to reload": "Πατήστε για επανάφόρτωση",
         "Tag products": "Επισήμανση προϊόντων",
+        "Choose product": "Επιλογή προϊόντος",
+        "Add new product": "Προσθήκη νέου προϊόντος",
+        "Replace product": "Αντικατάσταση προϊόντος",
+        "View product": "Προβολή προϊόντος",
+        "Remove tag": "Αφαίρεση ετικέτας",
+        "Update post": "Ενημέρωση δημοσίευσης",
+        "Lookbook edits aren’t supported on this server yet. Deploy the updateLookbookPost API (see docs/lookbooks-backend-spec.md).": "Η επεξεργασία Lookbook δεν υποστηρίζεται ακόμα σε αυτόν τον διακομιστή. Αναπτύξτε το API updateLookbookPost (βλ. docs/lookbooks-backend-spec.md).",
+        "Updating tagged products isn’t available on this server yet. Your team can deploy setLookbookProductTags when ready.": "Η ενημέρωση επισημασμένων προϊόντων δεν είναι διαθέσιμη ακόμα. Η ομάδα μπορεί να αναπτύξει το setLookbookProductTags όταν είναι έτοιμη.",
 
         // Profile (Favourites used from Menu section)
         "Listings": "Αγγελίες",
@@ -841,10 +859,21 @@ extension L10n {
             }
             return L10n.string("Unable to connect. Please check your internet connection.")
         case .graphQLErrors(let errors):
+            if GraphQLClient.graphQLErrorsIndicateInvalidSession(errors) {
+                return ""
+            }
             guard let raw = errors.first?.message.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
                 return L10n.string("Something went wrong. Please try again.")
             }
             let lower = raw.lowercased()
+            if lower.contains("updatelookbookpost"),
+               lower.contains("cannot query field") || lower.contains("unknown field") {
+                return L10n.string("Lookbook edits aren’t supported on this server yet. Deploy the updateLookbookPost API (see docs/lookbooks-backend-spec.md).")
+            }
+            if lower.contains("setlookbookproducttags"),
+               lower.contains("cannot query field") || lower.contains("unknown field") {
+                return L10n.string("Updating tagged products isn’t available on this server yet. Your team can deploy setLookbookProductTags when ready.")
+            }
             if lower.contains("variable") && lower.contains("$") { return L10n.string("Something went wrong. Please try again.") }
             if lower.contains("syntax") || (lower.contains("graphql") && lower.contains("error")) {
                 return L10n.string("Something went wrong. Please try again.")

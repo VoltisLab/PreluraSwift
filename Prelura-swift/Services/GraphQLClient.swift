@@ -9,6 +9,39 @@ private func postAccountRestrictionRefreshIfNeeded(_ errors: [GraphQLErrorRespon
     }
 }
 
+/// When the server rejects the current JWT / session, log out centrally instead of showing a dead-end “Try again” banner.
+private func postAuthSessionInvalidShouldSignOutIfNeeded(_ errors: [GraphQLErrorResponse]) {
+    guard errors.contains(where: { GraphQLClient.graphQLMessageInvalidatesSession($0.message) }) else { return }
+    Task { @MainActor in
+        NotificationCenter.default.post(name: .wearhouseAuthSessionInvalidShouldSignOut, object: nil)
+    }
+}
+
+extension GraphQLClient {
+    /// Substrings aligned with common JWT / SimpleJWT / Django-GraphQL-JWT style errors (case-insensitive).
+    static func graphQLMessageInvalidatesSession(_ raw: String) -> Bool {
+        let m = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if m.isEmpty { return false }
+        let snippets = [
+            "token has been revoked",
+            "token has expired",
+            "token expired",
+            "jwt expired",
+            "signature has expired",
+            "refresh token is invalid",
+            "refresh token has expired",
+            "invalid refresh token",
+            "token is invalid",
+            "invalid token",
+        ]
+        return snippets.contains { m.contains($0) }
+    }
+
+    static func graphQLErrorsIndicateInvalidSession(_ errors: [GraphQLErrorResponse]) -> Bool {
+        errors.contains { graphQLMessageInvalidatesSession($0.message) }
+    }
+}
+
 class GraphQLClient {
     private let baseURL: URL
     private let session: URLSession
@@ -79,6 +112,7 @@ class GraphQLClient {
         
         if let errors = graphQLResponse.errors, !errors.isEmpty {
             postAccountRestrictionRefreshIfNeeded(errors)
+            postAuthSessionInvalidShouldSignOutIfNeeded(errors)
             throw GraphQLError.graphQLErrors(errors)
         }
         
@@ -130,6 +164,7 @@ class GraphQLClient {
         }
         if let errors = graphQLResponse.errors, !errors.isEmpty {
             postAccountRestrictionRefreshIfNeeded(errors)
+            postAuthSessionInvalidShouldSignOutIfNeeded(errors)
             throw GraphQLError.graphQLErrors(errors)
         }
         if !(200...299).contains(httpResponse.statusCode) {

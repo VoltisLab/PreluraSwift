@@ -18,6 +18,62 @@ enum LookbookFeedStore {
         save(list)
     }
 
+    /// Updates caption on a stored upload record when it matches `postId` (normalized UUID string).
+    static func updateCaption(forPostId postId: String, caption: String?) {
+        let key = LookbookPostIdFormatting.graphQLUUIDString(from: postId).lowercased()
+        guard !key.isEmpty else { return }
+        var newestFirst = load()
+        guard let idx = newestFirst.firstIndex(where: {
+            LookbookPostIdFormatting.graphQLUUIDString(from: $0.id).lowercased() == key
+        }) else { return }
+        var rec = newestFirst[idx]
+        rec.caption = caption
+        newestFirst[idx] = rec
+        save(newestFirst)
+    }
+
+    /// Merges edit results into a matching upload record, or appends one so styles/tags stay available on this device.
+    static func upsertAfterEdit(
+        postId: String,
+        serverPrimaryImageUrl: String,
+        caption: String?,
+        tags: [LookbookTagData],
+        styles: [String]?,
+        productSnapshots: [String: LookbookProductSnapshot]?,
+        imageUrls: [String]?
+    ) {
+        let key = LookbookPostIdFormatting.graphQLUUIDString(from: postId).lowercased()
+        guard !key.isEmpty else { return }
+        var newestFirst = load()
+        if let idx = newestFirst.firstIndex(where: {
+            LookbookPostIdFormatting.graphQLUUIDString(from: $0.id).lowercased() == key
+        }) {
+            var rec = newestFirst[idx]
+            rec.caption = caption
+            rec.tags = tags
+            if let s = styles { rec.styles = s.isEmpty ? nil : s }
+            rec.productSnapshots = productSnapshots
+            if let urls = imageUrls, urls.count > 1 {
+                rec.imageUrls = urls
+            }
+            newestFirst[idx] = rec
+            save(newestFirst)
+            return
+        }
+        let trimmedFirst = imageUrls?.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let primary = trimmedFirst.isEmpty ? serverPrimaryImageUrl : trimmedFirst
+        let rec = LookbookUploadRecord(
+            id: postId,
+            imagePath: primary,
+            imageUrls: (imageUrls?.count ?? 0) > 1 ? imageUrls : nil,
+            tags: tags,
+            caption: caption,
+            styles: styles,
+            productSnapshots: productSnapshots
+        )
+        append(rec)
+    }
+
     /// All uploaded records to show in the lookbook feed, newest first.
     static func load() -> [LookbookUploadRecord] {
         guard let data = defaults.data(forKey: feedKey),

@@ -42,23 +42,28 @@ struct HashtagCaptionField: View {
                         Text(placeholder)
                             .font(Theme.Typography.body)
                             .foregroundColor(Theme.Colors.secondaryText)
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .padding(.vertical, Theme.Spacing.md)
+                            .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                            .padding(.vertical, Theme.TextInput.insetVertical)
                     }
                     HashtagTextEditorRepresentable(text: $text, primaryColor: UIColor(Theme.primaryColor))
                         .frame(minHeight: minLines > 1 ? CGFloat(minLines) * 24 : 44)
-                        .padding(Theme.Spacing.sm)
                 }
                 .background(Theme.Colors.secondaryBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 30))
+                .writingToolsBehavior(.disabled)
+                .writingToolsAffordanceVisibility(.hidden)
             } else {
                 HashtagTextFieldRepresentable(text: $text, placeholder: placeholder, primaryColor: UIColor(Theme.primaryColor))
                     .frame(height: 44)
-                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
+                    .padding(.vertical, Theme.TextInput.insetVerticalCompact)
                     .background(Theme.Colors.secondaryBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 30))
+                    .writingToolsBehavior(.disabled)
+                    .writingToolsAffordanceVisibility(.hidden)
             }
         }
+        .writingToolsAffordanceVisibility(.hidden)
     }
 }
 
@@ -77,10 +82,14 @@ private struct HashtagTextFieldRepresentable: UIViewRepresentable {
         field.attributedPlaceholder = NSAttributedString(string: placeholder, attributes: [.foregroundColor: UIColor.secondaryLabel])
         field.backgroundColor = .clear
         field.inputAccessoryView = lookbookCaptionKeyboardAccessory(target: context.coordinator, action: #selector(Coordinator.dismissKeyboard))
+        field.writingToolsBehavior = .none
+        field.inlinePredictionType = .no
         return field
     }
 
     func updateUIView(_ uiView: UITextField, context: Context) {
+        uiView.writingToolsBehavior = .none
+        uiView.inlinePredictionType = .no
         if uiView.text != text {
             uiView.attributedText = Self.attributedString(for: text, primaryColor: primaryColor)
         }
@@ -136,16 +145,25 @@ private struct HashtagTextEditorRepresentable: UIViewRepresentable {
         tv.font = UIFont.preferredFont(forTextStyle: .body)
         tv.textColor = UIColor.label
         tv.backgroundColor = .clear
-        tv.textContainerInset = .zero
+        let insetH = Theme.TextInput.insetHorizontal
+        let insetV = Theme.TextInput.insetVertical
+        tv.textContainerInset = UIEdgeInsets(top: insetV, left: insetH, bottom: insetV, right: insetH)
         tv.textContainer.lineFragmentPadding = 0
         tv.inputAccessoryView = lookbookCaptionKeyboardAccessory(
             target: context.coordinator,
             action: #selector(Coordinator.dismissKeyboard)
         )
+        // Avoids the system Writing Tools floating control (blue check) over the caption field.
+        tv.writingToolsBehavior = .none
+        tv.isFindInteractionEnabled = false
+        tv.inlinePredictionType = .no
         return tv
     }
 
     func updateUIView(_ uiView: UITextView, context: Context) {
+        uiView.writingToolsBehavior = .none
+        uiView.inlinePredictionType = .no
+        if context.coordinator.isEditing { return }
         if uiView.text != text {
             let sel = uiView.selectedTextRange
             uiView.attributedText = HashtagTextFieldRepresentable.attributedString(for: text, primaryColor: primaryColor)
@@ -158,6 +176,15 @@ private struct HashtagTextEditorRepresentable: UIViewRepresentable {
     class Coordinator: NSObject, UITextViewDelegate {
         var parent: HashtagTextEditorRepresentable
         init(_ parent: HashtagTextEditorRepresentable) { self.parent = parent }
+        /// Avoids SwiftUI `updateUIView` overwriting the text view mid-edit (drops characters / caption not saved).
+        var isEditing: Bool = false
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            textView.writingToolsBehavior = .none
+            textView.inlinePredictionType = .no
+            isEditing = true
+        }
+        func textViewDidEndEditing(_ textView: UITextView) { isEditing = false }
 
         func textViewDidChange(_ textView: UITextView) {
             parent.text = textView.text ?? ""
@@ -172,10 +199,44 @@ private struct HashtagTextEditorRepresentable: UIViewRepresentable {
 // MARK: - Models
 
 struct LookbookTagData: Codable, Identifiable, Equatable {
-    var id: String { "\(productId)_\(x)_\(y)" }
-    let productId: String
-    let x: Double
-    let y: Double
+    /// Stable id for `ForEach` / drag — must not change when `x`/`y` update (otherwise gestures break).
+    let clientId: String
+    var productId: String
+    var x: Double
+    var y: Double
+    /// Zero-based index of the carousel slide this pin belongs to (matches server `imageIndex`).
+    var imageIndex: Int
+    var id: String { clientId }
+
+    init(clientId: String = UUID().uuidString, productId: String, x: Double, y: Double, imageIndex: Int = 0) {
+        self.clientId = clientId
+        self.productId = productId
+        self.x = x
+        self.y = y
+        self.imageIndex = imageIndex
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case clientId, productId, x, y, imageIndex
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.clientId = try c.decodeIfPresent(String.self, forKey: .clientId) ?? UUID().uuidString
+        self.productId = try c.decode(String.self, forKey: .productId)
+        self.x = try c.decode(Double.self, forKey: .x)
+        self.y = try c.decode(Double.self, forKey: .y)
+        self.imageIndex = try c.decodeIfPresent(Int.self, forKey: .imageIndex) ?? 0
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(clientId, forKey: .clientId)
+        try c.encode(productId, forKey: .productId)
+        try c.encode(x, forKey: .x)
+        try c.encode(y, forKey: .y)
+        try c.encode(imageIndex, forKey: .imageIndex)
+    }
 }
 
 /// Minimal product info for showing tagged thumbnails on lookbook feed (stored with upload).
@@ -297,6 +358,9 @@ enum LookbookUploadCropPreset: Int, CaseIterable, Identifiable, Equatable {
 struct LookbooksUploadView: View {
     @EnvironmentObject var authService: AuthService
     @Environment(\.dismiss) private var dismiss
+    /// When set, the screen edits an existing post (same fields as upload, prefilled; primary action saves).
+    var editingEntry: LookbookEntry? = nil
+    var onEditComplete: ((LookbookEntry) -> Void)? = nil
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var selectedImages: [UIImage] = []
     /// Photos straight from the picker; cropped into `selectedImages` via `showCropFlow`.
@@ -317,7 +381,9 @@ struct LookbooksUploadView: View {
     /// Picker sheet is presented from this level so it is not nested under `.fullScreenCover` (nested sheets often fail to appear).
     @State private var showLookbookTagProductPicker = false
     @State private var lookbookTagPickedProduct: Item?
+    @State private var editRemoteURLs: [URL] = []
     private let userService = UserService()
+    private let productService = ProductService()
 
     private static let maxStylePills = 3
     private static let maxPhotosPerPost = 10
@@ -329,6 +395,8 @@ struct LookbooksUploadView: View {
         case failed(String)
     }
 
+    private var isEditMode: Bool { editingEntry != nil }
+
     var body: some View {
         GeometryReader { screenGeo in
             let photoPickerMinHeight = max(220, screenGeo.size.height * 0.5)
@@ -336,55 +404,109 @@ struct LookbooksUploadView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         // Upload banner: full width, placeholder or selected image (~half screen tall)
-                        PhotosPicker(
-                            selection: $selectedItems,
-                            maxSelectionCount: Self.maxPhotosPerPost,
-                            matching: .images,
-                            photoLibrary: .shared()
-                        ) {
-                            Group {
-                                if selectedImages.count == 1, let image = selectedImages.first {
-                                    Image(uiImage: image)
-                                        .resizable()
-                                        .scaledToFit()
+                        Group {
+                            if isEditMode {
+                                Group {
+                                    if editRemoteURLs.count == 1, let u = editRemoteURLs.first {
+                                        AsyncImage(url: u) { phase in
+                                            switch phase {
+                                            case .success(let img):
+                                                img.resizable().scaledToFit()
+                                            case .failure, .empty:
+                                                lookbookEditRemotePlaceholder
+                                            @unknown default:
+                                                lookbookEditRemotePlaceholder
+                                            }
+                                        }
                                         .frame(maxWidth: .infinity)
                                         .frame(minHeight: photoPickerMinHeight)
-                                } else if selectedImages.count > 1 {
-                                    TabView {
-                                        ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, image in
+                                    } else if editRemoteURLs.count > 1 {
+                                        TabView {
+                                            ForEach(Array(editRemoteURLs.enumerated()), id: \.offset) { _, u in
+                                                AsyncImage(url: u) { phase in
+                                                    switch phase {
+                                                    case .success(let img):
+                                                        img.resizable().scaledToFit()
+                                                    case .failure, .empty:
+                                                        lookbookEditRemotePlaceholder
+                                                    @unknown default:
+                                                        lookbookEditRemotePlaceholder
+                                                    }
+                                                }
+                                                .frame(maxWidth: .infinity)
+                                            }
+                                        }
+                                        .tabViewStyle(.page(indexDisplayMode: .automatic))
+                                        .frame(minHeight: photoPickerMinHeight)
+                                    } else {
+                                        lookbookEditRemotePlaceholder
+                                            .frame(maxWidth: .infinity, minHeight: photoPickerMinHeight)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .background(Theme.Colors.secondaryBackground)
+                            } else {
+                                PhotosPicker(
+                                    selection: $selectedItems,
+                                    maxSelectionCount: Self.maxPhotosPerPost,
+                                    matching: .images,
+                                    photoLibrary: .shared()
+                                ) {
+                                    Group {
+                                        if selectedImages.count == 1, let image = selectedImages.first {
                                             Image(uiImage: image)
                                                 .resizable()
                                                 .scaledToFit()
                                                 .frame(maxWidth: .infinity)
+                                                .frame(minHeight: photoPickerMinHeight)
+                                        } else if selectedImages.count > 1 {
+                                            TabView {
+                                                ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, image in
+                                                    Image(uiImage: image)
+                                                        .resizable()
+                                                        .scaledToFit()
+                                                        .frame(maxWidth: .infinity)
+                                                }
+                                            }
+                                            .tabViewStyle(.page(indexDisplayMode: .automatic))
+                                            .frame(minHeight: photoPickerMinHeight)
+                                        } else {
+                                            VStack(spacing: Theme.Spacing.md) {
+                                                Image(systemName: "photo.badge.plus")
+                                                    .font(.system(size: 44))
+                                                    .foregroundStyle(Theme.Colors.secondaryText)
+                                                Text("Tap to choose photos")
+                                                    .font(Theme.Typography.body)
+                                                    .foregroundColor(Theme.Colors.secondaryText)
+                                                Text("Up to \(Self.maxPhotosPerPost) — shows as one carousel post")
+                                                    .font(Theme.Typography.caption)
+                                                    .foregroundColor(Theme.Colors.secondaryText)
+                                            }
+                                            .frame(maxWidth: .infinity, minHeight: photoPickerMinHeight)
+                                            .background(Theme.Colors.secondaryBackground)
                                         }
                                     }
-                                    .tabViewStyle(.page(indexDisplayMode: .automatic))
+                                    .frame(maxWidth: .infinity)
                                     .frame(minHeight: photoPickerMinHeight)
-                                } else {
-                                    VStack(spacing: Theme.Spacing.md) {
-                                        Image(systemName: "photo.badge.plus")
-                                            .font(.system(size: 44))
-                                            .foregroundStyle(Theme.Colors.secondaryText)
-                                        Text("Tap to choose photos")
-                                            .font(Theme.Typography.body)
-                                            .foregroundColor(Theme.Colors.secondaryText)
-                                        Text("Up to \(Self.maxPhotosPerPost) — shows as one carousel post")
-                                            .font(Theme.Typography.caption)
-                                            .foregroundColor(Theme.Colors.secondaryText)
-                                    }
-                                    .frame(maxWidth: .infinity, minHeight: photoPickerMinHeight)
-                                    .background(Theme.Colors.secondaryBackground)
+                                    .contentShape(Rectangle())
+                                }
+                                .onChange(of: selectedItems) { _, newValue in
+                                    Task { await loadImages(from: newValue) }
                                 }
                             }
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: photoPickerMinHeight)
-                            .contentShape(Rectangle())
-                        }
-                        .onChange(of: selectedItems) { _, newValue in
-                            Task { await loadImages(from: newValue) }
                         }
 
-                        if !selectedImages.isEmpty {
+                        HashtagCaptionField(
+                            label: "Caption",
+                            placeholder: "Add a caption (optional)",
+                            text: $caption,
+                            minLines: 3,
+                            maxLines: 6
+                        )
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.top, Theme.Spacing.md)
+
+                        if !selectedImages.isEmpty || isEditMode {
                         // Tagged products (shown after returning from Tag screen)
                         if !taggedProductItems.isEmpty {
                             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
@@ -393,7 +515,7 @@ struct LookbooksUploadView: View {
                                     .fontWeight(.medium)
                                     .foregroundColor(Theme.Colors.primaryText)
                                 ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: Theme.Spacing.sm) {
+                                    HStack(alignment: .top, spacing: Theme.Spacing.sm) {
                                         ForEach(taggedProductItems, id: \.id) { item in
                                             taggedProductChip(item)
                                         }
@@ -440,16 +562,6 @@ struct LookbooksUploadView: View {
                         }
                         .padding(.horizontal, Theme.Spacing.md)
                         .padding(.top, Theme.Spacing.md)
-
-                        HashtagCaptionField(
-                            label: "Caption",
-                            placeholder: "Add a caption (optional)",
-                            text: $caption,
-                            minLines: 3,
-                            maxLines: 6
-                        )
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.top, Theme.Spacing.md)
                     }
 
                         Color.clear.frame(height: 24)
@@ -467,13 +579,23 @@ struct LookbooksUploadView: View {
 
                 PrimaryButtonBar {
                     VStack(spacing: Theme.Spacing.sm) {
-                        PrimaryGlassButton(
-                            "Upload",
-                            isEnabled: !selectedImages.isEmpty && !uploadState.uploading,
-                            isLoading: uploadState.uploading,
-                            action: uploadImage
+                        BorderGlassButton(
+                            L10n.string("Tag products"),
+                            isEnabled: !selectedImages.isEmpty || !editRemoteURLs.isEmpty,
+                            action: { showTagScreen = true }
                         )
-                        BorderGlassButton(L10n.string("Tag products"), isEnabled: !selectedImages.isEmpty, action: { showTagScreen = true })
+                        PrimaryGlassButton(
+                            isEditMode ? L10n.string("Update post") : "Upload",
+                            isEnabled: (isEditMode ? !editRemoteURLs.isEmpty : !selectedImages.isEmpty) && !uploadState.uploading,
+                            isLoading: uploadState.uploading,
+                            action: {
+                                if isEditMode {
+                                    Task { await saveLookbookEdits() }
+                                } else {
+                                    uploadImage()
+                                }
+                            }
+                        )
                     }
                 }
             }
@@ -481,6 +603,8 @@ struct LookbooksUploadView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
+        .writingToolsBehavior(.disabled)
+        .writingToolsAffordanceVisibility(.hidden)
         .overlay {
             if uploadState.uploading {
                 Color.black.opacity(0.5)
@@ -512,9 +636,20 @@ struct LookbooksUploadView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: uploadState.uploading)
         .animation(.easeInOut(duration: 0.3), value: showSuccessBanner)
-        .navigationTitle(L10n.string("Lookbook upload"))
+        .navigationTitle(isEditMode ? L10n.string("Edit post") : L10n.string("Lookbook upload"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if isEditMode {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.string("Cancel")) { dismiss() }
+                        .disabled(uploadState.uploading)
+                }
+            }
+        }
         .toolbar(.hidden, for: .tabBar)
+        .task(id: editingEntry?.id) {
+            await hydrateEditingEntry()
+        }
         .fullScreenCover(isPresented: $showCropFlow) {
             Group {
                 if !rawPickerImages.isEmpty, cropQueueIndex < rawPickerImages.count {
@@ -559,10 +694,10 @@ struct LookbooksUploadView: View {
             }
         }
         .fullScreenCover(isPresented: $showTagScreen) {
-            if let image = selectedImages.first {
+            if !selectedImages.isEmpty || !editRemoteURLs.isEmpty {
                 LookbookTagProductsView(
-                    image: image,
-                    imageURL: uploadedRecord.flatMap { lookbookImageURL($0.imagePath) },
+                    images: selectedImages.isEmpty ? nil : selectedImages,
+                    imageURLs: editRemoteURLs.isEmpty ? nil : editRemoteURLs,
                     imageId: tagSessionId,
                     initialTags: taggedTags,
                     showProductPicker: $showLookbookTagProductPicker,
@@ -582,8 +717,104 @@ struct LookbooksUploadView: View {
         }
     }
 
+    private var lookbookEditRemotePlaceholder: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: "photo")
+                .font(.system(size: 44))
+                .foregroundStyle(Theme.Colors.secondaryText)
+            Text(L10n.string("Could not load image"))
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.secondaryText)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @MainActor
+    private func hydrateEditingEntry() async {
+        guard let entry = editingEntry else { return }
+        caption = entry.caption ?? ""
+        selectedStylePills = Set(entry.styles.prefix(Self.maxStylePills))
+        taggedTags = entry.tags ?? []
+        editRemoteURLs = entry.imageUrls.compactMap { s in
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty, let u = URL(string: t) else { return nil }
+            return u
+        }
+        tagSessionId = entry.apiPostId
+        await rebuildTaggedProductItemsForEdit()
+    }
+
+    @MainActor
+    private func rebuildTaggedProductItemsForEdit() async {
+        var items: [Item] = []
+        var seen = Set<String>()
+        for tag in taggedTags {
+            let pid = tag.productId.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !pid.isEmpty, !seen.contains(pid) else { continue }
+            seen.insert(pid)
+            if let intId = Int(pid), let item = try? await productService.getProduct(id: intId) {
+                items.append(item)
+            }
+        }
+        taggedProductItems = items
+    }
+
+    @MainActor
+    private func saveLookbookEdits() async {
+        guard let entry = editingEntry, authService.isAuthenticated else {
+            uploadState = .failed(L10n.string("Could not save. Try again."))
+            return
+        }
+        uploadState = .uploading
+        let captionRaw = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cap = ProfanityFilter.sanitize(captionRaw)
+        let toSend: String? = cap.isEmpty ? nil : cap
+        let client = GraphQLClient()
+        client.setAuthToken(authService.authToken)
+        let service = LookbookService(client: client)
+        service.setAuthToken(authService.authToken)
+        let snapshots = buildProductSnapshots()
+        let stylesArr = Array(selectedStylePills)
+        do {
+            userService.updateAuthToken(authService.authToken)
+            if ProfanityFilter.maskingWouldChange(captionRaw) {
+                _ = try? await userService.recordProfanityUsage(
+                    channel: "lookbook_caption_edit",
+                    relatedConversationId: nil,
+                    sanitizedSnippet: cap
+                )
+            }
+            let post = try await service.saveLookbookPostEdits(
+                postId: entry.apiPostId,
+                caption: toSend,
+                tags: taggedTags,
+                productSnapshots: snapshots.isEmpty ? nil : snapshots
+            )
+            LookbookFeedStore.updateCaption(forPostId: post.id, caption: toSend)
+            LookbookFeedStore.upsertAfterEdit(
+                postId: post.id,
+                serverPrimaryImageUrl: post.imageUrl,
+                caption: toSend,
+                tags: taggedTags,
+                styles: stylesArr.isEmpty ? nil : stylesArr,
+                productSnapshots: snapshots.isEmpty ? nil : snapshots,
+                imageUrls: entry.imageUrls
+            )
+            let localRecords = LookbookFeedStore.load()
+            let local = lookbookFeedLocalRecord(for: post, records: localRecords)
+            let merged = LookbookEntry(from: post, localRecord: local)
+            SavedLookbookFavoritesStore.shared.updateCaptionForSavedPost(postId: merged.apiPostId, caption: merged.caption)
+            onEditComplete?(merged)
+            uploadState = .idle
+            HapticManager.success()
+            dismiss()
+        } catch {
+            uploadState = .failed(L10n.userFacingError(error))
+        }
+    }
+
     private func taggedProductChip(_ item: Item) -> some View {
-        VStack(spacing: 4) {
+        VStack(alignment: .center, spacing: 4) {
             Group {
                 if let urlString = item.imageURLs.first, let url = URL(string: urlString) {
                     AsyncImage(url: url) { phase in
@@ -605,7 +836,7 @@ struct LookbooksUploadView: View {
                 .foregroundColor(Theme.Colors.primaryText)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
-                .frame(width: 64)
+                .frame(width: 64, height: 32, alignment: .top)
         }
     }
 
@@ -690,10 +921,17 @@ struct LookbooksUploadView: View {
     private func buildProductSnapshots() -> [String: LookbookProductSnapshot] {
         return Dictionary(uniqueKeysWithValues: taggedProductItems.compactMap { item -> (String, LookbookProductSnapshot)? in
             guard let productId = item.productId, !productId.isEmpty else { return nil }
+            let thumb = item.listDisplayImageURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let firstFull = item.imageURLs.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let imageUrl: String? = {
+                if !thumb.isEmpty { return thumb }
+                if !firstFull.isEmpty { return firstFull }
+                return nil
+            }()
             return (productId, LookbookProductSnapshot(
                 productId: productId,
                 title: item.title,
-                imageUrl: item.imageURLs.first
+                imageUrl: imageUrl
             ))
         })
     }
@@ -734,7 +972,12 @@ struct LookbooksUploadView: View {
                 guard let firstUrl = urls.first else {
                     throw NSError(domain: "LookbooksUpload", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not upload images"])
                 }
-                let post = try await service.createLookbook(imageUrl: firstUrl, caption: cap.isEmpty ? nil : cap)
+                let post = try await service.createLookbook(
+                    imageUrl: firstUrl,
+                    caption: cap.isEmpty ? nil : cap,
+                    tags: tags.isEmpty ? nil : tags,
+                    productSnapshots: snapshots.isEmpty ? nil : snapshots
+                )
                 let record = LookbookUploadRecord(
                     id: post.id,
                     imagePath: post.imageUrl,
@@ -1075,8 +1318,10 @@ private struct ImageFramePreferenceKey: PreferenceKey {
 // MARK: - Tag products (full-screen): draggable dot + Tag product button
 
 struct LookbookTagProductsView: View {
-    var image: UIImage?
-    var imageURL: URL?
+    /// Cropped local slides (new upload).
+    var images: [UIImage]? = nil
+    /// Remote slides (e.g. edit post).
+    var imageURLs: [URL]? = nil
     let imageId: String
     let initialTags: [LookbookTagData]
     @Binding var showProductPicker: Bool
@@ -1089,56 +1334,103 @@ struct LookbookTagProductsView: View {
     @State private var tags: [LookbookTagData] = []
     @State private var resolvedItems: [String: Item] = [:]
     @State private var dotPosition: CGPoint = CGPoint(x: 0.5, y: 0.5)
+    @State private var selectedTagClientId: String?
     @State private var selectedItemForDetail: Item?
     @State private var imageFrame: CGRect = .zero
+    @State private var pageIndex: Int = 0
 
     private let productService = ProductService()
+
+    private var pageCount: Int {
+        if let imgs = images, !imgs.isEmpty { return imgs.count }
+        if let urls = imageURLs, !urls.isEmpty { return urls.count }
+        return 0
+    }
+
+    /// `imageFrame` is in `.named("lookbookContainer")`. DragGesture `location` on small `.position()`-ed views is often wrong in named space; use global + this rect for accurate hit mapping.
+    private func imageFrameInGlobal(geo: GeometryProxy) -> CGRect {
+        let containerGlobal = geo.frame(in: .global)
+        return CGRect(
+            x: containerGlobal.minX + imageFrame.minX,
+            y: containerGlobal.minY + imageFrame.minY,
+            width: imageFrame.width,
+            height: imageFrame.height
+        )
+    }
+
+    private var chooseProductButtonTitle: String {
+        if selectedTagClientId != nil { return L10n.string("Replace product") }
+        if tags.isEmpty { return L10n.string("Choose product") }
+        return L10n.string("Add new product")
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                GeometryReader { geo in
-                    ZStack(alignment: .topLeading) {
-                        imageContent(geo: geo)
-                            .frame(width: geo.size.width, height: geo.size.height)
-                            .contentShape(Rectangle())
-                            .onTapGesture { showProductPicker = true }
-                            .coordinateSpace(name: "lookbookContainer")
-                            .onPreferenceChange(ImageFramePreferenceKey.self) { imageFrame = $0 }
-
-                        if imageFrame != .zero {
-                            // Dot first so product badges are hit-tested on top (otherwise only the placement dot could be dragged).
-                            draggableDot(geo: geo)
-                            ForEach(tags) { tag in
-                                if let item = resolvedItems[tag.productId] {
-                                    lookbookTagBadge(tag: tag, item: item, imageFrame: imageFrame) { newX, newY in
-                                        updateTagPosition(tag: tag, newX: newX, newY: newY)
-                                    }
-                                }
-                            }
+                Group {
+                    if pageCount == 0 {
+                        Text("No image")
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        GeometryReader { geo in
+                            tagLayer(geo: geo, page: pageIndex)
                         }
+                        .ignoresSafeArea()
+                        .animation(.easeInOut(duration: 0.2), value: pageIndex)
                     }
-                    .frame(width: geo.size.width, height: geo.size.height)
                 }
-                .ignoresSafeArea()
 
                 VStack {
-                    HStack {
-                        Spacer()
-                        Button(action: onDismiss) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 28))
-                                .foregroundStyle(.white)
-                                .shadow(color: .black.opacity(0.5), radius: 2)
+                    ZStack {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            if pageCount > 1 {
+                                Button {
+                                    withAnimation { pageIndex = max(0, pageIndex - 1) }
+                                } label: {
+                                    Image(systemName: "chevron.left.circle.fill")
+                                        .font(.system(size: 28))
+                                        .foregroundStyle(.white)
+                                        .shadow(color: .black.opacity(0.5), radius: 2)
+                                }
+                                .disabled(pageIndex <= 0)
+                                .opacity(pageIndex <= 0 ? 0.35 : 1)
+                            }
+                            Spacer(minLength: 0)
+                            if pageCount > 1 {
+                                Button {
+                                    withAnimation { pageIndex = min(pageCount - 1, pageIndex + 1) }
+                                } label: {
+                                    Image(systemName: "chevron.right.circle.fill")
+                                        .font(.system(size: 28))
+                                        .foregroundStyle(.white)
+                                        .shadow(color: .black.opacity(0.5), radius: 2)
+                                }
+                                .disabled(pageIndex >= pageCount - 1)
+                                .opacity(pageIndex >= pageCount - 1 ? 0.35 : 1)
+                            }
+                            Button(action: onDismiss) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundStyle(.white)
+                                    .shadow(color: .black.opacity(0.5), radius: 2)
+                            }
                         }
-                        .padding()
+                        if pageCount > 1 {
+                            Text("Image \(pageIndex + 1) of \(pageCount)")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .shadow(color: .black.opacity(0.55), radius: 2, x: 0, y: 1)
+                                .allowsHitTesting(false)
+                        }
                     }
+                    .padding()
                     Spacer()
                     VStack(spacing: Theme.Spacing.sm) {
                         Button(action: { showProductPicker = true }) {
-                            Text("Choose product")
+                            Text(chooseProductButtonTitle)
                                 .font(Theme.Typography.body.weight(.semibold))
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
@@ -1184,23 +1476,81 @@ struct LookbookTagProductsView: View {
         }
         .onAppear {
             tags = initialTags
+            pageIndex = 0
             persistTags()
             loadResolvedItems()
         }
         .onChange(of: tags) { _, _ in persistTags() }
+        .onChange(of: pageIndex) { _, _ in
+            selectedTagClientId = nil
+            dotPosition = CGPoint(x: 0.5, y: 0.5)
+        }
         .onChange(of: pickedProduct) { _, new in
             guard let item = new, let pid = item.productId, !pid.isEmpty else { return }
-            let tag = LookbookTagData(productId: pid, x: Double(dotPosition.x), y: Double(dotPosition.y))
-            tags.append(tag)
-            resolvedItems[pid] = item
+            let slide = pageCount <= 1 ? 0 : pageIndex
+            if let sid = selectedTagClientId, let idx = tags.firstIndex(where: { $0.clientId == sid }) {
+                let oldPid = tags[idx].productId
+                tags[idx].productId = pid
+                resolvedItems[pid] = item
+                if oldPid != pid, !tags.contains(where: { $0.productId == oldPid }) {
+                    resolvedItems.removeValue(forKey: oldPid)
+                }
+                selectedTagClientId = nil
+            } else {
+                let tag = LookbookTagData(productId: pid, x: Double(dotPosition.x), y: Double(dotPosition.y), imageIndex: slide)
+                tags.append(tag)
+                resolvedItems[pid] = item
+                dotPosition = CGPoint(x: 0.5, y: 0.5)
+            }
             pickedProduct = nil
         }
     }
 
     @ViewBuilder
-    private func imageContent(geo: GeometryProxy) -> some View {
-        if let img = image {
-            Image(uiImage: img)
+    private func tagLayer(geo: GeometryProxy, page: Int) -> some View {
+        ZStack(alignment: .topLeading) {
+            imageContent(page: page, geo: geo)
+                .frame(width: geo.size.width, height: geo.size.height)
+                .contentShape(Rectangle())
+                .coordinateSpace(name: "lookbookContainer")
+                .onPreferenceChange(ImageFramePreferenceKey.self) { imageFrame = $0 }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                        .onEnded { value in
+                            let dx = value.translation.width
+                            let dy = value.translation.height
+                            guard hypot(dx, dy) < 10,
+                                  imageFrame.width > 1,
+                                  imageFrame.height > 1 else { return }
+                            selectedTagClientId = nil
+                            let g = imageFrameInGlobal(geo: geo)
+                            let nx = (value.location.x - g.minX) / imageFrame.width
+                            let ny = (value.location.y - g.minY) / imageFrame.height
+                            dotPosition.x = min(1, max(0, nx))
+                            dotPosition.y = min(1, max(0, ny))
+                        }
+                )
+
+            if imageFrame != .zero {
+                draggableDot(geo: geo)
+                    .zIndex(0)
+                ForEach(tags.filter { $0.imageIndex == page }) { tag in
+                    if let item = resolvedItems[tag.productId] {
+                        lookbookTagBadge(tag: tag, item: item, imageFrame: imageFrame, geo: geo) { newX, newY in
+                            updateTagPosition(tag: tag, newX: newX, newY: newY)
+                        }
+                        .zIndex(1)
+                    }
+                }
+            }
+        }
+        .frame(width: geo.size.width, height: geo.size.height)
+    }
+
+    @ViewBuilder
+    private func imageContent(page: Int, geo: GeometryProxy) -> some View {
+        if let imgs = images, page < imgs.count {
+            Image(uiImage: imgs[page])
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .background(
@@ -1211,8 +1561,8 @@ struct LookbookTagProductsView: View {
                         )
                     }
                 )
-        } else if let url = imageURL {
-            AsyncImage(url: url) { phase in
+        } else if let urls = imageURLs, page < urls.count {
+            AsyncImage(url: urls[page]) { phase in
                 switch phase {
                 case .empty:
                     ProgressView().tint(.white).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1239,12 +1589,14 @@ struct LookbookTagProductsView: View {
         }
     }
 
-    private func lookbookTagBadge(tag: LookbookTagData, item: Item, imageFrame: CGRect, onMove: @escaping (Double, Double) -> Void) -> some View {
+    private func lookbookTagBadge(tag: LookbookTagData, item: Item, imageFrame: CGRect, geo: GeometryProxy, onMove: @escaping (Double, Double) -> Void) -> some View {
         let pointerSize: CGFloat = 24
         let thumbSize: CGFloat = 32
         let cardWidth: CGFloat = 100
         let spacing: CGFloat = 6
-        let totalWidth = pointerSize + spacing + cardWidth
+        let isSelected = selectedTagClientId == tag.clientId
+        let deleteSlot: CGFloat = isSelected ? 28 + spacing : 0
+        let totalWidth = pointerSize + spacing + cardWidth + deleteSlot
         return HStack(alignment: .center, spacing: spacing) {
             Circle()
                 .fill(Color.orange.opacity(0.9))
@@ -1282,33 +1634,56 @@ struct LookbookTagProductsView: View {
             .background(Color.black.opacity(0.75))
             .cornerRadius(8)
             .frame(width: cardWidth, alignment: .leading)
+            if isSelected {
+                Button {
+                    removeTag(tag)
+                } label: {
+                    Image(systemName: "trash.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(.red, Color.white.opacity(0.95))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("Remove tag"))
+            }
         }
         .frame(width: totalWidth, alignment: .leading)
         .contentShape(Rectangle())
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 0, coordinateSpace: .named("lookbookContainer"))
+        .gesture(
+            DragGesture(minimumDistance: 12, coordinateSpace: .global)
                 .onChanged { value in
-                    let nx = (value.location.x - imageFrame.minX) / imageFrame.width
-                    let ny = (value.location.y - imageFrame.minY) / imageFrame.height
+                    guard imageFrame.width > 1, imageFrame.height > 1 else { return }
+                    let g = imageFrameInGlobal(geo: geo)
+                    let nx = (value.location.x - g.minX) / imageFrame.width
+                    let ny = (value.location.y - g.minY) / imageFrame.height
                     let clampedX = min(1, max(0, nx))
                     let clampedY = min(1, max(0, ny))
                     onMove(clampedX, clampedY)
                 }
         )
         .onTapGesture {
-            selectedItemForDetail = item
+            if selectedTagClientId == tag.clientId {
+                selectedTagClientId = nil
+            } else {
+                selectedTagClientId = tag.clientId
+            }
         }
-        .position(x: imageFrame.minX + imageFrame.width * tag.x - pointerSize / 2 + totalWidth / 2, y: imageFrame.minY + imageFrame.height * tag.y)
+        .position(x: imageFrame.minX + imageFrame.width * CGFloat(tag.x) - pointerSize / 2 + totalWidth / 2, y: imageFrame.minY + imageFrame.height * CGFloat(tag.y))
         .contextMenu {
+            Button {
+                selectedItemForDetail = item
+            } label: {
+                Label(L10n.string("View product"), systemImage: "eye")
+            }
             Button(role: .destructive) {
                 removeTag(tag)
             } label: {
-                Label("Remove tag", systemImage: "trash")
+                Label(L10n.string("Remove tag"), systemImage: "trash")
             }
         }
     }
 
     private func removeTag(_ tag: LookbookTagData) {
+        if selectedTagClientId == tag.clientId { selectedTagClientId = nil }
         tags.removeAll { $0.id == tag.id }
         if !tags.contains(where: { $0.productId == tag.productId }) {
             resolvedItems.removeValue(forKey: tag.productId)
@@ -1318,22 +1693,24 @@ struct LookbookTagProductsView: View {
 
     private func updateTagPosition(tag: LookbookTagData, newX: Double, newY: Double) {
         guard let idx = tags.firstIndex(where: { $0.id == tag.id }) else { return }
-        tags[idx] = LookbookTagData(productId: tag.productId, x: newX, y: newY)
+        tags[idx] = LookbookTagData(clientId: tag.clientId, productId: tag.productId, x: newX, y: newY, imageIndex: tag.imageIndex)
     }
 
     private func draggableDot(geo: GeometryProxy) -> some View {
         let px = imageFrame.minX + imageFrame.width * dotPosition.x
         let py = imageFrame.minY + imageFrame.height * dotPosition.y
+        let imgGlobal = imageFrameInGlobal(geo: geo)
         return Circle()
             .fill(Color.orange)
             .frame(width: 32, height: 32)
             .overlay(Circle().stroke(Color.white, lineWidth: 3))
             .position(x: px, y: py)
             .gesture(
-                DragGesture(coordinateSpace: .named("lookbookContainer"))
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
-                        let nx = (value.location.x - imageFrame.minX) / imageFrame.width
-                        let ny = (value.location.y - imageFrame.minY) / imageFrame.height
+                        guard imageFrame.width > 1, imageFrame.height > 1 else { return }
+                        let nx = (value.location.x - imgGlobal.minX) / imageFrame.width
+                        let ny = (value.location.y - imgGlobal.minY) / imageFrame.height
                         dotPosition.x = min(1, max(0, nx))
                         dotPosition.y = min(1, max(0, ny))
                     }
