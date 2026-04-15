@@ -4699,7 +4699,8 @@ struct MessageBubbleView: View {
                         .font(Theme.Typography.body)
                         .foregroundStyle(isCurrentUser ? Color.white : Theme.Colors.primaryText)
                         .multilineTextAlignment(.leading)
-                        .lineLimit(4)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
                         .frame(maxWidth: imgW, alignment: .leading)
                 }
                 Text("@\(payload.posterUsername) on WEARHOUSE")
