@@ -517,7 +517,7 @@ private struct LookbookFeedScreenView: View {
     @State private var immersiveScrollTargetId: UUID?
     /// After grid → list, scroll this row id into view (`LookbookFeedRowModel.id`).
     @State private var pendingFeedListScrollRowId: String?
-    /// When true, only the show/hide control is visible; swipe L→R on the bar (or tap chevron) to collapse, tap again to expand.
+    /// When true, only the show/hide control is visible; swipe L→R on the bar to collapse, R→L (or tap chevron) to expand.
     @State private var lookbookQuickActionsCollapsed = false
     private let productService = ProductService()
 
@@ -685,9 +685,14 @@ private struct LookbookFeedScreenView: View {
                     .onEnded { value in
                         let dx = value.translation.width
                         let dy = value.translation.height
-                        guard dx > 52, abs(dy) < 56 else { return }
-                        HapticManager.selection()
-                        lookbookQuickActionsCollapsed = true
+                        guard abs(dy) < 56 else { return }
+                        if dx > 52, !lookbookQuickActionsCollapsed {
+                            HapticManager.selection()
+                            lookbookQuickActionsCollapsed = true
+                        } else if dx < -52, lookbookQuickActionsCollapsed {
+                            HapticManager.selection()
+                            lookbookQuickActionsCollapsed = false
+                        }
                     }
             )
         }

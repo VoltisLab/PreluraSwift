@@ -17,6 +17,8 @@ struct DiscoverView: View {
     @State private var tryCartHoldTicks: Int = 0
     @State private var tryCartTimer: Timer?
     @State private var showVintagePromoFullScreen: Bool = false
+    /// Vertical pan for Explore Lookbook banner background (slow top→bottom loop).
+    @State private var exploreLookbookBannerPanOffset: CGFloat = 0
 
     private static let categories = ["Women", "Men"]
     private static let tryCartText = "Try Cart"
@@ -193,29 +195,60 @@ struct DiscoverView: View {
     
     // MARK: - Explore Lookbook banner (grid collage + dim overlay → Lookbook feed)
     private static let exploreLookbookBannerHeight: CGFloat = 168
+    /// Extra vertical extent so the image can pan without empty bands.
+    private static let exploreLookbookBannerImageHeightMultiplier: CGFloat = 1.5
+    /// Slight horizontal scale so a tilted image still fills the clip rect.
+    private static let exploreLookbookBannerImageWidthPad: CGFloat = 1.14
+    private static let exploreLookbookBannerImageTiltDegrees: CGFloat = 10
+    private static let exploreLookbookBannerPanDuration: TimeInterval = 14
+
+    private var exploreLookbookBannerMaxPan: CGFloat {
+        let h = Self.exploreLookbookBannerHeight
+        let imageH = h * Self.exploreLookbookBannerImageHeightMultiplier
+        return -(imageH - h) * 0.92
+    }
+
+    private func startExploreLookbookBannerPanAnimation() {
+        exploreLookbookBannerPanOffset = 0
+        let target = exploreLookbookBannerMaxPan
+        withAnimation(.easeInOut(duration: Self.exploreLookbookBannerPanDuration).repeatForever(autoreverses: true)) {
+            exploreLookbookBannerPanOffset = target
+        }
+    }
 
     private var exploreLookbookBanner: some View {
         NavigationLink(destination: LookbookView()) {
-            ZStack {
-                Image("DiscoverExploreLookbookBanner")
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(height: Self.exploreLookbookBannerHeight)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
-                Color.black.opacity(0.45)
-                    .frame(height: Self.exploreLookbookBannerHeight)
-                    .frame(maxWidth: .infinity)
-                Text(L10n.string("Explore Lookbook"))
-                    .font(Theme.Typography.title2)
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.4), radius: 6, x: 0, y: 2)
-                    .multilineTextAlignment(.center)
-                    .padding(Theme.Spacing.md)
+            GeometryReader { geo in
+                let w = geo.size.width
+                let h = Self.exploreLookbookBannerHeight
+                let imageH = h * Self.exploreLookbookBannerImageHeightMultiplier
+                ZStack {
+                    Image("DiscoverExploreLookbookBanner")
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: w * Self.exploreLookbookBannerImageWidthPad, height: imageH)
+                        .rotationEffect(.degrees(Self.exploreLookbookBannerImageTiltDegrees))
+                        .offset(y: exploreLookbookBannerPanOffset)
+                        .frame(width: w, height: h, alignment: .top)
+                        .clipped()
+                    Color.black.opacity(0.45)
+                        .frame(width: w, height: h)
+                    Text(L10n.string("Explore Lookbook"))
+                        .font(Theme.Typography.title2)
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.4), radius: 6, x: 0, y: 2)
+                        .multilineTextAlignment(.center)
+                        .padding(Theme.Spacing.md)
+                }
+                .frame(width: w, height: h)
             }
+            .frame(height: Self.exploreLookbookBannerHeight)
             .frame(maxWidth: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius, style: .continuous))
             .contentShape(Rectangle())
+            .onAppear {
+                startExploreLookbookBannerPanAnimation()
+            }
         }
         .buttonStyle(PlainTappableButtonStyle())
         .padding(.horizontal, Theme.Spacing.md)
