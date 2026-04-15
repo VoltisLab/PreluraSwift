@@ -4661,6 +4661,8 @@ struct MessageBubbleView: View {
     @ViewBuilder
     private func lookbookShareBubble(_ payload: LookbookShareChatPayload) -> some View {
         let imageStr = payload.thumbnailURL ?? payload.imageURL
+        let imgW = lookbookSharePreviewWidth
+        let imgH = imgW * 5 / 4
         Button {
             HapticManager.tap()
             guard let u = URL(string: payload.url) else { return }
@@ -4689,7 +4691,7 @@ struct MessageBubbleView: View {
                         lookbookShareImagePlaceholder
                     }
                 }
-                .frame(width: lookbookSharePreviewWidth, height: lookbookSharePreviewWidth * 5 / 4)
+                .frame(width: imgW, height: imgH)
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 if let c = payload.caption, !c.isEmpty {
@@ -4698,16 +4700,20 @@ struct MessageBubbleView: View {
                         .foregroundStyle(isCurrentUser ? Color.white : Theme.Colors.primaryText)
                         .multilineTextAlignment(.leading)
                         .lineLimit(4)
+                        .frame(maxWidth: imgW, alignment: .leading)
                 }
                 Text("@\(payload.posterUsername) on WEARHOUSE")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(isCurrentUser ? Color.white.opacity(0.88) : Theme.Colors.secondaryText)
+                    .frame(maxWidth: imgW, alignment: .leading)
                 Text("Tap to open")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(isCurrentUser ? Color.white : Theme.primaryColor)
+                    .frame(maxWidth: imgW, alignment: .leading)
             }
-            .padding(.horizontal, Theme.Spacing.md)
+            .frame(width: imgW, alignment: .leading)
             .padding(.vertical, Theme.Spacing.sm)
+            .padding(.horizontal, Theme.Spacing.sm)
             .background(
                 isCurrentUser
                     ? LinearGradient(
@@ -4759,6 +4765,7 @@ struct MessageBubbleView: View {
                                 .cornerRadius(18)
                         }
                     }
+                    .fixedSize(horizontal: true, vertical: false)
                 } else if let mult = emojiMult {
                     Text(message.content.trimmingCharacters(in: .whitespacesAndNewlines))
                         .font(.system(size: baseMessageFontSize * CGFloat(mult)))
@@ -4779,7 +4786,8 @@ struct MessageBubbleView: View {
                     .offset(x: Self.reactionOverlayOffsetX, y: -Self.reactionOverlayOffsetY)
             }
         }
-        .frame(maxWidth: (emojiMult != nil || lookbookPayload != nil) ? .infinity : bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
+        // Lookbook share card sizes to its thumbnail column; do not stretch to full row width.
+        .frame(maxWidth: emojiMult != nil ? .infinity : bubbleMaxWidth, alignment: isCurrentUser ? .trailing : .leading)
         .background(
             GeometryReader { geo in
                 Color.clear.preference(
