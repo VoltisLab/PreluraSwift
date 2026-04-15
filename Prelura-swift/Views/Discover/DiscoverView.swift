@@ -244,16 +244,14 @@ struct DiscoverView: View {
             }
             .frame(height: Self.exploreLookbookBannerHeight)
             .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius, style: .continuous))
             .contentShape(Rectangle())
             .onAppear {
                 startExploreLookbookBannerPanAnimation()
             }
         }
         .buttonStyle(PlainTappableButtonStyle())
-        .padding(.horizontal, Theme.Spacing.md)
+        // Full-bleed like `tryCartBanner` / `vintageShopBanner`. Top inset from pills; gap to Try Cart comes from that row’s `.padding(.top, …)`.
         .padding(.top, Theme.Spacing.sm)
-        .padding(.bottom, Theme.Spacing.xs)
     }
 
     // MARK: - Try Cart banner (below pill tags; Rectangle 11 2 image + overlay + typewriter text → Shop All page; height 150pt)
