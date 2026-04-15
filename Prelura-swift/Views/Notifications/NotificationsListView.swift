@@ -462,13 +462,14 @@ private struct NotificationRowView: View {
         WearhouseSupportBranding.isSupportSender(username: senderUsername)
     }
 
-    /// Legacy payment success copy stored as "SOLD!… Your item sold for £…" — show same short line as new backend.
-    private var isLegacySellerSaleRow: Bool {
-        let g = (notification.modelGroup ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard g.caseInsensitiveCompare("Order") == .orderedSame else { return false }
-        let m = notification.message
+    /// Seller-side order / payment success (in-app row text is normalized to match chat).
+    private var isSellerOrderSaleNotification: Bool {
+        guard modelGroupLower == "order" else { return false }
+        let m = notification.message.lowercased()
         return m.localizedCaseInsensitiveContains("your item sold")
             || m.range(of: "SOLD!", options: .caseInsensitive) != nil
+            || m.contains("bought your item")
+            || (m.contains("congratulations") && m.contains("sale"))
     }
 
     /// New offer on your listing(s) — shorten list copy.
@@ -500,9 +501,8 @@ private struct NotificationRowView: View {
         if isLikedItemSoldNotification {
             return L10n.string("An item you liked has sold. Here are similar listings to explore.")
         }
-        if isLegacySellerSaleRow,
-           let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
-            return "\(username) bought your item"
+        if isSellerOrderSaleNotification {
+            return L10n.string("Congratulations, You made a sale! 🎉")
         }
         if isNewOfferOnListingMessage,
            let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {

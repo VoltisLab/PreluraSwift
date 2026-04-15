@@ -3794,7 +3794,7 @@ struct SoldConfirmationCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
                 ZStack {
                     Circle()
                         .fill(Theme.primaryColor.opacity(0.12))
@@ -3820,13 +3820,19 @@ struct SoldConfirmationCardView: View {
                     )
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .tint(Theme.primaryColor)
-                    Text("Loading…")
-                        .font(Theme.Typography.headline)
-                        .foregroundColor(Theme.Colors.secondaryText)
+                    HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(Theme.primaryColor)
+                        Text("Loading…")
+                            .font(Theme.Typography.headline)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             HStack {
