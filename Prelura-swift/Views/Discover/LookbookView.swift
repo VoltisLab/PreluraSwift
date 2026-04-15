@@ -309,6 +309,111 @@ func buildLookbookFeedRows(from list: [LookbookEntry]) -> [LookbookFeedRowModel]
     }
 }
 
+/// Same URLs the feed row carousel will load (`LookbookFeedRowView.carouselImageURLs` / `LookbookFeedRowRemoteImage`).
+private func lookbookFeedMediaPrefetchURLs(for entry: LookbookEntry) -> [URL] {
+    dedupeOrderedValidLookbookURLs(entry.imageUrls).compactMap { URL(string: $0) }
+}
+
+/// Warms `URLSession`/`URLCache` before `AsyncImage` mounts on `LazyVStack` rows (grid → list jump).
+private actor LookbookFeedImagePrefetchCoordinator {
+    static let shared = LookbookFeedImagePrefetchCoordinator()
+
+    private var highWaterIndex: Int = 0
+    private var lowWaterIndex: Int = 0
+    private var lastScrollPrefetch: ContinuousClock.Instant?
+
+    /// After opening the list from the grid: load the tapped post’s full media first (parallel), then neighbors in both directions.
+    func beginAfterGridSelection(entries: [LookbookEntry], center: Int) async {
+        guard entries.indices.contains(center) else { return }
+        highWaterIndex = center
+        lowWaterIndex = center
+        let primary = lookbookFeedMediaPrefetchURLs(for: entries[center])
+        await prefetchURLsParallel(primary)
+
+        var dist = 1
+        var postsBudget = 26
+        while postsBudget > 0 {
+            var stepped = false
+            let hi = center + dist
+            if hi < entries.count {
+                await prefetchURLsSerial(lookbookFeedMediaPrefetchURLs(for: entries[hi]))
+                highWaterIndex = max(highWaterIndex, hi)
+                postsBudget -= 1
+                stepped = true
+            }
+            let lo = center - dist
+            if lo >= 0 {
+                await prefetchURLsSerial(lookbookFeedMediaPrefetchURLs(for: entries[lo]))
+                lowWaterIndex = min(lowWaterIndex, lo)
+                postsBudget -= 1
+                stepped = true
+            }
+            dist += 1
+            if !stepped { break }
+            await Task.yield()
+        }
+    }
+
+    /// As the user scrolls the feed, extend the warm window in the scroll direction (throttled).
+    func extendForScrollDelta(entries: [LookbookEntry], forward: Bool, span: Int = 6) async {
+        guard !entries.isEmpty else { return }
+        let now = ContinuousClock.now
+        if let t = lastScrollPrefetch, now - t < .milliseconds(280) { return }
+        lastScrollPrefetch = now
+
+        if forward {
+            let start = min(highWaterIndex + 1, entries.count - 1)
+            guard start < entries.count else { return }
+            let end = min(start + max(1, span) - 1, entries.count - 1)
+            for i in start...end {
+                await prefetchURLsSerial(lookbookFeedMediaPrefetchURLs(for: entries[i]))
+            }
+            highWaterIndex = max(highWaterIndex, end)
+        } else {
+            let start = max(lowWaterIndex - 1, 0)
+            guard start >= 0 else { return }
+            let end = max(start - max(1, span) + 1, 0)
+            for i in (end...start).reversed() {
+                await prefetchURLsSerial(lookbookFeedMediaPrefetchURLs(for: entries[i]))
+            }
+            lowWaterIndex = min(lowWaterIndex, end)
+        }
+    }
+
+    private func prefetchURLsParallel(_ urls: [URL]) async {
+        await withTaskGroup(of: Void.self) { group in
+            for u in urls {
+                group.addTask { await Self.warmURL(u) }
+            }
+        }
+    }
+
+    private func prefetchURLsSerial(_ urls: [URL]) async {
+        for u in urls {
+            await Self.warmURL(u)
+        }
+    }
+
+    nonisolated private static func warmURL(_ url: URL) async {
+        var req = URLRequest(url: url)
+        req.cachePolicy = .returnCacheDataElseLoad
+        req.timeoutInterval = 60
+        do {
+            _ = try await URLSession.shared.data(for: req)
+        } catch {
+            // Best-effort prefetch; feed row still retries on failure.
+        }
+    }
+}
+
+private func lookbookScheduleFeedImagePrefetchFromGrid(entries: [LookbookEntry], centerEntry: LookbookEntry) {
+    let key = centerEntry.lookbookPostKey
+    guard let idx = entries.firstIndex(where: { $0.lookbookPostKey == key }) else { return }
+    Task(priority: .userInitiated) {
+        await LookbookFeedImagePrefetchCoordinator.shared.beginAfterGridSelection(entries: entries, center: idx)
+    }
+}
+
 /// Server like toggle with optimistic UI. Keeps `LikeButtonView` as the only tap target (no extra wrappers).
 func handleLookbookFeedLikeTap(_ tapped: LookbookEntry, authService: AuthService, entries: Binding<[LookbookEntry]>) {
     guard authService.isAuthenticated else { return }
@@ -517,6 +622,8 @@ private struct LookbookFeedScreenView: View {
     @State private var immersiveScrollTargetId: UUID?
     /// After grid → list, scroll this row id into view (`LookbookFeedRowModel.id`).
     @State private var pendingFeedListScrollRowId: String?
+    /// Tracks vertical scroll offset for directional image prefetch after grid → list.
+    @State private var feedListScrollOffsetY: CGFloat?
     /// When true, only the show/hide control is visible; swipe L→R on the bar to collapse, R→L (or tap chevron) to expand.
     @State private var lookbookQuickActionsCollapsed = false
     private let productService = ProductService()
@@ -571,12 +678,23 @@ private struct LookbookFeedScreenView: View {
         guard let id = pendingFeedListScrollRowId else { return }
         pendingFeedListScrollRowId = nil
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            try? await Task.sleep(nanoseconds: 80_000_000)
             withAnimation(.easeOut(duration: 0.3)) {
                 proxy.scrollTo(id, anchor: .top)
             }
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            try? await Task.sleep(nanoseconds: 120_000_000)
             proxy.scrollTo(id, anchor: .top)
+        }
+    }
+
+    private func handleFeedListScrollPrefetch(newY: CGFloat) {
+        let prev = feedListScrollOffsetY ?? newY
+        feedListScrollOffsetY = newY
+        let delta = newY - prev
+        guard abs(delta) > 56 else { return }
+        let forward = delta > 0
+        Task(priority: .utility) {
+            await LookbookFeedImagePrefetchCoordinator.shared.extendForScrollDelta(entries: entries, forward: forward)
         }
     }
 
@@ -723,6 +841,7 @@ private struct LookbookFeedScreenView: View {
                                 ForEach(entries) { entry in
                                     Button {
                                         HapticManager.tap()
+                                        lookbookScheduleFeedImagePrefetchFromGrid(entries: entries, centerEntry: entry)
                                         let rowId = lookbookFeedRowStableId(for: entry)
                                         var tx = Transaction()
                                         tx.animation = nil
@@ -746,7 +865,7 @@ private struct LookbookFeedScreenView: View {
                         .scrollContentBackground(.hidden)
                         .background(Theme.Colors.background)
                     } else {
-                        ScrollViewReader { proxy in
+                            ScrollViewReader { proxy in
                             ScrollView {
                                 LookbookScrollImmediateTouchesAnchor()
                                     .frame(width: 0, height: 0)
@@ -763,6 +882,11 @@ private struct LookbookFeedScreenView: View {
                             .scrollContentBackground(.hidden)
                             .background(Theme.Colors.background)
                             .lookbookListScrollSnap(feel: immersiveScrollFeelStore.feel)
+                            .onScrollGeometryChange(for: CGFloat.self) { geo in
+                                -geo.contentOffset.y
+                            } action: { _, newY in
+                                handleFeedListScrollPrefetch(newY: newY)
+                            }
                             .onAppear {
                                 scrollFeedListToPendingRowIfNeeded(proxy: proxy)
                             }
@@ -1196,6 +1320,7 @@ private struct LookbookMyItemsScreenView: View {
     @State private var immersiveFeedInitialPostId: String?
     @State private var immersiveScrollTargetId: UUID?
     @State private var pendingMyItemsListScrollRowId: String?
+    @State private var myItemsListScrollOffsetY: CGFloat?
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
     private let productService = ProductService()
@@ -1269,12 +1394,24 @@ private struct LookbookMyItemsScreenView: View {
         guard let id = pendingMyItemsListScrollRowId else { return }
         pendingMyItemsListScrollRowId = nil
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            try? await Task.sleep(nanoseconds: 80_000_000)
             withAnimation(.easeOut(duration: 0.3)) {
                 proxy.scrollTo(id, anchor: .top)
             }
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            try? await Task.sleep(nanoseconds: 120_000_000)
             proxy.scrollTo(id, anchor: .top)
+        }
+    }
+
+    private func handleMyItemsListScrollPrefetch(newY: CGFloat) {
+        let prev = myItemsListScrollOffsetY ?? newY
+        myItemsListScrollOffsetY = newY
+        let delta = newY - prev
+        guard abs(delta) > 56 else { return }
+        let forward = delta > 0
+        let slice = myEntries
+        Task(priority: .utility) {
+            await LookbookFeedImagePrefetchCoordinator.shared.extendForScrollDelta(entries: slice, forward: forward)
         }
     }
 
@@ -1358,6 +1495,7 @@ private struct LookbookMyItemsScreenView: View {
                                     ForEach(myEntries) { entry in
                                         Button {
                                             HapticManager.tap()
+                                            lookbookScheduleFeedImagePrefetchFromGrid(entries: myEntries, centerEntry: entry)
                                             let rowId = lookbookFeedRowStableId(for: entry)
                                             var tx = Transaction()
                                             tx.animation = nil
@@ -1398,6 +1536,11 @@ private struct LookbookMyItemsScreenView: View {
                                 .scrollContentBackground(.hidden)
                                 .background(Theme.Colors.background)
                                 .lookbookListScrollSnap(feel: immersiveScrollFeelStore.feel)
+                                .onScrollGeometryChange(for: CGFloat.self) { geo in
+                                    -geo.contentOffset.y
+                                } action: { _, newY in
+                                    handleMyItemsListScrollPrefetch(newY: newY)
+                                }
                                 .onAppear {
                                     scrollMyItemsListToPendingRowIfNeeded(proxy: proxy)
                                 }
