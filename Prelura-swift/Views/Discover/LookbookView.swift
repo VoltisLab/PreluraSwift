@@ -605,6 +605,15 @@ private extension View {
 /// Bottom inset inside each immersive page so captions clear the floating shortcut bar.
 private let lookbookImmersivePagerInnerBottomInset: CGFloat = 88
 
+/// Random order whenever a lookbook feed load completes (screen open or pull-to-refresh).
+private func lookbookShuffledEntriesFromPosts(_ posts: [ServerLookbookPost], localRecords: [LookbookUploadRecord]) -> [LookbookEntry] {
+    var list = posts.map { post in
+        LookbookEntry(from: post, localRecord: lookbookFeedLocalRecord(for: post, records: localRecords))
+    }
+    list.shuffle()
+    return list
+}
+
 private struct LookbookFeedScreenView: View {
     @EnvironmentObject private var authService: AuthService
     @ObservedObject private var immersiveScrollFeelStore = LookbookImmersiveScrollFeelStore.shared
@@ -1015,9 +1024,7 @@ private struct LookbookFeedScreenView: View {
             let localRecords = LookbookFeedStore.load()
             await MainActor.run {
                 followedCommentBoostUsernames = followedSet
-                entries = posts.map { post in
-                    LookbookEntry(from: post, localRecord: lookbookFeedLocalRecord(for: post, records: localRecords))
-                }
+                entries = lookbookShuffledEntriesFromPosts(posts, localRecords: localRecords)
                 feedLoading = false
                 feedError = nil
                 feedErrorBannerTitle = nil
@@ -1713,9 +1720,7 @@ private struct LookbookMyItemsScreenView: View {
             let localRecords = LookbookFeedStore.load()
             await MainActor.run {
                 followedCommentBoostUsernames = followedSet
-                entries = posts.map { post in
-                    LookbookEntry(from: post, localRecord: lookbookFeedLocalRecord(for: post, records: localRecords))
-                }
+                entries = lookbookShuffledEntriesFromPosts(posts, localRecords: localRecords)
                 feedLoading = false
                 feedError = nil
                 feedErrorBannerTitle = nil
@@ -1927,9 +1932,7 @@ private struct LookbookTopicFeedView: View {
             let localRecords = LookbookFeedStore.load()
             await MainActor.run {
                 followedCommentBoostUsernames = followedSet
-                entries = posts.map { post in
-                    LookbookEntry(from: post, localRecord: lookbookFeedLocalRecord(for: post, records: localRecords))
-                }
+                entries = lookbookShuffledEntriesFromPosts(posts, localRecords: localRecords)
                 feedLoading = false
                 feedError = nil
                 feedErrorBannerTitle = nil
