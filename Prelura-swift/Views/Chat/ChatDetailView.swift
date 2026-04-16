@@ -95,7 +95,7 @@ fileprivate enum ChatHeaderProductImageURLStore {
 }
 
 /// Resolves conversation with seller (existing or new) then shows ChatDetailView. Used when tapping message icon on product detail.
-/// When opened from product detail, pass `item` so the chat shows the product at the top (Flutter behavior).
+/// When opened from product detail, pass `item` so the chat shows the product at the top (Flutter behaviour).
 struct ChatWithSellerView: View {
     let seller: User
     /// When non-nil, chat shows this product at the top (e.g. when starting conversation from product detail).
@@ -3757,9 +3757,10 @@ struct SoldConfirmationCardView: View {
     var isSellerView: Bool? = nil
     var onOrderChanged: (() -> Void)? = nil
     @EnvironmentObject var authService: AuthService
-    @State private var showBuyerHelp = false
-    @State private var showSellerOptions = false
     @State private var showOrderDetails = false
+
+    /// Slightly below `Theme.Typography.headline` (17) so the sale line doesn’t dominate the thread.
+    private static let saleBannerTitleFont = Font.system(size: 16, weight: .semibold, design: .default)
 
     private var isBuyer: Bool {
         currentUsername.map {
@@ -3773,13 +3774,6 @@ struct SoldConfirmationCardView: View {
             order.sellerUsername.trimmingCharacters(in: .whitespaces).lowercased() ==
             $0.trimmingCharacters(in: .whitespaces).lowercased()
         } ?? false
-    }
-
-    /// Hide buyer/seller “I have a problem” once the order is closed (matches `OrderDetailView` help gating).
-    private var shouldShowIHaveAProblemOnSoldCard: Bool {
-        guard let d = detailOrder else { return true }
-        let st = d.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        return st != "COMPLETED" && st != "CANCELLED" && st != "REFUNDED"
     }
 
     private static func relativeTimestamp(for date: Date) -> String {
@@ -3818,7 +3812,7 @@ struct SoldConfirmationCardView: View {
                             ? L10n.string("Congratulations, You made a sale! 🎉")
                             : (isBuyer ? "Payment successful!" : "\(order.buyerUsername) bought this")
                     )
-                    .font(Theme.Typography.headline)
+                    .font(Self.saleBannerTitleFont)
                     .foregroundColor(Theme.Colors.primaryText)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3829,29 +3823,14 @@ struct SoldConfirmationCardView: View {
                             .progressViewStyle(.circular)
                             .tint(Theme.primaryColor)
                         Text("Loading…")
-                            .font(Theme.Typography.headline)
+                            .font(Self.saleBannerTitleFont)
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             HStack {
-                if shouldShowIHaveAProblemOnSoldCard {
-                    Button(action: {
-                        if isSeller {
-                            showSellerOptions = true
-                        } else {
-                            showBuyerHelp = true
-                        }
-                    }) {
-                        Text("I have a problem")
-                            .font(Theme.Typography.caption)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                    }
-                    .buttonStyle(PlainTappableButtonStyle())
-                    .disabled(!order.rolesConfirmed)
-                }
-                Spacer(minLength: Theme.Spacing.sm)
+                Spacer(minLength: 0)
                 Text(Self.relativeTimestamp(for: order.createdAt))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
@@ -3891,11 +3870,6 @@ struct SoldConfirmationCardView: View {
         }
         .background(
             Group {
-                NavigationLink(
-                    destination: OrderHelpView(orderId: order.orderId, conversationId: conversationId),
-                    isActive: $showBuyerHelp
-                ) { EmptyView() }
-                .hidden()
                 if let detailOrder {
                     NavigationLink(
                         destination: OrderDetailView(order: detailOrder, isSeller: isSellerView ?? isSeller),
@@ -3905,15 +3879,6 @@ struct SoldConfirmationCardView: View {
                 }
             }
         )
-        .sheet(isPresented: $showSellerOptions) {
-            NavigationStack {
-                SellerOrderProblemOptionsView(orderId: order.orderId) {
-                    showSellerOptions = false
-                    onOrderChanged?()
-                }
-                .environmentObject(authService)
-            }
-        }
     }
 }
 
@@ -4469,7 +4434,7 @@ struct MessageBubbleView: View {
     private static let messageAvatarSize: CGFloat = 28
     /// Half of former `lg` so sent/received rows sit closer to screen edges (matches tighter `ChatThreadLayout.horizontalGutter`).
     private static let bubbleSideSpacerMin: CGFloat = Theme.Spacing.lg / 2
-    /// Vertical offset so the avatar is centered with a single-line bubble. This position is kept for multi-line bubbles (avatar does not re-center).
+    /// Vertical offset so the avatar is centred with a single-line bubble. This position is kept for multi-line bubbles (avatar does not re-centre).
     private static let avatarTopOffsetForSingleLineCenter: CGFloat = 4
 
     @ViewBuilder
