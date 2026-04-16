@@ -223,6 +223,16 @@ enum L10n {
 
         // Menu (navigation)
         "Menu": "Μενού",
+        "Accounts": "Λογαριασμοί",
+        "Add account": "Προσθήκη λογαριασμού",
+        "Active account": "Ενεργός λογαριασμός",
+        "Signed in as": "Σύνδεση ως",
+        "Current": "Τρέχων",
+        "Switch": "Εναλλαγή",
+        "Log out all accounts": "Αποσύνδεση όλων των λογαριασμών",
+        "Log out all": "Αποσύνδεση όλων",
+        "Log out all accounts on this device?": "Αποσύνδεση όλων των λογαριασμών σε αυτή τη συσκευή;",
+        "Could not switch account": "Δεν ήταν δυνατή η εναλλαγή λογαριασμού",
         "The forum is not available on this server yet. Deploy the latest backend and run migrations, then try again.":
             "Το φόρουμ δεν είναι διαθέσιμο σε αυτόν τον διακομιστή ακόμα. Αναπτύξτε το πιο πρόσφατο backend και εκτελέστε migrations, μετά δοκιμάστε ξανά.",
         "© WEARHOUSE 2026": "© WEARHOUSE 2026",
@@ -788,7 +798,10 @@ enum L10n {
         "Gold + unlimited mystery": "Gold + απεριόριστα mystery",
         "Your Wearhouse profile tier includes Gold benefits.": "Η βαθμίδα του προφίλ σας στο Wearhouse περιλαμβάνει προνόμια Gold.",
         "Unlimited product uploads": "Απεριόριστες αναρτήσεις προϊόντων",
-        "Up to 2 active mystery box listings": "Έως 2 ενεργές αναρτήσεις mystery box",
+        "Up to 1 active mystery box listing": "Έως 1 ενεργή ανάρτηση mystery box",
+        "You've reached your scheduled listing limit for this billing period. Gold allows more each month. Open Settings → Plan to upgrade.": "Φτάσατε το όριο προγραμματισμένων αναρτήσεων για αυτή την περίοδο χρέωσης. Το Gold επιτρέπει περισσότερες κάθε μήνα. Ανοίξτε Ρυθμίσεις → Plan για αναβάθμιση.",
+        "Scheduled listings": "Προγραμματισμένες αναρτήσεις",
+        "%d of %d scheduled listings used this billing period.": "%1$d από %2$d προγραμματισμένες αναρτήσεις χρησιμοποιήθηκαν αυτή την περίοδο χρέωσης.",
         "0% selling fees": "0% προμήθειες πώλησης",
         "Current plan": "Τρέχον πλάνο",
         "Everything in Silver": "Όλα του Silver",

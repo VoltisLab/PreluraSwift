@@ -20,6 +20,7 @@ let kAppearanceMode = "appearance_mode"
 /// When the user is logged in, read the **current** FCM token from Firebase and send it via `updateProfile(fcmToken:)`.
 /// Uses `WearhouseFCMRegistration` so we wait for APNs before `token()` and do not rely on UserDefaults alone (race after `storeTokens`).
 private func registerPushTokenIfNeeded(authService: AuthService) {
+    StartupTiming.mark("registerPushTokenIfNeeded — entered")
     guard authService.isAuthenticated else {
         pushRegistrationLogger.debug("Skip FCM upload: not authenticated.")
         print("[Push] Skip FCM → backend: not logged in.")
@@ -50,15 +51,26 @@ private func registerPushTokenIfNeeded(authService: AuthService) {
                 token = t
             }
             UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
+            let staffMirrored = await authService.registerFCMTokenWithAllStaffSessionsIfNeeded(token)
+            if staffMirrored {
+                StartupTiming.mark("registerPushTokenIfNeeded — updateProfile(fcmToken) all staff sessions")
+                UserDefaults.standard.set(token, forKey: kLastFcmTokenSentToBackendKey)
+                PushRegistrationDebug.recordUploadSuccess()
+                pushRegistrationLogger.info("updateProfile(fcmToken:) mirrored to all staff sessions.")
+                print("[Push] updateProfile(fcmToken:) mirrored to all staff sessions.")
+                return
+            }
             if let last = UserDefaults.standard.string(forKey: kLastFcmTokenSentToBackendKey), last == token {
                 pushRegistrationLogger.debug("FCM token unchanged since last successful upload — skip.")
                 return
             }
             print("[Push] Uploading FCM token to backend via updateProfile (\(token.count) chars)…")
+            StartupTiming.mark("registerPushTokenIfNeeded — FCM token obtained; updateProfile(fcmToken) begin")
             let userService = UserService()
             userService.updateAuthToken(authService.authToken)
             do {
                 _ = try await userService.updateProfile(fcmToken: token)
+                StartupTiming.mark("registerPushTokenIfNeeded — updateProfile(fcmToken) success")
                 UserDefaults.standard.set(token, forKey: kLastFcmTokenSentToBackendKey)
                 PushRegistrationDebug.recordUploadSuccess()
                 pushRegistrationLogger.info("updateProfile(fcmToken:) succeeded — backend can target this device for FCM.")
@@ -80,6 +92,7 @@ struct Prelura_swiftApp: App {
     @State private var showSplash = true
 
     private func finishSplash() {
+        StartupTiming.mark("finishSplash — leaving SplashView")
         if let pending = AppDelegate.takePendingPostSplashNotificationUserInfo() {
             appRouter.handle(notificationPayload: pending)
         }
@@ -95,6 +108,7 @@ struct Prelura_swiftApp: App {
                     AppearanceRootView()
                 }
             }
+            .onAppear { StartupTiming.mark("WindowGroup root onAppear") }
             .environmentObject(authService)
             .environmentObject(appRouter)
             .onReceive(NotificationCenter.default.publisher(for: .wearhouseNotificationTapped)) { notification in
@@ -165,6 +179,7 @@ struct AppearanceRootView: View {
             .preferredColorScheme(resolvedScheme)
             .tint(Theme.primaryColor)
             .onAppear {
+                StartupTiming.mark("AppearanceRootView.onAppear")
                 syncThemeScheme()
                 if appLanguage != "en" && appLanguage != "el" {
                     appLanguage = "en"
@@ -274,9 +289,14 @@ struct MainTabView: View {
 
     private var mainTabDecorated: some View {
         mainTabAfterAuthHooks
-            .onAppear { openInboxChatFromPendingRouterIfNeeded() }
+            .onAppear {
+                StartupTiming.mark("MainTabView.onAppear (outer)")
+                openInboxChatFromPendingRouterIfNeeded()
+            }
             .task {
+                StartupTiming.mark("MainTabView.task — refreshAccountModeration begin")
                 await authService.refreshAccountModerationFromServer()
+                StartupTiming.mark("MainTabView.task — refreshAccountModeration end")
             }
             .onChange(of: appRouter.pendingInboxChat) { _, _ in openInboxChatFromPendingRouterIfNeeded() }
             .onChange(of: authService.isAuthenticated) { _, authed in
@@ -303,11 +323,16 @@ struct MainTabView: View {
     private var mainTabAfterAuthHooks: some View {
         mainTabThemed
             .onAppear {
+                StartupTiming.mark("MainTabView inner onAppear — tab bar + discover/inbox kickoff")
                 applyTabBarAppearance()
                 discoverViewModel.updateAuthToken(authService.authToken)
                 inboxViewModel.updateAuthToken(authService.authToken)
                 if authService.isAuthenticated {
-                    if discoverViewModel.discoverItems.isEmpty { discoverViewModel.refresh() }
+                    if discoverViewModel.discoverItems.isEmpty {
+                        StartupTiming.mark("DiscoverViewModel.refresh() invoked from MainTabView")
+                        discoverViewModel.refresh()
+                    }
+                    StartupTiming.mark("InboxViewModel.prefetch() invoked from MainTabView")
                     inboxViewModel.prefetch()
                 }
             }

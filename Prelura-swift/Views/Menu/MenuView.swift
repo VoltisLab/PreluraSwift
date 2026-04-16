@@ -40,6 +40,9 @@ struct MenuView: View {
                 }
             }
             if isStaffUser {
+                NavigationLink(destination: StaffAccountsView()) {
+                    menuRow(L10n.string("Accounts"), icon: "person.crop.circle.badge.checkmark")
+                }
                 NavigationLink(destination: AdminMenuView()) {
                     menuRow(L10n.string("Admin Dashboard"), icon: "gearshape.2")
                 }

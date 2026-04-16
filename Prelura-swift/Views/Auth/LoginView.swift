@@ -2,6 +2,10 @@ import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject var authService: AuthService
+    /// When true (staff only), saves the current session and clears fields so another account can sign in.
+    var staffAddAccountMode: Bool = false
+    /// Called after a successful login in `staffAddAccountMode` (e.g. dismiss the add-account sheet).
+    var onStaffAccountAdded: (() -> Void)? = nil
     /// Demo credentials for testing; pre-filled so you don't have to type each time.
     @State private var username: String = "Testuser"
     @State private var password: String = "Password123!!!"
@@ -22,7 +26,7 @@ struct LoginView: View {
                         // Header
                         VStack(spacing: Theme.Spacing.sm) {
                             WearhouseWordmarkView(style: .login)
-                            Text(L10n.string("Welcome back"))
+                            Text(staffAddAccountMode ? L10n.string("Add account") : L10n.string("Welcome back"))
                                 .font(Theme.Typography.title2)
                                 .foregroundColor(Theme.Colors.authOverVideoText)
                         }
@@ -94,24 +98,30 @@ struct LoginView: View {
                         }
                         .padding(.horizontal, Theme.Spacing.lg)
 
-                        HStack {
-                            Text(L10n.string("Don't have an account?"))
-                                .font(Theme.Typography.body)
-                                .foregroundColor(Theme.Colors.authOverVideoText)
-                            Button(action: { showSignup = true }) {
-                                Text(L10n.string("Sign up"))
+                        if !staffAddAccountMode {
+                            HStack {
+                                Text(L10n.string("Don't have an account?"))
                                     .font(Theme.Typography.body)
-                                    .foregroundColor(Theme.primaryColor)
+                                    .foregroundColor(Theme.Colors.authOverVideoText)
+                                Button(action: { showSignup = true }) {
+                                    Text(L10n.string("Sign up"))
+                                        .font(Theme.Typography.body)
+                                        .foregroundColor(Theme.primaryColor)
+                                }
+                                .buttonStyle(HapticTapButtonStyle())
                             }
-                            .buttonStyle(HapticTapButtonStyle())
+                            .padding(.bottom, 100)
+                        } else {
+                            Spacer().frame(height: 24)
                         }
-                        .padding(.bottom, 100)
                     }
                 }
 
                 VStack(spacing: Theme.Spacing.md) {
-                    BorderGlassButton(L10n.string("Continue as guest"), action: { authService.continueAsGuest() })
-                        .padding(.horizontal, Theme.Spacing.md)
+                    if !staffAddAccountMode {
+                        BorderGlassButton(L10n.string("Continue as guest"), action: { authService.continueAsGuest() })
+                            .padding(.horizontal, Theme.Spacing.md)
+                    }
 
                     PrimaryGlassButton(
                         L10n.string("Login"),
@@ -129,6 +139,11 @@ struct LoginView: View {
             .onAppear {
                 if loginVideoURL == nil {
                     loginVideoURL = AuthVideo.randomLoginVideoURL()
+                }
+                if staffAddAccountMode {
+                    authService.prepareForAdditionalStaffLogin()
+                    username = ""
+                    password = ""
                 }
             }
             .navigationDestination(isPresented: $showSignup) {
@@ -167,6 +182,9 @@ struct LoginView: View {
         Task {
             do {
                 _ = try await authService.login(username: username, password: password)
+                if staffAddAccountMode {
+                    onStaffAccountAdded?()
+                }
                 // Login successful - navigation will be handled by app state
                 isLoading = false
             } catch {
