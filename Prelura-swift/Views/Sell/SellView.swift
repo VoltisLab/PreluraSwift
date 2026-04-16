@@ -1092,7 +1092,7 @@ private struct SellDraftsListSheet: View {
 struct CategorySelectionView: View {
     @Binding var selectedCategory: SellCategory?
     var onDismiss: () -> Void
-    /// When true, search hides non–mystery-box paths; root list includes a **Mystery** shortcut; under Toddlers only "Mystery" is listed (primary styling in `SubCategoryView`).
+    /// When true, search only shows categories under root **Mystery**; `SubCategoryView` accents the **Mystery box** leaf.
     var forMysteryBoxFlow: Bool = false
     @State private var categories: [APICategory] = []
     @State private var isLoading = true
@@ -1100,11 +1100,15 @@ struct CategorySelectionView: View {
     @State private var searchText = ""
     @State private var allCategories: [CategoryPathEntry] = []
     @State private var isLoadingSearch = false
-    /// Mystery under Toddlers: shown as its own root row in mystery-box flow (API keeps it as a child, not a root).
-    @State private var mysteryQuickPick: SellCategory?
     private let service = CategoriesService()
 
-    private static let rootOrder = ["Men", "Women", "Boys", "Girls", "Toddlers"]
+    private static let rootOrder = ["Men", "Women", "Boys", "Girls", "Toddlers", "Mystery"]
+
+    private func pathRootIsMystery(_ pathNames: [String]) -> Bool {
+        pathNames.first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare("Mystery") == .orderedSame
+    }
 
     private var filteredSearchResults: [CategoryPathEntry] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -1113,9 +1117,9 @@ struct CategorySelectionView: View {
             $0.displayPath.lowercased().contains(q) || $0.name.lowercased().contains(q)
         }
         if forMysteryBoxFlow {
-            return base.filter { $0.pathNames.map { $0.lowercased() }.contains("mystery") }
+            return base.filter { pathRootIsMystery($0.pathNames) }
         }
-        return base.filter { !$0.pathNames.contains { $0.caseInsensitiveCompare("Mystery") == .orderedSame } }
+        return base.filter { !pathRootIsMystery($0.pathNames) }
     }
 
     var body: some View {
@@ -1212,31 +1216,9 @@ struct CategorySelectionView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
-                    if forMysteryBoxFlow, let quick = mysteryQuickPick {
-                        Button(action: {
-                            selectedCategory = quick
-                            onDismiss()
-                        }) {
-                            HStack {
-                                Text(quick.name)
-                                    .font(Theme.Typography.body)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(Theme.primaryColor)
-                                Spacer()
-                                if selectedCategory?.id == quick.id {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(Theme.primaryColor)
-                                }
-                            }
-                        }
-                        .buttonStyle(PlainTappableButtonStyle())
-                        .listRowBackground(Theme.Colors.background)
-                    }
                     ForEach(sortedCategories, id: \.id) { cat in
                         let isInSelectedPath = selectedCategory.map { $0.pathNames.first == cat.name } ?? false
-                        let toddlersMysteryDrillIn = forMysteryBoxFlow
-                            && cat.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Toddlers") == .orderedSame
-                        if cat.hasChildren == true || toddlersMysteryDrillIn {
+                        if cat.hasChildren == true {
                             NavigationLink(destination: SubCategoryView(
                                 parentId: cat.id,
                                 parentName: cat.name,
@@ -1288,54 +1270,10 @@ struct CategorySelectionView: View {
         }
     }
 
-    private func resolveMysteryQuickPick(rootCategories: [APICategory]) async {
-        guard forMysteryBoxFlow else {
-            await MainActor.run { mysteryQuickPick = nil }
-            return
-        }
-        guard let toddlers = rootCategories.first(where: {
-            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Toddlers") == .orderedSame
-        }) else {
-            await MainActor.run { mysteryQuickPick = nil }
-            return
-        }
-        guard let toddlersPk = Int(toddlers.id) else {
-            await MainActor.run { mysteryQuickPick = nil }
-            return
-        }
-        do {
-            let kids = try await service.fetchCategories(parentId: toddlersPk)
-            guard let mystery = kids.first(where: {
-                $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Mystery") == .orderedSame
-            }) else {
-                await MainActor.run { mysteryQuickPick = nil }
-                return
-            }
-            await MainActor.run {
-                mysteryQuickPick = SellCategory(
-                    id: mystery.id,
-                    name: mystery.name,
-                    pathNames: [toddlers.name, mystery.name],
-                    pathIds: [toddlers.id, mystery.id],
-                    fullPath: mystery.fullPath
-                )
-            }
-        } catch {
-            await MainActor.run { mysteryQuickPick = nil }
-        }
-    }
-
     private func loadCategories(parentId: Int?) async {
         await MainActor.run { isLoading = true; loadError = nil }
         do {
             let list = try await service.fetchCategories(parentId: parentId)
-            if parentId == nil {
-                if forMysteryBoxFlow {
-                    await resolveMysteryQuickPick(rootCategories: list)
-                } else {
-                    await MainActor.run { mysteryQuickPick = nil }
-                }
-            }
             await MainActor.run { categories = list }
         } catch {
             await MainActor.run { loadError = L10n.userFacingError(error) }
@@ -1384,16 +1322,8 @@ struct SubCategoryView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                let visible = categoriesForMysteryFlow
                 List {
-                    if visible.isEmpty, forMysteryBoxFlow, parentName == "Toddlers" {
-                        Text(L10n.string("Mystery category is not available yet. Try again after the app updates."))
-                            .font(Theme.Typography.caption)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                            .padding(.vertical, Theme.Spacing.md)
-                            .listRowBackground(Theme.Colors.background)
-                    }
-                    ForEach(visible, id: \.id) { cat in
+                    ForEach(categories, id: \.id) { cat in
                         if cat.hasChildren == true {
                             NavigationLink(destination: SubCategoryView(
                                 parentId: cat.id,
@@ -1438,11 +1368,6 @@ struct SubCategoryView: View {
         }
     }
 
-    private var categoriesForMysteryFlow: [APICategory] {
-        guard forMysteryBoxFlow, parentName == "Toddlers" else { return categories }
-        return categories.filter { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Mystery") == .orderedSame }
-    }
-
     private func loadCategories(parentId: Int?) async {
         await MainActor.run { isLoading = true; loadError = nil }
         do {
@@ -1456,9 +1381,11 @@ struct SubCategoryView: View {
 
     private func subCategoryRow(_ cat: APICategory) -> some View {
         let isInSelectedPath = selectedCategory.map { $0.pathIds.contains(cat.id) || $0.id == cat.id } ?? false
+        let parentTrim = parentName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let catTrim = cat.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let mysteryAccent = forMysteryBoxFlow
-            && parentName == "Toddlers"
-            && cat.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Mystery") == .orderedSame
+            && parentTrim.caseInsensitiveCompare("Mystery") == .orderedSame
+            && catTrim.caseInsensitiveCompare("Mystery box") == .orderedSame
         return HStack {
             Text(cat.name)
                 .font(Theme.Typography.body)
