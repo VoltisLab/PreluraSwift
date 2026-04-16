@@ -742,7 +742,7 @@ extension SellView {
     // MARK: - Item Details Section (Flutter: header + Title + Describe your item only)
     private var itemDetailsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(L10n.string("Item Details"))
+            Text(L10n.string(isMysteryListing ? "Box details" : "Item Details"))
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(Theme.Colors.primaryText)
                 .padding(.horizontal, Theme.Spacing.md)
@@ -755,8 +755,10 @@ extension SellView {
                     text: $title
                 )
                 SellLabeledField(
-                    label: "Describe your item",
-                    placeholder: "e.g. only worn a few times, true to size",
+                    label: isMysteryListing ? L10n.string("Describe your box") : L10n.string("Describe your item"),
+                    placeholder: isMysteryListing
+                        ? L10n.string("e.g. what buyers might receive, sizes, or themes")
+                        : "e.g. only worn a few times, true to size",
                     text: $description,
                     minLines: 6,
                     maxLines: nil,
@@ -774,7 +776,7 @@ extension SellView {
     // MARK: - Item Information Section (Flutter: Category, Brand, Condition, Colours)
     private var itemInformationSection: some View {
         VStack(spacing: 0) {
-            Text(L10n.string("Item Information"))
+            Text(L10n.string(isMysteryListing ? "Box Information" : "Item Information"))
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(Theme.Colors.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -790,7 +792,11 @@ extension SellView {
             .overlay(ContentDivider(), alignment: .bottom)
             .sheet(isPresented: $showCategoryPicker) {
                 NavigationStack {
-                    CategorySelectionView(selectedCategory: $category, onDismiss: { showCategoryPicker = false })
+                    CategorySelectionView(
+                        selectedCategory: $category,
+                        onDismiss: { showCategoryPicker = false },
+                        forMysteryBoxFlow: isMysteryListing
+                    )
                 }
             }
 
@@ -881,7 +887,7 @@ extension SellView {
             // Price Field
             NavigationLink(destination: PriceInputView(
                 price: $price,
-                categoryId: category?.id,
+                categoryId: isMysteryListing ? nil : category?.id,
                 maximumPrice: isMysteryListing ? 100 : nil
             )) {
                 SellFormRow(
@@ -1086,6 +1092,8 @@ private struct SellDraftsListSheet: View {
 struct CategorySelectionView: View {
     @Binding var selectedCategory: SellCategory?
     var onDismiss: () -> Void
+    /// When true, search hides non–mystery-box paths; under Toddlers only "Mystery" is listed (primary styling in `SubCategoryView`).
+    var forMysteryBoxFlow: Bool = false
     @State private var categories: [APICategory] = []
     @State private var isLoading = true
     @State private var loadError: String?
@@ -1099,9 +1107,13 @@ struct CategorySelectionView: View {
     private var filteredSearchResults: [CategoryPathEntry] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if q.isEmpty { return [] }
-        return allCategories.filter {
+        let base = allCategories.filter {
             $0.displayPath.lowercased().contains(q) || $0.name.lowercased().contains(q)
         }
+        if forMysteryBoxFlow {
+            return base.filter { $0.pathNames.map { $0.lowercased() }.contains("mystery") }
+        }
+        return base.filter { !$0.pathNames.contains { $0.caseInsensitiveCompare("Mystery") == .orderedSame } }
     }
 
     var body: some View {
@@ -1207,7 +1219,8 @@ struct CategorySelectionView: View {
                                 pathNames: [cat.name],
                                 pathIds: [cat.id],
                                 selectedCategory: $selectedCategory,
-                                onDismiss: onDismiss
+                                onDismiss: onDismiss,
+                                forMysteryBoxFlow: forMysteryBoxFlow
                             )) {
                                 categoryRow(cat.name, isSelected: isInSelectedPath)
                             }
@@ -1282,6 +1295,7 @@ struct SubCategoryView: View {
     let pathIds: [String]
     @Binding var selectedCategory: SellCategory?
     var onDismiss: () -> Void
+    var forMysteryBoxFlow: Bool = false
     @State private var categories: [APICategory] = []
     @State private var isLoading = true
     @State private var loadError: String?
@@ -1302,8 +1316,16 @@ struct SubCategoryView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
+                let visible = categoriesForMysteryFlow
                 List {
-                    ForEach(categories, id: \.id) { cat in
+                    if visible.isEmpty, forMysteryBoxFlow, parentName == "Toddlers" {
+                        Text(L10n.string("Mystery category is not available yet. Try again after the app updates."))
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .padding(.vertical, Theme.Spacing.md)
+                            .listRowBackground(Theme.Colors.background)
+                    }
+                    ForEach(visible, id: \.id) { cat in
                         if cat.hasChildren == true {
                             NavigationLink(destination: SubCategoryView(
                                 parentId: cat.id,
@@ -1311,7 +1333,8 @@ struct SubCategoryView: View {
                                 pathNames: pathNames + [cat.name],
                                 pathIds: pathIds + [cat.id],
                                 selectedCategory: $selectedCategory,
-                                onDismiss: onDismiss
+                                onDismiss: onDismiss,
+                                forMysteryBoxFlow: forMysteryBoxFlow
                             )) {
                                 subCategoryRow(cat)
                             }
@@ -1347,6 +1370,11 @@ struct SubCategoryView: View {
         }
     }
 
+    private var categoriesForMysteryFlow: [APICategory] {
+        guard forMysteryBoxFlow, parentName == "Toddlers" else { return categories }
+        return categories.filter { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Mystery") == .orderedSame }
+    }
+
     private func loadCategories(parentId: Int?) async {
         await MainActor.run { isLoading = true; loadError = nil }
         do {
@@ -1360,10 +1388,14 @@ struct SubCategoryView: View {
 
     private func subCategoryRow(_ cat: APICategory) -> some View {
         let isInSelectedPath = selectedCategory.map { $0.pathIds.contains(cat.id) || $0.id == cat.id } ?? false
+        let mysteryAccent = forMysteryBoxFlow
+            && parentName == "Toddlers"
+            && cat.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Mystery") == .orderedSame
         return HStack {
             Text(cat.name)
                 .font(Theme.Typography.body)
-                .foregroundColor(Theme.Colors.primaryText)
+                .fontWeight(mysteryAccent ? .semibold : .regular)
+                .foregroundColor(mysteryAccent ? Theme.primaryColor : Theme.Colors.primaryText)
             Spacer()
             if isInSelectedPath {
                 Image(systemName: "checkmark")
@@ -2103,13 +2135,15 @@ struct PriceInputView: View {
                         .padding(.horizontal, Theme.Spacing.md)
                 }
 
-                Text(L10n.string("Tip: similar price range is recommended based on similar items sold on WEARHOUSE."))
-                    .font(Theme.Typography.caption)
-                    .foregroundColor(Theme.Colors.secondaryText)
-                    .padding(.horizontal, Theme.Spacing.md)
+                if maximumPrice == nil {
+                    Text(L10n.string("Tip: similar price range is recommended based on similar items sold on WEARHOUSE."))
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .padding(.horizontal, Theme.Spacing.md)
+                }
 
-                // Similar sold items (feed-style grid)
-                if let catId = categoryId, Int(catId) != nil {
+                // Similar sold items (feed-style grid) — hidden for mystery box (£ cap) flow
+                if maximumPrice == nil, let catId = categoryId, Int(catId) != nil {
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                         Text(L10n.string("Similar sold items"))
                             .font(Theme.Typography.body)
@@ -2865,6 +2899,8 @@ struct BrandInputView: View {
 }
 
 private struct MysteryBoxSellHeroCard: View {
+    private let boxAccent = Theme.primaryColor.opacity(0.16)
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -2878,17 +2914,33 @@ private struct MysteryBoxSellHeroCard: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .frame(maxWidth: .infinity)
-                .frame(height: 200)
-            VStack(spacing: Theme.Spacing.sm) {
-                Image(systemName: "shippingbox.fill")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.92))
-                Text("?")
-                    .font(.system(size: 52, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.22))
-            }
+            // Inner “carton” panel with accent wash + large box + ? inside
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(boxAccent)
+                .frame(maxWidth: 220, maxHeight: 168)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+                )
+                .overlay {
+                    ZStack {
+                        Image(systemName: "shippingbox.fill")
+                            .font(.system(size: 76, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.92))
+                        Text("?")
+                            .font(.system(size: 44, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.38))
+                            .offset(y: 6)
+                    }
+                }
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 220)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(white: 0.45), lineWidth: 1)
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(L10n.string("Mystery box"))
     }
