@@ -1092,7 +1092,7 @@ private struct SellDraftsListSheet: View {
 struct CategorySelectionView: View {
     @Binding var selectedCategory: SellCategory?
     var onDismiss: () -> Void
-    /// When true, search hides non–mystery-box paths; under Toddlers only "Mystery" is listed (primary styling in `SubCategoryView`).
+    /// When true, search hides non–mystery-box paths; root list includes a **Mystery** shortcut; under Toddlers only "Mystery" is listed (primary styling in `SubCategoryView`).
     var forMysteryBoxFlow: Bool = false
     @State private var categories: [APICategory] = []
     @State private var isLoading = true
@@ -1100,6 +1100,8 @@ struct CategorySelectionView: View {
     @State private var searchText = ""
     @State private var allCategories: [CategoryPathEntry] = []
     @State private var isLoadingSearch = false
+    /// Mystery under Toddlers: shown as its own root row in mystery-box flow (API keeps it as a child, not a root).
+    @State private var mysteryQuickPick: SellCategory?
     private let service = CategoriesService()
 
     private static let rootOrder = ["Men", "Women", "Boys", "Girls", "Toddlers"]
@@ -1210,6 +1212,26 @@ struct CategorySelectionView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
+                    if forMysteryBoxFlow, let quick = mysteryQuickPick {
+                        Button(action: {
+                            selectedCategory = quick
+                            onDismiss()
+                        }) {
+                            HStack {
+                                Text(quick.name)
+                                    .font(Theme.Typography.body)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(Theme.primaryColor)
+                                Spacer()
+                                if selectedCategory?.id == quick.id {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(Theme.primaryColor)
+                                }
+                            }
+                        }
+                        .buttonStyle(PlainTappableButtonStyle())
+                        .listRowBackground(Theme.Colors.background)
+                    }
                     ForEach(sortedCategories, id: \.id) { cat in
                         let isInSelectedPath = selectedCategory.map { $0.pathNames.first == cat.name } ?? false
                         let toddlersMysteryDrillIn = forMysteryBoxFlow
@@ -1266,10 +1288,54 @@ struct CategorySelectionView: View {
         }
     }
 
+    private func resolveMysteryQuickPick(rootCategories: [APICategory]) async {
+        guard forMysteryBoxFlow else {
+            await MainActor.run { mysteryQuickPick = nil }
+            return
+        }
+        guard let toddlers = rootCategories.first(where: {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Toddlers") == .orderedSame
+        }) else {
+            await MainActor.run { mysteryQuickPick = nil }
+            return
+        }
+        guard let toddlersPk = Int(toddlers.id) else {
+            await MainActor.run { mysteryQuickPick = nil }
+            return
+        }
+        do {
+            let kids = try await service.fetchCategories(parentId: toddlersPk)
+            guard let mystery = kids.first(where: {
+                $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Mystery") == .orderedSame
+            }) else {
+                await MainActor.run { mysteryQuickPick = nil }
+                return
+            }
+            await MainActor.run {
+                mysteryQuickPick = SellCategory(
+                    id: mystery.id,
+                    name: mystery.name,
+                    pathNames: [toddlers.name, mystery.name],
+                    pathIds: [toddlers.id, mystery.id],
+                    fullPath: mystery.fullPath
+                )
+            }
+        } catch {
+            await MainActor.run { mysteryQuickPick = nil }
+        }
+    }
+
     private func loadCategories(parentId: Int?) async {
         await MainActor.run { isLoading = true; loadError = nil }
         do {
             let list = try await service.fetchCategories(parentId: parentId)
+            if parentId == nil {
+                if forMysteryBoxFlow {
+                    await resolveMysteryQuickPick(rootCategories: list)
+                } else {
+                    await MainActor.run { mysteryQuickPick = nil }
+                }
+            }
             await MainActor.run { categories = list }
         } catch {
             await MainActor.run { loadError = L10n.userFacingError(error) }
