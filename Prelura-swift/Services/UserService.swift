@@ -56,6 +56,7 @@ class UserService: ObservableObject {
             isStaff
             isVerified
             blueTickVerified
+            profileTier
             isBanned
             suspendedUntil
             reviewStats {
@@ -141,6 +142,7 @@ class UserService: ObservableObject {
             isStaff: userData.isStaff ?? false,
             isVerified: userData.isVerified ?? false,
             blueTickVerified: userData.blueTickVerified ?? false,
+            profileTier: (userData.profileTier ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
             isVacationMode: userData.isVacationMode ?? false,
             isMultibuyEnabled: userData.isMultibuyEnabled ?? false,
             email: userData.email,
@@ -229,6 +231,7 @@ class UserService: ObservableObject {
             isMultibuyEnabled
             isVerified
             blueTickVerified
+            profileTier
             reviewStats { noOfReviews rating }
           }
         }
@@ -279,6 +282,7 @@ class UserService: ObservableObject {
             isStaff: false,
             isVerified: userData.isVerified ?? false,
             blueTickVerified: userData.blueTickVerified ?? false,
+            profileTier: (userData.profileTier ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
             isVacationMode: userData.isVacationMode ?? false,
             isMultibuyEnabled: userData.isMultibuyEnabled ?? false,
             email: nil,
@@ -2150,6 +2154,7 @@ struct UserProfileData: Decodable {
     let isStaff: Bool?
     let isVerified: Bool?
     let blueTickVerified: Bool?
+    let profileTier: String?
     let isBanned: Bool?
     let suspendedUntil: String?
     let reviewStats: ReviewStatsData?

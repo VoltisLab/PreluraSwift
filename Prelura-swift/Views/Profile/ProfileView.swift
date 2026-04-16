@@ -89,9 +89,12 @@ struct ProfileView: View {
                             if let location = viewModel.user?.location, !location.isEmpty {
                                 profileLocationRow(location)
                             }
-                            // Verification status (so user can see if account is verified)
+                            // Verification status + optional Pro/Elite badge
                             if let isVerified = viewModel.user?.isVerified {
-                                profileVerificationRow(isVerified: isVerified)
+                                ProfileEmailVerificationTierRow(
+                                    isVerified: isVerified,
+                                    profileTier: viewModel.user?.profileTier ?? ""
+                                )
                             }
                             // When vacation mode is on, hide products and show holiday message (matches Flutter)
                             if viewModel.user?.isVacationMode == true {
@@ -496,21 +499,6 @@ struct ProfileView: View {
                 .font(.system(size: 12))
                 .foregroundColor(Theme.Colors.secondaryText)
             Text(location)
-                .font(Theme.Typography.subheadline)
-                .foregroundColor(Theme.Colors.secondaryText)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.bottom, Theme.Spacing.sm)
-    }
-
-    /// Shows whether the account email is verified (so user can tell at a glance).
-    private func profileVerificationRow(isVerified: Bool) -> some View {
-        HStack(alignment: .center, spacing: 6) {
-            Image(systemName: isVerified ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .font(.system(size: 12))
-                .foregroundColor(isVerified ? Color.green : Theme.Colors.secondaryText)
-            Text(isVerified ? "Email verified" : "Email not verified")
                 .font(Theme.Typography.subheadline)
                 .foregroundColor(Theme.Colors.secondaryText)
         }

@@ -56,6 +56,10 @@ struct UserProfileView: View {
                         if let location = viewModel.user.location, !location.isEmpty {
                             profileLocationRow(location)
                         }
+                        ProfileEmailVerificationTierRow(
+                            isVerified: viewModel.user.isVerified,
+                            profileTier: viewModel.user.profileTier
+                        )
                         if viewModel.user.isVacationMode {
                             vacationModeSection(isLoggedInUser: false)
                         } else {

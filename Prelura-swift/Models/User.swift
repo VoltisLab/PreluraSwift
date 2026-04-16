@@ -22,6 +22,8 @@ struct User: Identifiable, Hashable {
     let isVerified: Bool
     /// Platform verified badge (admin `blue_tick_verified`); shown as blue tick in profile.
     let blueTickVerified: Bool
+    /// Staff-set consumer badge: `PRO`, `ELITE`, or empty (standard).
+    let profileTier: String
     let isVacationMode: Bool
     let isMultibuyEnabled: Bool
     /// Account settings (from ViewMe)
@@ -58,6 +60,7 @@ struct User: Identifiable, Hashable {
         isStaff: Bool = false,
         isVerified: Bool = false,
         blueTickVerified: Bool = false,
+        profileTier: String = "",
         isVacationMode: Bool = false,
         isMultibuyEnabled: Bool = false,
         email: String? = nil,
@@ -88,6 +91,7 @@ struct User: Identifiable, Hashable {
         self.isStaff = isStaff
         self.isVerified = isVerified
         self.blueTickVerified = blueTickVerified
+        self.profileTier = profileTier
         self.isVacationMode = isVacationMode
         self.isMultibuyEnabled = isMultibuyEnabled
         self.email = email
