@@ -595,6 +595,8 @@ enum L10n {
         "Withdraw": "Ανάληψη",
         "Back": "Πίσω",
         "Continue": "Συνέχεια",
+        "Continue with one item": "Συνέχεια με 1 προϊόν",
+        "Continue with %d items": "Συνέχεια με %d προϊόντα",
         "Mystery box": "Κουτί μυστηρίου",
         "Included in this box": "Περιλαμβάνονται σε αυτό το κουτί",
         "Change": "Αλλαγή",

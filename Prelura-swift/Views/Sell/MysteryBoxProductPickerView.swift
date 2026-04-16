@@ -45,6 +45,12 @@ struct MysteryBoxProductPickerView: View {
         }
     }
 
+    private func continueWithSelectionTitle(count: Int) -> String {
+        guard count > 0 else { return L10n.string("Continue") }
+        if count == 1 { return L10n.string("Continue with one item") }
+        return String(format: L10n.string("Continue with %d items"), count)
+    }
+
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
@@ -104,33 +110,31 @@ struct MysteryBoxProductPickerView: View {
                 if !selectedItems.isEmpty {
                     VStack {
                         Spacer()
-                        HStack {
-                            Spacer()
-                            GlassEffectContainer(spacing: 0) {
-                                Button {
-                                    HapticManager.tap()
-                                    onContinue(selectedItems)
-                                } label: {
-                                    HStack(spacing: Theme.Spacing.sm) {
-                                        Image(systemName: "shippingbox.fill")
-                                            .font(.system(size: 16, weight: .semibold))
-                                        Text(L10n.string("Continue"))
-                                            .font(Theme.Typography.headline)
-                                        Spacer(minLength: 0)
-                                        Text("\(selectedItems.count)")
-                                            .font(Theme.Typography.headline)
-                                    }
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, Theme.Spacing.lg)
-                                    .padding(.vertical, Theme.Spacing.md)
-                                    .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
-                                    .glassEffectTransition(.materialize)
+                        GlassEffectContainer(spacing: 0) {
+                            Button {
+                                HapticManager.tap()
+                                onContinue(selectedItems)
+                            } label: {
+                                HStack(spacing: Theme.Spacing.sm) {
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "shippingbox.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                    Text(continueWithSelectionTitle(count: selectedItems.count))
+                                        .font(Theme.Typography.headline)
+                                        .multilineTextAlignment(.center)
+                                    Spacer(minLength: 0)
                                 }
-                                .buttonStyle(PlainTappableButtonStyle())
+                                .frame(maxWidth: .infinity)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, Theme.Spacing.lg)
+                                .padding(.vertical, Theme.Spacing.md)
+                                .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 30))
+                                .glassEffectTransition(.materialize)
                             }
-                            .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-                            Spacer()
+                            .buttonStyle(PlainTappableButtonStyle())
                         }
+                        .frame(maxWidth: .infinity)
+                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
                         .padding(.horizontal, Theme.Spacing.md)
                         .padding(.bottom, 15)
                     }
