@@ -2217,7 +2217,7 @@ struct ChatDetailView: View {
                 }
                 Text(orderHeaderStatusText(order: order))
                     .font(Theme.Typography.caption)
-                    .foregroundColor(Theme.primaryColor)
+                    .foregroundColor(Theme.Colors.secondaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "chevron.right")
@@ -2274,7 +2274,7 @@ struct ChatDetailView: View {
                 }
                 Text(orderHeaderStatusText(order: order))
                     .font(Theme.Typography.caption)
-                    .foregroundColor(Theme.primaryColor)
+                    .foregroundColor(Theme.Colors.secondaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -2354,21 +2354,23 @@ struct ChatDetailView: View {
         )
     }
 
+    /// Product header line only: grey, all caps (distinct from timeline cards).
     private func orderStatusDisplay(_ status: String) -> String {
-        switch status {
-        case "CONFIRMED": return "Confirmed"
-        case "SHIPPED": return "Shipped"
-        case "DELIVERED": return "Delivered"
-        case "COMPLETED": return "Completed"
-        case "CANCELLED": return "Cancelled"
-        case "REFUNDED": return "Refunded"
-        default: return status
+        let s = status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        switch s {
+        case "CONFIRMED": return "CONFIRMED"
+        case "SHIPPED": return "SHIPPED"
+        case "DELIVERED": return "DELIVERED"
+        case "COMPLETED": return "COMPLETED"
+        case "CANCELLED": return "CANCELLED"
+        case "REFUNDED": return "REFUNDED"
+        default: return s.replacingOccurrences(of: "_", with: " ")
         }
     }
 
     private func orderHeaderStatusText(order: ConversationOrder) -> String {
         if messages.contains(where: { $0.isOrderIssue }) {
-            return "Order on hold"
+            return "ORDER ON HOLD"
         }
         return orderStatusDisplay(order.status)
     }
