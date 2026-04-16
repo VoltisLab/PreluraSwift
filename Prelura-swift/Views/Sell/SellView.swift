@@ -108,6 +108,13 @@ struct SellView: View {
         (mysteryIncludedItems ?? []).compactMap { $0.productId.flatMap { Int($0) } }
     }
 
+    /// When false, omit the trailing toolbar item entirely — an empty `HStack` still gets bar-button chrome (grey circle).
+    private var showsTrailingSellToolbar: Bool {
+        guard !isEditMode else { return false }
+        if mysteryIncludedItems == nil { return true }
+        guard !isMysteryListing else { return false }
+        return !selectedImages.isEmpty || draftCount > 0
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -296,34 +303,36 @@ struct SellView: View {
                     }
                     .buttonStyle(PlainTappableButtonStyle())
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: Theme.Spacing.md) {
-                        if !isEditMode, mysteryIncludedItems == nil {
-                            Button {
-                                HapticManager.tap()
-                                mysteryPostingPhase = .picker(initialSelection: nil)
-                            } label: {
-                                Image(systemName: "shippingbox.fill")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(Theme.primaryColor)
+                if showsTrailingSellToolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        HStack(spacing: Theme.Spacing.md) {
+                            if mysteryIncludedItems == nil {
+                                Button {
+                                    HapticManager.tap()
+                                    mysteryPostingPhase = .picker(initialSelection: nil)
+                                } label: {
+                                    Image(systemName: "shippingbox.fill")
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundColor(Theme.primaryColor)
+                                }
+                                .buttonStyle(PlainTappableButtonStyle())
+                                .accessibilityLabel(L10n.string("Mystery box"))
                             }
-                            .buttonStyle(PlainTappableButtonStyle())
-                            .accessibilityLabel(L10n.string("Mystery box"))
-                        }
-                        if !isEditMode, !isMysteryListing, !selectedImages.isEmpty {
-                            Button(L10n.string("Save draft")) {
-                                saveCurrentAsDraft()
+                            if !isMysteryListing, !selectedImages.isEmpty {
+                                Button(L10n.string("Save draft")) {
+                                    saveCurrentAsDraft()
+                                }
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.primaryColor)
+                                .opacity(viewModel.isSubmitting ? 0.5 : 1)
+                                .disabled(viewModel.isSubmitting)
+                            } else if !isMysteryListing, draftCount > 0 {
+                                Button(L10n.string("Drafts")) {
+                                    showDraftsSheet = true
+                                }
+                                .font(Theme.Typography.subheadline)
+                                .foregroundColor(Theme.primaryColor)
                             }
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.primaryColor)
-                            .opacity(viewModel.isSubmitting ? 0.5 : 1)
-                            .disabled(viewModel.isSubmitting)
-                        } else if !isEditMode, !isMysteryListing, draftCount > 0 {
-                            Button(L10n.string("Drafts")) {
-                                showDraftsSheet = true
-                            }
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(Theme.primaryColor)
                         }
                     }
                 }
