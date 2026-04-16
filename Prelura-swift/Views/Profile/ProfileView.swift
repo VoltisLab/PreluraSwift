@@ -1054,23 +1054,31 @@ struct WardrobeItemCard: View {
                         )
                         .frame(width: imageWidth, height: imageHeight)
                     
-                    // Product Image - fixed size; retries once on failure to avoid stuck placeholders
-                    RetryAsyncImage(
-                        url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
-                        width: imageWidth,
-                        height: imageHeight,
-                        cornerRadius: Theme.Glass.cornerRadius,
-                        placeholder: {
-                            ImageShimmerPlaceholderFilled(cornerRadius: Theme.Glass.cornerRadius)
+                    // Product image — mystery uses in-app animated art (not the uploaded JPEG).
+                    Group {
+                        if item.isMysteryBox {
+                            MysteryBoxAnimatedMediaView()
                                 .frame(width: imageWidth, height: imageHeight)
-                        },
-                        failurePlaceholder: {
-                            Image(systemName: "photo")
-                                .font(.system(size: 40))
-                                .foregroundColor(Theme.primaryColor.opacity(0.5))
-                                .frame(width: imageWidth, height: imageHeight)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius, style: .continuous))
+                        } else {
+                            RetryAsyncImage(
+                                url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
+                                width: imageWidth,
+                                height: imageHeight,
+                                cornerRadius: Theme.Glass.cornerRadius,
+                                placeholder: {
+                                    ImageShimmerPlaceholderFilled(cornerRadius: Theme.Glass.cornerRadius)
+                                        .frame(width: imageWidth, height: imageHeight)
+                                },
+                                failurePlaceholder: {
+                                    Image(systemName: "photo")
+                                        .font(.system(size: 40))
+                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                        .frame(width: imageWidth, height: imageHeight)
+                                }
+                            )
                         }
-                    )
+                    }
                     
                     // Like count overlay - shared component (56pt tap area, same visual)
                     if !mysteryBoxAddChipMode {
@@ -1119,8 +1127,8 @@ struct WardrobeItemCard: View {
             // Product details section with consistent spacing
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 // Brand (purple)
-                if let brand = item.brand {
-                    Text(brand)
+                if let brandLine = item.brandLineForProductGrid(multipleBrandsLabel: L10n.string("Multiple brands")) {
+                    Text(brandLine)
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.primaryColor)
                         .padding(.top, Theme.Spacing.sm)

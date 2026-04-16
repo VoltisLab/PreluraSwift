@@ -451,34 +451,41 @@ struct HomeItemCard: View {
             Group {
                 if naturalThumbnailAspect {
                     ZStack(alignment: .bottomTrailing) {
-                        RetryAsyncImage(
-                            url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
-                            width: 1,
-                            height: 1,
-                            cornerRadius: 0,
-                            fillsFixedFrame: false,
-                            placeholder: {
-                                ImageShimmerPlaceholderFilled(cornerRadius: 0)
-                            },
-                            failurePlaceholder: {
-                                Image(systemName: "photo")
-                                    .font(.system(size: 40))
-                                    .foregroundColor(Theme.primaryColor.opacity(0.5))
-                            }
-                        )
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Theme.primaryColor.opacity(0.3),
-                                            Theme.primaryColor.opacity(0.1)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
+                        Group {
+                            if item.isMysteryBox {
+                                MysteryBoxAnimatedMediaView()
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            } else {
+                                RetryAsyncImage(
+                                    url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
+                                    width: 1,
+                                    height: 1,
+                                    cornerRadius: 0,
+                                    fillsFixedFrame: false,
+                                    placeholder: {
+                                        ImageShimmerPlaceholderFilled(cornerRadius: 0)
+                                    },
+                                    failurePlaceholder: {
+                                        Image(systemName: "photo")
+                                            .font(.system(size: 40))
+                                            .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                    }
                                 )
-                        )
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [
+                                                    Theme.primaryColor.opacity(0.3),
+                                                    Theme.primaryColor.opacity(0.1)
+                                                ],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                )
+                            }
+                        }
                         if !hideLikeButton {
                             likeButtonContent
                         }
@@ -506,22 +513,30 @@ struct HomeItemCard: View {
                                             )
                                         )
                                         .frame(width: imageWidth, height: imageHeight)
-                                    RetryAsyncImage(
-                                        url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
-                                        width: imageWidth,
-                                        height: imageHeight,
-                                        cornerRadius: 8,
-                                        placeholder: {
-                                            ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                                    Group {
+                                        if item.isMysteryBox {
+                                            MysteryBoxAnimatedMediaView()
                                                 .frame(width: imageWidth, height: imageHeight)
-                                        },
-                                        failurePlaceholder: {
-                                            Image(systemName: "photo")
-                                                .font(.system(size: 40))
-                                                .foregroundColor(Theme.primaryColor.opacity(0.5))
-                                                .frame(width: imageWidth, height: imageHeight)
+                                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                        } else {
+                                            RetryAsyncImage(
+                                                url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
+                                                width: imageWidth,
+                                                height: imageHeight,
+                                                cornerRadius: 8,
+                                                placeholder: {
+                                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                                                        .frame(width: imageWidth, height: imageHeight)
+                                                },
+                                                failurePlaceholder: {
+                                                    Image(systemName: "photo")
+                                                        .font(.system(size: 40))
+                                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                                        .frame(width: imageWidth, height: imageHeight)
+                                                }
+                                            )
                                         }
-                                    )
+                                    }
                                     if !hideLikeButton {
                                         likeButtonContent
                                     }
@@ -535,8 +550,8 @@ struct HomeItemCard: View {
             // Product details — tight to image (spacing was visually too large)
             VStack(alignment: .leading, spacing: 4) {
                 // Brand (purple)
-                if let brand = item.brand {
-                    Text(brand)
+                if let brandLine = item.brandLineForProductGrid(multipleBrandsLabel: L10n.string("Multiple brands")) {
+                    Text(brandLine)
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.primaryColor)
                         .padding(.top, 4)
@@ -547,7 +562,7 @@ struct HomeItemCard: View {
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.primaryText)
                     .lineLimit(1)
-                    .padding(.top, item.brand == nil ? 4 : 0)
+                    .padding(.top, item.brandLineForProductGrid(multipleBrandsLabel: L10n.string("Multiple brands")) == nil ? 4 : 0)
                 
                 // Condition
                 Text(item.formattedCondition)

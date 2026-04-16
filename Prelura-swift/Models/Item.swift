@@ -201,6 +201,24 @@ struct Item: Identifiable, Hashable {
             return condition
         }
     }
+
+    /// Custom brands joined with commas (common on mystery listings).
+    var brandCommaSeparatedPieces: [String] {
+        guard let b = brand?.trimmingCharacters(in: .whitespacesAndNewlines), !b.isEmpty else { return [] }
+        return b.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Product tile brand line: mystery + multiple distinct brands → `multipleBrandsLabel`; otherwise full `brand` or single token.
+    func brandLineForProductGrid(multipleBrandsLabel: String) -> String? {
+        guard let raw = brand?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        guard isMysteryBox else { return raw }
+        let pieces = brandCommaSeparatedPieces
+        if pieces.count > 1 { return multipleBrandsLabel }
+        if pieces.count == 1 { return pieces[0] }
+        return raw
+    }
 }
 
 extension Array where Element == Item {

@@ -608,6 +608,7 @@ enum L10n {
         "The app cannot send this time to the server yet. You will confirm before upload.": "Η εφαρμογή δεν μπορεί ακόμα να στείλει αυτή την ώρα στον διακομιστή. Θα σας ζητηθεί επιβεβαίωση πριν το ανέβασμα.",
         "Upload now": "Ανέβασμα τώρα",
         "Mystery box": "Κουτί μυστηρίου",
+        "Multiple brands": "Πολλαπλές μάρκες",
         "Included in this box": "Περιλαμβάνονται σε αυτό το κουτί",
         "Change": "Αλλαγή",
         "Change listings": "Αλλαγή λιστών",

@@ -918,23 +918,30 @@ struct DiscoverItemCard: View {
                         )
                         .frame(width: imageWidth, height: imageHeight)
                     
-                    // Product Image - fixed size; retries once on failure to avoid stuck placeholders
-                    RetryAsyncImage(
-                        url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
-                        width: imageWidth,
-                        height: imageHeight,
-                        cornerRadius: 8,
-                        placeholder: {
-                            ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                    Group {
+                        if item.isMysteryBox {
+                            MysteryBoxAnimatedMediaView()
                                 .frame(width: imageWidth, height: imageHeight)
-                        },
-                        failurePlaceholder: {
-                            Image(systemName: "photo")
-                                .font(.system(size: 40))
-                                .foregroundColor(Theme.primaryColor.opacity(0.5))
-                                .frame(width: imageWidth, height: imageHeight)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        } else {
+                            RetryAsyncImage(
+                                url: item.thumbnailURLForChrome.flatMap { URL(string: $0) },
+                                width: imageWidth,
+                                height: imageHeight,
+                                cornerRadius: 8,
+                                placeholder: {
+                                    ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                                        .frame(width: imageWidth, height: imageHeight)
+                                },
+                                failurePlaceholder: {
+                                    Image(systemName: "photo")
+                                        .font(.system(size: 40))
+                                        .foregroundColor(Theme.primaryColor.opacity(0.5))
+                                        .frame(width: imageWidth, height: imageHeight)
+                                }
+                            )
                         }
-                    )
+                    }
                     
                     // Like count overlay - tappable
                     LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: { onLikeTap?() })
@@ -947,8 +954,8 @@ struct DiscoverItemCard: View {
             // Product details section with consistent spacing (kept below image, no overlap)
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 // Brand (purple)
-                if let brand = item.brand {
-                    Text(brand)
+                if let brandLine = item.brandLineForProductGrid(multipleBrandsLabel: L10n.string("Multiple brands")) {
+                    Text(brandLine)
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.primaryColor)
                         .padding(.top, Theme.Spacing.sm)

@@ -148,6 +148,7 @@ struct ItemDetailView: View {
         .fullScreenCover(isPresented: $showFullScreenImages) {
             FullScreenImageViewer(
                 imageURLs: effectiveItem.imageURLs,
+                isMysteryBox: effectiveItem.isMysteryBox,
                 selectedIndex: $selectedImageIndex,
                 onDismiss: { showFullScreenImages = false }
             )
@@ -358,6 +359,11 @@ struct ItemDetailView: View {
     /// Max fraction of screen height the image area can use (60–65%).
     private static let maxImageHeightFraction: CGFloat = 0.65
     
+    private var imageCarouselPageCount: Int {
+        if effectiveItem.isMysteryBox { return 1 }
+        return effectiveItem.imageURLs.count
+    }
+
     private var imageCarousel: some View {
         GeometryReader { geo in
             let w = geo.size.width
@@ -367,18 +373,34 @@ struct ItemDetailView: View {
             
             ZStack(alignment: .top) {
                 TabView(selection: $selectedImageIndex) {
-                ForEach(0..<effectiveItem.imageURLs.count, id: \.self) { index in
-                    AsyncImage(url: URL(string: effectiveItem.imageURLs[index])) { phase in
-                        switch phase {
-                        case .empty:
-                            Rectangle()
-                                .fill(Theme.Colors.secondaryBackground)
-                                .shimmering()
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        case .failure:
+                ForEach(0..<imageCarouselPageCount, id: \.self) { index in
+                    Group {
+                        if effectiveItem.isMysteryBox {
+                            MysteryBoxAnimatedMediaView()
+                        } else if index < effectiveItem.imageURLs.count {
+                            AsyncImage(url: URL(string: effectiveItem.imageURLs[index])) { phase in
+                                switch phase {
+                                case .empty:
+                                    Rectangle()
+                                        .fill(Theme.Colors.secondaryBackground)
+                                        .shimmering()
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                case .failure:
+                                    Rectangle()
+                                        .fill(Theme.Colors.secondaryBackground)
+                                        .overlay(
+                                            Image(systemName: "photo")
+                                                .font(.system(size: 40))
+                                                .foregroundColor(Theme.Colors.secondaryText)
+                                        )
+                                @unknown default:
+                                    EmptyView()
+                                }
+                            }
+                        } else {
                             Rectangle()
                                 .fill(Theme.Colors.secondaryBackground)
                                 .overlay(
@@ -386,8 +408,6 @@ struct ItemDetailView: View {
                                         .font(.system(size: 40))
                                         .foregroundColor(Theme.Colors.secondaryText)
                                 )
-                        @unknown default:
-                            EmptyView()
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -399,6 +419,10 @@ struct ItemDetailView: View {
             .frame(width: w, height: h)
             .ignoresSafeArea(edges: .top)
             .onTapGesture { showFullScreenImages = true }
+            .onChange(of: effectiveItem.id) { _, _ in selectedImageIndex = 0 }
+            .onChange(of: effectiveItem.isMysteryBox) { _, isMystery in
+                if isMystery { selectedImageIndex = 0 }
+            }
             
             // Heart Icon Overlay (bottom right) — on top so it always receives touch
             VStack {
@@ -426,7 +450,7 @@ struct ItemDetailView: View {
                 HStack {
                     Spacer()
                     HStack(spacing: 5) {
-                        ForEach(0..<effectiveItem.imageURLs.count, id: \.self) { index in
+                        ForEach(0..<imageCarouselPageCount, id: \.self) { index in
                             Circle()
                                 .fill(selectedImageIndex == index ? Theme.primaryColor : Color.black)
                                 .frame(width: selectedImageIndex == index ? 7 : 5,
@@ -464,25 +488,36 @@ struct ItemDetailView: View {
                 .foregroundColor(Theme.Colors.primaryText)
                 .lineLimit(4)
             
-            // Brand and Size Row (tappable → filter by brand / size; same behaviour as Flutter)
-            HStack {
+            // Brand and size — full brand string on PDP; keep ≥50pt gap before size; brands may wrap to two lines.
+            HStack(alignment: .top, spacing: 0) {
                 if let brand = effectiveItem.brand {
                     NavigationLink(destination: FilteredProductsView(title: brand, filterType: .byBrand(brandName: brand), authService: authService)) {
                         Text(brand)
                             .font(Theme.Typography.body)
                             .foregroundColor(Theme.primaryColor)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(HapticTapButtonStyle())
                 }
-                Spacer()
+                if effectiveItem.brand != nil, effectiveItem.size != nil {
+                    Spacer(minLength: 50)
+                } else if effectiveItem.brand == nil, effectiveItem.size != nil {
+                    Spacer(minLength: 0)
+                }
                 if let size = effectiveItem.size {
                     let displaySize = sizeDisplayValue(size)
                     NavigationLink(destination: FilteredProductsView(title: displaySize, filterType: .bySize(sizeName: size), authService: authService)) {
                         Text(displaySize)
                             .font(Theme.Typography.body)
                             .foregroundColor(Theme.primaryColor)
+                            .multilineTextAlignment(.trailing)
+                            .fixedSize(horizontal: true, vertical: true)
                     }
                     .buttonStyle(HapticTapButtonStyle())
+                    .layoutPriority(1)
                 }
             }
             
@@ -709,15 +744,17 @@ struct ItemDetailView: View {
     }
     
     private func attributeRow(label: String, value: String, valueColor: Color? = nil) -> some View {
-        HStack {
+        HStack(alignment: .top, spacing: Theme.Spacing.md) {
             Text(label)
                 .font(Theme.Typography.headline)
                 .foregroundColor(Theme.Colors.primaryText)
-            Spacer()
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: Theme.Spacing.md)
             Text(value)
                 .font(Theme.Typography.body)
                 .foregroundColor(valueColor ?? Theme.Colors.primaryText)
                 .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.lg)
@@ -896,33 +933,45 @@ struct ItemDetailView: View {
 // MARK: - Full Screen Image Viewer (slider)
 struct FullScreenImageViewer: View {
     let imageURLs: [String]
+    var isMysteryBox: Bool = false
     @Binding var selectedIndex: Int
     var onDismiss: () -> Void
+
+    private var pageCount: Int {
+        if isMysteryBox { return 1 }
+        return imageURLs.count
+    }
     
     var body: some View {
         ZStack {
             Theme.Colors.background.ignoresSafeArea()
             
             TabView(selection: $selectedIndex) {
-                ForEach(0..<imageURLs.count, id: \.self) { index in
-                    AsyncImage(url: URL(string: imageURLs[index])) { phase in
-                        switch phase {
-                        case .empty:
-                            Rectangle()
-                                .fill(Theme.Colors.secondaryBackground)
-                                .shimmering()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                        case .failure:
-                            Image(systemName: "photo")
-                                .font(.system(size: 48))
-                                .foregroundColor(.white.opacity(0.5))
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        @unknown default:
-                            EmptyView()
+                ForEach(0..<pageCount, id: \.self) { index in
+                    Group {
+                        if isMysteryBox {
+                            MysteryBoxAnimatedMediaView()
+                        } else {
+                            AsyncImage(url: URL(string: imageURLs[index])) { phase in
+                                switch phase {
+                                case .empty:
+                                    Rectangle()
+                                        .fill(Theme.Colors.secondaryBackground)
+                                        .shimmering()
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                case .failure:
+                                    Image(systemName: "photo")
+                                        .font(.system(size: 48))
+                                        .foregroundColor(.white.opacity(0.5))
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                @unknown default:
+                                    EmptyView()
+                                }
+                            }
                         }
                     }
                     .tag(index)
@@ -949,7 +998,7 @@ struct FullScreenImageViewer: View {
                 Spacer()
                 // Page indicator
                 HStack(spacing: 6) {
-                    ForEach(0..<imageURLs.count, id: \.self) { index in
+                    ForEach(0..<pageCount, id: \.self) { index in
                         Circle()
                             .fill(selectedIndex == index ? Theme.primaryColor : Color.white.opacity(0.4))
                             .frame(width: selectedIndex == index ? 8 : 6, height: selectedIndex == index ? 8 : 6)
