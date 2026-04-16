@@ -16,17 +16,21 @@ private enum PlanPalette {
 // MARK: - Animated mesh backdrop
 
 private struct PlanScreenAnimatedBackground: View {
+    /// Slightly lifted from app chrome so purple / gold / cyan reads without going pitch-black.
+    private static let planScreenBase = Color(red: 0.09, green: 0.085, blue: 0.11)
+
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             let wobble = sin(t * 0.7) * 14.0
             ZStack {
-                Theme.Colors.background
+                Self.planScreenBase
+                Theme.Colors.background.opacity(0.45)
                 // Soft purple wash
                 EllipticalGradient(
                     colors: [
-                        Theme.primaryColor.opacity(0.22),
-                        Theme.primaryColor.opacity(0.04),
+                        Theme.primaryColor.opacity(0.32),
+                        Theme.primaryColor.opacity(0.08),
                         .clear,
                     ],
                     center: .init(x: 0.15 + sin(t * 0.35) * 0.08, y: 0.12),
@@ -39,8 +43,8 @@ private struct PlanScreenAnimatedBackground: View {
                 // Gold warmth (bottom-right)
                 EllipticalGradient(
                     colors: [
-                        PlanPalette.goldA.opacity(0.35),
-                        PlanPalette.goldB.opacity(0.12),
+                        PlanPalette.goldA.opacity(0.44),
+                        PlanPalette.goldB.opacity(0.18),
                         .clear,
                     ],
                     center: .init(x: 0.88 - sin(t * 0.28) * 0.05, y: 0.78),
@@ -52,7 +56,7 @@ private struct PlanScreenAnimatedBackground: View {
 
                 // Cyan spark for “mystery” energy
                 RadialGradient(
-                    colors: [PlanPalette.mysticB.opacity(0.18), .clear],
+                    colors: [PlanPalette.mysticB.opacity(0.26), .clear],
                     center: .center,
                     startRadius: 2,
                     endRadius: 220
@@ -65,255 +69,92 @@ private struct PlanScreenAnimatedBackground: View {
     }
 }
 
-// MARK: - Plan card (one carousel page)
+// MARK: - Plan tier cards (Silver and Gold are separate views)
 
-private struct PlanCarouselCard: View {
-    enum Kind { case silver, gold, unlimited }
+private enum PlanGoldMysteryAddon {
+    case none
+    case upsellPreview
+    case activePreview
+}
 
-    let kind: Kind
-    let title: String
-    let subtitle: String
-    let features: [String]
-    let isCurrent: Bool
-    let secondaryCaption: String?
-    /// Primary CTA (nil = no button)
-    var primaryTitle: String?
-    var primaryEnabled: Bool = true
-    var primaryAction: (() -> Void)?
-    var destructiveTitle: String?
-    var destructiveAction: (() -> Void)?
+private struct PlanMeasuredGoldCardHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
 
-    @State private var sparklePhase: CGFloat = 0
+private struct PlanGoldMysteryAddonPanelView: View {
+    let addon: PlanGoldMysteryAddon
+    let onMysterySubscribe: (() -> Void)?
+    let onMysteryTurnOff: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            headerRow
-                .padding(.bottom, Theme.Spacing.md)
-
-            Text(subtitle)
-                .font(Theme.Typography.subheadline)
-                .foregroundStyle(.white.opacity(0.82))
-                .padding(.bottom, Theme.Spacing.md)
-
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(features.enumerated()), id: \.offset) { index, line in
-                    PlanFeatureRow(text: line, accent: accentForRow(index))
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .move(edge: .trailing)),
-                            removal: .opacity
-                        ))
-                }
-            }
-            .animation(.spring(response: 0.45, dampingFraction: 0.82).delay(0.04), value: features.count)
-
-            Spacer(minLength: Theme.Spacing.md)
-
-            if let cap = secondaryCaption, !cap.isEmpty {
-                Text(cap)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(.white.opacity(0.65))
-                    .padding(.bottom, Theme.Spacing.sm)
-            }
-
-            if let pt = primaryTitle, let pa = primaryAction {
-                Button(action: {
-                    HapticManager.tap()
-                    pa()
-                }) {
-                    Text(pt)
-                        .font(Theme.Typography.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(primaryButtonBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(!primaryEnabled)
-                .opacity(primaryEnabled ? 1 : 0.45)
-            }
-
-            if let dt = destructiveTitle, let da = destructiveAction {
-                Button(role: .destructive, action: {
-                    HapticManager.tap()
-                    da()
-                }) {
-                    Text(dt)
-                        .font(Theme.Typography.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                }
-                .padding(.top, Theme.Spacing.sm)
-            }
-        }
-        .padding(Theme.Spacing.lg)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(cardFillGradient)
-                // Animated rim
-                animatedRim
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .shadow(color: rimGlowColor.opacity(isCurrent ? 0.55 : 0.22), radius: isCurrent ? 22 : 12, y: 8)
-        .overlay(alignment: .topTrailing) {
-            if isCurrent {
-                currentPill
-                    .padding(12)
-            }
-        }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
-                sparklePhase = 1
-            }
-        }
-    }
-
-    private var headerRow: some View {
-        HStack(alignment: .center, spacing: Theme.Spacing.md) {
-            ZStack {
-                Circle()
-                    .fill(iconBackdrop)
-                    .frame(width: 52, height: 52)
-                iconView
-                    .font(.system(size: 24, weight: .semibold))
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "shippingbox.fill")
+                    .foregroundStyle(PlanPalette.goldA)
+                Text(L10n.string("Unlimited mystery listings"))
+                    .font(Theme.Typography.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
-                    .symbolEffect(.pulse, options: .repeating, isActive: kind == .gold && isCurrent)
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(Theme.Typography.title2.weight(.bold))
-                    .foregroundStyle(.white)
-                Text(kindTagline)
+            switch addon {
+            case .none:
+                EmptyView()
+            case .upsellPreview:
+                Text(L10n.string("£10.99/month when billing goes live. Requires Gold."))
                     .font(Theme.Typography.caption)
                     .foregroundStyle(.white.opacity(0.7))
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private var kindTagline: String {
-        switch kind {
-        case .silver: return L10n.string("Essential seller tools")
-        case .gold: return L10n.string("Grow faster on Wearhouse")
-        case .unlimited: return L10n.string("For mystery power sellers")
-        }
-    }
-
-    @ViewBuilder
-    private var iconView: some View {
-        switch kind {
-        case .silver:
-            Image(systemName: "circle.hexagongrid.fill")
-        case .gold:
-            Image(systemName: "crown.fill")
-        case .unlimited:
-            Image(systemName: "sparkles.rectangle.stack.fill")
-        }
-    }
-
-    private var iconBackdrop: some ShapeStyle {
-        switch kind {
-        case .silver:
-            return AnyShapeStyle(LinearGradient(colors: [PlanPalette.silverA.opacity(0.5), PlanPalette.silverB.opacity(0.35)], startPoint: .topLeading, endPoint: .bottomTrailing))
-        case .gold:
-            return AnyShapeStyle(AngularGradient(colors: [PlanPalette.goldA, PlanPalette.goldB, PlanPalette.goldC, PlanPalette.goldA], center: .center))
-        case .unlimited:
-            return AnyShapeStyle(LinearGradient(colors: [PlanPalette.mysticA.opacity(0.85), PlanPalette.mysticB.opacity(0.5)], startPoint: .topLeading, endPoint: .bottomTrailing))
-        }
-    }
-
-    private var cardFillGradient: LinearGradient {
-        switch kind {
-        case .silver:
-            return LinearGradient(
-                colors: [
-                    Color(red: 0.14, green: 0.16, blue: 0.22),
-                    Color(red: 0.08, green: 0.09, blue: 0.12),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .gold:
-            return LinearGradient(
-                colors: [
-                    Color(red: 0.22, green: 0.14, blue: 0.06),
-                    Color(red: 0.10, green: 0.07, blue: 0.05),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .unlimited:
-            return LinearGradient(
-                colors: [
-                    Color(red: 0.16, green: 0.08, blue: 0.22),
-                    Color(red: 0.06, green: 0.06, blue: 0.14),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-
-    private var animatedRim: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { ctx in
-            let angle = ctx.date.timeIntervalSinceReferenceDate * (kind == .gold ? 42 : 22)
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(
-                    AngularGradient(
-                        gradient: Gradient(colors: rimColors),
-                        center: .center,
-                        angle: .degrees(angle.truncatingRemainder(dividingBy: 360))
-                    ),
-                    lineWidth: kind == .silver ? 1.5 : 2.5
-                )
-                .opacity(kind == .silver ? 0.55 : 0.95)
-        }
-    }
-
-    private var rimColors: [Color] {
-        switch kind {
-        case .silver:
-            return [PlanPalette.silverA.opacity(0.9), PlanPalette.silverB, PlanPalette.silverC.opacity(0.6), PlanPalette.silverA.opacity(0.5)]
-        case .gold:
-            return [PlanPalette.goldA, PlanPalette.goldB, Theme.primaryColor.opacity(0.9), PlanPalette.goldC, PlanPalette.goldA]
-        case .unlimited:
-            return [PlanPalette.mysticB, Theme.primaryColor, PlanPalette.mysticA, PlanPalette.mysticB]
-        }
-    }
-
-    private var rimGlowColor: Color {
-        switch kind {
-        case .silver: return PlanPalette.silverB
-        case .gold: return PlanPalette.goldA
-        case .unlimited: return PlanPalette.mysticB
-        }
-    }
-
-    private func accentForRow(_ index: Int) -> Color {
-        switch kind {
-        case .silver: return PlanPalette.silverA
-        case .gold: return index % 2 == 0 ? PlanPalette.goldA : PlanPalette.goldB
-        case .unlimited: return index % 2 == 0 ? PlanPalette.mysticB : Theme.primaryColor
-        }
-    }
-
-    private var primaryButtonBackground: some View {
-        Group {
-            switch kind {
-            case .silver:
-                LinearGradient(colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.75)], startPoint: .leading, endPoint: .trailing)
-            case .gold:
-                LinearGradient(colors: [PlanPalette.goldB, PlanPalette.goldA.opacity(0.95), PlanPalette.goldB], startPoint: .leading, endPoint: .trailing)
-            case .unlimited:
-                LinearGradient(colors: [PlanPalette.mysticA, Theme.primaryColor], startPoint: .leading, endPoint: .trailing)
+                if let onSub = onMysterySubscribe {
+                    Button(action: {
+                        HapticManager.tap()
+                        onSub()
+                    }) {
+                        Text(L10n.string("Subscribe (preview)"))
+                            .font(Theme.Typography.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(LinearGradient(colors: [PlanPalette.mysticA.opacity(0.9), Theme.primaryColor.opacity(0.95)], startPoint: .leading, endPoint: .trailing))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            case .activePreview:
+                Text(L10n.string("Preview active — no cap on active mystery boxes."))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(.white.opacity(0.72))
+                if let off = onMysteryTurnOff {
+                    Button(role: .destructive, action: {
+                        HapticManager.tap()
+                        off()
+                    }) {
+                        Text(L10n.string("Turn off preview"))
+                            .font(Theme.Typography.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                    }
+                }
             }
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(red: 0.07, green: 0.07, blue: 0.09))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+        )
     }
+}
 
-    private var currentPill: some View {
+private struct PlanSettingsTierCurrentPill: View {
+    @Binding var sparklePhase: CGFloat
+
+    var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 13, weight: .bold))
@@ -325,7 +166,10 @@ private struct PlanCarouselCard: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: Capsule())
+        .background(
+            Capsule()
+                .fill(Color(red: 0.11, green: 0.11, blue: 0.13))
+        )
         .overlay(
             Capsule()
                 .strokeBorder(
@@ -333,6 +177,246 @@ private struct PlanCarouselCard: View {
                     lineWidth: 1.2
                 )
         )
+    }
+}
+
+/// Silver tier: separate view; height follows the **measured** Gold card, not Silver text height.
+private struct PlanSilverTierCard: View {
+    let isCurrent: Bool
+    let features: [String]
+    let minHeightToMatchGoldCard: CGFloat
+
+    @State private var sparklePhase: CGFloat = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            AnyShapeStyle(LinearGradient(colors: [PlanPalette.silverA.opacity(0.5), PlanPalette.silverB.opacity(0.35)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        )
+                        .frame(width: 52, height: 52)
+                    Image(systemName: "circle.hexagongrid.fill")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.string("Silver"))
+                        .font(Theme.Typography.title2.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text(L10n.string("Essential seller tools"))
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.bottom, Theme.Spacing.md)
+
+            Text(L10n.string("The standard for most sellers"))
+                .font(Theme.Typography.subheadline)
+                .foregroundStyle(.white.opacity(0.82))
+                .padding(.bottom, Theme.Spacing.md)
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(features.enumerated()), id: \.offset) { _, line in
+                    PlanFeatureRow(text: line, accent: PlanPalette.silverA)
+                }
+            }
+        }
+        .padding(Theme.Spacing.lg)
+        .frame(maxWidth: .infinity, minHeight: minHeightToMatchGoldCard, alignment: .topLeading)
+        .background { silverCardBackground }
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .compositingGroup()
+        .shadow(color: Color.black.opacity(isCurrent ? 0.45 : 0.32), radius: isCurrent ? 16 : 10, y: 6)
+        .overlay(alignment: .topTrailing) {
+            if isCurrent {
+                PlanSettingsTierCurrentPill(sparklePhase: $sparklePhase)
+                    .padding(12)
+            }
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                sparklePhase = 1
+            }
+        }
+    }
+
+    private var silverCardBackground: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(Color(red: 0.10, green: 0.11, blue: 0.14))
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.20, green: 0.22, blue: 0.28).opacity(0.55),
+                            Color.clear,
+                            Color(red: 0.06, green: 0.07, blue: 0.09).opacity(0.9),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            AnimatedSilverTravelingBorder(outerCornerRadius: 28)
+        }
+    }
+}
+
+/// Gold tier: separate view; reports rendered height so Silver can match without a padded guess.
+private struct PlanGoldTierCard: View {
+    let isCurrent: Bool
+    let features: [String]
+    let goldMysteryAddon: PlanGoldMysteryAddon
+    let onMysterySubscribe: (() -> Void)?
+    let onMysteryTurnOff: (() -> Void)?
+    let primaryTitle: String?
+    let primaryEnabled: Bool
+    let primaryAction: (() -> Void)?
+    let destructiveTitle: String?
+    let destructiveAction: (() -> Void)?
+
+    @State private var sparklePhase: CGFloat = 0
+
+    private var hasFooterActions: Bool {
+        let primary = primaryTitle != nil && primaryAction != nil
+        let destructive = destructiveTitle != nil && destructiveAction != nil
+        return primary || destructive
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            AnyShapeStyle(AngularGradient(colors: [PlanPalette.goldA, PlanPalette.goldB, PlanPalette.goldC, PlanPalette.goldA], center: .center))
+                        )
+                        .frame(width: 52, height: 52)
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .symbolEffect(.pulse, options: .repeating, isActive: isCurrent)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.string("Gold"))
+                        .font(Theme.Typography.title2.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text(L10n.string("Grow faster on Wearhouse"))
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.bottom, Theme.Spacing.md)
+
+            Text(L10n.string("More reach, more mystery boxes"))
+                .font(Theme.Typography.subheadline)
+                .foregroundStyle(.white.opacity(0.82))
+                .padding(.bottom, Theme.Spacing.md)
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(features.enumerated()), id: \.offset) { index, line in
+                    PlanFeatureRow(text: line, accent: index % 2 == 0 ? PlanPalette.goldA : PlanPalette.goldB)
+                }
+            }
+            .animation(.spring(response: 0.45, dampingFraction: 0.82).delay(0.04), value: features.count)
+
+            if goldMysteryAddon != .none {
+                PlanGoldMysteryAddonPanelView(addon: goldMysteryAddon, onMysterySubscribe: onMysterySubscribe, onMysteryTurnOff: onMysteryTurnOff)
+                    .padding(.top, Theme.Spacing.sm)
+            }
+
+            if hasFooterActions {
+                VStack(alignment: .leading, spacing: 0) {
+                    if let pt = primaryTitle, let pa = primaryAction {
+                        Button(action: {
+                            HapticManager.tap()
+                            pa()
+                        }) {
+                            Text(pt)
+                                .font(Theme.Typography.headline)
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(
+                                    LinearGradient(colors: [PlanPalette.goldB, PlanPalette.goldA.opacity(0.95), PlanPalette.goldB], startPoint: .leading, endPoint: .trailing)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!primaryEnabled)
+                        .opacity(primaryEnabled ? 1 : 0.45)
+                    }
+
+                    if let dt = destructiveTitle, let da = destructiveAction {
+                        Button(role: .destructive, action: {
+                            HapticManager.tap()
+                            da()
+                        }) {
+                            Text(dt)
+                                .font(Theme.Typography.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        }
+                        .padding(.top, Theme.Spacing.sm)
+                    }
+                }
+                .padding(.top, Theme.Spacing.lg)
+            }
+        }
+        .padding(Theme.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background { goldCardBackground }
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .compositingGroup()
+        .shadow(color: Color.black.opacity(isCurrent ? 0.45 : 0.32), radius: isCurrent ? 16 : 10, y: 6)
+        .overlay(alignment: .topTrailing) {
+            if isCurrent {
+                PlanSettingsTierCurrentPill(sparklePhase: $sparklePhase)
+                    .padding(12)
+            }
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                sparklePhase = 1
+            }
+        }
+    }
+
+    private var goldCardBackground: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(Color(red: 0.12, green: 0.08, blue: 0.05))
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.35, green: 0.22, blue: 0.08).opacity(0.5),
+                            Color.clear,
+                            Color(red: 0.08, green: 0.05, blue: 0.04).opacity(0.95),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { ctx in
+                let angle = ctx.date.timeIntervalSinceReferenceDate * 42
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .strokeBorder(
+                        AngularGradient(
+                            gradient: Gradient(colors: [
+                                PlanPalette.goldA, PlanPalette.goldB, Theme.primaryColor.opacity(0.85), PlanPalette.goldC, PlanPalette.goldA,
+                            ]),
+                            center: .center,
+                            angle: .degrees(angle.truncatingRemainder(dividingBy: 360))
+                        ),
+                        lineWidth: 2
+                    )
+                    .padding(2)
+            }
+        }
     }
 }
 
@@ -347,7 +431,7 @@ private struct PlanFeatureRow: View {
                 .foregroundStyle(
                     LinearGradient(colors: [accent, accent.opacity(0.65)], startPoint: .top, endPoint: .bottom)
                 )
-                .shadow(color: accent.opacity(0.45), radius: 4, y: 0)
+                .shadow(color: accent.opacity(0.22), radius: 2, y: 0)
             Text(text)
                 .font(Theme.Typography.subheadline)
                 .foregroundStyle(.white.opacity(0.92))
@@ -359,7 +443,7 @@ private struct PlanFeatureRow: View {
 
 // MARK: - Settings → Plan
 
-/// Settings → Plan: horizontal carousel of Silver / Gold / Unlimited with motion and gold-accented visuals.
+/// Settings → Plan: horizontal carousel of Silver & Gold; unlimited mystery is a compact add-on on the Gold card.
 struct PlanSettingsView: View {
     @EnvironmentObject private var authService: AuthService
     private let userService = UserService()
@@ -368,6 +452,7 @@ struct PlanSettingsView: View {
     @State private var showGoldPaywall = false
     @State private var showUnlimitedPaywall = false
     @State private var selectedPage = 0
+    @State private var measuredGoldCardHeight: CGFloat = 0
 
     private var serverGold: Bool { SellerMysteryQuota.apiProfileIndicatesGoldTier(profileTier) }
     private var localGold: Bool { SellerPlanUserDefaults.localPlan == .gold }
@@ -380,27 +465,35 @@ struct PlanSettingsView: View {
         return L10n.string("Silver")
     }
 
-    private var silverIsCurrent: Bool { !isGoldEffective && !unlimitedMystery }
-    private var goldIsCurrent: Bool { isGoldEffective && !unlimitedMystery }
-    private var unlimitedIsCurrent: Bool { unlimitedMystery }
+    private var silverIsCurrent: Bool { !isGoldEffective }
+    private var goldIsCurrent: Bool { isGoldEffective }
+
+    /// Unlimited add-on UI lives on the Gold card only.
+    private var goldMysteryAddonState: PlanGoldMysteryAddon {
+        guard isGoldEffective else { return .none }
+        return unlimitedMystery ? .activePreview : .upsellPreview
+    }
 
     var body: some View {
         ZStack {
             PlanScreenAnimatedBackground()
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 24) {
+                VStack(spacing: 0) {
                     heroHeader
                         .padding(.horizontal, Theme.Spacing.md)
                         .padding(.top, Theme.Spacing.sm)
+                        .padding(.bottom, Theme.Spacing.md)
 
                     carousel
-                        .padding(.bottom, 8)
+                        .padding(.bottom, Theme.Spacing.sm)
 
                     pageDots
+                        .padding(.top, Theme.Spacing.xs)
 
                     footnote
                         .padding(.horizontal, Theme.Spacing.lg)
+                        .padding(.top, Theme.Spacing.md)
                         .padding(.bottom, Theme.Spacing.xl)
                 }
             }
@@ -415,6 +508,14 @@ struct PlanSettingsView: View {
         .onChange(of: selectedPage) { _, _ in
             HapticManager.selection()
         }
+        .onPreferenceChange(PlanMeasuredGoldCardHeightKey.self) { h in
+            guard h > 1 else { return }
+            if abs(measuredGoldCardHeight - h) > 0.5 {
+                measuredGoldCardHeight = h
+            }
+        }
+        .onChange(of: isGoldEffective) { _, _ in measuredGoldCardHeight = 0 }
+        .onChange(of: unlimitedMystery) { _, _ in measuredGoldCardHeight = 0 }
         .sheet(isPresented: $showGoldPaywall) {
             PlanPaywallSheet(
                 title: L10n.string("Upgrade to Gold"),
@@ -442,7 +543,7 @@ struct PlanSettingsView: View {
     }
 
     private var heroHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "hands.sparkles.fill")
                     .font(.title3)
@@ -466,12 +567,6 @@ struct PlanSettingsView: View {
                     )
                 )
 
-            if serverGold {
-                Text(L10n.string("Your Wearhouse profile tier includes Gold benefits."))
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(.white.opacity(0.65))
-            }
-
             Text(L10n.string("Swipe to compare tiers"))
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.primaryColor.opacity(0.9))
@@ -479,47 +574,26 @@ struct PlanSettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var carousel: some View {
-        TabView(selection: $selectedPage) {
-            silverPage
-                .tag(0)
-                .padding(.horizontal, 18)
-            goldPage
-                .tag(1)
-                .padding(.horizontal, 18)
-            unlimitedPage
-                .tag(2)
-                .padding(.horizontal, 18)
+    /// TabView may not lay out page 1 while page 0 is visible, so this is only a short-lived guess until the hidden probe measures the real Gold card.
+    private var planCarouselFallbackSlotHeight: CGFloat {
+        if !isGoldEffective { return 480 }
+        switch goldMysteryAddonState {
+        case .none: return 500
+        case .upsellPreview: return 580
+        case .activePreview: return 560
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(height: 520)
     }
 
-    private var silverPage: some View {
-        PlanCarouselCard(
-            kind: .silver,
-            title: L10n.string("Silver"),
-            subtitle: L10n.string("The standard for most sellers"),
-            features: [
-                L10n.string("Unlimited product uploads"),
-                L10n.string("Up to 2 active mystery box listings"),
-                L10n.string("0% selling fees"),
-            ],
-            isCurrent: silverIsCurrent,
-            secondaryCaption: nil,
-            primaryTitle: nil,
-            primaryEnabled: true,
-            primaryAction: nil,
-            destructiveTitle: nil,
-            destructiveAction: nil
-        )
+    private var planCarouselSlotHeight: CGFloat {
+        if measuredGoldCardHeight > 1 { return measuredGoldCardHeight }
+        return planCarouselFallbackSlotHeight
     }
 
-    private var goldPage: some View {
-        PlanCarouselCard(
-            kind: .gold,
-            title: L10n.string("Gold"),
-            subtitle: L10n.string("More reach, more mystery boxes"),
+    /// Same Gold card as the carousel (used for intrinsic-height probe while the Gold tab might not be laid out yet).
+    @ViewBuilder
+    private var planGoldTierCardContent: some View {
+        PlanGoldTierCard(
+            isCurrent: goldIsCurrent,
             features: [
                 L10n.string("Everything in Silver"),
                 L10n.string("Up to 5 active mystery box listings"),
@@ -527,8 +601,9 @@ struct PlanSettingsView: View {
                 L10n.string("Priority placement in search & category browsing"),
                 L10n.string("Priority seller support"),
             ],
-            isCurrent: goldIsCurrent,
-            secondaryCaption: unlimitedMystery ? L10n.string("Unlimited mystery add-on is active on top of Gold.") : nil,
+            goldMysteryAddon: goldMysteryAddonState,
+            onMysterySubscribe: { showUnlimitedPaywall = true },
+            onMysteryTurnOff: { SellerPlanUserDefaults.unlimitedMysterySubscribed = false },
             primaryTitle: isGoldEffective ? nil : L10n.string("Upgrade to Gold"),
             primaryEnabled: true,
             primaryAction: isGoldEffective ? nil : { showGoldPaywall = true },
@@ -537,28 +612,55 @@ struct PlanSettingsView: View {
         )
     }
 
-    private var unlimitedPage: some View {
-        PlanCarouselCard(
-            kind: .unlimited,
-            title: L10n.string("Unlimited mystery"),
-            subtitle: L10n.string("No ceiling on mystery listings"),
+    private var carousel: some View {
+        ZStack(alignment: .top) {
+            // Invisible duplicate: measures Gold intrinsic height on first paint (TabView often skips off-screen pages).
+            planGoldTierCardContent
+                .padding(.horizontal, 18)
+                .fixedSize(horizontal: false, vertical: true)
+                .opacity(0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .overlay(
+                    GeometryReader { geo in
+                        Color.clear.preference(key: PlanMeasuredGoldCardHeightKey.self, value: geo.size.height)
+                    }
+                )
+                .zIndex(0)
+
+            TabView(selection: $selectedPage) {
+                silverPage
+                    .tag(0)
+                    .padding(.horizontal, 18)
+                goldPage
+                    .tag(1)
+                    .padding(.horizontal, 18)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: planCarouselSlotHeight)
+            .zIndex(1)
+        }
+    }
+
+    private var silverPage: some View {
+        PlanSilverTierCard(
+            isCurrent: silverIsCurrent,
             features: [
-                L10n.string("No cap on active mystery box listings"),
-                L10n.string("£10.99/month after purchase"),
+                L10n.string("Unlimited product uploads"),
+                L10n.string("Up to 2 active mystery box listings"),
+                L10n.string("0% selling fees"),
             ],
-            isCurrent: unlimitedIsCurrent,
-            secondaryCaption: L10n.string("Requires Gold. Billed monthly when IAP is live."),
-            primaryTitle: unlimitedMystery ? nil : L10n.string("Subscribe — £10.99/month"),
-            primaryEnabled: isGoldEffective,
-            primaryAction: unlimitedMystery ? nil : { showUnlimitedPaywall = true },
-            destructiveTitle: unlimitedMystery ? L10n.string("Turn off preview subscription") : nil,
-            destructiveAction: unlimitedMystery ? { SellerPlanUserDefaults.unlimitedMysterySubscribed = false } : nil
+            minHeightToMatchGoldCard: planCarouselSlotHeight
         )
+    }
+
+    private var goldPage: some View {
+        planGoldTierCardContent
     }
 
     private var pageDots: some View {
         HStack(spacing: 10) {
-            ForEach(0..<3, id: \.self) { i in
+            ForEach(0..<2, id: \.self) { i in
                 Capsule()
                     .fill(i == selectedPage ? AnyShapeStyle(LinearGradient(colors: [PlanPalette.goldA, Theme.primaryColor], startPoint: .leading, endPoint: .trailing)) : AnyShapeStyle(Color.white.opacity(0.25)))
                     .frame(width: i == selectedPage ? 28 : 8, height: 8)
@@ -592,9 +694,7 @@ struct PlanSettingsView: View {
     }
 
     private func syncCarouselPage() {
-        if unlimitedMystery {
-            selectedPage = 2
-        } else if isGoldEffective {
+        if isGoldEffective {
             selectedPage = 1
         } else {
             selectedPage = 0

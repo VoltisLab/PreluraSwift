@@ -3697,71 +3697,6 @@ struct OrderConfirmationCardView: View {
     }
 }
 
-/// Animated primary-gradient border used for the sale banner.
-private struct AnimatedPrimaryGradientBorder: View {
-    let cornerRadius: CGFloat
-    let lineWidth: CGFloat
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            // Slow but clearly visible rotation. Loops forever.
-            let angle = Angle(degrees: (t * 25).truncatingRemainder(dividingBy: 360))
-            let gradient = AngularGradient(
-                gradient: Gradient(colors: [
-                    Theme.primaryColor.opacity(0.10),
-                    Theme.primaryColor.opacity(0.95),
-                    Theme.primaryColor.opacity(0.35),
-                    Theme.primaryColor.opacity(0.10),
-                ]),
-                center: .center,
-                angle: angle
-            )
-
-            ZStack {
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(gradient, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
-
-                // Soft glow so the card reads as "sale" rather than "offer".
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(gradient.opacity(0.45), style: StrokeStyle(lineWidth: lineWidth + 2.5, lineCap: .round, lineJoin: .round))
-                    .blur(radius: 6)
-                    .opacity(0.9)
-            }
-        }
-    }
-}
-
-/// Slowly drifts a primary-tinted gradient horizontally (left to right).
-private struct AnimatedPrimaryHorizontalFill: View {
-    let cornerRadius: CGFloat
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            // Smooth left-to-right drift that loops forever.
-            let p = (t * 0.05).truncatingRemainder(dividingBy: 1) // [0,1)
-            let xCenter = CGFloat(p) * 0.8 + 0.1 // [0.1,0.9]
-
-            let start = UnitPoint(x: xCenter - 0.30, y: 0.0)
-            let end = UnitPoint(x: xCenter + 0.30, y: 1.0)
-
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Theme.primaryColor.opacity(0.22),
-                            Theme.primaryColor.opacity(0.08),
-                            Color.clear
-                        ],
-                        startPoint: start,
-                        endPoint: end
-                    )
-                )
-        }
-    }
-}
-
 /// Sold event card in timeline: "You bought this for £X" / "X bought this for £X".
 struct SoldConfirmationCardView: View {
     let order: OrderInfo
@@ -3852,16 +3787,10 @@ struct SoldConfirmationCardView: View {
         }
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            ZStack(alignment: .topLeading) {
-                Theme.Colors.chatInlineCardBackground
-                AnimatedPrimaryHorizontalFill(cornerRadius: 24)
-                    .opacity(0.85)
-            }
-        )
+        .background(Theme.Colors.chatInlineCardBackground)
         .cornerRadius(24)
         .overlay {
-            AnimatedPrimaryGradientBorder(cornerRadius: 24, lineWidth: 2)
+            AnimatedSilverTravelingBorder(outerCornerRadius: 24)
         }
         .overlay(alignment: .topTrailing) {
             // Small sparkle accent so this card feels different from the plain offer cards.

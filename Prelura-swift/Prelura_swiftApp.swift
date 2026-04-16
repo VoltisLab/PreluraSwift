@@ -257,6 +257,7 @@ struct MainTabView: View {
     /// Single Try Cart / Shop All bag shared across Shop All, Favourites, and item detail.
     @StateObject private var shopAllBagStore = ShopAllBagStore()
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage(kAppearanceMode) private var appearanceMode: String = "system"
 
     private var isDark: Bool {
@@ -342,6 +343,12 @@ struct MainTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .wearhouseAccountRestrictionShouldRefresh)) { _ in
             Task { await authService.refreshAccountModerationFromServer() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, authService.isAuthenticated else { return }
+            Task {
+                await PendingScheduledListingActivator.processDueIfNeeded(authToken: authService.authToken)
+            }
         }
     }
 

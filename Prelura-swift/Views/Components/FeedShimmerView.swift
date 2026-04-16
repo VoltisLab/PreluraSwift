@@ -24,7 +24,7 @@ struct FeedShimmerView: View {
         .shimmering()
     }
 
-    /// Toolbar-shaped strip: narrow centred title + trailing AI + notification slots (`HomeView` toolbar).
+    /// Toolbar-shaped strip: centred title + trailing notification slot (matches feed like-pill chrome, not the old AI + touching circle pair).
     private var topChromeShimmer: some View {
         ZStack {
             HStack {
@@ -34,22 +34,32 @@ struct FeedShimmerView: View {
                     .frame(width: 150, height: 22)
                 Spacer(minLength: 0)
             }
-            HStack {
+            HStack(alignment: .center) {
                 Spacer(minLength: 0)
-                HStack(spacing: 0) {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Theme.Colors.secondaryBackground)
-                        .frame(width: 36, height: Theme.SearchField.trailingActionSlotHeight)
-                    Circle()
-                        .fill(Theme.Colors.secondaryBackground)
-                        .frame(width: 40, height: 40)
-                }
+                toolbarNotificationShimmerPill
+                    .frame(height: Theme.SearchField.trailingActionSlotHeight, alignment: .center)
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.top, 8)
         .padding(.bottom, 6)
+    }
+
+    /// Same capsule treatment as `LikeButtonView` on product cards (dark translucent pill + inner glyph stub).
+    private var toolbarNotificationShimmerPill: some View {
+        HStack(spacing: Theme.Spacing.xs) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(Theme.Colors.secondaryBackground)
+                .frame(width: 11, height: 13)
+        }
+        .padding(.horizontal, Theme.Spacing.sm)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.black.opacity(0.6))
+        )
+        .shadow(color: Color.black.opacity(0.4), radius: 1, x: 0, y: 1)
     }
 
     /// Solid search pill (no magnifier / text stubs).

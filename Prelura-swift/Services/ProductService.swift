@@ -445,7 +445,7 @@ class ProductService: ObservableObject {
 
     /// Create a product (listing). Upload images first via FileUploadService.uploadProductImages, then call this with the returned imageUrl list.
     /// Matches Flutter CreateProduct mutation and Variables$Mutation$CreateProduct.
-    /// When `scheduledPublishAt` is non-nil, the listing is created as **INACTIVE** (hidden) so the seller can activate it later; the API does not support `scheduledPublishAt` on `createProduct`.
+    /// When `scheduledPublishAt` is non-nil, the listing is created as **INACTIVE** (hidden) until the seller activates it. The GraphQL mutation does not accept a publish time; the client uses the date only for reminders / UX.
     func createProduct(
         name: String,
         description: String,

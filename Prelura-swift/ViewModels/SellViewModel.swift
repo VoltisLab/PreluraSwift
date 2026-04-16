@@ -93,7 +93,8 @@ class SellViewModel: ObservableObject {
                 }
                 let styleRaws = StyleSelectionView.normalizedUniqueStyleRaws(styles)
                 let savedInactiveBecauseScheduled = scheduledPublishAt != nil
-                _ = try await productService.createProduct(
+                let scheduleAt = scheduledPublishAt
+                let newProductId = try await productService.createProduct(
                     name: titleClean,
                     description: descriptionForApi,
                     price: price,
@@ -115,9 +116,14 @@ class SellViewModel: ObservableObject {
                     mysteryIncludedProductIds: []
                 )
 
+                if savedInactiveBecauseScheduled, let at = scheduleAt {
+                    PendingScheduledListingActivator.register(productId: newProductId, activateAt: at)
+                    await ListingGoLiveReminder.schedule(productId: newProductId, fireDate: at, listingTitle: titleClean)
+                }
+
                 isSubmitting = false
                 listingSavedInactiveNotice = savedInactiveBecauseScheduled
-                    ? L10n.string("Your listing is saved as inactive and hidden from the feed until you activate it from your profile. Automatic publishing at the date you chose is not available from the server yet.")
+                    ? String(format: L10n.string("Your listing will appear on your profile on %@."), Self.formattedScheduleDate(scheduleAt ?? Date()))
                     : nil
                 submissionSuccess = true
                 if !savedInactiveBecauseScheduled {
@@ -238,7 +244,8 @@ class SellViewModel: ObservableObject {
                 }
                 let styleRaws = StyleSelectionView.normalizedUniqueStyleRaws(styles)
                 let savedInactiveBecauseScheduled = scheduledPublishAt != nil
-                _ = try await productService.createProduct(
+                let scheduleAt = scheduledPublishAt
+                let newProductId = try await productService.createProduct(
                     name: titleClean,
                     description: descriptionForApi,
                     price: price,
@@ -260,9 +267,14 @@ class SellViewModel: ObservableObject {
                     mysteryIncludedProductIds: mysteryIncludedProductIds
                 )
 
+                if savedInactiveBecauseScheduled, let at = scheduleAt {
+                    PendingScheduledListingActivator.register(productId: newProductId, activateAt: at)
+                    await ListingGoLiveReminder.schedule(productId: newProductId, fireDate: at, listingTitle: titleClean)
+                }
+
                 isSubmitting = false
                 listingSavedInactiveNotice = savedInactiveBecauseScheduled
-                    ? L10n.string("Your listing is saved as inactive and hidden from the feed until you activate it from your profile. Automatic publishing at the date you chose is not available from the server yet.")
+                    ? String(format: L10n.string("Your listing will appear on your profile on %@."), Self.formattedScheduleDate(scheduleAt ?? Date()))
                     : nil
                 submissionSuccess = true
                 if !savedInactiveBecauseScheduled {
@@ -382,6 +394,14 @@ class SellViewModel: ObservableObject {
     func acknowledgeInactiveListingSavedNotice() {
         listingSavedInactiveNotice = nil
         submissionSuccess = false
+    }
+
+    private static func formattedScheduleDate(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = .current
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f.string(from: date)
     }
 
     /// Maps UI parcel size to backend ParcelSizeEnum. Backend only supports SMALL, MEDIUM, LARGE.

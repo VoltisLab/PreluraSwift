@@ -52,8 +52,14 @@ struct SellView: View {
     @State private var showExitDraftPrompt: Bool = false
     /// Extra scroll bottom inset while the keyboard is visible so fields above the upload bar stay reachable.
     @State private var keyboardBottomInset: CGFloat = 0
-    /// New listings only: optional future publish time.
-    @State private var scheduleListingEnabled: Bool = false
+    /// New listings only: post immediately vs pick a time (stored inactive until that time; app activates when you return after the time).
+    private enum ListingPostTiming: String, CaseIterable, Identifiable {
+        case immediately
+        case scheduled
+        var id: String { rawValue }
+    }
+
+    @State private var listingPostTiming: ListingPostTiming = .immediately
     @State private var scheduledListingDate: Date = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
     @State private var showListingSavedInactiveAlert: Bool = false
 
@@ -182,8 +188,8 @@ struct SellView: View {
                 .padding(.bottom, 100 + keyboardBottomInset)
             }
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: scheduleListingEnabled) { _, isOn in
-                if isOn {
+            .onChange(of: listingPostTiming) { _, timing in
+                if timing == .scheduled {
                     let minD = Date().addingTimeInterval(120)
                     if scheduledListingDate < minD { scheduledListingDate = minD }
                 }
@@ -275,7 +281,7 @@ struct SellView: View {
             }
             completeSuccessfulListingSubmit()
         }
-        .alert(L10n.string("Listing saved"), isPresented: $showListingSavedInactiveAlert) {
+        .alert(L10n.string("Listing scheduled"), isPresented: $showListingSavedInactiveAlert) {
             Button(L10n.string("OK")) {
                 viewModel.acknowledgeInactiveListingSavedNotice()
                 completeSuccessfulListingSubmit()
@@ -438,7 +444,7 @@ struct SellView: View {
         if !styles.isEmpty { return true }
         if price != nil || discountPrice != nil { return true }
         if parcelSize != nil { return true }
-        if scheduleListingEnabled { return true }
+        if listingPostTiming == .scheduled { return true }
         return false
     }
 
@@ -517,6 +523,53 @@ struct SellView: View {
         price = p.price
         discountPrice = p.discountPrice
         parcelSize = p.parcelSize
+        enrichSellCategoryFromCatalogIfNeeded(prefillCategory: p.category, leafNameHint: p.categoryLeafNameHint)
+    }
+
+    /// Copy-to-listing and edit flows often only have a leaf category id/name; `sizes(path:)` needs a full path. Resolve from the category catalog when needed.
+    private func enrichSellCategoryFromCatalogIfNeeded(prefillCategory: SellCategory?, leafNameHint: String?) {
+        if let cat = prefillCategory, !cat.id.isEmpty {
+            if cat.fullPath != nil, cat.pathNames.count >= 2 { return }
+            let id = cat.id
+            Task {
+                let svc = CategoriesService()
+                guard let flat = try? await svc.fetchAllCategoriesFlattened(),
+                      let match = flat.first(where: { $0.id == id }) else { return }
+                await MainActor.run {
+                    guard self.category?.id == id else { return }
+                    self.category = SellCategory(
+                        id: match.id,
+                        name: match.name,
+                        pathNames: match.pathNames,
+                        pathIds: match.pathIds,
+                        fullPath: match.displayPath
+                    )
+                }
+            }
+            return
+        }
+        let hint = leafNameHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let hint, !hint.isEmpty else { return }
+        Task {
+            let svc = CategoriesService()
+            guard let flat = try? await svc.fetchAllCategoriesFlattened() else { return }
+            let lower = hint.lowercased()
+            let matches = flat.filter { entry in
+                entry.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == lower
+                    || entry.pathNames.last?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == lower
+            }
+            guard matches.count == 1, let match = matches.first else { return }
+            await MainActor.run {
+                guard self.category == nil else { return }
+                self.category = SellCategory(
+                    id: match.id,
+                    name: match.name,
+                    pathNames: match.pathNames,
+                    pathIds: match.pathIds,
+                    fullPath: match.displayPath
+                )
+            }
+        }
     }
 
     private func openMysteryPickerIfAllowed() async {
@@ -575,6 +628,9 @@ struct SellView: View {
             selectedTab = 4 // Profile tab
         }
         NotificationCenter.default.post(name: .wearhouseUserProfileDidUpdate, object: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            NotificationCenter.default.post(name: .wearhouseUserProfileDidUpdate, object: nil)
+        }
     }
 
     /// After a successful new listing upload, clear the form so returning to Sell does not show stale data.
@@ -598,7 +654,7 @@ struct SellView: View {
         discountPrice = nil
         parcelSize = nil
         existingListingImagePairs = []
-        scheduleListingEnabled = false
+        listingPostTiming = .immediately
         scheduledListingDate = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
     }
 
@@ -646,7 +702,7 @@ struct SellView: View {
                 measurements: measurements,
                 material: material,
                 styles: styles,
-                scheduledPublishAt: (!isEditMode && scheduleListingEnabled) ? scheduledListingDate : nil,
+                scheduledPublishAt: (!isEditMode && listingPostTiming == .scheduled) ? scheduledListingDate : nil,
                 mysteryIncludedProductIds: mysteryProductIds
             )
         } else {
@@ -668,7 +724,7 @@ struct SellView: View {
                 measurements: measurements,
                 material: material,
                 styles: styles,
-                scheduledPublishAt: (!isEditMode && scheduleListingEnabled) ? scheduledListingDate : nil
+                scheduledPublishAt: (!isEditMode && listingPostTiming == .scheduled) ? scheduledListingDate : nil
             )
         }
     }
@@ -706,6 +762,10 @@ struct SellView: View {
             } else {
                 category = nil
             }
+            let hintForCatalog = (loaded.sellCategoryBackendId?.isEmpty != false)
+                ? (loaded.categoryName ?? loaded.category.name)
+                : nil
+            enrichSellCategoryFromCatalogIfNeeded(prefillCategory: category, leafNameHint: hintForCatalog)
             material = nil
             styles = []
             parcelSize = "Medium"
@@ -1078,7 +1138,8 @@ extension SellView {
                 selectedSizeId: $sizeId,
                 selectedSizeName: $sizeName,
                 categoryPath: category?.sizeApiPath ?? ""
-            )) {
+            )
+            .id("\(category?.id ?? "")|\(category?.sizeApiPath ?? "")")) {
                 SellFormRow(title: L10n.string("Size"), value: sizeName)
             }
             .buttonStyle(PlainTappableButtonStyle())
@@ -1172,30 +1233,32 @@ extension SellView {
             .overlay(ContentDivider(), alignment: .bottom)
 
             if !isEditMode {
-                HStack(alignment: .center, spacing: Theme.Spacing.md) {
-                    Toggle("", isOn: $scheduleListingEnabled)
-                        .labelsHidden()
-                        .tint(Theme.primaryColor)
-                    Text(L10n.string("Schedule listing"))
-                        .font(Theme.Typography.body)
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    Text(L10n.string("When should it appear on your profile?"))
+                        .font(Theme.Typography.subheadline.weight(.semibold))
                         .foregroundColor(Theme.Colors.primaryText)
-                    Spacer(minLength: 0)
+                    Picker("", selection: $listingPostTiming) {
+                        Text(L10n.string("Post now")).tag(ListingPostTiming.immediately)
+                        Text(L10n.string("Later")).tag(ListingPostTiming.scheduled)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)
                 .overlay(ContentDivider(), alignment: .bottom)
 
-                if scheduleListingEnabled {
+                if listingPostTiming == .scheduled {
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                         DatePicker(
-                            L10n.string("Go live on"),
+                            L10n.string("Appear on profile"),
                             selection: $scheduledListingDate,
                             in: Date().addingTimeInterval(120)...,
                             displayedComponents: [.date, .hourAndMinute]
                         )
                         .datePickerStyle(.compact)
                         .tint(Theme.primaryColor)
-                        Text(L10n.string("Your listing will be published automatically at this time."))
+                        Text(L10n.string("Your profile will list this at the date and time below."))
                             .font(Theme.Typography.caption)
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
@@ -1918,7 +1981,7 @@ struct SizeSelectionView: View {
         .navigationTitle(L10n.string("Size"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .task {
+        .task(id: categoryPath) {
             guard !categoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 isLoading = false
                 return

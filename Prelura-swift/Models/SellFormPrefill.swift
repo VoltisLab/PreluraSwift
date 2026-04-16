@@ -5,6 +5,8 @@ struct SellFormPrefill: Equatable {
     var title: String
     var description: String
     var category: SellCategory?
+    /// When the API omits category id but includes a display name (e.g. some list responses), used to resolve a leaf category from the catalog.
+    var categoryLeafNameHint: String?
     var brand: String?
     var condition: String?
     var colours: [String]
@@ -31,6 +33,11 @@ struct SellFormPrefill: Equatable {
             let name = (item.categoryName ?? item.category.name).trimmingCharacters(in: .whitespacesAndNewlines)
             return SellCategory(id: id, name: name.isEmpty ? "Category" : name, pathNames: [name], pathIds: [id], fullPath: nil)
         }()
+        let leafHint: String? = {
+            if category != nil { return nil }
+            let n = (item.categoryName ?? item.category.name).trimmingCharacters(in: .whitespacesAndNewlines)
+            return n.isEmpty ? nil : n
+        }()
         let sizeNm = item.size?.trimmingCharacters(in: .whitespacesAndNewlines)
         let sizeName: String? = {
             guard let s = sizeNm, !s.isEmpty, s.caseInsensitiveCompare("One Size") != .orderedSame else { return nil }
@@ -40,6 +47,7 @@ struct SellFormPrefill: Equatable {
             title: item.title,
             description: item.description,
             category: category,
+            categoryLeafNameHint: leafHint,
             brand: item.brand,
             condition: Item.conditionKeyForSellForm(from: item.condition),
             colours: item.colors,
