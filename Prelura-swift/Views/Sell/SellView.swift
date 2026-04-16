@@ -1212,7 +1212,9 @@ struct CategorySelectionView: View {
                 List {
                     ForEach(sortedCategories, id: \.id) { cat in
                         let isInSelectedPath = selectedCategory.map { $0.pathNames.first == cat.name } ?? false
-                        if cat.hasChildren == true {
+                        let toddlersMysteryDrillIn = forMysteryBoxFlow
+                            && cat.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Toddlers") == .orderedSame
+                        if cat.hasChildren == true || toddlersMysteryDrillIn {
                             NavigationLink(destination: SubCategoryView(
                                 parentId: cat.id,
                                 parentName: cat.name,
