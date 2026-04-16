@@ -1,6 +1,56 @@
 import SwiftUI
 
-/// In-app mystery box art: primary gradient, shipping box only, animated “?” on the box (not the uploaded listing JPEG).
+/// Kraft / cardboard tones for the isometric mystery box (not flat white).
+private enum MysteryCardboard {
+    static let topA = Color(red: 0.88, green: 0.78, blue: 0.64)
+    static let topB = Color(red: 0.72, green: 0.58, blue: 0.42)
+    static let leftA = Color(red: 0.66, green: 0.50, blue: 0.36)
+    static let leftB = Color(red: 0.46, green: 0.33, blue: 0.22)
+    static let rightA = Color(red: 0.78, green: 0.62, blue: 0.44)
+    static let rightB = Color(red: 0.54, green: 0.40, blue: 0.28)
+}
+
+/// Angled highlight band sweeping **right → left** across the tile (ray-of-light look).
+private struct MysteryBoxLightSweepOverlay: View {
+    private let cycle: TimeInterval = 2.65
+    private let tiltDegrees: CGFloat = -26
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 45.0, paused: false)) { timeline in
+            GeometryReader { geo in
+                let w = geo.size.width
+                let h = geo.size.height
+                let u = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: cycle) / cycle
+                let span = max(hypot(w, h) * 0.5, 1)
+                // u: 0…1 → band travels from right side toward left
+                let travel = (CGFloat(u) - 0.5) * (w + span * 1.1)
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .clear,
+                                Color.white.opacity(0.12),
+                                Color.white.opacity(0.5),
+                                Color.white.opacity(0.78),
+                                Color.white.opacity(0.5),
+                                Color.white.opacity(0.12),
+                                .clear,
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: span * 0.32, height: max(w, h) * 2.35)
+                    .rotationEffect(.degrees(tiltDegrees))
+                    .position(x: w * 0.5 + travel, y: h * 0.52)
+                    .blendMode(.screen)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// In-app mystery box art: primary gradient, cardboard isometric box, animated “?” on the left face, light sweep.
 struct MysteryBoxAnimatedMediaView: View {
     @State private var questionPulse = false
     @State private var boxBounce = false
@@ -29,19 +79,21 @@ struct MysteryBoxAnimatedMediaView: View {
                     .offset(x: -side * 0.34, y: side * 0.34)
                     .blur(radius: side * 0.08)
 
-                VStack(spacing: side * 0.035) {
-                    VStack(spacing: side * 0.008) {
+                VStack(spacing: side * 0.03) {
+                    VStack(spacing: side * 0.004) {
                         Text("MYSTERY")
                         Text("BOX")
                     }
-                    .font(.system(size: side * 0.09, weight: .black, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.95))
+                    .font(.system(size: side * 0.125, weight: .black, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.96))
                     .multilineTextAlignment(.center)
-                    .shadow(color: .black.opacity(0.2), radius: 3, y: 2)
+                    .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
 
                     MysteryBoxPseudo3D(side: side, questionPulse: questionPulse)
                         .offset(y: boxBounce ? -side * 0.016 : side * 0.016)
                 }
+
+                MysteryBoxLightSweepOverlay()
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
@@ -84,7 +136,7 @@ private struct MysteryBoxPseudo3D: View {
             ])
             .fill(
                 LinearGradient(
-                    colors: [.white.opacity(0.95), .white.opacity(0.8)],
+                    colors: [MysteryCardboard.topA, MysteryCardboard.topB],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -93,7 +145,7 @@ private struct MysteryBoxPseudo3D: View {
             PolygonShape(points: MysteryBoxIsoLeftFace.points)
             .fill(
                 LinearGradient(
-                    colors: [.white.opacity(0.86), .white.opacity(0.66)],
+                    colors: [MysteryCardboard.leftA, MysteryCardboard.leftB],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -107,7 +159,7 @@ private struct MysteryBoxPseudo3D: View {
             ])
             .fill(
                 LinearGradient(
-                    colors: [.white.opacity(0.92), .white.opacity(0.75)],
+                    colors: [MysteryCardboard.rightA, MysteryCardboard.rightB],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -118,14 +170,14 @@ private struct MysteryBoxPseudo3D: View {
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.48, green: 0.14, blue: 0.62).opacity(0.88),
-                            Color(red: 0.28, green: 0.06, blue: 0.4).opacity(0.98),
+                            Color(red: 0.22, green: 0.12, blue: 0.08).opacity(0.92),
+                            Color(red: 0.38, green: 0.22, blue: 0.14).opacity(0.98),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
-                .shadow(color: .white.opacity(0.35), radius: 0, y: 0)
+                .shadow(color: .white.opacity(0.22), radius: 0, y: 0)
                 .rotation3DEffect(.degrees(-56), axis: (0, 1, 0), anchor: .center, perspective: 0.42)
                 .rotation3DEffect(.degrees(5), axis: (1, 0, 0), anchor: .center, perspective: 0.42)
                 .offset(x: -boxSize * 0.19, y: boxSize * 0.14)
@@ -134,7 +186,7 @@ private struct MysteryBoxPseudo3D: View {
                 .scaleEffect(questionPulse ? 1.04 : 0.93)
         }
         .frame(width: boxSize, height: boxSize)
-        .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
+        .shadow(color: .black.opacity(0.22), radius: 7, y: 4)
     }
 }
 

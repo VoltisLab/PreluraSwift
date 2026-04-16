@@ -29,8 +29,9 @@ enum MysteryBoxListingCoverImage {
 
             let side = min(size.width, size.height)
             let symCfg = UIImage.SymbolConfiguration(pointSize: side * 0.22, weight: .semibold)
+            let kraft = UIColor(red: 0.62, green: 0.46, blue: 0.32, alpha: 1)
             if let boxImg = UIImage(systemName: "shippingbox.fill", withConfiguration: symCfg)?.withTintColor(
-                .white.withAlphaComponent(0.92),
+                kraft,
                 renderingMode: .alwaysOriginal
             ) {
                 let symSize = boxImg.size
@@ -45,7 +46,7 @@ enum MysteryBoxListingCoverImage {
             let qFont = UIFont.systemFont(ofSize: side * 0.095, weight: .heavy)
             let qAttrs: [NSAttributedString.Key: Any] = [
                 .font: qFont,
-                .foregroundColor: UIColor(red: 0.38, green: 0.1, blue: 0.52, alpha: 0.92),
+                .foregroundColor: UIColor(red: 0.26, green: 0.15, blue: 0.09, alpha: 0.95),
             ]
             let qSize = q.size(withAttributes: qAttrs)
             let stampCenter = CGPoint(x: size.width * 0.46, y: size.height * 0.52)
