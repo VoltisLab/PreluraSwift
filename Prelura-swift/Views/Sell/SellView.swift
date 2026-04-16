@@ -55,6 +55,7 @@ struct SellView: View {
     /// New listings only: optional future publish time.
     @State private var scheduleListingEnabled: Bool = false
     @State private var scheduledListingDate: Date = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
+    @State private var showListingSavedInactiveAlert: Bool = false
 
     private enum MysteryPostingPhase: Identifiable {
         /// `initialSelection` is non-nil when re-opening the picker from the compose form.
@@ -265,19 +266,21 @@ struct SellView: View {
                 : (isMysteryListing ? L10n.string("Mystery box") : L10n.string("Sell an item"))
         )
         .onChange(of: viewModel.submissionSuccess) { _, success in
-            if success {
-                HapticManager.success()
-                if isEditMode {
-                    onEditComplete?()
-                } else {
-                    if isMysteryListing {
-                        onDismissMysteryFlow?()
-                    }
-                    clearSellFormAfterSuccessfulUpload()
-                    selectedTab = 4 // Profile tab
-                }
-                NotificationCenter.default.post(name: .wearhouseUserProfileDidUpdate, object: nil)
+            guard success else { return }
+            HapticManager.success()
+            if viewModel.listingSavedInactiveNotice != nil {
+                showListingSavedInactiveAlert = true
+                return
             }
+            completeSuccessfulListingSubmit()
+        }
+        .alert(L10n.string("Listing saved"), isPresented: $showListingSavedInactiveAlert) {
+            Button(L10n.string("OK")) {
+                viewModel.acknowledgeInactiveListingSavedNotice()
+                completeSuccessfulListingSubmit()
+            }
+        } message: {
+            Text(viewModel.listingSavedInactiveNotice ?? "")
         }
         .alert(L10n.string("Upload failed"), isPresented: Binding(
             get: { viewModel.submissionError != nil },
@@ -351,7 +354,7 @@ struct SellView: View {
             .alert(L10n.string("Draft saved"), isPresented: $showSaveDraftConfirmation) {
                 Button(L10n.string("OK")) { }
             } message: {
-                Text(L10n.string("Your listing has been saved as a draft. Open it from \"Upload from drafts\"."))
+                Text(L10n.string("Your listing has been saved as a draft. Open it from the drafts button on Sell."))
             }
             .confirmationDialog(
                 L10n.string("Save draft before exiting?"),
@@ -536,6 +539,19 @@ struct SellView: View {
         discountPrice = d.discountPrice
         parcelSize = d.parcelSize
         draftCount = SellDraftStore.draftCount(username: authService.username)
+    }
+
+    private func completeSuccessfulListingSubmit() {
+        if isEditMode {
+            onEditComplete?()
+        } else {
+            if isMysteryListing {
+                onDismissMysteryFlow?()
+            }
+            clearSellFormAfterSuccessfulUpload()
+            selectedTab = 4 // Profile tab
+        }
+        NotificationCenter.default.post(name: .wearhouseUserProfileDidUpdate, object: nil)
     }
 
     /// After a successful new listing upload, clear the form so returning to Sell does not show stale data.

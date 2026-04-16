@@ -42,19 +42,19 @@ enum MysteryBoxListingCoverImage {
             }
 
             let q = "?" as NSString
-            let qFont = UIFont.systemFont(ofSize: side * 0.09, weight: .heavy)
+            let qFont = UIFont.systemFont(ofSize: side * 0.095, weight: .heavy)
             let qAttrs: [NSAttributedString.Key: Any] = [
                 .font: qFont,
-                .foregroundColor: UIColor.white.withAlphaComponent(0.95),
+                .foregroundColor: UIColor(red: 0.38, green: 0.1, blue: 0.52, alpha: 0.92),
             ]
             let qSize = q.size(withAttributes: qAttrs)
-            q.draw(
-                at: CGPoint(
-                    x: (size.width - qSize.width) / 2,
-                    y: (size.height - qSize.height) / 2 - size.height * 0.038
-                ),
-                withAttributes: qAttrs
-            )
+            let stampCenter = CGPoint(x: size.width * 0.46, y: size.height * 0.52)
+            c.saveGState()
+            c.translateBy(x: stampCenter.x, y: stampCenter.y)
+            // Skew + slight scale so the glyph reads as printed on the tilted left face of the box.
+            c.concatenate(CGAffineTransform(a: 0.88, b: 0.1, c: -0.38, d: 0.94, tx: 0, ty: 0))
+            q.draw(at: CGPoint(x: -qSize.width / 2, y: -qSize.height / 2), withAttributes: qAttrs)
+            c.restoreGState()
         }
     }
 }

@@ -445,6 +445,7 @@ class ProductService: ObservableObject {
 
     /// Create a product (listing). Upload images first via FileUploadService.uploadProductImages, then call this with the returned imageUrl list.
     /// Matches Flutter CreateProduct mutation and Variables$Mutation$CreateProduct.
+    /// When `scheduledPublishAt` is non-nil, the listing is created as **INACTIVE** (hidden) so the seller can activate it later; the API does not support `scheduledPublishAt` on `createProduct`.
     func createProduct(
         name: String,
         description: String,
@@ -466,6 +467,12 @@ class ProductService: ObservableObject {
         isMysteryBox: Bool = false,
         mysteryIncludedProductIds: [Int]? = nil
     ) async throws -> Int {
+        let effectiveStatus: String
+        if scheduledPublishAt != nil {
+            effectiveStatus = "INACTIVE"
+        } else {
+            effectiveStatus = status
+        }
         let mutation = """
         mutation CreateProduct(
           $category: Int!
@@ -485,7 +492,6 @@ class ProductService: ObservableObject {
           $customBrand: String
           $isFeatured: Boolean
           $status: ProductStatusEnum
-          $scheduledPublishAt: DateTime
           $isMysteryBox: Boolean
           $mysteryIncludedProductIds: [Int]
         ) {
@@ -507,7 +513,6 @@ class ProductService: ObservableObject {
             customBrand: $customBrand
             isFeatured: $isFeatured
             status: $status
-            scheduledPublishAt: $scheduledPublishAt
             isMysteryBox: $isMysteryBox
             mysteryIncludedProductIds: $mysteryIncludedProductIds
           ) {
@@ -525,7 +530,7 @@ class ProductService: ObservableObject {
             "imageUrl": imageUrl.map { ["url": $0.url, "thumbnail": $0.thumbnail] },
             "price": price,
             "name": name,
-            "status": status
+            "status": effectiveStatus
         ]
         if let c = condition, !c.isEmpty { variables["condition"] = c }
         if let ps = parcelSize, !ps.isEmpty { variables["parcelSize"] = ps }
@@ -544,11 +549,6 @@ class ProductService: ObservableObject {
         if let s = style, !s.isEmpty { variables["style"] = s }
         if let st = styles, !st.isEmpty { variables["styles"] = st }
         if let sid = sizeId { variables["size"] = sid }
-        if let publishAt = scheduledPublishAt {
-            let iso = ISO8601DateFormatter()
-            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            variables["scheduledPublishAt"] = iso.string(from: publishAt)
-        }
         variables["isMysteryBox"] = isMysteryBox
         variables["mysteryIncludedProductIds"] = mysteryIncludedProductIds ?? []
 

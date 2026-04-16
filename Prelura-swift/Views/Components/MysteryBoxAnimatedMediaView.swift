@@ -59,11 +59,22 @@ struct MysteryBoxAnimatedMediaView: View {
     }
 }
 
+/// Normalized points for the visible **left** face of the isometric box (same geometry as the filled left quadrilateral).
+private enum MysteryBoxIsoLeftFace {
+    static let points: [CGPoint] = [
+        CGPoint(x: 0.1, y: 0.24),
+        CGPoint(x: 0.5, y: 0.46),
+        CGPoint(x: 0.5, y: 0.95),
+        CGPoint(x: 0.1, y: 0.72),
+    ]
+}
+
 private struct MysteryBoxPseudo3D: View {
     let side: CGFloat
     let questionPulse: Bool
 
     var body: some View {
+        let boxSize = side * 0.33
         ZStack {
             PolygonShape(points: [
                 CGPoint(x: 0.5, y: 0.04),
@@ -79,12 +90,7 @@ private struct MysteryBoxPseudo3D: View {
                 )
             )
 
-            PolygonShape(points: [
-                CGPoint(x: 0.1, y: 0.24),
-                CGPoint(x: 0.5, y: 0.46),
-                CGPoint(x: 0.5, y: 0.95),
-                CGPoint(x: 0.1, y: 0.72),
-            ])
+            PolygonShape(points: MysteryBoxIsoLeftFace.points)
             .fill(
                 LinearGradient(
                     colors: [.white.opacity(0.86), .white.opacity(0.66)],
@@ -106,17 +112,29 @@ private struct MysteryBoxPseudo3D: View {
                     endPoint: .bottom
                 )
             )
-        }
-        .frame(width: side * 0.33, height: side * 0.33)
-        .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
-        .overlay {
+
             Text("?")
-                .font(.system(size: side * 0.11, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white)
-                .offset(y: -side * 0.02)
-                .opacity(questionPulse ? 1 : 0.38)
-                .scaleEffect(questionPulse ? 1.08 : 0.9)
+                .font(.system(size: boxSize * 0.34, weight: .heavy, design: .rounded))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.48, green: 0.14, blue: 0.62).opacity(0.88),
+                            Color(red: 0.28, green: 0.06, blue: 0.4).opacity(0.98),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .shadow(color: .white.opacity(0.35), radius: 0, y: 0)
+                .rotation3DEffect(.degrees(-56), axis: (0, 1, 0), anchor: .center, perspective: 0.42)
+                .rotation3DEffect(.degrees(5), axis: (1, 0, 0), anchor: .center, perspective: 0.42)
+                .offset(x: -boxSize * 0.19, y: boxSize * 0.14)
+                .mask(PolygonShape(points: MysteryBoxIsoLeftFace.points))
+                .opacity(questionPulse ? 1 : 0.4)
+                .scaleEffect(questionPulse ? 1.04 : 0.93)
         }
+        .frame(width: boxSize, height: boxSize)
+        .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
     }
 }
 

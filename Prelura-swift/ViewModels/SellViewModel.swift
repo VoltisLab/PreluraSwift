@@ -8,6 +8,8 @@ class SellViewModel: ObservableObject {
     @Published var isSubmitting: Bool = false
     @Published var submissionSuccess: Bool = false
     @Published var submissionError: String?
+    /// When set, user chose “schedule”; the listing was saved as **INACTIVE** (see `ProductService.createProduct`). Shown in an alert before post-success navigation.
+    @Published var listingSavedInactiveNotice: String?
 
     private let productService = ProductService()
     private let fileUploadService = FileUploadService()
@@ -37,6 +39,7 @@ class SellViewModel: ObservableObject {
     ) {
         isSubmitting = true
         submissionError = nil
+        listingSavedInactiveNotice = nil
 
         Task {
             do {
@@ -89,6 +92,7 @@ class SellViewModel: ObservableObject {
                     )
                 }
                 let styleRaws = StyleSelectionView.normalizedUniqueStyleRaws(styles)
+                let savedInactiveBecauseScheduled = scheduledPublishAt != nil
                 _ = try await productService.createProduct(
                     name: titleClean,
                     description: descriptionForApi,
@@ -112,9 +116,14 @@ class SellViewModel: ObservableObject {
                 )
 
                 isSubmitting = false
+                listingSavedInactiveNotice = savedInactiveBecauseScheduled
+                    ? L10n.string("Your listing is saved as inactive and hidden from the feed until you activate it from your profile. Automatic publishing at the date you chose is not available from the server yet.")
+                    : nil
                 submissionSuccess = true
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                submissionSuccess = false
+                if !savedInactiveBecauseScheduled {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    submissionSuccess = false
+                }
             } catch {
                 isSubmitting = false
                 submissionError = L10n.userFacingError(error)
@@ -160,6 +169,7 @@ class SellViewModel: ObservableObject {
     ) {
         isSubmitting = true
         submissionError = nil
+        listingSavedInactiveNotice = nil
 
         Task {
             do {
@@ -214,6 +224,7 @@ class SellViewModel: ObservableObject {
                     )
                 }
                 let styleRaws = StyleSelectionView.normalizedUniqueStyleRaws(styles)
+                let savedInactiveBecauseScheduled = scheduledPublishAt != nil
                 _ = try await productService.createProduct(
                     name: titleClean,
                     description: descriptionForApi,
@@ -237,9 +248,14 @@ class SellViewModel: ObservableObject {
                 )
 
                 isSubmitting = false
+                listingSavedInactiveNotice = savedInactiveBecauseScheduled
+                    ? L10n.string("Your listing is saved as inactive and hidden from the feed until you activate it from your profile. Automatic publishing at the date you chose is not available from the server yet.")
+                    : nil
                 submissionSuccess = true
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                submissionSuccess = false
+                if !savedInactiveBecauseScheduled {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    submissionSuccess = false
+                }
             } catch {
                 isSubmitting = false
                 submissionError = L10n.userFacingError(error)
@@ -271,6 +287,7 @@ class SellViewModel: ObservableObject {
     ) {
         isSubmitting = true
         submissionError = nil
+        listingSavedInactiveNotice = nil
         Task {
             do {
                 guard let catIdStr = categoryId, let categoryIdInt = Int(catIdStr) else {
@@ -347,6 +364,11 @@ class SellViewModel: ObservableObject {
                 submissionError = L10n.userFacingError(error)
             }
         }
+    }
+
+    func acknowledgeInactiveListingSavedNotice() {
+        listingSavedInactiveNotice = nil
+        submissionSuccess = false
     }
 
     /// Maps UI parcel size to backend ParcelSizeEnum. Backend only supports SMALL, MEDIUM, LARGE.
