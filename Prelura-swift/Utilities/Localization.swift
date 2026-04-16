@@ -377,6 +377,7 @@ enum L10n {
         "Retro": "Ρετρό",
         "This is where to shop vintage finds.": "Εδώ αγοράζετε επιλεγμένα vintage κομμάτια.",
         "Reviews": "Κριτικές",
+        "Please choose a star rating.": "Επιλέξτε βαθμολογία αστεριών.",
         "Members": "Μέλη",
         "Automatic": "Αυτόματες",
         "Location": "Τοποθεσία",
@@ -684,7 +685,6 @@ enum L10n {
         "Member reviews (%@)": "Κριτικές μελών (%@)",
         "Automatic reviews (%@)": "Αυτόματες κριτικές (%@)",
         "How reviews work": "Πώς λειτουργούν οι κριτικές",
-        "Discussed": "Συζητήθηκαν",
 
         // Followers / Following (Following key already in Profile section)
         "No followers yet": "Δεν υπάρχουν ακόμα οπαδοί",

@@ -13,7 +13,7 @@ struct LookbookShareChatPayload: Equatable {
 struct UserReviewChatPayload: Equatable {
     let reviewId: Int
     let orderId: Int
-    let rating: Int
+    let rating: Double
     let comment: String
     let reviewedUsername: String
 }
@@ -261,10 +261,11 @@ struct Message: Identifiable {
             if let s = json["order_id"] as? String { return Int(s) }
             return nil
         }()
-        let rating: Int = {
-            if let n = json["rating"] as? Int { return n }
-            if let n = json["rating"] as? NSNumber { return n.intValue }
-            if let s = json["rating"] as? String { return Int(s) ?? 0 }
+        let rating: Double = {
+            if let d = json["rating"] as? Double { return d }
+            if let n = json["rating"] as? NSNumber { return n.doubleValue }
+            if let i = json["rating"] as? Int { return Double(i) }
+            if let s = json["rating"] as? String { return Double(s) ?? 0 }
             return 0
         }()
         let comment = (json["comment"] as? String) ?? ""

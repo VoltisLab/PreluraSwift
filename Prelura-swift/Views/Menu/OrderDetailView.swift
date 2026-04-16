@@ -1819,14 +1819,14 @@ private struct LeaveOrderFeedbackSheet: View {
             errorMessage = nil
         }
         userService.updateAuthToken(authService.authToken)
-        let intRating = min(5, max(1, Int(rating.rounded())))
+        let snapped = (rating * 2).rounded() / 2
         do {
             let trimmedComment = comment.trimmingCharacters(in: .whitespacesAndNewlines)
             try await userService.rateUser(
                 comment: trimmedComment,
                 highlights: selectedSuggestionTags.sorted(),
                 orderId: orderId,
-                rating: intRating,
+                rating: snapped,
                 userId: rateeUserId
             )
             await MainActor.run {

@@ -17,6 +17,15 @@ struct ReviewsView: View {
     /// Shown for platform automatic reviews (replaces backend reviewer username in the row).
     private static let platformReviewerDisplayName = "Wearhouse"
 
+    /// Summary row: ~2× previous `title2` (22pt) hero score.
+    private static let summaryScorePointSize: CGFloat = 44
+    /// Main summary stars: ≥1.5× previous 14pt.
+    private static let summaryStarSize: CGFloat = 21
+    /// Breakdown row stars: ≥1.5× previous 11pt.
+    private static let breakdownStarSize: CGFloat = 17
+    /// Per-review row stars: ≥1.5× previous 13pt.
+    private static let rowStarSize: CGFloat = 20
+
     private var memberReviews: [UserReview] {
         reviews.filter { !$0.isPlatformAutomaticReview }
     }
@@ -25,26 +34,11 @@ struct ReviewsView: View {
         reviews.filter { $0.isPlatformAutomaticReview }
     }
 
-    /// Reviews with written detail beyond the default automatic line, or any highlight tags.
-    private var discussedReviews: [UserReview] {
-        reviews.filter { r in
-            if !r.highlights.isEmpty { return true }
-            let c = r.comment.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !c.isEmpty else { return false }
-            if r.isPlatformAutomaticReview,
-               c.caseInsensitiveCompare("Sale completed successfully") == .orderedSame {
-                return false
-            }
-            return true
-        }
-    }
-
     private var displayedReviews: [UserReview] {
         switch selectedFilter {
         case .all: return reviews
         case .fromMembers: return memberReviews
         case .automatic: return automaticReviews
-        case .discussed: return discussedReviews
         }
     }
 
@@ -57,7 +51,6 @@ struct ReviewsView: View {
         case all = "All"
         case fromMembers = "Members"
         case automatic = "Automatic"
-        case discussed = "Discussed"
     }
 
     private static let primaryReviewFilters: [ReviewFilter] = [.all, .fromMembers, .automatic]
@@ -67,7 +60,6 @@ struct ReviewsView: View {
         case .all: return L10n.string("All")
         case .fromMembers: return L10n.string("Members")
         case .automatic: return L10n.string("Automatic")
-        case .discussed: return L10n.string("Discussed")
         }
     }
 
@@ -81,24 +73,27 @@ struct ReviewsView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         headerSection
                         filterSection
+                        ContentDivider()
                         if reviews.isEmpty {
                             Text(L10n.string("No reviews yet"))
                                 .font(Theme.Typography.callout)
                                 .foregroundColor(Theme.Colors.secondaryText)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, Theme.Spacing.xl)
+                                .padding(.horizontal, Theme.Spacing.md)
                         } else if displayedReviews.isEmpty {
                             Text(L10n.string("No reviews in this category"))
                                 .font(Theme.Typography.callout)
                                 .foregroundColor(Theme.Colors.secondaryText)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, Theme.Spacing.xl)
+                                .padding(.horizontal, Theme.Spacing.md)
                         } else {
                             LazyVStack(spacing: 0) {
                                 ForEach(Array(displayedReviews.enumerated()), id: \.element.id) { index, review in
                                     reviewBlock(review)
                                         .padding(.horizontal, Theme.Spacing.md)
-                                        .padding(.vertical, Theme.Spacing.sm)
+                                        .padding(.vertical, Theme.Spacing.md)
                                     if index < displayedReviews.count - 1 {
                                         ContentDivider()
                                     }
@@ -128,43 +123,39 @@ struct ReviewsView: View {
     }
 
     private var headerSection: some View {
-        let cardShape = RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
-        return VStack(spacing: Theme.Spacing.sm) {
-            Text(String(format: "%.1f", rating))
-                .font(Theme.Typography.title2)
-                .fontWeight(.bold)
-                .foregroundColor(Theme.Colors.primaryText)
+        VStack(spacing: 0) {
+            VStack(spacing: Theme.Spacing.sm) {
+                Text(String(format: "%.1f", rating))
+                    .font(.system(size: Self.summaryScorePointSize, weight: .bold, design: .default))
+                    .foregroundColor(Theme.Colors.primaryText)
+                    .frame(maxWidth: .infinity)
+                HStack(spacing: Theme.Spacing.xs) {
+                    FractionalStarRatingDisplay(rating: rating, starSize: Self.summaryStarSize, spacing: 2)
+                    Text("(\(totalNumber))")
+                        .font(Theme.Typography.callout)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
                 .frame(maxWidth: .infinity)
-            HStack(spacing: Theme.Spacing.xs) {
-                FractionalStarRatingDisplay(rating: rating, starSize: 14, spacing: 2)
-                Text("(\(totalNumber))")
-                    .font(Theme.Typography.callout)
-                    .foregroundColor(Theme.Colors.secondaryText)
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    reviewBreakdownRow(
+                        title: L10n.string("Members"),
+                        count: memberReviews.count,
+                        avg: averageRating(for: memberReviews)
+                    )
+                    reviewBreakdownRow(
+                        title: L10n.string("Automatic"),
+                        count: automaticReviews.count,
+                        avg: averageRating(for: automaticReviews)
+                    )
+                }
+                .padding(.top, Theme.Spacing.xs)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity)
-            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                reviewBreakdownRow(
-                    title: L10n.string("Members"),
-                    count: memberReviews.count,
-                    avg: averageRating(for: memberReviews)
-                )
-                reviewBreakdownRow(
-                    title: L10n.string("Automatic"),
-                    count: automaticReviews.count,
-                    avg: averageRating(for: automaticReviews)
-                )
-            }
-            .padding(.top, Theme.Spacing.xs)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.lg)
+            .padding(.bottom, Theme.Spacing.md)
+            ContentDivider()
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay {
-            cardShape.strokeBorder(Theme.Colors.glassBorder.opacity(0.85), lineWidth: 1)
-        }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.top, Theme.Spacing.lg)
-        .padding(.bottom, Theme.Spacing.sm)
     }
 
     private func reviewBreakdownRow(title: String, count: Int, avg: Double) -> some View {
@@ -176,7 +167,7 @@ struct ReviewsView: View {
             Text(String(format: "%.1f", avg))
                 .font(Theme.Typography.footnote)
                 .foregroundColor(Theme.Colors.secondaryText)
-            FractionalStarRatingDisplay(rating: avg, starSize: 11, spacing: 2)
+            FractionalStarRatingDisplay(rating: avg, starSize: Self.breakdownStarSize, spacing: 2)
         }
     }
 
@@ -191,14 +182,6 @@ struct ReviewsView: View {
                         action: { selectedFilter = filter }
                     )
                 }
-            }
-            HStack(spacing: Theme.Spacing.sm) {
-                PillTag(
-                    title: reviewFilterTitle(.discussed),
-                    isSelected: selectedFilter == .discussed,
-                    accentWhenUnselected: true,
-                    action: { selectedFilter = .discussed }
-                )
                 Spacer(minLength: 0)
             }
         }
@@ -206,10 +189,10 @@ struct ReviewsView: View {
         .padding(.vertical, Theme.Spacing.md)
     }
 
-    /// Bordered review body, then highlight chips below the border (before the next row / divider).
+    /// Review body, then highlight chips below (divider separates rows; no card stroke).
     private func reviewBlock(_ review: UserReview) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            reviewBorderedCard(review)
+            reviewCardContent(review)
             if !review.highlights.isEmpty {
                 HorizontalFlowLayout(
                     horizontalSpacing: Theme.Spacing.xs,
@@ -233,9 +216,8 @@ struct ReviewsView: View {
         }
     }
 
-    private func reviewBorderedCard(_ review: UserReview) -> some View {
-        let cardShape = RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
-        return HStack(alignment: .top, spacing: Theme.Spacing.md) {
+    private func reviewCardContent(_ review: UserReview) -> some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.md) {
             avatarView(review)
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 HStack {
@@ -248,7 +230,7 @@ struct ReviewsView: View {
                         .font(Theme.Typography.footnote)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
-                FractionalStarRatingDisplay(rating: Double(review.rating), starSize: 13, spacing: 2)
+                FractionalStarRatingDisplay(rating: review.rating, starSize: Self.rowStarSize, spacing: 2)
                 if !review.comment.isEmpty {
                     Text(review.comment)
                         .font(Theme.Typography.callout)
@@ -256,11 +238,7 @@ struct ReviewsView: View {
                 }
             }
         }
-        .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay {
-            cardShape.strokeBorder(Theme.Colors.glassBorder.opacity(0.85), lineWidth: 1)
-        }
     }
 
     private func avatarView(_ review: UserReview) -> some View {

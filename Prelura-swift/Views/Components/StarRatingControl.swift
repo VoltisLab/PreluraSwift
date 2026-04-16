@@ -64,7 +64,7 @@ struct FractionalStarRatingDisplay: View {
     }
 }
 
-/// Five stars in **0.5** steps. Each star is tappable: cycles **full → half → empty** for that star (stars after it clear). Map to API ints with `Int(rating.rounded())` when submitting.
+/// Five stars in **0.5** steps. Each star is tappable: cycles **full → half → empty** for that star (stars after it clear). Submit half-star values as `Double` to `rateUser`.
 struct InteractiveStarRatingControl: View {
     @Binding var rating: Double
     var starSize: CGFloat = 34

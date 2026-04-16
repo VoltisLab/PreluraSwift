@@ -891,11 +891,8 @@ struct ChatDetailView: View {
             let prevIsOfferOrSold = (timelineIndex > 0 && timelineIndex - 1 < timelineOrder.count) && (timelineOrder[timelineIndex - 1].isOffer || timelineOrder[timelineIndex - 1].isSold)
             let topPadding: CGFloat = timelineIndex == 0 ? 0 : (prevIsOfferOrSold ? 0 : Theme.Spacing.md)
             HStack(alignment: .top, spacing: 4) {
-                chatTitleAvatar(
-                    url: displayedConversation.recipient.avatarURL,
-                    username: displayedConversation.recipient.username
-                )
-                .padding(.top, Theme.Spacing.md)
+                soldConfirmationLeadInView(orderInfo: orderInfo)
+                    .padding(.top, Theme.Spacing.md)
                 SoldConfirmationCardView(
                     order: orderInfo,
                     currentUsername: authService.username,
@@ -2517,6 +2514,42 @@ struct ChatDetailView: View {
         }
     }
 
+    /// Prefer the **ordered listing** (or mystery animation) beside the sale card instead of the chat peer’s profile photo.
+    @ViewBuilder
+    private func soldConfirmationLeadInView(orderInfo: OrderInfo) -> some View {
+        if let co = displayedConversation.order, co.id == orderInfo.orderId {
+            if co.lineItems.first?.isMysteryBox == true {
+                MysteryBoxAnimatedMediaView()
+                    .frame(width: Self.chatAvatarSize, height: Self.chatAvatarSize)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Theme.Colors.glassBorder, lineWidth: 1))
+            } else if let raw = co.firstProductImageUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+                let parsed = URL(string: raw) ?? URL(string: raw.replacingOccurrences(of: " ", with: "%20"))
+                if let url = parsed {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img):
+                            img.resizable().scaledToFill()
+                        case .failure, .empty:
+                            chatAvatarPlaceholder(username: displayedConversation.recipient.username)
+                        @unknown default:
+                            chatAvatarPlaceholder(username: displayedConversation.recipient.username)
+                        }
+                    }
+                    .frame(width: Self.chatAvatarSize, height: Self.chatAvatarSize)
+                    .clipShape(Circle())
+                    .circularAvatarHairlineBorder()
+                } else {
+                    chatTitleAvatar(url: displayedConversation.recipient.avatarURL, username: displayedConversation.recipient.username)
+                }
+            } else {
+                chatTitleAvatar(url: displayedConversation.recipient.avatarURL, username: displayedConversation.recipient.username)
+            }
+        } else {
+            chatTitleAvatar(url: displayedConversation.recipient.avatarURL, username: displayedConversation.recipient.username)
+        }
+    }
+
     @ViewBuilder
     private func chatTitleAvatar(url: String?, username: String) -> some View {
         if WearhouseSupportBranding.isSupportRecipient(username: username) {
@@ -3189,9 +3222,10 @@ private struct UserReviewChatCardView: View {
     let payload: UserReviewChatPayload
     let isFromCurrentUser: Bool
 
-    /// 1–2 → negative, 3 → neutral, 4–5 → positive.
+    /// Whole-star buckets (half-star reviews round for copy tone).
     private var feedbackPolarity: FeedbackPolarity {
-        switch payload.rating {
+        let bucket = Int(round(payload.rating))
+        switch bucket {
         case 1...2: return .negative
         case 3: return .neutral
         default: return .positive

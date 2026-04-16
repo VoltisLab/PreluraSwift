@@ -671,7 +671,7 @@ class UserService: ObservableObject {
         }
         struct UserReviewRow: Decodable {
             let id: String?
-            let rating: Int?
+            let rating: Double?
             let comment: String?
             let highlights: [String]?
             let isAutoReview: Bool?
@@ -869,9 +869,9 @@ class UserService: ObservableObject {
     }
 
     /// Rate a user after an order (e.g. rate seller as buyer). Optional `highlights` are persisted and returned on profile reviews.
-    func rateUser(comment: String, highlights: [String] = [], orderId: Int, rating: Int, userId: Int) async throws {
+    func rateUser(comment: String, highlights: [String] = [], orderId: Int, rating: Double, userId: Int) async throws {
         let mutation = """
-        mutation RateUser($comment: String!, $orderId: Int!, $rating: Int!, $userId: Int!, $highlights: [String]) {
+        mutation RateUser($comment: String!, $orderId: Int!, $rating: Float!, $userId: Int!, $highlights: [String]) {
           rateUser(comment: $comment, orderId: $orderId, rating: $rating, userId: $userId, highlights: $highlights) {
             success
             message
@@ -880,12 +880,21 @@ class UserService: ObservableObject {
         """
         struct Payload: Decodable { let rateUser: RateUserPayload? }
         struct RateUserPayload: Decodable { let success: Bool?; let message: String? }
+        let snapped = (rating * 2).rounded() / 2
+        let clamped = min(5.0, max(0.0, snapped))
+        guard clamped >= 1.0 else {
+            throw NSError(
+                domain: "RateUser",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: L10n.string("Please choose a star rating.")]
+            )
+        }
         let response: Payload = try await client.execute(
             query: mutation,
             variables: [
                 "comment": comment,
                 "orderId": orderId,
-                "rating": min(5, max(1, rating)),
+                "rating": clamped,
                 "userId": userId,
                 "highlights": highlights,
             ],
