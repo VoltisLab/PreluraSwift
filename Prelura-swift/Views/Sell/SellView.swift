@@ -16,6 +16,8 @@ struct SellView: View {
     var mysteryIncludedItems: [Item]? = nil
     /// Dismisses the full-screen mystery flow (picker + form).
     var onDismissMysteryFlow: (() -> Void)? = nil
+    /// When set (mystery form only), toolbar offers “change” and returns user to the picker with current items pre-selected.
+    var onRequestEditMysteryItems: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.optionalTabCoordinator) private var tabCoordinator
     @EnvironmentObject private var authService: AuthService
@@ -47,11 +49,13 @@ struct SellView: View {
     @State private var keyboardBottomInset: CGFloat = 0
 
     private enum MysteryPostingPhase: Identifiable {
-        case picker
+        /// `initialSelection` is non-nil when re-opening the picker from the compose form.
+        case picker(initialSelection: [Item]?)
         case form(items: [Item])
         var id: String {
             switch self {
-            case .picker: return "mystery-picker"
+            case .picker(let initial):
+                return "mystery-picker-" + (initial?.map { $0.productId ?? "" }.joined(separator: "-") ?? "new")
             case .form(let items):
                 return "mystery-form-" + items.map { $0.productId ?? "" }.joined(separator: "-")
             }
@@ -116,6 +120,9 @@ struct SellView: View {
                     // 2. Photo upload (Flutter: same) — mystery uses fixed carton hero instead
                     if isMysteryListing {
                         mysteryBoxCartonSection
+                        if let items = mysteryIncludedItems, !items.isEmpty {
+                            mysteryIncludedListingsSection(items: items)
+                        }
                     } else {
                         photoUploadSection
                     }
@@ -291,10 +298,21 @@ struct SellView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: Theme.Spacing.md) {
-                        if !isEditMode, mysteryIncludedItems == nil {
+                        if !isEditMode, isMysteryListing, onRequestEditMysteryItems != nil {
                             Button {
                                 HapticManager.tap()
-                                mysteryPostingPhase = .picker
+                                onRequestEditMysteryItems?()
+                            } label: {
+                                Image(systemName: "shippingbox.fill")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(Theme.primaryColor)
+                            }
+                            .buttonStyle(PlainTappableButtonStyle())
+                            .accessibilityLabel(L10n.string("Change listings"))
+                        } else if !isEditMode, mysteryIncludedItems == nil {
+                            Button {
+                                HapticManager.tap()
+                                mysteryPostingPhase = .picker(initialSelection: nil)
                             } label: {
                                 Image(systemName: "shippingbox.fill")
                                     .font(.system(size: 18, weight: .semibold))
@@ -356,9 +374,16 @@ struct SellView: View {
             }
             .fullScreenCover(item: $mysteryPostingPhase) { phase in
                 switch phase {
-                case .picker:
+                case .picker(let initialSelection):
                     MysteryBoxProductPickerView(
-                        onCancel: { mysteryPostingPhase = nil },
+                        initialSelection: initialSelection,
+                        onCancel: {
+                            if let initial = initialSelection, !initial.isEmpty {
+                                mysteryPostingPhase = .form(items: initial)
+                            } else {
+                                mysteryPostingPhase = nil
+                            }
+                        },
                         onContinue: { items in
                             mysteryPostingPhase = .form(items: items)
                         }
@@ -371,6 +396,9 @@ struct SellView: View {
                             mysteryIncludedItems: items,
                             onDismissMysteryFlow: {
                                 mysteryPostingPhase = nil
+                            },
+                            onRequestEditMysteryItems: {
+                                mysteryPostingPhase = .picker(initialSelection: items)
                             }
                         )
                         .environmentObject(authService)
@@ -592,6 +620,72 @@ struct SellView: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.md)
             .overlay(ContentDivider(), alignment: .bottom)
+    }
+
+    private func mysteryIncludedListingsSection(items: [Item]) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(L10n.string("Included in this box"))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Theme.Colors.primaryText)
+                Spacer(minLength: 0)
+                if onRequestEditMysteryItems != nil {
+                    Button {
+                        HapticManager.tap()
+                        onRequestEditMysteryItems?()
+                    } label: {
+                        Text(L10n.string("Change"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.primaryColor)
+                    }
+                    .buttonStyle(PlainTappableButtonStyle())
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                    ForEach(items) { item in
+                        mysteryIncludedListingChip(item: item)
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.xs)
+            }
+        }
+        .padding(.top, Theme.Spacing.sm)
+        .background(Theme.Colors.background)
+        .overlay(ContentDivider(), alignment: .bottom)
+    }
+
+    private func mysteryIncludedListingChip(item: Item) -> some View {
+        let thumb = item.listDisplayImageURL.flatMap { URL(string: $0) } ?? item.imageURLs.compactMap { URL(string: $0) }.first
+        return VStack(alignment: .leading, spacing: 6) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Theme.Colors.secondaryBackground)
+                if let thumb {
+                    AsyncImage(url: thumb) { phase in
+                        switch phase {
+                        case .success(let img):
+                            img.resizable().scaledToFill()
+                        default:
+                            Color.clear
+                        }
+                    }
+                }
+            }
+            .frame(width: 96, height: 96)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Text(item.title)
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.primaryText)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .frame(width: 96, alignment: .leading)
+        }
     }
 
     /// Existing listing URLs (edit) plus newly picked images + add cell.
@@ -2933,50 +3027,23 @@ struct BrandInputView: View {
 }
 
 private struct MysteryBoxSellHeroCard: View {
-    private let boxAccent = Theme.primaryColor.opacity(0.16)
+    /// Cardboard / carton tone for the box symbol only (no filled panels behind it).
+    private let cartonColor = Color(red: 0.78, green: 0.62, blue: 0.44)
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.48, green: 0.34, blue: 0.24),
-                            Color(red: 0.34, green: 0.24, blue: 0.16),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            // Inner “carton” panel with accent wash + large box + ? inside
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(boxAccent)
-                .frame(maxWidth: 220, maxHeight: 168)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
-                )
-                .overlay {
-                    ZStack {
-                        Image(systemName: "shippingbox.fill")
-                            .font(.system(size: 76, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.92))
-                        Text("?")
-                            .font(.system(size: 44, weight: .heavy, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.38))
-                            .offset(y: 6)
-                    }
-                }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 220)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color(white: 0.45), lineWidth: 1)
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(L10n.string("Mystery box"))
+        Image(systemName: "shippingbox.fill")
+            .font(.system(size: 76, weight: .semibold))
+            .foregroundStyle(cartonColor)
+            .frame(maxWidth: .infinity)
+            .frame(height: 220)
+            .background(Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color(white: 0.42), lineWidth: 1)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(L10n.string("Mystery box"))
     }
 }
 

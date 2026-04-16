@@ -2,6 +2,8 @@ import SwiftUI
 
 /// Same product sources as lookbook `ProductSearchSheet`, with per-cell Add / Added chips and a try-cart style floating bar.
 struct MysteryBoxProductPickerView: View {
+    /// When re-opening from the compose form, pre-select these listings.
+    var initialSelection: [Item]? = nil
     let onCancel: () -> Void
     let onContinue: ([Item]) -> Void
 
@@ -150,6 +152,7 @@ struct MysteryBoxProductPickerView: View {
             .onAppear {
                 userService.updateAuthToken(authService.authToken)
                 productService.updateAuthToken(authService.authToken)
+                selectedItems = initialSelection ?? []
                 loadMyProducts()
             }
             .onChange(of: query) { _, newQuery in
