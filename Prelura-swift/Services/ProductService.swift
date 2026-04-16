@@ -54,7 +54,6 @@ class ProductService: ObservableObject {
               isVacationMode
               isMultibuyEnabled
               meta
-              blueTickVerified
             }
             category {
               id
@@ -283,7 +282,7 @@ class ProductService: ObservableObject {
             size { id name }
             brand { id name }
             customBrand likes views userLiked
-            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta blueTickVerified }
+            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta }
             category { id name }
             color materials { id name } styles style status
           }
@@ -328,7 +327,7 @@ class ProductService: ObservableObject {
             size { id name }
             brand { id name }
             customBrand likes views userLiked
-            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta blueTickVerified }
+            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta }
             category { id name }
             color materials { id name } styles style status
           }
@@ -811,7 +810,7 @@ class ProductService: ObservableObject {
               likes
               views
               userLiked
-            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta blueTickVerified }
+            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta }
             category { id name }
             color
             materials { id name }
@@ -1276,7 +1275,7 @@ extension ProductService {
             likes
             views
             userLiked
-            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta blueTickVerified }
+            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta }
             category { id name }
             color
             materials { id name }
@@ -1337,7 +1336,6 @@ extension ProductService {
               isVacationMode
               isMultibuyEnabled
               meta
-              blueTickVerified
             }
             category {
               id
@@ -1402,7 +1400,6 @@ extension ProductService {
               isVacationMode
               isMultibuyEnabled
               meta
-              blueTickVerified
             }
             category {
               id
@@ -1478,7 +1475,6 @@ extension ProductService {
               isVacationMode
               isMultibuyEnabled
               meta
-              blueTickVerified
             }
             category {
               id

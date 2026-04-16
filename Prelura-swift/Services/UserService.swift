@@ -55,7 +55,6 @@ class UserService: ObservableObject {
             isMultibuyEnabled
             isStaff
             isVerified
-            blueTickVerified
             isBanned
             suspendedUntil
             reviewStats {
@@ -228,7 +227,6 @@ class UserService: ObservableObject {
             isVacationMode
             isMultibuyEnabled
             isVerified
-            blueTickVerified
             reviewStats { noOfReviews rating }
           }
         }
