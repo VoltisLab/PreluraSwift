@@ -452,7 +452,7 @@ enum L10n {
         "Appear on profile": "Εμφάνιση στο προφίλ",
         "Scheduled": "Προγραμματισμένο",
         "Your listing": "Η αγγελία σας",
-        "\"%@\" should appear on your profile around this time. Open Prelura to refresh your shop.": "Το «%@» θα πρέπει να εμφανιστεί στο προφίλ σας περίπου αυτή την ώρα. Ανοίξτε το Prelura για να ανανεώσετε το κατάστημά σας.",
+        "\"%@\" should appear on your profile around this time. Open the app to refresh your shop.": "Το «%@» θα πρέπει να εμφανιστεί στο προφίλ σας περίπου αυτή την ώρα. Ανοίξτε την εφαρμογή για να ανανεώσετε το κατάστημά σας.",
         "Your listing is saved as inactive and hidden from the feed until you activate it from your profile. Wearhouse does not automatically publish at the scheduled time yet. If you allow notifications, we scheduled a reminder for the time you chose.": "Η αγγελία σας αποθηκεύτηκε ως ανενεργή και δεν εμφανίζεται στο feed μέχρι να την ενεργοποιήσετε από το προφίλ σας. Το Wearhouse δεν δημοσιεύει αυτόματα στη προγραμματισμένη ώρα ακόμα. Αν επιτρέψετε ειδοποιήσεις, προγραμματίσαμε υπενθύμιση για την ώρα που επιλέξατε.",
         "Saves as inactive until you activate it from your profile. Wearhouse does not go live automatically at this time yet. If you allow notifications, we add a reminder when this time is reached.": "Αποθηκεύεται ως ανενεργή μέχρι να την ενεργοποιήσετε από το προφίλ σας. Το Wearhouse δεν δημοσιεύεται αυτόματα αυτή τη στιγμή ακόμα. Αν επιτρέψετε ειδοποιήσεις, προσθέτουμε υπενθύμιση όταν φτάσει αυτή η ώρα.",
         "Time to publish your listing": "Ώρα να δημοσιεύσετε την αγγελία σας",

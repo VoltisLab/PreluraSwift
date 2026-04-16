@@ -24,7 +24,7 @@ enum ListingGoLiveReminder {
         content.title = L10n.string("Your listing")
         let trimmed = listingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayTitle = trimmed.count > 80 ? String(trimmed.prefix(77)) + "…" : trimmed
-        content.body = String(format: L10n.string("\"%@\" should appear on your profile around this time. Open Prelura to refresh your shop."), displayTitle)
+        content.body = String(format: L10n.string("\"%@\" should appear on your profile around this time. Open the app to refresh your shop."), displayTitle)
         content.sound = .default
 
         let cal = Calendar.current
