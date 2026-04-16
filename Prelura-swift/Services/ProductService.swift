@@ -445,7 +445,8 @@ class ProductService: ObservableObject {
 
     /// Create a product (listing). Upload images first via FileUploadService.uploadProductImages, then call this with the returned imageUrl list.
     /// Matches Flutter CreateProduct mutation and Variables$Mutation$CreateProduct.
-    /// When `scheduledPublishAt` is non-nil, the listing is created as **INACTIVE** (hidden) until the seller activates it. The GraphQL mutation does not accept a publish time; the client uses the date only for reminders / UX.
+    ///
+    /// **Scheduled publish:** When `scheduledPublishAt` is set, we use a mutation variant that sends ISO8601 `scheduledPublishAt` so the **server** can activate the listing at that time without the app open. Requires the GraphQL schema to expose `scheduledPublishAt` on `createProduct`. If the API does not support it yet, scheduled creates will fail until the backend ships; ``PendingScheduledListingActivator`` remains a fallback when the user opens the app after that time.
     func createProduct(
         name: String,
         description: String,
@@ -473,57 +474,9 @@ class ProductService: ObservableObject {
         } else {
             effectiveStatus = status
         }
-        let mutation = """
-        mutation CreateProduct(
-          $category: Int!
-          $condition: ConditionEnum
-          $description: String!
-          $imageUrl: [ImagesInputType]!
-          $price: Float!
-          $size: Int
-          $name: String!
-          $parcelSize: ParcelSizeEnum
-          $discount: Float
-          $color: [String]
-          $brand: Int
-          $materials: [Int]
-          $style: StyleEnum
-          $styles: [StyleEnum]
-          $customBrand: String
-          $isFeatured: Boolean
-          $status: ProductStatusEnum
-          $isMysteryBox: Boolean
-          $mysteryIncludedProductIds: [Int]
-        ) {
-          createProduct(
-            category: $category
-            condition: $condition
-            description: $description
-            imagesUrl: $imageUrl
-            price: $price
-            size: $size
-            name: $name
-            parcelSize: $parcelSize
-            discount: $discount
-            color: $color
-            brand: $brand
-            materials: $materials
-            style: $style
-            styles: $styles
-            customBrand: $customBrand
-            isFeatured: $isFeatured
-            status: $status
-            isMysteryBox: $isMysteryBox
-            mysteryIncludedProductIds: $mysteryIncludedProductIds
-          ) {
-            success
-            message
-            product {
-              id
-            }
-          }
-        }
-        """
+        let mutation = scheduledPublishAt != nil
+            ? Self.createProductGraphQLMutationWithScheduledPublish
+            : Self.createProductGraphQLMutation
         var variables: [String: Any] = [
             "category": categoryId,
             "description": description,
@@ -551,6 +504,11 @@ class ProductService: ObservableObject {
         if let sid = sizeId { variables["size"] = sid }
         variables["isMysteryBox"] = isMysteryBox
         variables["mysteryIncludedProductIds"] = mysteryIncludedProductIds ?? []
+        if let at = scheduledPublishAt {
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            variables["scheduledPublishAt"] = iso.string(from: at)
+        }
 
         struct CreateProductResponse: Decodable {
             let createProduct: CreateProductPayload?
@@ -1139,6 +1097,114 @@ class ProductService: ObservableObject {
             return nil
         }
     }
+
+    /// Default `createProduct` (no server scheduled time — matches existing API).
+    private static let createProductGraphQLMutation = """
+    mutation CreateProduct(
+      $category: Int!
+      $condition: ConditionEnum
+      $description: String!
+      $imageUrl: [ImagesInputType]!
+      $price: Float!
+      $size: Int
+      $name: String!
+      $parcelSize: ParcelSizeEnum
+      $discount: Float
+      $color: [String]
+      $brand: Int
+      $materials: [Int]
+      $style: StyleEnum
+      $styles: [StyleEnum]
+      $customBrand: String
+      $isFeatured: Boolean
+      $status: ProductStatusEnum
+      $isMysteryBox: Boolean
+      $mysteryIncludedProductIds: [Int]
+    ) {
+      createProduct(
+        category: $category
+        condition: $condition
+        description: $description
+        imagesUrl: $imageUrl
+        price: $price
+        size: $size
+        name: $name
+        parcelSize: $parcelSize
+        discount: $discount
+        color: $color
+        brand: $brand
+        materials: $materials
+        style: $style
+        styles: $styles
+        customBrand: $customBrand
+        isFeatured: $isFeatured
+        status: $status
+        isMysteryBox: $isMysteryBox
+        mysteryIncludedProductIds: $mysteryIncludedProductIds
+      ) {
+        success
+        message
+        product {
+          id
+        }
+      }
+    }
+    """
+
+    /// Same as ``createProductGraphQLMutation`` plus `scheduledPublishAt` for server-side auto publish (backend must implement).
+    private static let createProductGraphQLMutationWithScheduledPublish = """
+    mutation CreateProduct(
+      $category: Int!
+      $condition: ConditionEnum
+      $description: String!
+      $imageUrl: [ImagesInputType]!
+      $price: Float!
+      $size: Int
+      $name: String!
+      $parcelSize: ParcelSizeEnum
+      $discount: Float
+      $color: [String]
+      $brand: Int
+      $materials: [Int]
+      $style: StyleEnum
+      $styles: [StyleEnum]
+      $customBrand: String
+      $isFeatured: Boolean
+      $status: ProductStatusEnum
+      $isMysteryBox: Boolean
+      $mysteryIncludedProductIds: [Int]
+      $scheduledPublishAt: String!
+    ) {
+      createProduct(
+        category: $category
+        condition: $condition
+        description: $description
+        imagesUrl: $imageUrl
+        price: $price
+        size: $size
+        name: $name
+        parcelSize: $parcelSize
+        discount: $discount
+        color: $color
+        brand: $brand
+        materials: $materials
+        style: $style
+        styles: $styles
+        customBrand: $customBrand
+        isFeatured: $isFeatured
+        status: $status
+        isMysteryBox: $isMysteryBox
+        mysteryIncludedProductIds: $mysteryIncludedProductIds
+        scheduledPublishAt: $scheduledPublishAt
+      ) {
+        success
+        message
+        product {
+          id
+        }
+      }
+    }
+    """
 }
 
 struct AllProductsResponse: Decodable {
