@@ -451,8 +451,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         let info = notification.request.content.userInfo
         if info[AnyHashable(wearhouseRepostedSalePushKey)] != nil { return false }
         let c = notification.request.content
-        let combined = (c.title + " " + c.subtitle + " " + c.body)
-        return WearhouseSaleNotificationCopy.shouldNormalizeSellerSaleMessage(combined)
+        let bodyTrim = c.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        if bodyTrim == WearhouseSaleNotificationCopy.sellerSaleMessage { return false }
+        return WearhouseSaleNotificationCopy.shouldNormalizeSellerSaleMessage(c.body)
+            || WearhouseSaleNotificationCopy.shouldNormalizeSellerSaleMessage(c.title)
+            || WearhouseSaleNotificationCopy.shouldNormalizeSellerSaleMessage(c.subtitle)
     }
 
     private static func enqueueReplacementSaleNotification(from notification: UNNotification) {
