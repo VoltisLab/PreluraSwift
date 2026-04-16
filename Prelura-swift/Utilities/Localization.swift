@@ -794,6 +794,19 @@ enum L10n {
         "Mystery box limit": "Όριο mystery box",
         "Card": "Κάρτα",
 
+        // Plan screen (carousel)
+        "Essential seller tools": "Βασικά εργαλεία πωλητή",
+        "Grow faster on Wearhouse": "Μεγαλώστε πιο γρήγορα στο Wearhouse",
+        "For mystery power sellers": "Για power sellers mystery",
+        "Swipe to compare tiers": "Σαρώστε για να συγκρίνετε πακέτα",
+        "The standard for most sellers": "Το πρότυπο για τους περισσότερους πωλητές",
+        "More reach, more mystery boxes": "Περισσότερη προβολή, περισσότερα mystery boxes",
+        "No ceiling on mystery listings": "Χωρίς όριο στις mystery αναρτήσεις",
+        "Unlimited mystery": "Απεριόριστο mystery",
+        "Unlimited mystery add-on is active on top of Gold.": "Το add-on απεριόριστου mystery είναι ενεργό πάνω στο Gold.",
+        "Requires Gold. Billed monthly when IAP is live.": "Απαιτείται Gold. Χρέωση μηνιαία όταν ενεργοποιηθούν οι αγορές εντός εφαρμογής.",
+        "Prices and entitlements will sync from your App Store subscription when billing goes live.": "Οι τιμές και τα δικαιώματα θα συγχρονίζονται από τη συνδρομή App Store όταν ενεργοποιηθεί η χρέωση.",
+
     ]
 }
 
