@@ -40,7 +40,11 @@ struct SendOfferFormContent: View {
         VStack(alignment: .leading, spacing: 0) {
             if let item = item {
                 HStack(alignment: .top, spacing: Theme.Spacing.md) {
-                    if let url = item.imageURLs.first, let imageURL = URL(string: url) {
+                    if item.isMysteryBox {
+                        MysteryBoxAnimatedMediaView()
+                            .frame(width: 80, height: 100)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    } else if let url = item.imageURLs.first, let imageURL = URL(string: url) {
                         AsyncImage(url: imageURL) { phase in
                             switch phase {
                             case .success(let image):

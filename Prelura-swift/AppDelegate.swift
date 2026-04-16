@@ -35,6 +35,8 @@ extension Notification.Name {
     static let wearhouseAccountRestrictionShouldRefresh = Notification.Name("WearhouseAccountRestrictionShouldRefresh")
     /// GraphQL reported the access (or refresh) token is no longer valid — sign out instead of trapping the user on error banners.
     static let wearhouseAuthSessionInvalidShouldSignOut = Notification.Name("WearhouseAuthSessionInvalidShouldSignOut")
+    /// Local plan / unlimited-mystery flags changed (Settings → Plan).
+    static let wearhouseSellerPlanDidChange = Notification.Name("WearhouseSellerPlanDidChange")
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {

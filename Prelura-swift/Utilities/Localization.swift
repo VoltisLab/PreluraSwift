@@ -762,6 +762,38 @@ enum L10n {
         "Search emojis": "Αναζήτηση emoji",
         "No matching emojis": "Δεν βρέθηκαν emoji",
 
+        // Plan & seller limits
+        "Plan": "Πλάνο",
+        "Your plan": "Το πλάνο σας",
+        "Silver": "Silver",
+        "Gold": "Gold",
+        "Gold + unlimited mystery": "Gold + απεριόριστα mystery",
+        "Your Wearhouse profile tier includes Gold benefits.": "Η βαθμίδα του προφίλ σας στο Wearhouse περιλαμβάνει προνόμια Gold.",
+        "Unlimited product uploads": "Απεριόριστες αναρτήσεις προϊόντων",
+        "Up to 2 active mystery box listings": "Έως 2 ενεργές αναρτήσεις mystery box",
+        "0% selling fees": "0% προμήθειες πώλησης",
+        "Current plan": "Τρέχον πλάνο",
+        "Everything in Silver": "Όλα του Silver",
+        "Up to 5 active mystery box listings": "Έως 5 ενεργές αναρτήσεις mystery box",
+        "Priority placement in search & category browsing": "Προτεραιότητα στην αναζήτηση και τις κατηγορίες",
+        "Priority seller support": "Προτεραιότητα στην υποστήριξη πωλητών",
+        "Upgrade to Gold": "Αναβάθμιση σε Gold",
+        "Remove local Gold preview": "Αφαίρεση τοπικής προεπισκόπησης Gold",
+        "Unlimited mystery boxes": "Απεριόριστα mystery boxes",
+        "Requires an active Gold plan. Billed monthly when in-app purchases go live.": "Απαιτείται ενεργό Gold. Χρέωση μηνιαία όταν ενεργοποιηθούν οι αγορές εντός εφαρμογής.",
+        "No cap on active mystery box listings": "Χωρίς όριο ενεργών mystery box",
+        "£10.99/month after purchase": "£10,99/μήνα μετά την αγορά",
+        "Subscribed (preview)": "Συνδρομή (προεπισκόπηση)",
+        "Turn off preview subscription": "Απενεργοποίηση προεπισκόπησης συνδρομής",
+        "Subscribe — £10.99/month": "Συνδρομή — £10.99/μήνα",
+        "Gold unlocks more mystery box listings and priority visibility. App Store billing will be available soon; you can enable a preview on this device for testing.": "Το Gold ξεκλειδώνει περισσότερα mystery box και προτεραιότητα εμφάνισης. Η χρέωση μέσω App Store θα είναι σύντομα διαθέσιμη· μπορείτε να ενεργοποιήσετε προεπισκόπηση σε αυτή τη συσκευή.",
+        "Enable Gold (preview)": "Ενεργοποίηση Gold (προεπισκόπηση)",
+        "Add unlimited active mystery box listings for £10.99/month. This add-on requires Gold. In-app purchase coming soon — enable preview for testing.": "Προσθέτει απεριόριστα ενεργά mystery box για £10.99/μήνα. Απαιτείται Gold. Η αγορά εντός εφαρμογής έρχεται σύντομα — ενεργοποιήστε προεπισκόπηση για δοκιμές.",
+        "Enable add-on (preview)": "Ενεργοποίηση add-on (προεπισκόπηση)",
+        "You've reached the maximum number of mystery box listings for your plan. Open Settings → Plan to upgrade.": "Φτάσατε το μέγιστο mystery box για το πλάνο σας. Ανοίξτε Ρυθμίσεις → Plan για αναβάθμιση.",
+        "Mystery box limit": "Όριο mystery box",
+        "Card": "Κάρτα",
+
     ]
 }
 

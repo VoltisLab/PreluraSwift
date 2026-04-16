@@ -72,6 +72,7 @@ struct SellView: View {
     }
 
     @State private var mysteryPostingPhase: MysteryPostingPhase?
+    @State private var showMysteryQuotaAlert = false
 
     private var discountPercentText: String {
         guard let price = price, let discountPrice = discountPrice, price > 0 else { return "0%" }
@@ -290,6 +291,11 @@ struct SellView: View {
         } message: {
             if let err = viewModel.submissionError { Text(err) }
         }
+        .alert(L10n.string("Mystery box limit"), isPresented: $showMysteryQuotaAlert) {
+            Button(L10n.string("OK"), role: .cancel) {}
+        } message: {
+            Text(L10n.string("You've reached the maximum number of mystery box listings for your plan. Open Settings → Plan to upgrade."))
+        }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             .toolbar {
@@ -310,7 +316,7 @@ struct SellView: View {
                             if mysteryIncludedItems == nil {
                                 Button {
                                     HapticManager.tap()
-                                    mysteryPostingPhase = .picker(initialSelection: nil)
+                                    Task { await openMysteryPickerIfAllowed() }
                                 } label: {
                                     Image(systemName: "shippingbox.fill")
                                         .font(.system(size: 16, weight: .semibold))
@@ -511,6 +517,23 @@ struct SellView: View {
         price = p.price
         discountPrice = p.discountPrice
         parcelSize = p.parcelSize
+    }
+
+    private func openMysteryPickerIfAllowed() async {
+        let svc = UserService()
+        svc.updateAuthToken(authService.authToken)
+        do {
+            let user = try await svc.getUser(username: nil)
+            let products = try await svc.getUserProducts(username: nil)
+            let count = SellerMysteryQuota.activeMysteryListingCount(from: products)
+            if let cap = SellerMysteryQuota.mysteryListingCap(profileTier: user.profileTier), count >= cap {
+                await MainActor.run { showMysteryQuotaAlert = true }
+                return
+            }
+            await MainActor.run { mysteryPostingPhase = .picker(initialSelection: nil) }
+        } catch {
+            await MainActor.run { mysteryPostingPhase = .picker(initialSelection: nil) }
+        }
     }
 
     private func loadDraft(id: String) {

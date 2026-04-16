@@ -2807,6 +2807,18 @@ struct PaymentMethod {
     let paymentMethodId: String
     let last4Digits: String
     let cardBrand: String
+
+    /// e.g. `Visa ending in ****4242` for Payments / checkout summaries.
+    var displayCardEndingLine: String {
+        let digits = last4Digits.filter(\.isNumber)
+        let four = digits.count >= 4 ? String(digits.suffix(4)) : last4Digits
+        let raw = cardBrand.trimmingCharacters(in: .whitespacesAndNewlines)
+        let brand: String = {
+            guard !raw.isEmpty else { return L10n.string("Card") }
+            return raw.prefix(1).uppercased() + raw.dropFirst().lowercased()
+        }()
+        return "\(brand) ending in ****\(four)"
+    }
 }
 
 /// Blocked user from blockedUsers query.

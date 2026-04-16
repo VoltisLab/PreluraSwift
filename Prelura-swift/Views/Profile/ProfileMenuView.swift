@@ -128,6 +128,9 @@ struct SettingsMenuView: View {
                 NavigationLink(destination: CurrencySettingsView()) {
                     settingsRow(L10n.string("Currency"), icon: "dollarsign.circle")
                 }
+                NavigationLink(destination: PlanSettingsView()) {
+                    settingsRow(L10n.string("Plan"), icon: "crown.fill")
+                }
                 NavigationLink(destination: ShippingMenuView()) {
                     settingsRow(L10n.string("Shipping"), icon: "shippingbox")
                 }

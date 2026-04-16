@@ -185,6 +185,19 @@ class SellViewModel: ObservableObject {
                 guard let catIdStr = categoryId, let categoryIdInt = Int(catIdStr) else {
                     throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Please select a category."])
                 }
+
+                userService.updateAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
+                let profile = try await userService.getUser(username: nil)
+                let existingProducts = try await userService.getUserProducts(username: nil)
+                let activeMysteryCount = SellerMysteryQuota.activeMysteryListingCount(from: existingProducts)
+                if let cap = SellerMysteryQuota.mysteryListingCap(profileTier: profile.profileTier), activeMysteryCount >= cap {
+                    throw NSError(
+                        domain: "SellViewModel",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: L10n.string("You've reached the maximum number of mystery box listings for your plan. Open Settings → Plan to upgrade.")]
+                    )
+                }
+
                 guard let cover = MysteryBoxListingCoverImage.makeImage(),
                       let jpeg = cover.jpegData(compressionQuality: 0.85) else {
                     throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare listing image."])

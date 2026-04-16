@@ -222,12 +222,9 @@ struct PaymentView: View {
                                 .font(.system(size: 22))
                                 .foregroundColor(Theme.primaryColor)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("\(method.cardBrand) •••• \(method.last4Digits)")
+                                Text(method.displayCardEndingLine)
                                     .font(Theme.Typography.headline)
                                     .foregroundColor(Theme.Colors.primaryText)
-                                Text(String(format: L10n.string("Card ending in %@"), method.last4Digits))
-                                    .font(Theme.Typography.caption)
-                                    .foregroundColor(Theme.Colors.secondaryText)
                             }
                             Spacer()
                         }
