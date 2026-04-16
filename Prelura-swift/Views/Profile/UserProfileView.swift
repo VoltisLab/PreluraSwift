@@ -85,19 +85,10 @@ struct UserProfileView: View {
         .navigationBarHidden(false)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                HStack(spacing: 5) {
-                    Text(profileNavigationTitle)
-                        .font(.headline)
-                        .foregroundStyle(Theme.Colors.primaryText)
-                        .lineLimit(1)
-                    if viewModel.user.blueTickVerified {
-                        Image("VerifiedUserBadge")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 16, height: 15)
-                            .accessibilityLabel("Verified")
-                    }
-                }
+                UsernameWithVerifiedBadge(
+                    username: profileNavigationTitle,
+                    verified: viewModel.user.blueTickVerified
+                )
                 .accessibilityElement(children: .combine)
             }
             ToolbarItem(placement: .navigationBarTrailing) {

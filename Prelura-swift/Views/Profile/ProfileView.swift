@@ -176,19 +176,10 @@ struct ProfileView: View {
         .toolbar {
             if !authService.isGuestMode && !viewModel.isLoading {
                 ToolbarItem(placement: .principal) {
-                    HStack(spacing: 5) {
-                        Text(viewModel.user?.username ?? L10n.string("Profile"))
-                            .font(.headline)
-                            .foregroundStyle(Theme.Colors.primaryText)
-                            .lineLimit(1)
-                        if viewModel.user?.blueTickVerified == true {
-                            Image("VerifiedUserBadge")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 16, height: 15)
-                                .accessibilityLabel("Verified")
-                        }
-                    }
+                    UsernameWithVerifiedBadge(
+                        username: viewModel.user?.username ?? L10n.string("Profile"),
+                        verified: viewModel.user?.blueTickVerified == true
+                    )
                     .accessibilityElement(children: .combine)
                 }
             }

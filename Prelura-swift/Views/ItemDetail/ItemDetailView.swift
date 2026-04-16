@@ -594,19 +594,14 @@ struct ItemDetailView: View {
                     HStack(spacing: Theme.Spacing.sm) {
                         sellerAvatarView
                         VStack(alignment: .leading, spacing: 4) {
-                            HStack(alignment: .center, spacing: 4) {
-                                Text(effectiveItem.seller.username)
-                                    .font(Theme.Typography.body)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                if effectiveItem.seller.blueTickVerified {
-                                    Image("VerifiedUserBadge")
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 16, height: 15)
-                                        .accessibilityLabel("Verified")
-                                }
-                            }
+                            UsernameWithVerifiedBadge(
+                                username: effectiveItem.seller.username,
+                                verified: effectiveItem.seller.blueTickVerified,
+                                font: Theme.Typography.body.weight(.bold),
+                                referenceUIFont: UIFont.systemFont(ofSize: 17, weight: .bold),
+                                textColor: Theme.Colors.primaryText,
+                                spacing: 4
+                            )
                             HStack(spacing: 4) {
                                 ForEach(0..<5, id: \.self) { _ in
                                     Image(systemName: "star")
