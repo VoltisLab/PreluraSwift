@@ -1898,6 +1898,7 @@ class UserService: ObservableObject {
             }
             styles
             style
+            isMysteryBox
           }
         }
         """
@@ -2019,7 +2020,8 @@ class UserService: ObservableObject {
                 sellSizeBackendId: Self.graphQLIntId(product.size?.id),
                 listingMeasurements: measurementsNote,
                 materialSummary: ProductListingFields.materialSummary(from: product.materials),
-                styleTags: ProductListingFields.mergedStyleTags(styles: product.styles, legacyStyle: product.style)
+                styleTags: ProductListingFields.mergedStyleTags(styles: product.styles, legacyStyle: product.style),
+                isMysteryBox: product.isMysteryBox ?? false
             )
         }
     }

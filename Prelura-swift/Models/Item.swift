@@ -36,6 +36,8 @@ struct Item: Identifiable, Hashable {
     let materialSummary: String?
     /// Style enum raw values from API (`styles` and optional legacy `style`).
     let styleTags: [String]
+    /// True when this listing is a mystery-box product (exclude from “tag listings” pickers).
+    let isMysteryBox: Bool
 
     init(
         id: UUID = UUID(),
@@ -63,7 +65,8 @@ struct Item: Identifiable, Hashable {
         sellSizeBackendId: Int? = nil,
         listingMeasurements: String? = nil,
         materialSummary: String? = nil,
-        styleTags: [String] = []
+        styleTags: [String] = [],
+        isMysteryBox: Bool = false
     ) {
         self.id = id
         self.productId = productId
@@ -91,6 +94,7 @@ struct Item: Identifiable, Hashable {
         self.listingMeasurements = listingMeasurements
         self.materialSummary = materialSummary
         self.styleTags = styleTags
+        self.isMysteryBox = isMysteryBox
     }
     
     // Hashable conformance
@@ -111,7 +115,7 @@ struct Item: Identifiable, Hashable {
     }
     
     /// Returns a copy with updated like state (for optimistic/local updates after toggle like).
-    func with(likeCount: Int? = nil, isLiked: Bool? = nil, status: String? = nil, listingCode: String? = nil) -> Item {
+    func with(likeCount: Int? = nil, isLiked: Bool? = nil, status: String? = nil, listingCode: String? = nil, isMysteryBox: Bool? = nil) -> Item {
         Item(
             id: id,
             productId: productId,
@@ -138,7 +142,8 @@ struct Item: Identifiable, Hashable {
             sellSizeBackendId: sellSizeBackendId,
             listingMeasurements: listingMeasurements,
             materialSummary: materialSummary,
-            styleTags: styleTags
+            styleTags: styleTags,
+            isMysteryBox: isMysteryBox ?? self.isMysteryBox
         )
     }
 

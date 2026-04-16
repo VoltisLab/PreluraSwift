@@ -65,6 +65,7 @@ class ProductService: ObservableObject {
             styles
             style
             status
+            isMysteryBox
           }
           allProductsTotalNumber
         }
@@ -226,7 +227,8 @@ class ProductService: ObservableObject {
                 sellSizeBackendId: Self.graphQLIntId(product.size?.id),
                 listingMeasurements: measNote,
                 materialSummary: ProductListingFields.materialSummary(from: product.materials),
-                styleTags: ProductListingFields.mergedStyleTags(styles: product.styles, legacyStyle: product.style)
+                styleTags: ProductListingFields.mergedStyleTags(styles: product.styles, legacyStyle: product.style),
+                isMysteryBox: product.isMysteryBox ?? false
             )
         }
     }
@@ -1160,6 +1162,7 @@ struct ProductData: Decodable {
     let materials: [BrandData]?
     let styles: [String]?
     let style: String?
+    let isMysteryBox: Bool?
 }
 
 struct SizeData: Decodable {
@@ -1297,6 +1300,7 @@ extension ProductService {
             styles
             style
             status
+            isMysteryBox
           }
         }
         """
@@ -1712,7 +1716,8 @@ extension ProductService {
             sellSizeBackendId: Self.graphQLIntId(product.size?.id),
             listingMeasurements: measNote,
             materialSummary: ProductListingFields.materialSummary(from: product.materials),
-            styleTags: ProductListingFields.mergedStyleTags(styles: product.styles, legacyStyle: product.style)
+            styleTags: ProductListingFields.mergedStyleTags(styles: product.styles, legacyStyle: product.style),
+            isMysteryBox: product.isMysteryBox ?? false
         )
     }
 }

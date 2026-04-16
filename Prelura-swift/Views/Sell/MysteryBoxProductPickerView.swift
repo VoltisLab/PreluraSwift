@@ -20,10 +20,14 @@ struct MysteryBoxProductPickerView: View {
     @State private var selectedItems: [Item] = []
 
     private var isSearchMode: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    private var displayedItems: [Item] { isSearchMode ? searchResults : myProducts }
+    /// Mystery-box listings cannot be nested inside another mystery box.
+    private var displayedItems: [Item] {
+        let raw = isSearchMode ? searchResults : myProducts
+        return raw.filter { !$0.isMysteryBox }
+    }
     private var showEmptyState: Bool {
-        if isSearchMode { return !searching && searchResults.isEmpty }
-        return !loadingMyProducts && myProducts.isEmpty
+        if isSearchMode { return !searching && displayedItems.isEmpty }
+        return !loadingMyProducts && displayedItems.isEmpty
     }
 
     private func isAdded(_ item: Item) -> Bool {
@@ -152,7 +156,7 @@ struct MysteryBoxProductPickerView: View {
             .onAppear {
                 userService.updateAuthToken(authService.authToken)
                 productService.updateAuthToken(authService.authToken)
-                selectedItems = initialSelection ?? []
+                selectedItems = (initialSelection ?? []).filter { !$0.isMysteryBox }
                 loadMyProducts()
             }
             .onChange(of: query) { _, newQuery in

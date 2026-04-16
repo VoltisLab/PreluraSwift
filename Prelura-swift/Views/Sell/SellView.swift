@@ -298,18 +298,7 @@ struct SellView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: Theme.Spacing.md) {
-                        if !isEditMode, isMysteryListing, onRequestEditMysteryItems != nil {
-                            Button {
-                                HapticManager.tap()
-                                onRequestEditMysteryItems?()
-                            } label: {
-                                Image(systemName: "shippingbox.fill")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(Theme.primaryColor)
-                            }
-                            .buttonStyle(PlainTappableButtonStyle())
-                            .accessibilityLabel(L10n.string("Change listings"))
-                        } else if !isEditMode, mysteryIncludedItems == nil {
+                        if !isEditMode, mysteryIncludedItems == nil {
                             Button {
                                 HapticManager.tap()
                                 mysteryPostingPhase = .picker(initialSelection: nil)
