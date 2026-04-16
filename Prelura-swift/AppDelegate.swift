@@ -42,6 +42,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     /// `FirebaseApp.configure()` aborts if the default plist is missing or invalid. Only true after a successful configure.
     private static var isFirebaseConfigured: Bool { FirebaseApp.app() != nil }
 
+    /// Foreground push we re-post with updated copy so the banner matches in-app wording (avoids duplicate processing).
+    private static let wearhouseRepostedSalePushKey = "wearhouse_reposted_sale_v1"
+
     private static func isWearhouseLocalPushTest(userInfo: [AnyHashable: Any], requestIdentifier: String) -> Bool {
         if requestIdentifier == kWearhouseLocalPushTestNotificationId { return true }
         let v = userInfo[kWearhouseLocalPushTestUserInfoKey]
@@ -412,6 +415,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             completionHandler([.banner, .badge, .sound])
             return
         }
+        if Self.shouldReplaceForegroundSaleNotification(notification) {
+            Self.enqueueReplacementSaleNotification(from: notification)
+            NotificationDebugLog.append(
+                source: "present",
+                message: "willPresent — reposted seller-sale push with normalized body",
+                isError: false
+            )
+            Self.logChatPushPayloadIfRelevant(u, context: "Foreground willPresent (sale copy replaced)")
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
+            }
+            completionHandler([])
+            return
+        }
         if let mid = u["gcm.message_id"] {
             pushBootstrapLog.info("willPresent remote notification gcm.message_id=\(String(describing: mid), privacy: .public)")
             print("[Push] Foreground notification (gcm.message_id=\(mid))")
@@ -427,5 +444,34 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
         }
         completionHandler([.banner, .badge, .sound])
+    }
+
+    /// Remote sale pushes often still say “Congratulations…”. Foreground only: suppress and re-post with ``WearhouseSaleNotificationCopy.sellerSaleMessage`` (lock-screen / background banners stay server text until a Notification Service Extension or server update).
+    private static func shouldReplaceForegroundSaleNotification(_ notification: UNNotification) -> Bool {
+        let info = notification.request.content.userInfo
+        if info[AnyHashable(wearhouseRepostedSalePushKey)] != nil { return false }
+        let c = notification.request.content
+        let combined = (c.title + " " + c.subtitle + " " + c.body)
+        return WearhouseSaleNotificationCopy.shouldNormalizeSellerSaleMessage(combined)
+    }
+
+    private static func enqueueReplacementSaleNotification(from notification: UNNotification) {
+        let o = notification.request.content
+        var info = o.userInfo
+        info[AnyHashable(wearhouseRepostedSalePushKey)] = true
+        let m = UNMutableNotificationContent()
+        m.title = o.title
+        m.subtitle = o.subtitle
+        m.body = WearhouseSaleNotificationCopy.sellerSaleMessage
+        m.sound = o.sound
+        m.badge = o.badge
+        m.userInfo = info
+        m.threadIdentifier = o.threadIdentifier
+        let req = UNNotificationRequest(identifier: "wearhouse-sale-copy-" + UUID().uuidString, content: m, trigger: nil)
+        UNUserNotificationCenter.current().add(req) { err in
+            if let err {
+                pushBootstrapLog.error("Repost sale notification: \(err.localizedDescription, privacy: .public)")
+            }
+        }
     }
 }

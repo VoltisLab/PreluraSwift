@@ -3822,7 +3822,7 @@ struct SoldConfirmationCardView: View {
                 if order.rolesConfirmed {
                     Text(
                         isSeller
-                            ? L10n.string("Congratulations, You made a sale! 🎉")
+                            ? L10n.string(WearhouseSaleNotificationCopy.sellerSaleMessage)
                             : (isBuyer ? "Payment successful!" : "\(order.buyerUsername) bought this")
                     )
                     .font(Self.saleBannerTitleFont)

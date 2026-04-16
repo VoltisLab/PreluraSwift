@@ -90,7 +90,7 @@ enum L10n {
         "You left a feedback.": "Αφήσατε ανατροφοδότηση.",
         "%@ left a feedback.": "%@ άφησε ανατροφοδότηση.",
         "Left a feedback.": "Αφέθηκε ανατροφοδότηση.",
-        "Congratulations, You made a sale! 🎉": "Συγχαρητήρια, κάνατε πώληση! 🎉",
+        "You made a sale! 🎉": "Έκανες πώληση! 🎉",
         "%@ sent you an offer.": "Ο χρήστης %@ σάς έστειλε προσφορά.",
         "%@ likes your item.": "Ο χρήστης %@ έκανε like στο αντικείμενό σας.",
         "An item you liked has sold. Here are similar listings to explore.": "Ένα αντικείμενο που σάς άρεσε πωλήθηκε. Δείτε παρόμοιες αγγελίες για να εξερευνήσετε.",

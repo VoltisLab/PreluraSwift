@@ -696,7 +696,7 @@ struct ChatRowView: View {
             case "product_report": return Message.humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             case "sold_confirmation":
                 if usernamesMatch(conversation.offer?.products?.first?.seller?.username, currentUsername) {
-                    return "You made a sale 🎉"
+                    return L10n.string(WearhouseSaleNotificationCopy.sellerSaleMessage)
                 }
                 return "Order confirmed"
             case "order_cancellation_request":

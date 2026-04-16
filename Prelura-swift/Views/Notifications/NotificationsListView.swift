@@ -483,6 +483,7 @@ private struct NotificationRowView: View {
         return m.localizedCaseInsensitiveContains("your item sold")
             || m.range(of: "SOLD!", options: .caseInsensitive) != nil
             || m.contains("bought your item")
+            || m.contains("you made a sale")
             || (m.contains("congratulations") && m.contains("sale"))
     }
 
@@ -516,7 +517,7 @@ private struct NotificationRowView: View {
             return L10n.string("An item you liked has sold. Here are similar listings to explore.")
         }
         if isSellerOrderSaleNotification {
-            return L10n.string("Congratulations, You made a sale! 🎉")
+            return L10n.string(WearhouseSaleNotificationCopy.sellerSaleMessage)
         }
         if isNewOfferOnListingMessage,
            let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
