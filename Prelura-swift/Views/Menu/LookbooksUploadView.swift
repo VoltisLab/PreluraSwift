@@ -1741,7 +1741,7 @@ struct LookbookTagProductsView: View {
 // MARK: - Product search sheet
 
 /// Removes the default navigation bar bottom hairline on the product picker sheet so the separator does not look overly heavy.
-private struct ProductSearchSheetNavigationBarHairlineHidden: UIViewControllerRepresentable {
+struct ProductSearchSheetNavigationBarHairlineHidden: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
         HairlineHiddenHostController()
     }

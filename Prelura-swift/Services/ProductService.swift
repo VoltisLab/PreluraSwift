@@ -459,7 +459,9 @@ class ProductService: ObservableObject {
         style: String? = nil,
         styles: [String]? = nil,
         sizeId: Int? = nil,
-        status: String = "ACTIVE"
+        status: String = "ACTIVE",
+        isMysteryBox: Bool = false,
+        mysteryIncludedProductIds: [Int]? = nil
     ) async throws -> Int {
         let mutation = """
         mutation CreateProduct(
@@ -480,6 +482,8 @@ class ProductService: ObservableObject {
           $customBrand: String
           $isFeatured: Boolean
           $status: ProductStatusEnum
+          $isMysteryBox: Boolean
+          $mysteryIncludedProductIds: [Int]
         ) {
           createProduct(
             category: $category
@@ -499,6 +503,8 @@ class ProductService: ObservableObject {
             customBrand: $customBrand
             isFeatured: $isFeatured
             status: $status
+            isMysteryBox: $isMysteryBox
+            mysteryIncludedProductIds: $mysteryIncludedProductIds
           ) {
             success
             message
@@ -533,6 +539,8 @@ class ProductService: ObservableObject {
         if let s = style, !s.isEmpty { variables["style"] = s }
         if let st = styles, !st.isEmpty { variables["styles"] = st }
         if let sid = sizeId { variables["size"] = sid }
+        variables["isMysteryBox"] = isMysteryBox
+        variables["mysteryIncludedProductIds"] = mysteryIncludedProductIds ?? []
 
         struct CreateProductResponse: Decodable {
             let createProduct: CreateProductPayload?

@@ -1028,6 +1028,9 @@ struct WardrobeItemCard: View {
     var multiBuySelectionMode: Bool = false
     var isSelectedForMultiBuy: Bool = false
     var onMultiBuySelectTap: (() -> Void)? = nil
+    /// Mystery box picker: Add / Added chip on the image; parent handles taps (whole cell is a button).
+    var mysteryBoxAddChipMode: Bool = false
+    var isMysteryBoxItemAdded: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -1070,11 +1073,30 @@ struct WardrobeItemCard: View {
                     )
                     
                     // Like count overlay - shared component (56pt tap area, same visual)
-                    LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: { onLikeTap?() })
-                    .padding(Theme.Spacing.xs)
+                    if !mysteryBoxAddChipMode {
+                        LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: { onLikeTap?() })
+                            .padding(Theme.Spacing.xs)
+                    }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if multiBuySelectionMode {
+                    if mysteryBoxAddChipMode {
+                        Text(L10n.string(isMysteryBoxItemAdded ? "Added" : "Add"))
+                            .font(Theme.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Theme.primaryColor)
+                            .padding(.horizontal, Theme.Spacing.sm)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule()
+                                    .fill(Theme.primaryColor.opacity(0.22))
+                            )
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(Theme.primaryColor.opacity(0.45), lineWidth: 1)
+                            )
+                            .padding(Theme.Spacing.xs)
+                            .allowsHitTesting(false)
+                    } else if multiBuySelectionMode {
                         Button(action: { onMultiBuySelectTap?() }) {
                             Text(L10n.string(isSelectedForMultiBuy ? "Selected" : "Select"))
                                 .font(Theme.Typography.caption)

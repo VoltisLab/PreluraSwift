@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import UIKit
 
 @MainActor
 class SellViewModel: ObservableObject {
@@ -103,7 +104,114 @@ class SellViewModel: ObservableObject {
                     style: styleRaws.first,
                     styles: styleRaws.count > 1 ? Array(styleRaws.prefix(2)) : nil,
                     sizeId: sizeId,
-                    status: "ACTIVE"
+                    status: "ACTIVE",
+                    isMysteryBox: false,
+                    mysteryIncludedProductIds: []
+                )
+
+                isSubmitting = false
+                submissionSuccess = true
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                submissionSuccess = false
+            } catch {
+                isSubmitting = false
+                submissionError = L10n.userFacingError(error)
+            }
+        }
+    }
+
+    /// Mystery box listing: uploads a single generated cover image, then creates the product with linked included listing ids.
+    func submitMysteryBoxListing(
+        authToken: String?,
+        title: String,
+        description: String,
+        price: Double,
+        brand: String,
+        condition: String,
+        size: String,
+        categoryId: String?,
+        categoryName: String?,
+        parcelSize: String? = nil,
+        colours: [String] = [],
+        sizeId: Int? = nil,
+        measurements: String? = nil,
+        material: String? = nil,
+        styles: [String] = [],
+        mysteryIncludedProductIds: [Int]
+    ) {
+        isSubmitting = true
+        submissionError = nil
+
+        Task {
+            do {
+                guard price > 0 else {
+                    throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: L10n.string("Please enter a price.")])
+                }
+                guard price <= 100 else {
+                    throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: L10n.string("Mystery box price cannot exceed £100.")])
+                }
+                guard !mysteryIncludedProductIds.isEmpty else {
+                    throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: L10n.string("Select at least one listing to include in your mystery box.")])
+                }
+                guard let catIdStr = categoryId, let categoryIdInt = Int(catIdStr) else {
+                    throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Please select a category."])
+                }
+                guard let cover = MysteryBoxListingCoverImage.makeImage(),
+                      let jpeg = cover.jpegData(compressionQuality: 0.85) else {
+                    throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare listing image."])
+                }
+
+                fileUploadService.setAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
+                productService.updateAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
+                materialsService.setAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
+
+                let imageUrl = try await fileUploadService.uploadProductImages([jpeg])
+
+                let brandTrimmed = brand.trimmingCharacters(in: .whitespacesAndNewlines)
+                let brandId = brandTrimmed.isEmpty ? nil : try? await productService.getBrandId(byName: brandTrimmed)
+                let customBrand: String? = (brandId == nil && !brandTrimmed.isEmpty) ? brandTrimmed : nil
+
+                var materialIds: [Int]? = nil
+                if let mat = material, !mat.isEmpty, let mid = try? await materialsService.getMaterialId(byName: mat) {
+                    materialIds = [mid]
+                }
+
+                let parcelSizeEnum = Self.mapParcelSizeToEnum(parcelSize)
+
+                let titleRaw = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                let descriptionRaw = description.trimmingCharacters(in: .whitespacesAndNewlines)
+                let titleClean = ProfanityFilter.sanitize(titleRaw)
+                let descriptionClean = ProfanityFilter.sanitize(descriptionRaw)
+                let descriptionForApi = ListingDescriptionAttachments.embedMeasurements(descriptionClean, measurements: measurements)
+                if ProfanityFilter.maskingWouldChange(titleRaw) || ProfanityFilter.maskingWouldChange(descriptionRaw) {
+                    userService.updateAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
+                    let snippet = "\(titleClean) — \(descriptionClean)"
+                    _ = try? await userService.recordProfanityUsage(
+                        channel: "sell_mystery_box",
+                        relatedConversationId: nil,
+                        sanitizedSnippet: snippet
+                    )
+                }
+                let styleRaws = StyleSelectionView.normalizedUniqueStyleRaws(styles)
+                _ = try await productService.createProduct(
+                    name: titleClean,
+                    description: descriptionForApi,
+                    price: price,
+                    imageUrl: imageUrl,
+                    categoryId: categoryIdInt,
+                    condition: condition.isEmpty ? nil : condition,
+                    parcelSize: parcelSizeEnum,
+                    discount: nil,
+                    color: colours.isEmpty ? nil : colours,
+                    brandId: brandId,
+                    customBrand: customBrand,
+                    materialIds: materialIds,
+                    style: styleRaws.first,
+                    styles: styleRaws.count > 1 ? Array(styleRaws.prefix(2)) : nil,
+                    sizeId: sizeId,
+                    status: "ACTIVE",
+                    isMysteryBox: true,
+                    mysteryIncludedProductIds: mysteryIncludedProductIds
                 )
 
                 isSubmitting = false

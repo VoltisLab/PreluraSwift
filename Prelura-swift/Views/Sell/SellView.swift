@@ -12,6 +12,10 @@ struct SellView: View {
     var editProductId: Int? = nil
     /// Called after a successful save in edit mode (e.g. dismiss sheet).
     var onEditComplete: (() -> Void)? = nil
+    /// When set, this screen is the mystery-box listing form (no photos; uses generated cover on upload).
+    var mysteryIncludedItems: [Item]? = nil
+    /// Dismisses the full-screen mystery flow (picker + form).
+    var onDismissMysteryFlow: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.optionalTabCoordinator) private var tabCoordinator
     @EnvironmentObject private var authService: AuthService
@@ -42,6 +46,20 @@ struct SellView: View {
     /// Extra scroll bottom inset while the keyboard is visible so fields above the upload bar stay reachable.
     @State private var keyboardBottomInset: CGFloat = 0
 
+    private enum MysteryPostingPhase: Identifiable {
+        case picker
+        case form(items: [Item])
+        var id: String {
+            switch self {
+            case .picker: return "mystery-picker"
+            case .form(let items):
+                return "mystery-form-" + items.map { $0.productId ?? "" }.joined(separator: "-")
+            }
+        }
+    }
+
+    @State private var mysteryPostingPhase: MysteryPostingPhase?
+
     private var discountPercentText: String {
         guard let price = price, let discountPrice = discountPrice, price > 0 else { return "0%" }
         let percent = Int(((price - discountPrice) / price) * 100)
@@ -50,8 +68,26 @@ struct SellView: View {
 
     private var isEditMode: Bool { editProductId != nil }
 
+    private var isMysteryListing: Bool {
+        guard let items = mysteryIncludedItems else { return false }
+        return !items.isEmpty
+    }
+
     /// Flutter: category, description, images, parcel, title, price (not 0), selectedColors, brand or customBrand, condition
     private var canUpload: Bool {
+        if isMysteryListing {
+            let ids = mysteryProductIds
+            let p = price ?? 0
+            return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !ids.isEmpty
+                && category != nil
+                && (brand != nil && !(brand?.isEmpty ?? true))
+                && condition != nil
+                && !colours.isEmpty
+                && p > 0 && p <= 100
+                && parcelSize != nil
+        }
         let hasPhotos = !selectedImages.isEmpty || (isEditMode && !existingListingImagePairs.isEmpty)
         return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -64,17 +100,25 @@ struct SellView: View {
             && parcelSize != nil
     }
 
+    private var mysteryProductIds: [Int] {
+        (mysteryIncludedItems ?? []).compactMap { $0.productId.flatMap { Int($0) } }
+    }
+
 
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(spacing: 0) {
                     // 1. Upload from drafts (Flutter: same)
-                    if !isEditMode, draftCount > 0 {
+                    if !isEditMode, !isMysteryListing, draftCount > 0 {
                         draftsSection
                     }
-                    // 2. Photo upload (Flutter: same)
-                    photoUploadSection
+                    // 2. Photo upload (Flutter: same) — mystery uses fixed carton hero instead
+                    if isMysteryListing {
+                        mysteryBoxCartonSection
+                    } else {
+                        photoUploadSection
+                    }
                     // 3. Item Details = Title + Describe your item only (Flutter)
                     itemDetailsSection
                     // 4. Item Information = Category, Brand, Condition, Colours (Flutter)
@@ -129,6 +173,25 @@ struct SellView: View {
                                 material: material,
                                 styles: styles
                             )
+                        } else if isMysteryListing {
+                            viewModel.submitMysteryBoxListing(
+                                authToken: authService.authToken,
+                                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                                description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                                price: price ?? 0.0,
+                                brand: brand ?? "",
+                                condition: condition ?? "",
+                                size: sizeName ?? "",
+                                categoryId: category?.id,
+                                categoryName: category?.name,
+                                parcelSize: parcelSize,
+                                colours: colours,
+                                sizeId: sizeId,
+                                measurements: measurements,
+                                material: material,
+                                styles: styles,
+                                mysteryIncludedProductIds: mysteryProductIds
+                            )
                         } else {
                             viewModel.submitListing(
                                 authToken: authService.authToken,
@@ -182,13 +245,20 @@ struct SellView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.isSubmitting)
-        .navigationTitle(isEditMode ? L10n.string("Edit listing") : L10n.string("Sell an item"))
+        .navigationTitle(
+            isEditMode
+                ? L10n.string("Edit listing")
+                : (isMysteryListing ? L10n.string("Mystery box") : L10n.string("Sell an item"))
+        )
         .onChange(of: viewModel.submissionSuccess) { _, success in
             if success {
                 HapticManager.success()
                 if isEditMode {
                     onEditComplete?()
                 } else {
+                    if isMysteryListing {
+                        onDismissMysteryFlow?()
+                    }
                     clearSellFormAfterSuccessfulUpload()
                     selectedTab = 4 // Profile tab
                 }
@@ -210,6 +280,7 @@ struct SellView: View {
                     Button(action: {
                         HapticManager.tap()
                         if isEditMode { dismiss() }
+                        else if onDismissMysteryFlow != nil { onDismissMysteryFlow?() }
                         else { selectedTab = 0 }
                     }) {
                         Image(systemName: "xmark")
@@ -219,20 +290,34 @@ struct SellView: View {
                     .buttonStyle(PlainTappableButtonStyle())
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    if !isEditMode, !selectedImages.isEmpty {
-                        Button(L10n.string("Save draft")) {
-                            saveCurrentAsDraft()
+                    HStack(spacing: Theme.Spacing.md) {
+                        if !isEditMode, mysteryIncludedItems == nil {
+                            Button {
+                                HapticManager.tap()
+                                mysteryPostingPhase = .picker
+                            } label: {
+                                Image(systemName: "shippingbox.fill")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(Theme.primaryColor)
+                            }
+                            .buttonStyle(PlainTappableButtonStyle())
+                            .accessibilityLabel(L10n.string("Mystery box"))
                         }
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.primaryColor)
-                        .opacity(viewModel.isSubmitting ? 0.5 : 1)
-                        .disabled(viewModel.isSubmitting)
-                    } else if !isEditMode, draftCount > 0 {
-                        Button(L10n.string("Drafts")) {
-                            showDraftsSheet = true
+                        if !isEditMode, !isMysteryListing, !selectedImages.isEmpty {
+                            Button(L10n.string("Save draft")) {
+                                saveCurrentAsDraft()
+                            }
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.primaryColor)
+                            .opacity(viewModel.isSubmitting ? 0.5 : 1)
+                            .disabled(viewModel.isSubmitting)
+                        } else if !isEditMode, !isMysteryListing, draftCount > 0 {
+                            Button(L10n.string("Drafts")) {
+                                showDraftsSheet = true
+                            }
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.primaryColor)
                         }
-                        .font(Theme.Typography.subheadline)
-                        .foregroundColor(Theme.primaryColor)
                     }
                 }
             }
@@ -268,6 +353,29 @@ struct SellView: View {
                 Button(L10n.string("OK")) { }
             } message: {
                 Text(L10n.string("Your listing has been saved as a draft. Open it from \"Upload from drafts\"."))
+            }
+            .fullScreenCover(item: $mysteryPostingPhase) { phase in
+                switch phase {
+                case .picker:
+                    MysteryBoxProductPickerView(
+                        onCancel: { mysteryPostingPhase = nil },
+                        onContinue: { items in
+                            mysteryPostingPhase = .form(items: items)
+                        }
+                    )
+                    .environmentObject(authService)
+                case .form(let items):
+                    NavigationStack {
+                        SellView(
+                            selectedTab: $selectedTab,
+                            mysteryIncludedItems: items,
+                            onDismissMysteryFlow: {
+                                mysteryPostingPhase = nil
+                            }
+                        )
+                        .environmentObject(authService)
+                    }
+                }
             }
     }
 
@@ -476,6 +584,14 @@ struct SellView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Mystery box hero (replaces photo picker)
+    private var mysteryBoxCartonSection: some View {
+        MysteryBoxSellHeroCard()
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.md)
+            .overlay(ContentDivider(), alignment: .bottom)
     }
 
     /// Existing listing URLs (edit) plus newly picked images + add cell.
@@ -763,7 +879,11 @@ extension SellView {
                 .background(Theme.Colors.background)
             
             // Price Field
-            NavigationLink(destination: PriceInputView(price: $price, categoryId: category?.id)) {
+            NavigationLink(destination: PriceInputView(
+                price: $price,
+                categoryId: category?.id,
+                maximumPrice: isMysteryListing ? 100 : nil
+            )) {
                 SellFormRow(
                     title: L10n.string("Price"),
                     value: price.map { "£\(String(format: "%.0f", $0))" }
@@ -773,15 +893,17 @@ extension SellView {
             .overlay(ContentDivider(), alignment: .bottom)
 
             // Discount Price Field
-            NavigationLink(destination: DiscountPriceInputView(price: $price, discountPrice: $discountPrice)) {
-                SellFormRow(
-                    title: L10n.string("Discount Price (Optional)"),
-                    value: discountPercentText,
-                    preferSecondaryStyle: true
-                )
+            if !isMysteryListing {
+                NavigationLink(destination: DiscountPriceInputView(price: $price, discountPrice: $discountPrice)) {
+                    SellFormRow(
+                        title: L10n.string("Discount Price (Optional)"),
+                        value: discountPercentText,
+                        preferSecondaryStyle: true
+                    )
+                }
+                .buttonStyle(PlainTappableButtonStyle())
+                .overlay(ContentDivider(), alignment: .bottom)
             }
-            .buttonStyle(PlainTappableButtonStyle())
-            .overlay(ContentDivider(), alignment: .bottom)
 
             // Parcel Size Field
             NavigationLink(destination: ParcelSizeSelectionView(selectedParcelSize: $parcelSize)) {
@@ -1933,6 +2055,8 @@ struct StyleSelectionView: View {
 struct PriceInputView: View {
     @Binding var price: Double?
     var categoryId: String? = nil
+    /// When set (e.g. mystery box), price cannot exceed this value (pounds).
+    var maximumPrice: Double? = nil
     @Environment(\.presentationMode) var presentationMode
     @State private var priceText: String = ""
     @FocusState private var isFocused: Bool
@@ -1956,7 +2080,13 @@ struct PriceInputView: View {
                         .focused($isFocused)
                         .onChange(of: priceText) { _, newValue in
                             let sanitized = PriceFieldFilter.sanitizePriceInput(newValue)
-                            if sanitized != newValue { priceText = sanitized }
+                            var next = sanitized
+                            if let maxP = maximumPrice,
+                               let val = Double(sanitized.replacingOccurrences(of: ",", with: ".")),
+                               val > maxP {
+                                next = String(format: "%.0f", maxP)
+                            }
+                            if next != newValue { priceText = next }
                         }
                 }
                 .padding(.horizontal, Theme.Spacing.md)
@@ -1965,6 +2095,13 @@ struct PriceInputView: View {
                 .cornerRadius(30)
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.top, Theme.Spacing.sm)
+
+                if maximumPrice != nil {
+                    Text(L10n.string("Mystery box price cannot exceed £100."))
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .padding(.horizontal, Theme.Spacing.md)
+                }
 
                 Text(L10n.string("Tip: similar price range is recommended based on similar items sold on WEARHOUSE."))
                     .font(Theme.Typography.caption)
@@ -2011,7 +2148,11 @@ struct PriceInputView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(L10n.string("Done")) {
-                    price = Double(priceText.replacingOccurrences(of: ",", with: "."))
+                    var parsed = Double(priceText.replacingOccurrences(of: ",", with: "."))
+                    if let maxP = maximumPrice, let p = parsed, p > maxP {
+                        parsed = maxP
+                    }
+                    price = parsed
                     presentationMode.wrappedValue.dismiss()
                 }
                 .foregroundColor(Theme.primaryColor)
@@ -2019,7 +2160,9 @@ struct PriceInputView: View {
         }
         .onAppear {
             if let p = price, p > 0 {
-                priceText = String(format: "%.0f", p)
+                let capped: Double
+                if let maxP = maximumPrice, p > maxP { capped = maxP } else { capped = p }
+                priceText = String(format: "%.0f", capped)
             }
             isFocused = true
             if categoryId != nil {
@@ -2718,6 +2861,36 @@ struct BrandInputView: View {
                 hasMore = false
             }
         }
+    }
+}
+
+private struct MysteryBoxSellHeroCard: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.48, green: 0.34, blue: 0.24),
+                            Color(red: 0.34, green: 0.24, blue: 0.16),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: 200)
+            VStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 44, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.92))
+                Text("?")
+                    .font(.system(size: 52, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.22))
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(L10n.string("Mystery box"))
     }
 }
 
