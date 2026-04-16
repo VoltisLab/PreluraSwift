@@ -775,6 +775,7 @@ class ProductService: ObservableObject {
           sizes(path: $path) {
             id
             name
+            group
           }
         }
         """
@@ -784,6 +785,7 @@ class ProductService: ObservableObject {
         struct APISizeRaw: Decodable {
             let id: AnyCodable?
             let name: String?
+            let group: String?
         }
         let response: SizesResponseInner = try await client.execute(
             query: query,
@@ -795,7 +797,7 @@ class ProductService: ObservableObject {
         return rawList.compactMap { r -> APISize? in
             guard let name = r.name else { return nil }
             let id: Int? = (r.id?.value as? Int) ?? (r.id?.value as? String).flatMap { Int($0) }
-            return APISize(id: id, name: name)
+            return APISize(id: id, name: name, group: r.group)
         }
     }
 
@@ -1169,6 +1171,10 @@ struct SizeData: Decodable {
 struct APISize {
     let id: Int?
     let name: String
+    /// Backend sets this for mystery-box listings (e.g. "Men · Clothing") so the UI can section the list.
+    let group: String?
+    /// Stable row identity when the same size name appears in multiple groups.
+    var rowKey: String { "\(group ?? "-")#\(id.map(String.init) ?? "x")#\(name)" }
 }
 
 struct BrandData: Decodable {

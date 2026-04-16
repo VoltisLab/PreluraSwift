@@ -1092,7 +1092,7 @@ private struct SellDraftsListSheet: View {
 struct CategorySelectionView: View {
     @Binding var selectedCategory: SellCategory?
     var onDismiss: () -> Void
-    /// When true, search only shows categories under root **Mystery**; `SubCategoryView` accents the **Mystery box** leaf.
+    /// When true, search only shows the mystery-box category tree; `SubCategoryView` accents leaf **Mystery** under **Mystery Box**.
     var forMysteryBoxFlow: Bool = false
     @State private var categories: [APICategory] = []
     @State private var isLoading = true
@@ -1102,12 +1102,15 @@ struct CategorySelectionView: View {
     @State private var isLoadingSearch = false
     private let service = CategoriesService()
 
-    private static let rootOrder = ["Men", "Women", "Boys", "Girls", "Toddlers", "Mystery"]
+    private static let rootOrder = ["Men", "Women", "Boys", "Girls", "Toddlers", "Mystery Box"]
 
-    private func pathRootIsMystery(_ pathNames: [String]) -> Bool {
-        pathNames.first?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .caseInsensitiveCompare("Mystery") == .orderedSame
+    /// Mystery box listing paths: `Mystery Box > …` or legacy `Mystery > Mystery box`.
+    private func pathIsUnderMysteryBoxListing(_ pathNames: [String]) -> Bool {
+        let parts = pathNames.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        guard let first = parts.first else { return false }
+        if first == "mystery box" { return true }
+        if first == "mystery", parts.count >= 2, parts[1] == "mystery box" { return true }
+        return false
     }
 
     private var filteredSearchResults: [CategoryPathEntry] {
@@ -1117,9 +1120,9 @@ struct CategorySelectionView: View {
             $0.displayPath.lowercased().contains(q) || $0.name.lowercased().contains(q)
         }
         if forMysteryBoxFlow {
-            return base.filter { pathRootIsMystery($0.pathNames) }
+            return base.filter { pathIsUnderMysteryBoxListing($0.pathNames) }
         }
-        return base.filter { !pathRootIsMystery($0.pathNames) }
+        return base.filter { !pathIsUnderMysteryBoxListing($0.pathNames) }
     }
 
     var body: some View {
@@ -1251,8 +1254,8 @@ struct CategorySelectionView: View {
     private var sortedCategories: [APICategory] {
         guard categories.count > 1 else { return categories }
         return categories.sorted { a, b in
-            let i1 = Self.rootOrder.firstIndex(of: a.name) ?? Self.rootOrder.count
-            let i2 = Self.rootOrder.firstIndex(of: b.name) ?? Self.rootOrder.count
+            let i1 = Self.rootOrder.firstIndex { $0.caseInsensitiveCompare(a.name) == .orderedSame } ?? Self.rootOrder.count
+            let i2 = Self.rootOrder.firstIndex { $0.caseInsensitiveCompare(b.name) == .orderedSame } ?? Self.rootOrder.count
             return i1 < i2
         }
     }
@@ -1384,8 +1387,8 @@ struct SubCategoryView: View {
         let parentTrim = parentName.trimmingCharacters(in: .whitespacesAndNewlines)
         let catTrim = cat.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let mysteryAccent = forMysteryBoxFlow
-            && parentTrim.caseInsensitiveCompare("Mystery") == .orderedSame
-            && catTrim.caseInsensitiveCompare("Mystery box") == .orderedSame
+            && parentTrim.caseInsensitiveCompare("Mystery Box") == .orderedSame
+            && catTrim.caseInsensitiveCompare("Mystery") == .orderedSame
         return HStack {
             Text(cat.name)
                 .font(Theme.Typography.body)
@@ -1604,24 +1607,17 @@ struct SizeSelectionView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
-                    ForEach(sizes, id: \.name) { size in
-                        Button(action: {
-                            selectedSizeId = size.id
-                            selectedSizeName = size.name
-                            presentationMode.wrappedValue.dismiss()
-                        }) {
-                            HStack {
-                                Text(size.name.replacingOccurrences(of: "_", with: " "))
-                                    .font(Theme.Typography.body)
-                                    .foregroundColor(Theme.Colors.primaryText)
-                                Spacer()
-                                if selectedSizeId == size.id || selectedSizeName == size.name {
-                                    Image(systemName: "checkmark.circle")
-                                        .font(.system(size: 22, weight: .medium))
-                                        .foregroundColor(Theme.primaryColor)
-                                }
+                    ForEach(sizeSections, id: \.header) { section in
+                        Section {
+                            ForEach(section.items, id: \.rowKey) { size in
+                                sizePickerRow(size)
                             }
-                            .padding(.vertical, Theme.Spacing.xs)
+                        } header: {
+                            if !section.header.isEmpty {
+                                Text(section.header)
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                            }
                         }
                         .listRowBackground(Theme.Colors.background)
                     }
@@ -1644,7 +1640,7 @@ struct SizeSelectionView: View {
             loadError = nil
             do {
                 var list = try await productService.fetchSizes(path: categoryPath)
-                list = SizeSelectionView.sortedSizesForDisplay(list)
+                list = SizeSelectionView.orderSizesForList(list)
                 sizes = list
             } catch {
                 loadError = L10n.userFacingError(error)
@@ -1652,6 +1648,49 @@ struct SizeSelectionView: View {
             }
             isLoading = false
         }
+    }
+
+    private var sizeSections: [(header: String, items: [APISize])] {
+        let grouped = Dictionary(grouping: sizes) { $0.group ?? "" }
+        if grouped.count == 1, grouped[""] != nil {
+            return [("", sizes)]
+        }
+        return grouped.keys.sorted().map { key in (key, grouped[key] ?? []) }
+    }
+
+    @ViewBuilder
+    private func sizePickerRow(_ size: APISize) -> some View {
+        Button(action: {
+            selectedSizeId = size.id
+            selectedSizeName = size.name
+            presentationMode.wrappedValue.dismiss()
+        }) {
+            HStack {
+                Text(size.name.replacingOccurrences(of: "_", with: " "))
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.primaryText)
+                Spacer()
+                if selectedSizeId == size.id || selectedSizeName == size.name {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(Theme.primaryColor)
+                }
+            }
+            .padding(.vertical, Theme.Spacing.xs)
+        }
+    }
+
+    /// Grouped paths (e.g. mystery box): sort within each group. Otherwise single sorted list.
+    private static func orderSizesForList(_ list: [APISize]) -> [APISize] {
+        let grouped = Dictionary(grouping: list) { $0.group ?? "" }
+        if grouped.count == 1, grouped[""] != nil {
+            return sortedSizesForDisplay(list)
+        }
+        var out: [APISize] = []
+        for key in grouped.keys.sorted() {
+            out.append(contentsOf: sortedSizesForDisplay(grouped[key] ?? []))
+        }
+        return out
     }
 
     /// Order sizes to match backend fixture (add_sizes.py): ONE SIZE last, UK sizes numerically, letter sizes (XS,S,M,L,XL...), numeric-only by value.
