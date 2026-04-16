@@ -30,6 +30,10 @@ struct SellView: View {
     @State private var description: String = ""
     @State private var category: SellCategory? = nil
     @State private var brand: String? = nil
+    /// Mystery-box (and edit-mystery) flow: multiple brands; persisted as comma‑joined `customBrand` when the API allows one `brand` id.
+    @State private var mysteryBrands: [String] = []
+    /// True when editing an existing listing that is already a mystery box (`mysteryIncludedItems` is nil in edit mode).
+    @State private var editingIsMysteryBox: Bool = false
     @State private var condition: String? = nil
     @State private var colours: [String] = []
     @State private var sizeId: Int? = nil
@@ -86,18 +90,22 @@ struct SellView: View {
                 && !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !ids.isEmpty
                 && category != nil
-                && (brand != nil && !(brand?.isEmpty ?? true))
+                && !mysteryBrands.isEmpty
                 && condition != nil
                 && !colours.isEmpty
                 && p > 0 && p <= 100
                 && parcelSize != nil
         }
         let hasPhotos = !selectedImages.isEmpty || (isEditMode && !existingListingImagePairs.isEmpty)
+        let brandOk: Bool = {
+            if editingIsMysteryBox { return !mysteryBrands.isEmpty }
+            return brand != nil && !(brand?.isEmpty ?? true)
+        }()
         return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && hasPhotos
             && category != nil
-            && (brand != nil && !(brand?.isEmpty ?? true))
+            && brandOk
             && condition != nil
             && !colours.isEmpty
             && price != nil && (price ?? 0) > 0
@@ -106,6 +114,20 @@ struct SellView: View {
 
     private var mysteryProductIds: [Int] {
         (mysteryIncludedItems ?? []).compactMap { $0.productId.flatMap { Int($0) } }
+    }
+
+    /// Parses comma-separated brand labels from the API / drafts into ordered unique names.
+    private static func mysteryBrandsFromStoredLabel(_ value: String?) -> [String] {
+        guard let raw = value?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return [] }
+        let parts = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        var seen = Set<String>()
+        var out: [String] = []
+        for p in parts {
+            let k = p.lowercased()
+            guard seen.insert(k).inserted else { continue }
+            out.append(p)
+        }
+        return out
     }
 
     /// When false, omit the trailing toolbar item entirely — an empty `HStack` still gets bar-button chrome (grey circle).
@@ -173,7 +195,7 @@ struct SellView: View {
                                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                                 description: description.trimmingCharacters(in: .whitespacesAndNewlines),
                                 price: price ?? 0.0,
-                                brand: brand ?? "",
+                                brand: editingIsMysteryBox ? mysteryBrands.joined(separator: ", ") : (brand ?? ""),
                                 condition: condition ?? "",
                                 size: sizeName ?? "",
                                 categoryId: category?.id,
@@ -193,7 +215,7 @@ struct SellView: View {
                                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                                 description: description.trimmingCharacters(in: .whitespacesAndNewlines),
                                 price: price ?? 0.0,
-                                brand: brand ?? "",
+                                brands: mysteryBrands,
                                 condition: condition ?? "",
                                 size: sizeName ?? "",
                                 categoryId: category?.id,
@@ -417,7 +439,7 @@ struct SellView: View {
         title: title,
                 description: description,
                 category: category,
-                brand: brand,
+                brand: isMysteryListing ? (mysteryBrands.isEmpty ? brand : mysteryBrands.joined(separator: ", ")) : brand,
                 condition: condition,
                 colours: colours,
                 sizeId: sizeId,
@@ -467,7 +489,13 @@ struct SellView: View {
         title = d.title
         description = d.description
         category = d.category?.toSellCategory
-        brand = d.brand
+        if isMysteryListing {
+            mysteryBrands = Self.mysteryBrandsFromStoredLabel(d.brand)
+            brand = nil
+        } else {
+            brand = d.brand
+            mysteryBrands = []
+        }
         condition = d.condition
         colours = d.colours
         sizeId = d.sizeId
@@ -489,6 +517,8 @@ struct SellView: View {
         description = ""
         category = nil
         brand = nil
+        mysteryBrands = []
+        editingIsMysteryBox = false
         condition = nil
         colours = []
         sizeId = nil
@@ -516,7 +546,15 @@ struct SellView: View {
                 price = loaded.price
                 discountPrice = nil
             }
-            brand = loaded.brand
+            if loaded.isMysteryBox {
+                editingIsMysteryBox = true
+                mysteryBrands = Self.mysteryBrandsFromStoredLabel(loaded.brand)
+                brand = nil
+            } else {
+                editingIsMysteryBox = false
+                mysteryBrands = []
+                brand = loaded.brand
+            }
             condition = loaded.condition
             colours = loaded.colors
             sizeId = loaded.sellSizeBackendId
@@ -892,11 +930,22 @@ extension SellView {
                 }
             }
 
-            NavigationLink(destination: BrandInputView(selectedBrand: $brand)) {
-                SellFormRow(title: L10n.string("Brand"), value: brand)
+            if isMysteryListing || editingIsMysteryBox {
+                NavigationLink(destination: MysteryBrandsMultiSelectView(selectedBrands: $mysteryBrands)) {
+                    SellFormRow(
+                        title: L10n.string("Brands"),
+                        value: mysteryBrands.isEmpty ? nil : mysteryBrands.joined(separator: ", ")
+                    )
+                }
+                .buttonStyle(PlainTappableButtonStyle())
+                .overlay(ContentDivider(), alignment: .bottom)
+            } else {
+                NavigationLink(destination: BrandInputView(selectedBrand: $brand)) {
+                    SellFormRow(title: L10n.string("Brand"), value: brand)
+                }
+                .buttonStyle(PlainTappableButtonStyle())
+                .overlay(ContentDivider(), alignment: .bottom)
             }
-            .buttonStyle(PlainTappableButtonStyle())
-            .overlay(ContentDivider(), alignment: .bottom)
 
             NavigationLink(destination: ConditionSelectionView(selectedCondition: $condition)) {
                 SellFormRow(title: L10n.string("Condition"), value: ConditionSelectionView.displayName(for: condition))
@@ -2954,6 +3003,251 @@ struct BrandInputView: View {
                 .foregroundColor(Theme.primaryColor)
             }
         }
+    }
+
+    private func normalizedSearchPrefix() -> String? {
+        let t = brandText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
+    private func loadBrandsPage(reset: Bool) async {
+        if reset {
+            await MainActor.run {
+                isLoadingInitial = true
+                isLoadingMore = false
+                fetchedBrands = []
+                brandsTotalCount = nil
+                nextPage = 1
+                hasMore = true
+            }
+        } else {
+            let canProceed = await MainActor.run { () -> Bool in
+                guard hasMore, !isLoadingMore, !isLoadingInitial else { return false }
+                isLoadingMore = true
+                return true
+            }
+            guard canProceed else { return }
+        }
+
+        let search = await MainActor.run { normalizedSearchPrefix() }
+        let page = await MainActor.run { reset ? 1 : nextPage }
+
+        productService.updateAuthToken(authService.authToken)
+        do {
+            let (names, total) = try await productService.getBrandsPage(search: search, pageNumber: page, pageCount: pageSize)
+            await MainActor.run {
+                if reset {
+                    fetchedBrands = names.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                    brandsTotalCount = total
+                    nextPage = 2
+                    isLoadingInitial = false
+                } else {
+                    isLoadingMore = false
+                    var seen = Set(fetchedBrands.map { $0.lowercased() })
+                    for n in names {
+                        let t = n.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !t.isEmpty, seen.insert(t.lowercased()).inserted else { continue }
+                        fetchedBrands.append(t)
+                    }
+                    nextPage = page + 1
+                }
+                if let t = total {
+                    hasMore = fetchedBrands.count < t
+                } else {
+                    hasMore = names.count >= pageSize
+                }
+                if !reset, names.isEmpty {
+                    hasMore = false
+                }
+            }
+        } catch {
+            await MainActor.run {
+                isLoadingInitial = false
+                isLoadingMore = false
+                if reset {
+                    fetchedBrands = []
+                }
+                hasMore = false
+            }
+        }
+    }
+}
+
+// MARK: - Mystery brands (multi-select; API stores multiple names in `customBrand` when needed)
+struct MysteryBrandsMultiSelectView: View {
+    @Binding var selectedBrands: [String]
+    @Environment(\.presentationMode) private var presentationMode
+    @EnvironmentObject private var authService: AuthService
+    @State private var brandText: String = ""
+    @State private var fetchedBrands: [String] = []
+    @State private var brandsTotalCount: Int?
+    @State private var nextPage: Int = 1
+    @State private var hasMore: Bool = true
+    @State private var isLoadingInitial: Bool = false
+    @State private var isLoadingMore: Bool = false
+    @State private var debouncedReloadTask: Task<Void, Never>?
+
+    private let productService = ProductService()
+    private let pageSize = 80
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !selectedBrands.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        ForEach(selectedBrands.indices, id: \.self) { index in
+                            let name = selectedBrands[index]
+                            HStack(spacing: Theme.Spacing.xs) {
+                                Text(name)
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                    .lineLimit(1)
+                                Button {
+                                    HapticManager.tap()
+                                    selectedBrands.remove(at: index)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(Theme.Colors.secondaryText)
+                                }
+                                .buttonStyle(PlainTappableButtonStyle())
+                            }
+                            .padding(.horizontal, Theme.Spacing.sm)
+                            .padding(.vertical, Theme.Spacing.xs)
+                            .background(Theme.Colors.secondaryText.opacity(0.12))
+                            .clipShape(Capsule())
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+                }
+                ContentDivider()
+            }
+
+            Text(L10n.string("Search and tap a brand to add it."))
+                .font(Theme.Typography.caption)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.sm)
+                .padding(.bottom, Theme.Spacing.xs)
+
+            if isLoadingInitial && fetchedBrands.isEmpty {
+                HStack {
+                    ProgressView()
+                        .tint(Theme.primaryColor)
+                    Text(L10n.string("Loading brands..."))
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, Theme.Spacing.md)
+            }
+
+            if !isLoadingInitial || !fetchedBrands.isEmpty {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(fetchedBrands.enumerated()), id: \.offset) { index, brand in
+                            Group {
+                                Button {
+                                    addBrandIfNeeded(brand)
+                                } label: {
+                                    HStack {
+                                        Text(brand)
+                                            .font(Theme.Typography.body)
+                                            .foregroundColor(Theme.Colors.primaryText)
+                                        Spacer(minLength: 0)
+                                        if selectedBrands.contains(where: { $0.caseInsensitiveCompare(brand) == .orderedSame }) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(Theme.primaryColor)
+                                        } else {
+                                            Image(systemName: "plus.circle.fill")
+                                                .foregroundColor(Theme.primaryColor.opacity(0.7))
+                                        }
+                                    }
+                                    .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.vertical, Theme.Spacing.md)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(PlainTappableButtonStyle())
+                                if index < fetchedBrands.count - 1 {
+                                    ContentDivider()
+                                }
+                            }
+                            .onAppear {
+                                if index == fetchedBrands.count - 1 {
+                                    Task { await loadBrandsPage(reset: false) }
+                                }
+                            }
+                        }
+                        if isLoadingMore {
+                            HStack {
+                                ProgressView()
+                                    .tint(Theme.primaryColor)
+                                Text(L10n.string("Loading more..."))
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(Theme.Colors.secondaryText)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, Theme.Spacing.md)
+                        }
+                    }
+                    .padding(.top, Theme.Spacing.sm)
+                }
+            }
+
+            if !isLoadingInitial, fetchedBrands.isEmpty, normalizedSearchPrefix() != nil {
+                Text(L10n.string("No brands match your search."))
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Theme.Spacing.lg)
+                    .padding(.horizontal, Theme.Spacing.md)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Theme.Colors.background)
+        .navigationTitle(L10n.string("Brands"))
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(
+            text: $brandText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: Text(L10n.string("Enter brand name"))
+        )
+        .toolbar(.hidden, for: .tabBar)
+        .tint(Theme.primaryColor)
+        .onAppear {
+            Task { await loadBrandsPage(reset: true) }
+        }
+        .onChange(of: brandText) { _, _ in
+            debouncedReloadTask?.cancel()
+            debouncedReloadTask = Task {
+                try? await Task.sleep(nanoseconds: 320_000_000)
+                guard !Task.isCancelled else { return }
+                let stillBusy = await MainActor.run { isLoadingInitial }
+                if stillBusy { return }
+                await loadBrandsPage(reset: true)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(L10n.string("Done")) {
+                    presentationMode.wrappedValue.dismiss()
+                }
+                .fontWeight(.semibold)
+                .foregroundColor(Theme.primaryColor)
+            }
+        }
+    }
+
+    private func addBrandIfNeeded(_ raw: String) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let key = trimmed.lowercased()
+        guard !selectedBrands.contains(where: { $0.lowercased() == key }) else { return }
+        HapticManager.selection()
+        selectedBrands.append(trimmed)
     }
 
     private func normalizedSearchPrefix() -> String? {

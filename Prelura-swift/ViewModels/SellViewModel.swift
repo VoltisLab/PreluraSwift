@@ -120,13 +120,29 @@ class SellViewModel: ObservableObject {
         }
     }
 
+    /// Splits a single-field brand line (comma-separated) into trimmed names.
+    private static func brandNames(fromJoinedOrSingleField line: String) -> [String] {
+        line.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    /// One catalog id when exactly one known brand; otherwise full list in `customBrand` (comma-separated).
+    private static func resolveBrandFields(productService: ProductService, brandNames: [String]) async -> (brandId: Int?, customBrand: String?) {
+        let parts = brandNames.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard let first = parts.first else { return (nil, nil) }
+        if parts.count == 1 {
+            let id = try? await productService.getBrandId(byName: first)
+            return (id, id == nil ? first : nil)
+        }
+        return (nil, parts.joined(separator: ", "))
+    }
+
     /// Mystery box listing: uploads a single generated cover image, then creates the product with linked included listing ids.
     func submitMysteryBoxListing(
         authToken: String?,
         title: String,
         description: String,
         price: Double,
-        brand: String,
+        brands: [String],
         condition: String,
         size: String,
         categoryId: String?,
@@ -167,9 +183,11 @@ class SellViewModel: ObservableObject {
 
                 let imageUrl = try await fileUploadService.uploadProductImages([jpeg])
 
-                let brandTrimmed = brand.trimmingCharacters(in: .whitespacesAndNewlines)
-                let brandId = brandTrimmed.isEmpty ? nil : try? await productService.getBrandId(byName: brandTrimmed)
-                let customBrand: String? = (brandId == nil && !brandTrimmed.isEmpty) ? brandTrimmed : nil
+                let brandParts = brands.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                guard !brandParts.isEmpty else {
+                    throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: L10n.string("Please add at least one brand.")])
+                }
+                let (brandId, customBrand) = await Self.resolveBrandFields(productService: productService, brandNames: brandParts)
 
                 var materialIds: [Int]? = nil
                 if let mat = material, !mat.isEmpty, let mid = try? await materialsService.getMaterialId(byName: mat) {
@@ -258,9 +276,8 @@ class SellViewModel: ObservableObject {
                 productService.updateAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
                 materialsService.setAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
 
-                let brandTrimmed = brand.trimmingCharacters(in: .whitespacesAndNewlines)
-                let brandId = brandTrimmed.isEmpty ? nil : try? await productService.getBrandId(byName: brandTrimmed)
-                let customBrand: String? = (brandId == nil && !brandTrimmed.isEmpty) ? brandTrimmed : nil
+                let brandParts = Self.brandNames(fromJoinedOrSingleField: brand)
+                let (brandId, customBrand) = await Self.resolveBrandFields(productService: productService, brandNames: brandParts)
 
                 var materialIds: [Int]? = nil
                 if let mat = material, !mat.isEmpty, let mid = try? await materialsService.getMaterialId(byName: mat) {
