@@ -462,6 +462,7 @@ class ProductService: ObservableObject {
         styles: [String]? = nil,
         sizeId: Int? = nil,
         status: String = "ACTIVE",
+        scheduledPublishAt: Date? = nil,
         isMysteryBox: Bool = false,
         mysteryIncludedProductIds: [Int]? = nil
     ) async throws -> Int {
@@ -484,6 +485,7 @@ class ProductService: ObservableObject {
           $customBrand: String
           $isFeatured: Boolean
           $status: ProductStatusEnum
+          $scheduledPublishAt: DateTime
           $isMysteryBox: Boolean
           $mysteryIncludedProductIds: [Int]
         ) {
@@ -505,6 +507,7 @@ class ProductService: ObservableObject {
             customBrand: $customBrand
             isFeatured: $isFeatured
             status: $status
+            scheduledPublishAt: $scheduledPublishAt
             isMysteryBox: $isMysteryBox
             mysteryIncludedProductIds: $mysteryIncludedProductIds
           ) {
@@ -541,6 +544,11 @@ class ProductService: ObservableObject {
         if let s = style, !s.isEmpty { variables["style"] = s }
         if let st = styles, !st.isEmpty { variables["styles"] = st }
         if let sid = sizeId { variables["size"] = sid }
+        if let publishAt = scheduledPublishAt {
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            variables["scheduledPublishAt"] = iso.string(from: publishAt)
+        }
         variables["isMysteryBox"] = isMysteryBox
         variables["mysteryIncludedProductIds"] = mysteryIncludedProductIds ?? []
 

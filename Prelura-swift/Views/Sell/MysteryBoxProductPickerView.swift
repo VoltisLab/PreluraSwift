@@ -142,7 +142,7 @@ struct MysteryBoxProductPickerView: View {
                 }
             }
             .background(Theme.Colors.background)
-            .navigationTitle(L10n.string("Tag product"))
+            .navigationTitle(L10n.string("Add Items"))
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
                 text: $query,

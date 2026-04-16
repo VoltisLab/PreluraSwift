@@ -32,7 +32,8 @@ class SellViewModel: ObservableObject {
         sizeId: Int? = nil,
         measurements: String? = nil,
         material: String? = nil,
-        styles: [String] = []
+        styles: [String] = [],
+        scheduledPublishAt: Date? = nil
     ) {
         isSubmitting = true
         submissionError = nil
@@ -105,6 +106,7 @@ class SellViewModel: ObservableObject {
                     styles: styleRaws.count > 1 ? Array(styleRaws.prefix(2)) : nil,
                     sizeId: sizeId,
                     status: "ACTIVE",
+                    scheduledPublishAt: scheduledPublishAt,
                     isMysteryBox: false,
                     mysteryIncludedProductIds: []
                 )
@@ -153,6 +155,7 @@ class SellViewModel: ObservableObject {
         measurements: String? = nil,
         material: String? = nil,
         styles: [String] = [],
+        scheduledPublishAt: Date? = nil,
         mysteryIncludedProductIds: [Int]
     ) {
         isSubmitting = true
@@ -228,6 +231,7 @@ class SellViewModel: ObservableObject {
                     styles: styleRaws.count > 1 ? Array(styleRaws.prefix(2)) : nil,
                     sizeId: sizeId,
                     status: "ACTIVE",
+                    scheduledPublishAt: scheduledPublishAt,
                     isMysteryBox: true,
                     mysteryIncludedProductIds: mysteryIncludedProductIds
                 )

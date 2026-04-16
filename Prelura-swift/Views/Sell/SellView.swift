@@ -51,10 +51,9 @@ struct SellView: View {
     @State private var showSaveDraftConfirmation: Bool = false
     /// Extra scroll bottom inset while the keyboard is visible so fields above the upload bar stay reachable.
     @State private var keyboardBottomInset: CGFloat = 0
-    /// New listings only: UI for a future publish time (server does not support deferred publish yet).
+    /// New listings only: optional future publish time.
     @State private var scheduleListingEnabled: Bool = false
     @State private var scheduledListingDate: Date = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
-    @State private var showScheduledListingNoBackendAlert: Bool = false
 
     private enum MysteryPostingPhase: Identifiable {
         /// `initialSelection` is non-nil when re-opening the picker from the compose form.
@@ -138,7 +137,21 @@ struct SellView: View {
     private var showsTrailingSellToolbar: Bool {
         guard !isEditMode else { return false }
         if isMysteryListing { return false }
-        return !selectedImages.isEmpty || draftCount > 0
+        return true
+    }
+
+    private enum DraftFloatingActionMode {
+        case save
+        case openDrafts
+    }
+
+    /// Mirrors the previous top-right draft logic.
+    private var draftFloatingActionMode: DraftFloatingActionMode? {
+        guard !isEditMode else { return nil }
+        guard !isMysteryListing else { return nil }
+        if !selectedImages.isEmpty { return .save }
+        if draftCount > 0 { return .openDrafts }
+        return nil
     }
 
     var body: some View {
@@ -202,6 +215,28 @@ struct SellView: View {
                 )
             }
 
+            if let mode = draftFloatingActionMode {
+                GlassIconButton(
+                    icon: mode == .save ? "square.and.arrow.down" : "doc.text",
+                    size: 48,
+                    iconColor: Theme.primaryColor,
+                    iconSize: 18
+                ) {
+                    switch mode {
+                    case .save:
+                        saveCurrentAsDraft()
+                    case .openDrafts:
+                        showDraftsSheet = true
+                    }
+                }
+                .disabled(viewModel.isSubmitting || (mode == .save && !canSaveAsDraft))
+                .opacity((viewModel.isSubmitting || (mode == .save && !canSaveAsDraft)) ? 0.45 : 1)
+                .padding(.trailing, Theme.Spacing.md)
+                .padding(.bottom, 90 + keyboardBottomInset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .zIndex(3)
+            }
+
             // Full-screen overlay during upload: blocks all interaction and shows loader
             if viewModel.isSubmitting {
                 Color.black.opacity(0.5)
@@ -258,14 +293,6 @@ struct SellView: View {
         } message: {
             if let err = viewModel.submissionError { Text(err) }
         }
-            .alert(L10n.string("Scheduled listing"), isPresented: $showScheduledListingNoBackendAlert) {
-                Button(L10n.string("Cancel"), role: .cancel) {}
-                Button(L10n.string("Upload now")) {
-                    performPrimaryUpload()
-                }
-            } message: {
-                Text(L10n.string("Scheduled publishing isn’t available on the server yet. Your listing will go live immediately after upload."))
-            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             .toolbar {
@@ -285,20 +312,17 @@ struct SellView: View {
                 if showsTrailingSellToolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         HStack(spacing: Theme.Spacing.md) {
-                            if !isMysteryListing, !selectedImages.isEmpty {
-                                Button(L10n.string("Save draft")) {
-                                    saveCurrentAsDraft()
+                            if mysteryIncludedItems == nil {
+                                Button {
+                                    HapticManager.tap()
+                                    mysteryPostingPhase = .picker(initialSelection: nil)
+                                } label: {
+                                    Image(systemName: "shippingbox.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(Theme.primaryColor)
                                 }
-                                .font(Theme.Typography.subheadline)
-                                .foregroundColor(Theme.primaryColor)
-                                .opacity(viewModel.isSubmitting ? 0.5 : 1)
-                                .disabled(viewModel.isSubmitting)
-                            } else if !isMysteryListing, draftCount > 0 {
-                                Button(L10n.string("Drafts")) {
-                                    showDraftsSheet = true
-                                }
-                                .font(Theme.Typography.subheadline)
-                                .foregroundColor(Theme.primaryColor)
+                                .buttonStyle(PlainTappableButtonStyle())
+                                .accessibilityLabel(L10n.string("List a mystery box"))
                             }
                         }
                     }
@@ -480,13 +504,6 @@ struct SellView: View {
     }
 
     private func attemptPrimaryUpload() {
-        if !isEditMode, scheduleListingEnabled {
-            let minFuture = Date().addingTimeInterval(60)
-            if scheduledListingDate > minFuture {
-                showScheduledListingNoBackendAlert = true
-                return
-            }
-        }
         performPrimaryUpload()
     }
 
@@ -530,6 +547,7 @@ struct SellView: View {
                 measurements: measurements,
                 material: material,
                 styles: styles,
+                scheduledPublishAt: (!isEditMode && scheduleListingEnabled) ? scheduledListingDate : nil,
                 mysteryIncludedProductIds: mysteryProductIds
             )
         } else {
@@ -550,7 +568,8 @@ struct SellView: View {
                 sizeId: sizeId,
                 measurements: measurements,
                 material: material,
-                styles: styles
+                styles: styles,
+                scheduledPublishAt: (!isEditMode && scheduleListingEnabled) ? scheduledListingDate : nil
             )
         }
     }
@@ -1131,7 +1150,7 @@ extension SellView {
                         )
                         .datePickerStyle(.compact)
                         .tint(Theme.primaryColor)
-                        Text(L10n.string("The app cannot send this time to the server yet. You will confirm before upload."))
+                        Text(L10n.string("Your listing will be published automatically at this time."))
                             .font(Theme.Typography.caption)
                             .foregroundColor(Theme.Colors.secondaryText)
                     }
