@@ -18,11 +18,6 @@ enum PendingScheduledListingActivator {
         save(list)
     }
 
-    /// True while this product is in the local queue (scheduled go-live, including overdue until activation succeeds).
-    static func isRegisteredForScheduledActivation(productId: Int) -> Bool {
-        load().contains { $0.productId == productId }
-    }
-
     static func processDueIfNeeded(authToken: String?) async {
         guard let token = authToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else { return }
         var list = load()
@@ -36,6 +31,7 @@ enum PendingScheduledListingActivator {
             if e.activateAt <= now {
                 do {
                     try await svc.updateProductStatus(productId: e.productId, status: "ACTIVE")
+                    ListingGoLiveReminder.cancel(productId: e.productId)
                     didActivateAny = true
                 } catch {
                     remaining.append(e)

@@ -269,6 +269,72 @@ struct MainTabView: View {
     }
 
     var body: some View {
+        mainTabDecorated
+    }
+
+    private var mainTabDecorated: some View {
+        mainTabAfterAuthHooks
+            .onAppear { openInboxChatFromPendingRouterIfNeeded() }
+            .task {
+                await authService.refreshAccountModerationFromServer()
+            }
+            .onChange(of: appRouter.pendingInboxChat) { _, _ in openInboxChatFromPendingRouterIfNeeded() }
+            .onChange(of: authService.isAuthenticated) { _, authed in
+                if authed { openInboxChatFromPendingRouterIfNeeded() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .wearhouseAccountRestrictionShouldRefresh)) { _ in
+                Task { await authService.refreshAccountModerationFromServer() }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active, authService.isAuthenticated else { return }
+                Task {
+                    await PendingScheduledListingActivator.processDueIfNeeded(authToken: authService.authToken)
+                }
+            }
+            .onChange(of: appRouter.pendingItem) { _, new in
+                guard new != nil else { return }
+                if appRouter.consumeSelectProfileTabForPendingDeepLink() {
+                    tabCoordinator.selectTab(4)
+                    NotificationCenter.default.post(name: .wearhouseUserProfileDidUpdate, object: nil)
+                }
+            }
+    }
+
+    private var mainTabAfterAuthHooks: some View {
+        mainTabThemed
+            .onAppear {
+                applyTabBarAppearance()
+                discoverViewModel.updateAuthToken(authService.authToken)
+                inboxViewModel.updateAuthToken(authService.authToken)
+                if authService.isAuthenticated {
+                    if discoverViewModel.discoverItems.isEmpty { discoverViewModel.refresh() }
+                    inboxViewModel.prefetch()
+                }
+            }
+            .onChange(of: appearanceMode) { _, _ in applyTabBarAppearance() }
+            .onChange(of: colorScheme) { _, _ in applyTabBarAppearance() }
+            .onChange(of: authService.authToken) { _, token in
+                discoverViewModel.updateAuthToken(token)
+                inboxViewModel.updateAuthToken(token)
+                if authService.isAuthenticated {
+                    if discoverViewModel.discoverItems.isEmpty { discoverViewModel.refresh() }
+                    inboxViewModel.prefetch()
+                }
+            }
+    }
+
+    private var mainTabThemed: some View {
+        rootTabView
+            .tabBarMinimizeBehavior(.never)
+            .accentColor(Theme.primaryColor)
+            .environmentObject(shopAllBagStore)
+            .environmentObject(SavedLookbookFavoritesStore.shared)
+            .environmentObject(LookbookHideLikeCountsStore.shared)
+            .environmentObject(bellUnreadStore)
+    }
+
+    /// Split out so the main `body` type-checks quickly (large TabView + modifiers).
+    private var rootTabView: some View {
         TabView(selection: Binding(
             get: { tabCoordinator.selectedTab },
             set: { tabCoordinator.handleTabTap($0) }
@@ -307,48 +373,6 @@ struct MainTabView: View {
                 .environment(\.optionalTabCoordinator, tabCoordinator)
                 .tabItem { Label(L10n.string("Profile"), systemImage: "person.fill") }
                 .tag(4)
-        }
-        .tabBarMinimizeBehavior(.never)
-        .accentColor(Theme.primaryColor)
-        .environmentObject(shopAllBagStore)
-        .environmentObject(SavedLookbookFavoritesStore.shared)
-        .environmentObject(LookbookHideLikeCountsStore.shared)
-        .environmentObject(bellUnreadStore)
-        .onAppear {
-            applyTabBarAppearance()
-            discoverViewModel.updateAuthToken(authService.authToken)
-            inboxViewModel.updateAuthToken(authService.authToken)
-            if authService.isAuthenticated {
-                if discoverViewModel.discoverItems.isEmpty { discoverViewModel.refresh() }
-                inboxViewModel.prefetch()
-            }
-        }
-        .onChange(of: appearanceMode) { _, _ in applyTabBarAppearance() }
-        .onChange(of: colorScheme) { _, _ in applyTabBarAppearance() }
-        .onChange(of: authService.authToken) { _, token in
-            discoverViewModel.updateAuthToken(token)
-            inboxViewModel.updateAuthToken(token)
-            if authService.isAuthenticated {
-                if discoverViewModel.discoverItems.isEmpty { discoverViewModel.refresh() }
-                inboxViewModel.prefetch()
-            }
-        }
-        .onAppear { openInboxChatFromPendingRouterIfNeeded() }
-        .task {
-            await authService.refreshAccountModerationFromServer()
-        }
-        .onChange(of: appRouter.pendingInboxChat) { _, _ in openInboxChatFromPendingRouterIfNeeded() }
-        .onChange(of: authService.isAuthenticated) { _, authed in
-            if authed { openInboxChatFromPendingRouterIfNeeded() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .wearhouseAccountRestrictionShouldRefresh)) { _ in
-            Task { await authService.refreshAccountModerationFromServer() }
-        }
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active, authService.isAuthenticated else { return }
-            Task {
-                await PendingScheduledListingActivator.processDueIfNeeded(authToken: authService.authToken)
-            }
         }
     }
 

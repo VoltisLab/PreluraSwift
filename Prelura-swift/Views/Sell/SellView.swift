@@ -52,14 +52,8 @@ struct SellView: View {
     @State private var showExitDraftPrompt: Bool = false
     /// Extra scroll bottom inset while the keyboard is visible so fields above the upload bar stay reachable.
     @State private var keyboardBottomInset: CGFloat = 0
-    /// New listings only: post immediately vs pick a time (stored inactive until that time; app activates when you return after the time).
-    private enum ListingPostTiming: String, CaseIterable, Identifiable {
-        case immediately
-        case scheduled
-        var id: String { rawValue }
-    }
-
-    @State private var listingPostTiming: ListingPostTiming = .immediately
+    /// New listings only: optional schedule (listing is inactive until chosen time; app activates when you return after that time).
+    @State private var scheduleListingEnabled: Bool = false
     @State private var scheduledListingDate: Date = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
     @State private var showListingSavedInactiveAlert: Bool = false
 
@@ -142,6 +136,13 @@ struct SellView: View {
         return out
     }
 
+    private static func formattedScheduleCaptionDate(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f.string(from: date)
+    }
+
     /// When false, omit the trailing toolbar item entirely — an empty `HStack` still gets bar-button chrome (grey circle).
     private var showsTrailingSellToolbar: Bool {
         guard !isEditMode else { return false }
@@ -188,8 +189,8 @@ struct SellView: View {
                 .padding(.bottom, 100 + keyboardBottomInset)
             }
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: listingPostTiming) { _, timing in
-                if timing == .scheduled {
+            .onChange(of: scheduleListingEnabled) { _, on in
+                if on {
                     let minD = Date().addingTimeInterval(120)
                     if scheduledListingDate < minD { scheduledListingDate = minD }
                 }
@@ -281,7 +282,7 @@ struct SellView: View {
             }
             completeSuccessfulListingSubmit()
         }
-        .alert(L10n.string("Listing scheduled"), isPresented: $showListingSavedInactiveAlert) {
+        .alert(L10n.string("Listing saved"), isPresented: $showListingSavedInactiveAlert) {
             Button(L10n.string("OK")) {
                 viewModel.acknowledgeInactiveListingSavedNotice()
                 completeSuccessfulListingSubmit()
@@ -444,7 +445,7 @@ struct SellView: View {
         if !styles.isEmpty { return true }
         if price != nil || discountPrice != nil { return true }
         if parcelSize != nil { return true }
-        if listingPostTiming == .scheduled { return true }
+        if scheduleListingEnabled { return true }
         return false
     }
 
@@ -654,7 +655,7 @@ struct SellView: View {
         discountPrice = nil
         parcelSize = nil
         existingListingImagePairs = []
-        listingPostTiming = .immediately
+        scheduleListingEnabled = false
         scheduledListingDate = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
     }
 
@@ -702,7 +703,7 @@ struct SellView: View {
                 measurements: measurements,
                 material: material,
                 styles: styles,
-                scheduledPublishAt: (!isEditMode && listingPostTiming == .scheduled) ? scheduledListingDate : nil,
+                scheduledPublishAt: (!isEditMode && scheduleListingEnabled) ? scheduledListingDate : nil,
                 mysteryIncludedProductIds: mysteryProductIds
             )
         } else {
@@ -724,7 +725,7 @@ struct SellView: View {
                 measurements: measurements,
                 material: material,
                 styles: styles,
-                scheduledPublishAt: (!isEditMode && listingPostTiming == .scheduled) ? scheduledListingDate : nil
+                scheduledPublishAt: (!isEditMode && scheduleListingEnabled) ? scheduledListingDate : nil
             )
         }
     }
@@ -1234,31 +1235,28 @@ extension SellView {
 
             if !isEditMode {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text(L10n.string("When should it appear on your profile?"))
-                        .font(Theme.Typography.subheadline.weight(.semibold))
-                        .foregroundColor(Theme.Colors.primaryText)
-                    Picker("", selection: $listingPostTiming) {
-                        Text(L10n.string("Post now")).tag(ListingPostTiming.immediately)
-                        Text(L10n.string("Later")).tag(ListingPostTiming.scheduled)
+                    Toggle(isOn: $scheduleListingEnabled) {
+                        Text(L10n.string("Schedule listing"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundColor(Theme.Colors.primaryText)
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    .tint(Theme.primaryColor)
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)
                 .overlay(ContentDivider(), alignment: .bottom)
 
-                if listingPostTiming == .scheduled {
+                if scheduleListingEnabled {
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                         DatePicker(
-                            L10n.string("Appear on profile"),
+                            L10n.string("Go live on"),
                             selection: $scheduledListingDate,
                             in: Date().addingTimeInterval(120)...,
                             displayedComponents: [.date, .hourAndMinute]
                         )
                         .datePickerStyle(.compact)
                         .tint(Theme.primaryColor)
-                        Text(L10n.string("Your profile will list this at the date and time below."))
+                        Text(String(format: L10n.string("Your listing will appear on your profile on %@."), Self.formattedScheduleCaptionDate(scheduledListingDate)))
                             .font(Theme.Typography.caption)
                             .foregroundColor(Theme.Colors.secondaryText)
                     }

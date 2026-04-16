@@ -1112,21 +1112,6 @@ struct WardrobeItemCard: View {
                         .padding(Theme.Spacing.xs)
                     }
                 }
-                .overlay(alignment: .topLeading) {
-                    if item.status.uppercased() == "INACTIVE",
-                       let pid = item.productId,
-                       let id = Int(pid),
-                       PendingScheduledListingActivator.isRegisteredForScheduledActivation(productId: id) {
-                        Text(L10n.string("Scheduled"))
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(Color.black.opacity(0.55)))
-                            .padding(Theme.Spacing.xs)
-                            .allowsHitTesting(false)
-                    }
-                }
             }
             .aspectRatio(1.0/1.3, contentMode: .fit)
             

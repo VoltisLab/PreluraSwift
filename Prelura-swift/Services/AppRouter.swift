@@ -17,9 +17,13 @@ enum DeepLinkDestination: Equatable {
 }
 
 /// Wrapper so we can use fullScreenCover(item:) with optional DeepLinkDestination.
-struct DeepLinkDestinationItem: Identifiable {
+struct DeepLinkDestinationItem: Identifiable, Equatable {
     let id = UUID()
     let destination: DeepLinkDestination
+
+    static func == (lhs: DeepLinkDestinationItem, rhs: DeepLinkDestinationItem) -> Bool {
+        lhs.destination == rhs.destination
+    }
 }
 
 /// Chat / order-thread push: open the existing inbox stack instead of a full-screen overlay (native back = Messages list).
@@ -33,6 +37,8 @@ final class AppRouter: ObservableObject {
     @Published var pendingItem: DeepLinkDestinationItem?
     /// When set, `MainTabView` switches to Inbox and pushes this thread on the tab’s `NavigationStack` (same UX as opening from the list).
     @Published var pendingInboxChat: PendingInboxChatNavigation?
+    /// Set with the next `pendingItem` when routing from a scheduled-listing local notification (open Profile tab, then listing).
+    @Published private(set) var selectProfileTabBeforePresentingPendingItem: Bool = false
 
     /// Marketing / public-web hosts that may serve `/item/*` and optional `/{username}` profile paths.
     private static func isWearhouseItemUniversalLinkHost(_ host: String) -> Bool {
@@ -265,6 +271,7 @@ final class AppRouter: ObservableObject {
         let pageUpper = pageRaw.uppercased()
 
         var dest: DeepLinkDestination?
+        var selectProfileForProduct = false
 
         switch pageUpper {
         case "ORDER_ISSUE":
@@ -296,6 +303,12 @@ final class AppRouter: ObservableObject {
         case "USER", "PROFILE", "FOLLOW":
             if let username = Self.pushString(p, "object_id") {
                 dest = .user(username: username)
+            }
+
+        case "SCHEDULED_LISTING_READY":
+            if let s = Self.pushString(p, "object_id"), !s.isEmpty {
+                dest = .product(publicSlug: s)
+                selectProfileForProduct = true
             }
 
         case "ORDER":
@@ -333,6 +346,7 @@ final class AppRouter: ObservableObject {
 
         if let d = dest {
             Task { @MainActor in
+                self.selectProfileTabBeforePresentingPendingItem = selectProfileForProduct
                 self.pendingItem = DeepLinkDestinationItem(destination: d)
             }
         }
@@ -341,6 +355,14 @@ final class AppRouter: ObservableObject {
     func clearPending() {
         Task { @MainActor in
             self.pendingItem = nil
+            self.selectProfileTabBeforePresentingPendingItem = false
         }
+    }
+
+    /// Call when `pendingItem` becomes non-nil; if this navigation came from a scheduled-listing local notification, switches to Profile first.
+    func consumeSelectProfileTabForPendingDeepLink() -> Bool {
+        let v = selectProfileTabBeforePresentingPendingItem
+        selectProfileTabBeforePresentingPendingItem = false
+        return v
     }
 }

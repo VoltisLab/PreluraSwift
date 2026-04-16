@@ -109,6 +109,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             Messaging.messaging().delegate = self
         }
         UNUserNotificationCenter.current().delegate = self
+        ListingGoLiveReminder.registerNotificationCategories()
         if let remote = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             Self.pendingPostSplashNotificationUserInfo = remote
             let mid = remote["gcm.message_id"].map { String(describing: $0) } ?? "none"
@@ -385,6 +386,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             completionHandler()
             return
         }
+        // Scheduled listing: route tap or “View” action (custom actions still carry content.userInfo).
+        if response.notification.request.content.categoryIdentifier == ListingGoLiveReminder.notificationCategoryId
+            || response.notification.request.identifier.hasPrefix("com.prelura.scheduledListing.") {
+            let info = response.notification.request.content.userInfo
+            NotificationCenter.default.post(
+                name: .wearhouseNotificationTapped,
+                object: nil,
+                userInfo: [kNotificationTapPayloadKey: info]
+            )
+            completionHandler()
+            return
+        }
         let mid = userInfo["gcm.message_id"].map { String(describing: $0) } ?? "?"
         NotificationDebugLog.append(
             source: "tap",
@@ -415,6 +428,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 isError: false
             )
             completionHandler([.banner, .badge, .sound])
+            return
+        }
+        if notification.request.content.categoryIdentifier == ListingGoLiveReminder.notificationCategoryId
+            || notification.request.identifier.hasPrefix("com.prelura.scheduledListing.") {
+            completionHandler([.banner, .sound])
             return
         }
         if Self.shouldReplaceForegroundSaleNotification(notification) {
