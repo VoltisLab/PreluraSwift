@@ -29,21 +29,21 @@ private struct MysteryBoxLightSweepOverlay: View {
                         LinearGradient(
                             colors: [
                                 .clear,
-                                Color.white.opacity(0.12),
-                                Color.white.opacity(0.5),
-                                Color.white.opacity(0.78),
-                                Color.white.opacity(0.5),
-                                Color.white.opacity(0.12),
+                                Color.white.opacity(0.035),
+                                Color.white.opacity(0.09),
+                                Color.white.opacity(0.14),
+                                Color.white.opacity(0.09),
+                                Color.white.opacity(0.035),
                                 .clear,
                             ],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                     )
-                    .frame(width: span * 0.32, height: max(w, h) * 2.35)
+                    .frame(width: span * 0.28, height: max(w, h) * 2.35)
                     .rotationEffect(.degrees(tiltDegrees))
                     .position(x: w * 0.5 + travel, y: h * 0.52)
-                    .blendMode(.screen)
+                    .blendMode(.softLight)
             }
         }
         .allowsHitTesting(false)
