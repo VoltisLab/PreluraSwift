@@ -83,7 +83,7 @@ struct AIChatView: View {
     private var messageList: some View {
         Group {
             if messages.isEmpty {
-                // Placeholder centered in the middle of the page (above input bar).
+                // Placeholder centred in the middle of the page (above input bar).
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
                     VStack(spacing: Theme.Spacing.lg) {
@@ -261,7 +261,7 @@ struct AIChatView: View {
             return
         }
 
-        // When OpenAI is not configured, fall back to parser-based search (original behavior).
+        // When OpenAI is not configured, fall back to parser-based search (original behaviour).
         if !openAI.isConfigured {
             await respondWithParserOnly(raw: raw, thinkingStart: thinkingStart, minThinkingSeconds: minThinkingSeconds)
             return
@@ -297,7 +297,7 @@ struct AIChatView: View {
         }
     }
 
-    /// Fallback when OpenAI is not configured: use parser to decide when to search (original behavior).
+    /// Fallback when OpenAI is not configured: use parser to decide when to search (original behaviour).
     private func respondWithParserOnly(raw: String, thinkingStart: Date, minThinkingSeconds: Double) async {
         let parsed = aiSearch.parse(query: raw)
         let inScope = isParsedInScope(parsed)

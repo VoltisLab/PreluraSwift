@@ -239,7 +239,7 @@ struct NotificationDestinationView: View {
     var onMarkRead: (() -> Void)? = nil
     @EnvironmentObject private var authService: AuthService
 
-    /// Backend sets `meta.is_liked_item_sold` when a favorited listing sells (similar picks screen).
+    /// Backend sets `meta.is_liked_item_sold` when a favourited listing sells (similar picks screen).
     private var isLikedItemSoldNotification: Bool {
         notification.meta?["is_liked_item_sold"] == "true"
     }

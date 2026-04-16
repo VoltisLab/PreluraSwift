@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Vacation Mode — fetch on load, toggle via updateProfile(isVacationMode). Matches Flutter HolidayModeScreen.
+/// Holiday mode — fetch on load, toggle via updateProfile(isVacationMode). Matches Flutter HolidayModeScreen.
 struct VacationModeView: View {
     @EnvironmentObject var authService: AuthService
     var initialIsOn: Bool = false
@@ -16,7 +16,7 @@ struct VacationModeView: View {
         List {
             Section {
                 Toggle(isOn: $isOn) {
-                    Text(L10n.string("Vacation Mode"))
+                    Text(L10n.string("Holiday mode"))
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.primaryText)
                 }
@@ -34,14 +34,14 @@ struct VacationModeView: View {
                 }
             }
             Section {
-                Text(L10n.string("Note: Turning on vacation will hide your items from all catalogues"))
+                Text(L10n.string("Note: Turning on holiday mode will hide your items from all catalogues"))
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("Vacation Mode"))
+        .navigationTitle(L10n.string("Holiday mode"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .refreshable { await fetch() }

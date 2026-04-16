@@ -24,7 +24,7 @@ enum BackgroundRemovalError: LocalizedError {
         case .simulatorUnsupported:
             return "Background removal isn't supported in the Simulator. Try on a device."
         case .segmentationFailed:
-            return "Could not analyze the image."
+            return "Could not analyse the image."
         case .compositeFailed:
             return "Could not apply the theme."
         }

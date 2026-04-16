@@ -3,7 +3,7 @@ import Foundation
 
 /// Local preferences for hiding like **counts** on the lookbook feed (heart stays tappable).
 /// - Global “hide all”: every post hides counts except posts in the show override set.
-/// - Global off: only posts in the per-post hide set hide counts (legacy behavior).
+/// - Global off: only posts in the per-post hide set hide counts (legacy behaviour).
 @MainActor
 final class LookbookHideLikeCountsStore: ObservableObject {
     static let shared = LookbookHideLikeCountsStore()

@@ -24,7 +24,7 @@ struct FeedShimmerView: View {
         .shimmering()
     }
 
-    /// Toolbar-shaped strip: narrow centered title + trailing AI + notification slots (`HomeView` toolbar).
+    /// Toolbar-shaped strip: narrow centred title + trailing AI + notification slots (`HomeView` toolbar).
     private var topChromeShimmer: some View {
         ZStack {
             HStack {

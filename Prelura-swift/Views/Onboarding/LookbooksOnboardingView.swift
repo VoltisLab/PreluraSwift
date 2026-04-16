@@ -296,7 +296,7 @@ struct LookbooksOnboardingView: View {
     }
 }
 
-/// Dimmed backdrop + centered card for Lookbooks intro.
+/// Dimmed backdrop + centred card for Lookbooks intro.
 struct LookbooksOnboardingPopupOverlay: View {
     var onComplete: () -> Void
     @State private var presented = false

@@ -89,7 +89,7 @@ class DiscoverViewModel: ObservableObject {
                 var usedProductIds: Set<UUID> = Set(self.recentlyViewedItems.map { $0.id })
                 
                 // Brands You Love - get products with unique brands from all products
-                // This should ideally use a GraphQL query for favorite brands, but for now use all products
+                // This should ideally use a GraphQL query for favourite brands, but for now use all products
                 var brandsYouLove: [Item] = []
                 var seenBrands: Set<String> = []
                 

@@ -11,7 +11,7 @@ enum ProductFilterType: Equatable {
     case byParentCategory(categoryName: String)
     /// Try Cart: free search, add to bag only (offers disabled).
     case tryCartSearch
-    /// Shop All with Try Cart behavior but **style locked to Vintage**; gender pills only (All, Women, Men).
+    /// Shop All with Try Cart behaviour but **style locked to Vintage**; gender pills only (All, Women, Men).
     case shopAllVintageLocked
     /// Shop by style: style filter via toolbar "Styles" modal (no category pills).
     case shopByStyle

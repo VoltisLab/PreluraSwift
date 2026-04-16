@@ -8,7 +8,7 @@ extension View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
     }
 
-    /// Applies a glassmorphism effect with customizable parameters
+    /// Applies a glassmorphism effect with customisable parameters
     func glassStyle(
         cornerRadius: CGFloat = Theme.Glass.cornerRadius,
         opacity: Double = Theme.Glass.opacity

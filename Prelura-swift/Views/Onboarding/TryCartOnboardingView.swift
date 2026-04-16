@@ -294,7 +294,7 @@ struct TryCartOnboardingView: View {
 
 // MARK: - Popup shell (scrim + animation; avoids fullScreenCover / status-bar overlap)
 
-/// Dimmed backdrop + centered card. Use as an overlay on the host screen.
+/// Dimmed backdrop + centred card. Use as an overlay on the host screen.
 struct TryCartOnboardingPopupOverlay: View {
     var onComplete: () -> Void
     @State private var presented = false

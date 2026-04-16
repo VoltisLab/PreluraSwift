@@ -17,7 +17,7 @@ struct ReportUserView: View {
 
     private let userOptions = [
         "This user has engaged in inappropriate or offensive behaviour towards others",
-        "This user has engaged in harassing or abusive behavior towards others on the platform.",
+        "This user has engaged in harassing or abusive behaviour towards others on the platform.",
         "The user has violated our community guidelines and terms of service.",
         "The user has posted inappropriate or explicit content.",
         "This user has been involved in fraudulent or deceptive activities.",

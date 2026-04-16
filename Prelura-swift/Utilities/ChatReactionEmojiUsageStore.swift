@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-/// Persists how often the user picks each reaction emoji so the long-press quick bar can surface favorites first.
+/// Persists how often the user picks each reaction emoji so the long-press quick bar can surface favourites first.
 @MainActor
 final class ChatReactionEmojiUsageStore: ObservableObject {
     static let shared = ChatReactionEmojiUsageStore()

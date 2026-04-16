@@ -10,7 +10,7 @@ struct OrderScreenDebugView: View {
     private let statusLabel = "Processing"
     private let progressPercent = 40
     private let productName = "MX Master - 3S"
-    private let productAttributes = "Color: Black | Material: Plastic"
+    private let productAttributes = "Colour: Black | Material: Plastic"
     private let originalPrice = "£30,910"
     private let finalPrice = "£25,100"
     private let buyerUsername = "jasontodd"

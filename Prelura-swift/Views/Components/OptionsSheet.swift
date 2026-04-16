@@ -2,7 +2,7 @@ import SwiftUI
 
 /// How the sheet header dismisses and is laid out. Sort/filter use `.navigationDone` to match Lookbook **Comments** (inline nav title + system drag indicator + **Done**).
 enum OptionsSheetChromeStyle {
-    /// Custom capsule handle, centered title row, trailing × (`GlassIconButton`). Hides the system drag indicator.
+    /// Custom capsule handle, centred title row, trailing × (`GlassIconButton`). Hides the system drag indicator.
     case handleAndClose
     /// `NavigationStack` with inline `navigationTitle` and trailing **Done** (same toolbar treatment as `LookbookCommentsSheet`). Shows the system drag indicator.
     case navigationDone
@@ -67,7 +67,7 @@ struct OptionsSheet<Content: View>: View {
 
     private var handleAndCloseLayout: some View {
         VStack(spacing: 0) {
-            // Custom handle: avoids overlap with a centered title when using the system drag indicator
+            // Custom handle: avoids overlap with a centred title when using the system drag indicator
             // (fixed detents + `presentationBackground` often crowd the stock indicator into the header row).
             Capsule()
                 .fill(Theme.Colors.secondaryText.opacity(0.35))

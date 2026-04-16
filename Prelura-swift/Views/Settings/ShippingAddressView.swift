@@ -35,7 +35,7 @@ struct ShippingAddressView: View {
                         Text(L10n.string("Address line 2 (optional)"))
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.Colors.secondaryText)
-                        SettingsTextField(placeholder: "Apartment, suite, etc.", text: $addressLine2, textContentType: .streetAddressLine2)
+                        SettingsTextField(placeholder: "Flat, suite, unit, etc.", text: $addressLine2, textContentType: .streetAddressLine2)
                     }
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                         Text(L10n.string("City"))

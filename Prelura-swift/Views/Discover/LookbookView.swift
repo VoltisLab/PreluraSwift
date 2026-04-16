@@ -591,7 +591,7 @@ private extension View {
         }
     }
 
-    /// Sticky: snap posts into alignment. Smooth: no scroll-target behavior (stop anywhere).
+    /// Sticky: snap posts into alignment. Smooth: no scroll-target behaviour (stop anywhere).
     @ViewBuilder
     func lookbookListScrollSnap(feel: LookbookImmersiveScrollFeel) -> some View {
         switch feel {
@@ -615,10 +615,74 @@ private func lookbookShuffledEntriesFromPosts(_ posts: [ServerLookbookPost], loc
     return list
 }
 
+/// Animated hand hint for the Lookbook floating shortcut bar (swipe to collapse / expand).
+private struct LookbookFabSwipeHandWiggle: View {
+    @State private var offsetX: CGFloat = 0
+
+    var body: some View {
+        Image(systemName: "hand.draw.fill")
+            .symbolRenderingMode(.hierarchical)
+            .font(.system(size: 26))
+            .foregroundStyle(Theme.Colors.primaryText)
+            .rotationEffect(.degrees(-8))
+            .offset(x: offsetX, y: 2)
+            .onAppear {
+                offsetX = 0
+                withAnimation(.easeInOut(duration: 0.72).repeatForever(autoreverses: true)) {
+                    offsetX = 20
+                }
+            }
+    }
+}
+
+/// Compact coach mark above the shortcut bar: swipe both ways, animated hand, dismiss with ✕.
+private struct LookbookFloatingBarSwipeTipView: View {
+    let onClose: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            LookbookFabSwipeHandWiggle()
+                .frame(width: 42, height: 38)
+            Text(L10n.string("Swipe this shortcut bar left or right to hide or show the buttons."))
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(Theme.Colors.primaryText)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: onClose) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 22))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Theme.Colors.secondaryText, Theme.Colors.secondaryBackground.opacity(0.4))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.string("Close"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Theme.primaryColor.opacity(0.42), Theme.primaryColor.opacity(0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        )
+        .shadow(color: Color.black.opacity(0.14), radius: 14, y: 5)
+    }
+}
+
 private struct LookbookFeedScreenView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authService: AuthService
     @ObservedObject private var immersiveScrollFeelStore = LookbookImmersiveScrollFeelStore.shared
+    @AppStorage("lookbookFloatingBarSwipeTipDismissed_v1") private var lookbookFloatingBarSwipeTipDismissed = false
     @State private var entries: [LookbookEntry] = []
     @State private var followedCommentBoostUsernames: Set<String> = []
     @State private var feedLoading = false
@@ -648,11 +712,21 @@ private struct LookbookFeedScreenView: View {
         !(feedLoading && entries.isEmpty)
     }
 
+    /// Space for the glass shortcut row plus optional first-run swipe tip above it.
+    /// Tip is grid-only; list/feed (e.g. after opening a thumbnail) keeps clearance for the bar only.
+    private var lookbookFeedQuickActionsBottomClearance: CGFloat {
+        guard showLookbookFeedFloatingActions else { return 0 }
+        if lookbookFloatingBarSwipeTipDismissed || !useGrid || immersiveFeedInitialPostId != nil {
+            return 64
+        }
+        return 56 + 88 + 12
+    }
+
     /// Matches `LookbookMyItemsScreenView.myItemsScrollBottomPadding`: list scroll clears the floating shortcut cluster.
     private var lookbookFeedListScrollBottomPadding: CGFloat {
         if immersiveFeedInitialPostId != nil { return Theme.Spacing.xl }
         if !showLookbookFeedFloatingActions { return Theme.Spacing.xl }
-        return Theme.Spacing.xl + 64
+        return Theme.Spacing.xl + lookbookFeedQuickActionsBottomClearance
     }
 
     /// Liquid Glass circle; `interactive(false)` keeps default `.regular` material without the interactive lift shadow (taps still work on the outer `Button` / `NavigationLink`).
@@ -835,7 +909,7 @@ private struct LookbookFeedScreenView: View {
                         Group {
                             if useGrid {
                                 LookbookGridShimmerView(
-                                    bottomBarPadding: showLookbookFeedFloatingActions ? 56 : 0
+                                    bottomBarPadding: lookbookFeedQuickActionsBottomClearance
                                 )
                             } else {
                                 LookbookFeedOnlyShimmerView()
@@ -869,7 +943,7 @@ private struct LookbookFeedScreenView: View {
                                 }
                             }
                             .padding(2)
-                            .padding(.bottom, showLookbookFeedFloatingActions ? 56 : 0)
+                            .padding(.bottom, lookbookFeedQuickActionsBottomClearance)
                         }
                         .scrollContentBackground(.hidden)
                         .background(Theme.Colors.background)
@@ -923,8 +997,23 @@ private struct LookbookFeedScreenView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .bottom) {
                 if showLookbookFeedFloatingActions {
-                    lookbookFeedFloatingQuickActionsBar(bottomInset: barBottomInset)
-                        .ignoresSafeArea(edges: immersiveFeedInitialPostId != nil ? .bottom : [])
+                    VStack(spacing: 10) {
+                        if useGrid && immersiveFeedInitialPostId == nil && !lookbookFloatingBarSwipeTipDismissed {
+                            LookbookFloatingBarSwipeTipView {
+                                HapticManager.selection()
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.88)) {
+                                    lookbookFloatingBarSwipeTipDismissed = true
+                                }
+                            }
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+                        }
+                        lookbookFeedFloatingQuickActionsBar(bottomInset: barBottomInset)
+                    }
+                    .animation(.spring(response: 0.35, dampingFraction: 0.88), value: lookbookFloatingBarSwipeTipDismissed)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.88), value: useGrid)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.88), value: immersiveFeedInitialPostId)
+                    .ignoresSafeArea(edges: immersiveFeedInitialPostId != nil ? .bottom : [])
                 }
             }
         }
@@ -2332,7 +2421,7 @@ private struct LookbookPostCardShimmer: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, 10)
 
-            // Full-bleed portrait slot (same layout trick as `mediaBlock` / `Color.clear` + aspect in feed rows — avoids a centered “floating” tile in `LazyVStack`).
+            // Full-bleed portrait slot (same layout trick as `mediaBlock` / `Color.clear` + aspect in feed rows — avoids a centred “floating” tile in `LazyVStack`).
             Color.clear
                 .aspectRatio(mediaAspect, contentMode: .fit)
                 .overlay {

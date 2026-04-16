@@ -228,7 +228,7 @@ struct MyFavouritesView: View {
                 Text(L10n.string("No lookbook folders yet"))
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.primaryText)
-                Text(L10n.string("Save looks from the feed — you can organize them into folders."))
+                Text(L10n.string("Save looks from the feed — you can organise them into folders."))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
                     .multilineTextAlignment(.center)

@@ -3759,8 +3759,8 @@ struct SoldConfirmationCardView: View {
     @EnvironmentObject var authService: AuthService
     @State private var showOrderDetails = false
 
-    /// Slightly below `Theme.Typography.headline` (17) so the sale line doesn’t dominate the thread.
-    private static let saleBannerTitleFont = Font.system(size: 16, weight: .semibold, design: .default)
+    /// Slightly below `Theme.Typography.headline` (17); medium weight so the sale line doesn’t read as a heavy banner headline.
+    private static let saleBannerTitleFont = Font.system(size: 16, weight: .medium, design: .default)
 
     private var isBuyer: Bool {
         currentUsername.map {

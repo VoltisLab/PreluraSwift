@@ -164,7 +164,7 @@ struct MessageChatPushTraceDebugView: View {
         UNUserNotificationCenter.current().getNotificationSettings { s in
             let t: String
             switch s.authorizationStatus {
-            case .authorized: t = "Authorized"
+            case .authorized: t = "Authorised"
             case .denied: t = "Denied"
             case .notDetermined: t = "Not determined"
             case .provisional: t = "Provisional"

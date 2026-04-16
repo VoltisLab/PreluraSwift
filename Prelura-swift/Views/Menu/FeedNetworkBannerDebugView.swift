@@ -5,7 +5,7 @@ struct FeedNetworkBannerDebugView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
-                Text("These use the same component as the Home feed error card (centered on Home when shown).")
+                Text("These use the same component as the Home feed error card (centred on Home when shown).")
                     .font(Theme.Typography.subheadline)
                     .foregroundColor(Theme.Colors.secondaryText)
 

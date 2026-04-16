@@ -37,6 +37,8 @@ struct DiscoverView: View {
     let brands = ["New Look", "Nike", "Next", "adidas", "Bo", "Ralph Lauren", "Prettylittlething", "River Island", "Zara", "H&M", "ASOS", "Topshop", "Mango", "Bershka", "Pull & Bear", "Stradivarius", "Massimo Dutti", "COS", "Arket", "Weekday"]
     
     private let topId = "discover_top"
+    /// Nav bar row height–aligned tap target so the system toolbar capsule centers the heart (52×52 was oversized).
+    private static let favouritesToolbarSide: CGFloat = 44
 
     var body: some View {
         GeometryReader { geometry in
@@ -180,16 +182,15 @@ struct DiscoverView: View {
 
     @ToolbarContentBuilder
     private var discoverToolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarTrailing) {
-            HStack(spacing: Theme.Spacing.sm) {
-                NavigationLink(destination: MyFavouritesView()) {
-                    Image(systemName: "heart")
-                        .foregroundColor(Theme.Colors.primaryText)
-                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
+        ToolbarItem(placement: .topBarTrailing) {
+            NavigationLink(destination: MyFavouritesView()) {
+                Image(systemName: "heart")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Theme.Colors.primaryText)
+                    .frame(width: Self.favouritesToolbarSide, height: Self.favouritesToolbarSide)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.like() }))
         }
     }
     
@@ -524,7 +525,7 @@ struct DiscoverView: View {
                         .font(Theme.Typography.headline)
                         .foregroundColor(Theme.Colors.primaryText)
                     
-                    Text(L10n.string("Recommended from your favorite brands"))
+                    Text(L10n.string("Recommended from your favourite brands"))
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
