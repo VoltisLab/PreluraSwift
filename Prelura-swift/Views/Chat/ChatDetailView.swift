@@ -2248,7 +2248,7 @@ struct ChatDetailView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .automatic))
-            .frame(width: 72, height: 72)
+            .frame(width: ProductChatThumbnailMetrics.width, height: ProductChatThumbnailMetrics.height)
             .clipped()
 
             VStack(alignment: .leading, spacing: 2) {
@@ -3578,22 +3578,21 @@ private struct ChatHeaderProductThumbnail: View {
                 thumbnailLoading
             }
         }
-        .aspectRatio(1, contentMode: .fill)
-        .frame(width: 56, height: 56)
+        .frame(width: ProductChatThumbnailMetrics.width, height: ProductChatThumbnailMetrics.height)
         .saturation(soldOverlayActive ? 0 : 1)
         .overlay {
             if soldOverlayActive {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: ProductChatThumbnailMetrics.cornerRadius)
                     .fill(Color.black.opacity(0.35))
             }
         }
         .clipped()
-        .cornerRadius(8)
+        .clipShape(RoundedRectangle(cornerRadius: ProductChatThumbnailMetrics.cornerRadius, style: .continuous))
     }
 
     private var thumbnailLoading: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: ProductChatThumbnailMetrics.cornerRadius)
                 .fill(Theme.Colors.secondaryBackground)
             ProgressView()
                 .progressViewStyle(.circular)
@@ -3603,7 +3602,7 @@ private struct ChatHeaderProductThumbnail: View {
 
     private var thumbnailUnavailable: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: ProductChatThumbnailMetrics.cornerRadius)
                 .fill(Theme.Colors.secondaryBackground)
             Image(systemName: "photo")
                 .foregroundColor(Theme.Colors.secondaryText)

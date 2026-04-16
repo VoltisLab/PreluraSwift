@@ -380,14 +380,12 @@ struct ChatRowView: View {
     var isPeerTyping: Bool = false
 
     private static var offerProductImageCache: [Int: String] = [:]
+    private static var offerProductIsMysteryBoxCache: [Int: Bool] = [:]
     private let productService = ProductService()
 
     @State private var loadedOfferProductImageURL: String?
+    @State private var loadedOfferIsMysteryBox: Bool = false
     @State private var isLoadingOfferProductImage = false
-
-    /// Interpret `1:13` as `width:height = 1:1.3` (so the thumbnail isn't extremely thin).
-    private static let productThumbWidthToHeightRatio: CGFloat = 1.0 / 1.3
-    private static let productThumbHeight: CGFloat = 44
 
     private var offerThumbProductId: Int? {
         guard conversation.order == nil else { return nil } // order thumbnails come from `conversation.order`
@@ -406,21 +404,38 @@ struct ChatRowView: View {
         return nil
     }
 
+    /// Order thread or fetched-offer product is a mystery listing — use the same animated tile as chat headers / feed.
+    private var inboxRowShowsMysteryArt: Bool {
+        if conversation.order?.lineItems.first?.isMysteryBox == true { return true }
+        if let id = offerThumbProductId {
+            return Self.offerProductIsMysteryBoxCache[id] ?? loadedOfferIsMysteryBox
+        }
+        return false
+    }
+
     private func loadOfferProductThumbnailIfNeeded(for productId: Int) async {
         if isLoadingOfferProductImage { return }
         if let cached = Self.offerProductImageCache[productId] {
-            await MainActor.run { loadedOfferProductImageURL = cached }
-            return
+            await MainActor.run {
+                loadedOfferProductImageURL = cached
+                loadedOfferIsMysteryBox = Self.offerProductIsMysteryBoxCache[productId] ?? false
+            }
+            // Legacy cache may have image URL only; still fetch once so mystery tiles work.
+            if Self.offerProductIsMysteryBoxCache[productId] != nil { return }
         }
         isLoadingOfferProductImage = true
         defer { isLoadingOfferProductImage = false }
 
         guard let product = try? await productService.getProduct(id: productId) else { return }
         let thumbURL = product.thumbnailURLForChrome
+        let isMystery = product.isMysteryBox
         await MainActor.run {
-            guard let thumbURL, !thumbURL.isEmpty else { return }
-            Self.offerProductImageCache[productId] = thumbURL
-            loadedOfferProductImageURL = thumbURL
+            Self.offerProductIsMysteryBoxCache[productId] = isMystery
+            loadedOfferIsMysteryBox = isMystery
+            if let thumbURL, !thumbURL.isEmpty {
+                Self.offerProductImageCache[productId] = thumbURL
+                loadedOfferProductImageURL = thumbURL
+            }
         }
     }
 
@@ -490,23 +505,25 @@ struct ChatRowView: View {
             // Product thumbnail (right side).
             ZStack(alignment: .topTrailing) {
                 Group {
-                    if let url = productImageURL {
+                    if inboxRowShowsMysteryArt {
+                        MysteryBoxAnimatedMediaView()
+                    } else if let url = productImageURL {
                         AsyncImage(url: url) { image in
                             image
                                 .resizable()
                                 .scaledToFill()
                         } placeholder: {
-                            ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                            ImageShimmerPlaceholderFilled(cornerRadius: ProductChatThumbnailMetrics.cornerRadius)
                         }
                     } else {
-                        ImageShimmerPlaceholderFilled(cornerRadius: 8)
+                        ImageShimmerPlaceholderFilled(cornerRadius: ProductChatThumbnailMetrics.cornerRadius)
                     }
                 }
                 .frame(
-                    width: productThumbWidth,
-                    height: Self.productThumbHeight
+                    width: ProductChatThumbnailMetrics.width,
+                    height: ProductChatThumbnailMetrics.height
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: ProductChatThumbnailMetrics.cornerRadius, style: .continuous))
 
                 // Unread badge overlay.
                 if conversation.unreadCount > 0 {
@@ -524,17 +541,11 @@ struct ChatRowView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, Theme.Spacing.xs)
         .task(id: offerThumbProductId) {
-            // Only fetch thumbnail for offer conversations when we don't already have one.
             guard let productId = offerThumbProductId else { return }
             if conversation.order != nil { return }
-            if Self.offerProductImageCache[productId] != nil { return }
-            guard loadedOfferProductImageURL == nil, !isLoadingOfferProductImage else { return }
+            guard !isLoadingOfferProductImage else { return }
             await loadOfferProductThumbnailIfNeeded(for: productId)
         }
-    }
-
-    private var productThumbWidth: CGFloat {
-        Self.productThumbHeight * Self.productThumbWidthToHeightRatio
     }
 
     /// Keep row layout stable: always show a time label.
