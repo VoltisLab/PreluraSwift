@@ -49,7 +49,7 @@ struct MenuView: View {
                 menuRow(L10n.string("Debug"), icon: "ladybug")
             }
             NavigationLink(destination: ShopValueView(listingCount: listingCount)) {
-                menuRow(L10n.string("Seller dashboard"), icon: "chart.bar")
+                menuRow(L10n.string("Seller Dashboard"), icon: "chart.bar")
             }
             NavigationLink(destination: MyOrdersView()) {
                 menuRow(L10n.string("Orders"), icon: "bag")
@@ -62,7 +62,7 @@ struct MenuView: View {
                 prefetchedIsMultibuyEnabled: displayedMultiBuy
             )) {
                 HStack {
-                    menuRow(L10n.string("Multi-buy discounts"), icon: "tag")
+                    menuRow(L10n.string("Multi-buy Discounts"), icon: "tag")
                     Spacer()
                     Text(displayedMultiBuy ? L10n.string("On") : L10n.string("Off"))
                         .font(.system(size: 14))
@@ -71,7 +71,7 @@ struct MenuView: View {
             }
             NavigationLink(destination: VacationModeView(initialIsOn: displayedVacation)) {
                 HStack {
-                    menuRow(L10n.string("Vacation Mode"), icon: "umbrella")
+                    menuRow(L10n.string("Holiday mode"), icon: "umbrella")
                     Spacer()
                     Text(displayedVacation ? L10n.string("On") : L10n.string("Off"))
                         .font(.system(size: 14))
@@ -85,7 +85,7 @@ struct MenuView: View {
                 menuRow(L10n.string("Help Centre"), icon: "questionmark.circle")
             }
             NavigationLink(destination: AboutWearhouseMenuView()) {
-                menuRow(L10n.string("About WEARHOUSE"), icon: "info.circle")
+                menuRow(L10n.string("About Us"), icon: "info.circle")
             }
             Button(role: .destructive, action: {
                 showLogoutConfirm = true

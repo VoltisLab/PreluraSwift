@@ -43,7 +43,7 @@ struct MultiBuyDiscountView: View {
                             }
                         }
                     )) {
-                        Text("Multi-buy discounts")
+                        Text(L10n.string("Multi-buy Discounts"))
                             .font(Theme.Typography.body)
                             .foregroundColor(Theme.Colors.primaryText)
                     }
@@ -75,7 +75,7 @@ struct MultiBuyDiscountView: View {
                 }
             }
         }
-        .navigationTitle("Multi-buy discounts")
+        .navigationTitle(L10n.string("Multi-buy Discounts"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .refreshable { await load() }

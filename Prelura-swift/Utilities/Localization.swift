@@ -62,7 +62,7 @@ enum L10n {
         // Menu – profile drawer
         "Shop Value": "Αξία Καταστήματος",
         "Dashboard": "Πίνακας Ελέγχου",
-        "Seller dashboard": "Πίνακας πωλητή",
+        "Seller Dashboard": "Πίνακας πωλητή",
         "Shop Categories": "Κατηγορίες Καταστήματος",
         "Orders": "Παραγγελίες",
         "Order details": "Λεπτομέρειες παραγγελίας",
@@ -125,11 +125,11 @@ enum L10n {
         "Favourites": "Αγαπημένα",
         "Shop tools": "Εργαλεία Καταστήματος",
         "Background replacer": "Αντικατάσταση Φόντου",
-        "Multi-buy discounts": "Εκπτώσεις πολλαπλών αγορών",
+        "Multi-buy Discounts": "Εκπτώσεις πολλαπλών αγορών",
         "Multi-buy discount (%d%%)": "Εκπτωση πολλαπλών αγορών (%d%%)",
         "On": "Ενεργό",
         "Off": "Ανενεργό",
-        "Vacation Mode": "Λειτουργία Αργίας",
+        "Holiday mode": "Λειτουργία Αργίας",
         "Invite Friend": "Προσκάλεσε Φίλο",
         "Share profile": "Κοινοποίηση προφίλ",
         "Couldn't load profile": "Δεν ήταν δυνατή η φόρτωση του προφίλ",
@@ -138,7 +138,7 @@ enum L10n {
         "Link copied": "Ο σύνδεσμος αντιγράφηκε",
         "Sign in to share your profile.": "Συνδεθείτε για να κοινοποιήσετε το προφίλ σας.",
         "Help Centre": "Κέντρο Βοήθειας",
-        "About WEARHOUSE": "Σχετικά με το WEARHOUSE",
+        "About Us": "Σχετικά με εμάς",
         "Admin Dashboard": "Πίνακας Διαχείρισης",
         "Settings": "Ρυθμίσεις",
         "Logout": "Αποσύνδεση",
@@ -194,7 +194,7 @@ enum L10n {
         "Greek": "Ελληνικά",
         "Greek displays the app in Greek.": "Η γλώσσα Ελληνικά εμφανίζει την εφαρμογή στα Ελληνικά.",
 
-        // About WEARHOUSE
+        // About Us (menu + legal hub)
         "About us": "Σχετικά με εμάς",
         "Terms": "Όροι",
         "Privacy Policy": "Πολιτική απορρήτου",
@@ -209,7 +209,7 @@ enum L10n {
         "How will I know if my order has been shipped?": "Πώς θα μάθω αν η παραγγελία μου έχει σταλεί;",
         "What's a collection point?": "Τι είναι το σημείο παραλαβής;",
         "Item says \"Delivered\" but I don't have it": "Γράφει \"Παραδόθηκε\" αλλά δεν το έχω λάβει",
-        "What's Vacation mode?": "Τι είναι η λειτουργία αργίας;",
+        "What's holiday mode?": "Τι είναι η λειτουργία αργίας;",
         "How do I earn a trusted seller badge?": "Πώς κερδίζω το σήμα αξιόπιστου πωλητή;",
         "No matching topics": "Δεν βρέθηκαν σχετικά θέματα",
         "Start a conversation": "Ξεκινήστε συνομιλία",
@@ -268,7 +268,7 @@ enum L10n {
         "Search saved lookbooks": "Αναζήτηση αποθηκευμένων lookbook",
         "Search lookbook folders": "Αναζήτηση φακέλων lookbook",
         "No lookbook folders yet": "Δεν υπάρχουν φάκελοι lookbook ακόμα",
-        "Save looks from the feed — you can organize them into folders.": "Αποθηκεύστε εμφανίσεις από τη ροή — μπορείτε να τις οργανώσετε σε φακέλους.",
+        "Save looks from the feed — you can organise them into folders.": "Αποθηκεύστε εμφανίσεις από τη ροή — μπορείτε να τις οργανώσετε σε φακέλους.",
         "Save to folder": "Αποθήκευση σε φάκελο",
         "My saves": "Οι αποθηκεύσεις μου",
         "New folder": "Νέος φάκελος",
@@ -292,6 +292,7 @@ enum L10n {
         "Lookbook settings footer": "Εδώ θα εμφανίζονται επιλογές που αφορούν τις δημοσιεύσεις και την εμπειρία Lookbook.",
         "Show lookbook shortcuts": "Εμφάνιση συντομεύσεων Lookbook",
         "Hide lookbook shortcuts": "Απόκρυψη συντομεύσεων Lookbook",
+        "Swipe this shortcut bar left or right to hide or show the buttons.": "Σύρετε αυτή τη γραμμή συντομεύσεων αριστερά ή δεξιά για να κρύψετε ή να εμφανίσετε τα κουμπιά.",
         "Products": "Προϊόντα",
         "Photos": "Φωτογραφίες",
         "No saved Lookbook photos yet": "Δεν έχετε αποθηκεύσει φωτογραφίες Lookbook ακόμα",
@@ -510,7 +511,7 @@ enum L10n {
         "See All": "Δείτε όλα",
         "Results": "Αποτελέσματα",
         "Brands You Love": "Οι αγαπημένες σας μάρκες",
-        "Recommended from your favorite brands": "Προτεινόμενα από τις αγαπημένες σας μάρκες",
+        "Recommended from your favourite brands": "Προτεινόμενα από τις αγαπημένες σας μάρκες",
         "Top Shops": "Κορυφαία καταστήματα",
         "Buy from trusted and popular vendors": "Αγοράστε από αξιόπιστους και δημοφιλείς πωλητές",
         "Shop Bargains": "Προσφορές",
@@ -566,8 +567,10 @@ enum L10n {
         "Message (optional)": "Μήνυμα (προαιρετικό)",
         "Send an offer": "Αποστολή προσφοράς",
 
-        // Vacation mode
-        "Note: Turning on vacation will hide your items from all catalogues": "Σημείωση: Η ενεργοποίηση της λειτουργίας αργίας θα αποκρύψει τα προϊόντα σας από όλους τους καταλόγους",
+        // Holiday mode (seller away)
+        "Note: Turning on holiday mode will hide your items from all catalogues": "Σημείωση: Η ενεργοποίηση της λειτουργίας αργίας θα αποκρύψει τα προϊόντα σας από όλους τους καταλόγους",
+        "Holiday mode is on": "Η λειτουργία αργίας είναι ενεργή",
+        "This member is on holiday": "Αυτό το μέλος είναι σε λειτουργία αργίας",
 
         // Shop value
         "Current shop value": "Τρέχουσα αξία καταστήματος",

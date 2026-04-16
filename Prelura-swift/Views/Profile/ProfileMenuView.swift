@@ -14,7 +14,7 @@ struct ProfileMenuView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 if listingCount > 0 {
-                    MenuItemRow(title: L10n.string("Seller dashboard"), icon: "chart.bar.fill", action: { onDismiss(); onSelect(.shopValue) })
+                    MenuItemRow(title: L10n.string("Seller Dashboard"), icon: "chart.bar.fill", action: { onDismiss(); onSelect(.shopValue) })
                     menuDivider
                 }
                 
@@ -22,15 +22,15 @@ struct ProfileMenuView: View {
                 menuDivider
                 MenuItemRow(title: L10n.string("Favourites"), icon: "heart.fill", action: { onDismiss(); onSelect(.favourites) })
                 menuDivider
-                MenuItemRow(title: L10n.string("Multi-buy discounts"), subtitle: isMultiBuyEnabled ? L10n.string("On") : L10n.string("Off"), icon: "tag.fill", action: { onDismiss(); onSelect(.multiBuyDiscounts) })
+                MenuItemRow(title: L10n.string("Multi-buy Discounts"), subtitle: isMultiBuyEnabled ? L10n.string("On") : L10n.string("Off"), icon: "tag.fill", action: { onDismiss(); onSelect(.multiBuyDiscounts) })
                 menuDivider
-                MenuItemRow(title: L10n.string("Vacation Mode"), subtitle: isVacationMode ? L10n.string("On") : L10n.string("Off"), icon: "umbrella.fill", action: { onDismiss(); onSelect(.vacationMode) })
+                MenuItemRow(title: L10n.string("Holiday mode"), subtitle: isVacationMode ? L10n.string("On") : L10n.string("Off"), icon: "umbrella.fill", action: { onDismiss(); onSelect(.vacationMode) })
                 menuDivider
                 MenuItemRow(title: L10n.string("Invite Friend"), icon: "person.badge.plus.fill", action: { onDismiss(); onSelect(.inviteFriend) })
                 menuDivider
                 MenuItemRow(title: L10n.string("Help Centre"), icon: "questionmark.circle.fill", action: { onDismiss(); onSelect(.helpCentre) })
                 menuDivider
-                MenuItemRow(title: L10n.string("About WEARHOUSE"), icon: "info.circle.fill", action: { onDismiss(); onSelect(.aboutWearhouse) })
+                MenuItemRow(title: L10n.string("About Us"), icon: "info.circle.fill", action: { onDismiss(); onSelect(.aboutWearhouse) })
                 menuDivider
                 MenuItemRow(title: L10n.string("Settings"), icon: "gearshape.fill", action: { onDismiss(); onSelect(.settings) })
                 menuDivider
@@ -241,7 +241,7 @@ struct ShippingMenuView: View {
     }
 }
 
-// MARK: - Submenu: About WEARHOUSE. Flat links to mywearhouse.co.uk (no nested Legal screen).
+// MARK: - Submenu: About Us. Flat links to mywearhouse.co.uk (no nested Legal screen).
 struct AboutWearhouseMenuView: View {
     var body: some View {
         List {
@@ -257,7 +257,7 @@ struct AboutWearhouseMenuView: View {
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("About WEARHOUSE"))
+        .navigationTitle(L10n.string("About Us"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
     }
@@ -341,7 +341,7 @@ struct HelpCentreView: View {
             HelpCentreTopic(
                 id: "vacation",
                 icon: "doc.text",
-                title: L10n.string("What's Vacation mode?"),
+                title: L10n.string("What's holiday mode?"),
                 answer: helpAnswerVacation
             ),
             HelpCentreTopic(
@@ -533,7 +533,7 @@ struct HelpCentreView: View {
     }
 
     private var helpAnswerVacation: String {
-        "Vacation mode hides your listings from browse while you are away. Turn it on from Profile so buyers are not left waiting."
+        "Holiday mode hides your listings from browse while you're away. Turn it on from Profile so buyers are not left waiting."
     }
 
     private var helpAnswerTrustedSeller: String {

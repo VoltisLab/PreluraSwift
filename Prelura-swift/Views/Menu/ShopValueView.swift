@@ -69,7 +69,6 @@ struct ShopValueView: View {
                             earningsChartSection
                             secondaryKpiGrid
                             performanceSection
-                            helpLink
                         }
                         .padding(Theme.Spacing.md)
                         .padding(.bottom, 100)
@@ -81,7 +80,7 @@ struct ShopValueView: View {
             }
         }
         .background(Theme.Colors.background)
-        .navigationTitle(L10n.string("Seller dashboard"))
+        .navigationTitle(L10n.string("Seller Dashboard"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .refreshable { await loadEarnings() }
@@ -202,9 +201,11 @@ struct ShopValueView: View {
         }
     }
 
-    // MARK: - Seller rating + Projected earnings (gauge-style)
+    // MARK: - Seller rating + Projected earnings (matched card heights)
+    private static let performanceBottomPairMinHeight: CGFloat = 118
+
     private var performanceSection: some View {
-        HStack(spacing: Theme.Spacing.md) {
+        HStack(alignment: .top, spacing: Theme.Spacing.md) {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(L10n.string("Seller rating"))
                     .font(Theme.Typography.caption)
@@ -217,8 +218,9 @@ struct ShopValueView: View {
                         .font(.system(size: 16))
                         .foregroundColor(.yellow)
                 }
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: Self.performanceBottomPairMinHeight, alignment: .topLeading)
             .padding(Theme.Spacing.lg)
             .background(Theme.Colors.secondaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
@@ -237,23 +239,13 @@ struct ShopValueView: View {
                         .font(.caption2)
                 }
                 .foregroundColor(Theme.primaryColor)
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: Self.performanceBottomPairMinHeight, alignment: .topLeading)
             .padding(Theme.Spacing.lg)
             .background(Theme.Colors.secondaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
         }
-    }
-
-    private var helpLink: some View {
-        Button(action: {}) {
-            Text(L10n.string("Help"))
-                .font(Theme.Typography.body)
-                .foregroundColor(Theme.primaryColor)
-        }
-        .buttonStyle(HapticTapButtonStyle())
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Spacing.sm)
     }
 
     private func formatCurrency(_ value: Double) -> String {
