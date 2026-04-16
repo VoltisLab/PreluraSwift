@@ -49,6 +49,7 @@ struct SellView: View {
     @State private var showCategoryPicker: Bool = false
     @State private var showDraftsSheet: Bool = false
     @State private var showSaveDraftConfirmation: Bool = false
+    @State private var showExitDraftPrompt: Bool = false
     /// Extra scroll bottom inset while the keyboard is visible so fields above the upload bar stay reachable.
     @State private var keyboardBottomInset: CGFloat = 0
     /// New listings only: optional future publish time.
@@ -158,14 +159,7 @@ struct SellView: View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(spacing: 0) {
-                    // 1. Upload from drafts (Flutter: same)
-                    if !isEditMode, !isMysteryListing, draftCount > 0 {
-                        draftsSection
-                    }
-                    if !isEditMode, mysteryIncludedItems == nil, !isMysteryListing {
-                        mysteryBoxListingEntryRow
-                    }
-                    // 2. Photo upload (Flutter: same) — mystery uses fixed carton hero instead
+                    // 1. Photo upload (Flutter: same) — mystery uses fixed carton hero instead
                     if isMysteryListing {
                         mysteryBoxCartonSection
                         if let items = mysteryIncludedItems, !items.isEmpty {
@@ -299,9 +293,7 @@ struct SellView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: {
                         HapticManager.tap()
-                        if isEditMode { dismiss() }
-                        else if onDismissMysteryFlow != nil { onDismissMysteryFlow?() }
-                        else { selectedTab = 0 }
+                        handleExitRequested()
                     }) {
                         Image(systemName: "xmark")
                             .font(.system(size: 18, weight: .medium))
@@ -361,6 +353,28 @@ struct SellView: View {
             } message: {
                 Text(L10n.string("Your listing has been saved as a draft. Open it from \"Upload from drafts\"."))
             }
+            .confirmationDialog(
+                L10n.string("Save draft before exiting?"),
+                isPresented: $showExitDraftPrompt,
+                titleVisibility: .visible
+            ) {
+                Button(L10n.string("Save draft")) {
+                    saveCurrentAsDraft(showConfirmation: false, clearAfterSave: true)
+                    performExit()
+                }
+                Button(L10n.string("Discard"), role: .destructive) {
+                    clearSellFormAfterSuccessfulUpload()
+                    performExit()
+                }
+                Button(L10n.string("Cancel"), role: .cancel) { }
+            } message: {
+                Text(L10n.string("You have unsaved changes."))
+            }
+            .onChange(of: selectedTab) { oldTab, newTab in
+                if !isEditMode, oldTab == 2, newTab != 2 {
+                    clearSellFormAfterSuccessfulUpload()
+                }
+            }
             .fullScreenCover(item: $mysteryPostingPhase) { phase in
                 switch phase {
                 case .picker(let initialSelection):
@@ -397,10 +411,29 @@ struct SellView: View {
     }
 
     private var canSaveAsDraft: Bool {
-        !selectedImages.isEmpty || !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        hasUnsavedSellChanges
     }
 
-    private func saveCurrentAsDraft() {
+    private var hasUnsavedSellChanges: Bool {
+        if !selectedImages.isEmpty { return true }
+        if !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
+        if !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
+        if category != nil { return true }
+        if let b = brand, !b.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
+        if !mysteryBrands.isEmpty { return true }
+        if condition != nil { return true }
+        if !colours.isEmpty { return true }
+        if sizeId != nil || (sizeName?.isEmpty == false) { return true }
+        if measurements?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false { return true }
+        if material?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false { return true }
+        if !styles.isEmpty { return true }
+        if price != nil || discountPrice != nil { return true }
+        if parcelSize != nil { return true }
+        if scheduleListingEnabled { return true }
+        return false
+    }
+
+    private func saveCurrentAsDraft(showConfirmation: Bool = true, clearAfterSave: Bool = false) {
         guard canSaveAsDraft else { return }
         do {
             _ = try SellDraftStore.saveDraft(
@@ -422,9 +455,36 @@ struct SellView: View {
                 images: selectedImages
             )
             draftCount = SellDraftStore.draftCount(username: authService.username)
-            showSaveDraftConfirmation = true
+            if showConfirmation {
+                showSaveDraftConfirmation = true
+            }
+            if clearAfterSave {
+                clearSellFormAfterSuccessfulUpload()
+            }
         } catch {
             // Silent or show error
+        }
+    }
+
+    private func performExit() {
+        if isEditMode {
+            dismiss()
+        } else if onDismissMysteryFlow != nil {
+            onDismissMysteryFlow?()
+        } else {
+            selectedTab = 0
+        }
+    }
+
+    private func handleExitRequested() {
+        if isEditMode {
+            performExit()
+            return
+        }
+        if hasUnsavedSellChanges {
+            showExitDraftPrompt = true
+        } else {
+            performExit()
         }
     }
 
@@ -619,60 +679,6 @@ struct SellView: View {
         }
     }
 
-    // MARK: - Drafts Section
-    private var draftsSection: some View {
-        Button(action: {
-            showDraftsSheet = true
-        }) {
-            HStack {
-                Text(L10n.string("Upload from drafts"))
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.primaryColor)
-                
-                Spacer()
-                
-                ZStack {
-                    Circle()
-                        .fill(Theme.primaryColor)
-                        .frame(width: 24, height: 24)
-                    
-                    Text("\(draftCount)")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.white)
-                }
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-        }
-        .buttonStyle(HapticTapButtonStyle())
-        .overlay(ContentDivider(), alignment: .bottom)
-    }
-
-    private var mysteryBoxListingEntryRow: some View {
-        Button {
-            HapticManager.tap()
-            mysteryPostingPhase = .picker(initialSelection: nil)
-        } label: {
-            HStack(spacing: Theme.Spacing.sm) {
-                Image(systemName: "shippingbox.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Theme.primaryColor)
-                Text(L10n.string("List a mystery box"))
-                    .font(Theme.Typography.subheadline)
-                    .foregroundColor(Theme.Colors.primaryText)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Theme.Colors.secondaryText)
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.sm)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PlainTappableButtonStyle())
-        .overlay(ContentDivider(), alignment: .bottom)
-    }
-    
     private var totalPhotoSlots: Int { existingListingImagePairs.count + selectedImages.count }
 
     // MARK: - Photo Upload Section (horizontal slider of thumbnails)

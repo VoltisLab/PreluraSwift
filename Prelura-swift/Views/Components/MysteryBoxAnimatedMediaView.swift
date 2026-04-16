@@ -3,7 +3,6 @@ import SwiftUI
 /// In-app mystery box art: primary gradient, shipping box only, animated “?” on the box (not the uploaded listing JPEG).
 struct MysteryBoxAnimatedMediaView: View {
     @State private var questionPulse = false
-    @State private var boxSpin = false
     @State private var boxBounce = false
 
     var body: some View {
@@ -12,34 +11,47 @@ struct MysteryBoxAnimatedMediaView: View {
             ZStack {
                 LinearGradient(
                     colors: [
-                        Theme.primaryColor,
-                        Theme.primaryColor.opacity(0.72),
-                        Theme.primaryColor.opacity(0.5)
+                        Theme.primaryColor.opacity(0.96),
+                        Color(red: 0.43, green: 0.14, blue: 0.64),
+                        Color(red: 0.95, green: 0.37, blue: 0.83)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
-                MysteryBoxPseudo3D(side: side, questionPulse: questionPulse)
-                .rotation3DEffect(
-                    .degrees(boxSpin ? 360 : 0),
-                    axis: (x: 0.1, y: 1, z: 0.06),
-                    perspective: 0.6
-                )
-                .offset(y: boxBounce ? -side * 0.018 : side * 0.018)
+                Circle()
+                    .fill(Color.white.opacity(0.13))
+                    .frame(width: side * 0.85, height: side * 0.85)
+                    .offset(x: side * 0.24, y: -side * 0.3)
+                    .blur(radius: side * 0.07)
+                Circle()
+                    .fill(Color.black.opacity(0.15))
+                    .frame(width: side * 0.72, height: side * 0.72)
+                    .offset(x: -side * 0.34, y: side * 0.34)
+                    .blur(radius: side * 0.08)
+
+                VStack(spacing: side * 0.035) {
+                    VStack(spacing: side * 0.008) {
+                        Text("MYSTERY")
+                        Text("BOX")
+                    }
+                    .font(.system(size: side * 0.09, weight: .black, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.95))
+                    .multilineTextAlignment(.center)
+                    .shadow(color: .black.opacity(0.2), radius: 3, y: 2)
+
+                    MysteryBoxPseudo3D(side: side, questionPulse: questionPulse)
+                        .offset(y: boxBounce ? -side * 0.016 : side * 0.016)
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
             .onAppear {
                 questionPulse = false
-                boxSpin = false
                 boxBounce = false
                 withAnimation(.easeInOut(duration: 0.88).repeatForever(autoreverses: true)) {
                     questionPulse = true
                 }
-                withAnimation(.linear(duration: 3.4).repeatForever(autoreverses: false)) {
-                    boxSpin = true
-                }
-                withAnimation(.easeInOut(duration: 0.95).repeatForever(autoreverses: true)) {
+                withAnimation(.easeInOut(duration: 1.05).repeatForever(autoreverses: true)) {
                     boxBounce = true
                 }
             }
