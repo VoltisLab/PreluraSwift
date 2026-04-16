@@ -827,7 +827,7 @@ struct OrderDetailView: View {
             productDestinationView
         } label: {
             HStack(alignment: .top, spacing: Theme.Spacing.md) {
-                productThumb(url: p?.imageUrl)
+                productThumb(url: p?.imageUrl, isMysteryBox: p?.isMysteryBox == true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(p?.name ?? "Product")
                         .font(.system(size: 16, weight: .semibold))
@@ -868,7 +868,7 @@ struct OrderDetailView: View {
                     OrderLineProductDetailHost(productId: p.id)
                 } label: {
                     HStack(alignment: .top, spacing: Theme.Spacing.md) {
-                        productThumb(url: p.imageUrl)
+                        productThumb(url: p.imageUrl, isMysteryBox: p.isMysteryBox)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(p.name)
                                 .font(.system(size: 16, weight: .semibold))
@@ -1127,7 +1127,7 @@ struct OrderDetailView: View {
         VStack(spacing: Theme.Spacing.sm) {
             ForEach(order.products) { product in
                 HStack(spacing: Theme.Spacing.md) {
-                    productThumb(url: product.imageUrl)
+                    productThumb(url: product.imageUrl, isMysteryBox: product.isMysteryBox)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(product.name)
                             .font(Theme.Typography.body)
@@ -1254,9 +1254,11 @@ struct OrderDetailView: View {
         return Calendar.current.date(byAdding: .day, value: d, to: effectiveOrder.createdAt)
     }
 
-    private func productThumb(url: String?) -> some View {
+    private func productThumb(url: String?, isMysteryBox: Bool) -> some View {
         Group {
-            if let u = url, !u.isEmpty, let parsed = URL(string: u) {
+            if isMysteryBox {
+                MysteryBoxAnimatedMediaView()
+            } else if let u = url, !u.isEmpty, let parsed = URL(string: u) {
                 AsyncImage(url: parsed) { phase in
                     switch phase {
                     case .success(let img): img.resizable().scaledToFill()
@@ -1873,7 +1875,9 @@ private struct MultibuyOrderProblemProductPickerSheet: View {
                             } label: {
                                 HStack(spacing: Theme.Spacing.md) {
                                     Group {
-                                        if let urlString = product.imageUrl, let url = URL(string: urlString) {
+                                        if product.isMysteryBox {
+                                            MysteryBoxAnimatedMediaView()
+                                        } else if let urlString = product.imageUrl, let url = URL(string: urlString) {
                                             AsyncImage(url: url) { phase in
                                                 switch phase {
                                                 case .success(let img): img.resizable().scaledToFill()

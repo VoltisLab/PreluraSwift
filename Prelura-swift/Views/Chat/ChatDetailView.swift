@@ -2189,8 +2189,14 @@ struct ChatDetailView: View {
             if let u = URL(string: t) { return (u, false) }
             return (nil, true)
         }()
+        let orderHeaderShowsMysteryArt = (orderProductItem?.isMysteryBox == true)
+            || (order.lineItems.first?.isMysteryBox == true)
         let bar = HStack(spacing: Theme.Spacing.md) {
-            ChatHeaderProductThumbnail(imageURL: orderThumb.url, invalidURLFromAPI: orderThumb.invalidURL)
+            ChatHeaderProductThumbnail(
+                imageURL: orderThumb.url,
+                invalidURLFromAPI: orderThumb.invalidURL,
+                isMysteryBox: orderHeaderShowsMysteryArt
+            )
             VStack(alignment: .leading, spacing: 2) {
                 Text(order.firstProductName ?? "Order")
                     .font(Theme.Typography.subheadline)
@@ -2238,7 +2244,7 @@ struct ChatDetailView: View {
                     let raw = line.imageUrl.flatMap { ProductListImageURL.preferredString(from: $0) ?? $0 }?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     let parsed = URL(string: raw)
                     let invalid = !raw.isEmpty && parsed == nil
-                    ChatHeaderProductThumbnail(imageURL: parsed, invalidURLFromAPI: invalid)
+                    ChatHeaderProductThumbnail(imageURL: parsed, invalidURLFromAPI: invalid, isMysteryBox: line.isMysteryBox)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .automatic))
@@ -2306,7 +2312,8 @@ struct ChatDetailView: View {
                         style: nil,
                         size: nil,
                         brand: nil,
-                        materials: []
+                        materials: [],
+                        isMysteryBox: line.isMysteryBox
                     )
                 }
             }
@@ -2320,7 +2327,8 @@ struct ChatDetailView: View {
                 style: nil,
                 size: nil,
                 brand: nil,
-                materials: []
+                materials: [],
+                isMysteryBox: order.lineItems.first?.isMysteryBox ?? orderProductItem?.isMysteryBox ?? false
             )
             return [product]
         }()
@@ -2382,6 +2390,7 @@ struct ChatDetailView: View {
             ChatHeaderProductThumbnail(
                 imageURL: offerThumb.url,
                 invalidURLFromAPI: offerThumb.invalidURL,
+                isMysteryBox: offerProductItem?.isMysteryBox == true,
                 soldOverlayActive: false
             )
             VStack(alignment: .leading, spacing: 2) {
@@ -3544,11 +3553,15 @@ private struct ChatHeaderProductThumbnail: View {
     var imageURL: URL?
     /// Non-empty image string from API that did not parse as a URL — show photo placeholder, not an endless spinner.
     var invalidURLFromAPI: Bool = false
+    /// Same in-feed animated mystery tile (not the static listing JPEG).
+    var isMysteryBox: Bool = false
     var soldOverlayActive: Bool = false
 
     var body: some View {
         Group {
-            if invalidURLFromAPI {
+            if isMysteryBox {
+                MysteryBoxAnimatedMediaView()
+            } else if invalidURLFromAPI {
                 thumbnailUnavailable
             } else if let url = imageURL {
                 AsyncImage(url: url) { phase in

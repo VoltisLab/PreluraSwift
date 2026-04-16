@@ -59,7 +59,7 @@ class ChatService: ObservableObject {
               status
               priceTotal
               createdAt
-              products { id name imagesUrl price }
+              products { id name imagesUrl price isMysteryBox }
             }
     """
 
@@ -160,7 +160,8 @@ class ChatService: ObservableObject {
                 productId: pid,
                 name: (p.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
                 imageUrl: p.firstImageUrl,
-                price: p.unitPrice
+                price: p.unitPrice,
+                isMysteryBox: p.isMysteryBox ?? false
             )
         }
         let first = lineItems.first
@@ -255,7 +256,7 @@ class ChatService: ObservableObject {
               status
               priceTotal
               createdAt
-              products { id name imagesUrl price }
+              products { id name imagesUrl price isMysteryBox }
             }
           }
         }
@@ -646,6 +647,7 @@ struct ConversationOrderLineSummary: Hashable, Identifiable {
     let name: String
     let imageUrl: String?
     let price: Double?
+    let isMysteryBox: Bool
 }
 
 /// Minimal order info for a conversation (sale confirmation).
@@ -806,6 +808,7 @@ struct ConversationOrderData: Decodable {
         /// Backend may send [String] or [{"url": "..."}]; decode leniently and expose first URL.
         private let imagesUrlElements: [OrderImageUrlElement]?
         private let priceFlexible: Double?
+        let isMysteryBox: Bool?
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             id = try c.decodeIfPresent(AnyCodable.self, forKey: .id)
@@ -820,8 +823,9 @@ struct ConversationOrderData: Decodable {
             } else {
                 priceFlexible = nil
             }
+            isMysteryBox = try c.decodeIfPresent(Bool.self, forKey: .isMysteryBox)
         }
-        private enum CodingKeys: String, CodingKey { case id, name, imagesUrl, price }
+        private enum CodingKeys: String, CodingKey { case id, name, imagesUrl, price, isMysteryBox }
         /// First image URL whether backend sent strings or objects with "url".
         var firstImageUrl: String? { imagesUrlElements?.first?.urlString }
         var unitPrice: Double? { priceFlexible }

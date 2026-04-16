@@ -162,7 +162,9 @@ private struct OrderRowView: View {
 
     private var orderImage: some View {
         Group {
-            if let url = order.firstProductImageUrl, !url.isEmpty {
+            if order.products.first?.isMysteryBox == true {
+                MysteryBoxAnimatedMediaView()
+            } else if let url = order.firstProductImageUrl, !url.isEmpty {
                 AsyncImage(url: URL(string: url)) { phase in
                     switch phase {
                     case .success(let image): image.resizable().scaledToFill()

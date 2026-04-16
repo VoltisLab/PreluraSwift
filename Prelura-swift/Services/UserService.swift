@@ -1574,6 +1574,7 @@ class UserService: ObservableObject {
               size { name }
               brand { name }
               materials { name }
+              isMysteryBox
             }
           }
           userOrdersTotalNumber
@@ -1647,6 +1648,7 @@ class UserService: ObservableObject {
             let size: OrderProductSizeRow?
             let brand: OrderProductBrandRow?
             let materials: [OrderProductMaterialRow]?
+            let isMysteryBox: Bool?
         }
         struct OrderProductSizeRow: Decodable {
             let name: String?
@@ -1745,7 +1747,8 @@ class UserService: ObservableObject {
                     style: p.style,
                     size: p.size?.name,
                     brand: p.brand?.name,
-                    materials: (p.materials ?? []).compactMap { $0.name }
+                    materials: (p.materials ?? []).compactMap { $0.name },
+                    isMysteryBox: p.isMysteryBox ?? false
                 )
             }
             let createdAt = row.createdAt?.date ?? Self.parseCreatedAt(nil) ?? Date()
@@ -2796,6 +2799,7 @@ struct OrderProductSummary: Identifiable, Hashable {
     let size: String?
     let brand: String?
     let materials: [String]
+    let isMysteryBox: Bool
 }
 
 /// Payment method from userPaymentMethods query.
