@@ -61,6 +61,8 @@ boot_and_run() {
 
 # Exact names only (grep -F "iPhone 14" wrongly matches "iPhone 14 alt").
 if sim_device_available "iPhone 14"; then boot_and_run "iPhone 14"; else echo "Skip (not found): iPhone 14"; fi
+# Some machines have "iPhone 14 Alt" vs "iPhone 14 alt" — install on whichever exist (both if duplicated).
 if sim_device_available "iPhone 14 Alt"; then boot_and_run "iPhone 14 Alt"; else echo "Skip (not found): iPhone 14 Alt"; fi
+if sim_device_available "iPhone 14 alt"; then boot_and_run "iPhone 14 alt"; else echo "Skip (not found): iPhone 14 alt"; fi
 
 echo "Build log (full): $LOG"
