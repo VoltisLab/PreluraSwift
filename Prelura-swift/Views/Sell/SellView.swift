@@ -51,6 +51,10 @@ struct SellView: View {
     @State private var showSaveDraftConfirmation: Bool = false
     /// Extra scroll bottom inset while the keyboard is visible so fields above the upload bar stay reachable.
     @State private var keyboardBottomInset: CGFloat = 0
+    /// New listings only: UI for a future publish time (server does not support deferred publish yet).
+    @State private var scheduleListingEnabled: Bool = false
+    @State private var scheduledListingDate: Date = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
+    @State private var showScheduledListingNoBackendAlert: Bool = false
 
     private enum MysteryPostingPhase: Identifiable {
         /// `initialSelection` is non-nil when re-opening the picker from the compose form.
@@ -133,8 +137,7 @@ struct SellView: View {
     /// When false, omit the trailing toolbar item entirely — an empty `HStack` still gets bar-button chrome (grey circle).
     private var showsTrailingSellToolbar: Bool {
         guard !isEditMode else { return false }
-        if mysteryIncludedItems == nil { return true }
-        guard !isMysteryListing else { return false }
+        if isMysteryListing { return false }
         return !selectedImages.isEmpty || draftCount > 0
     }
 
@@ -145,6 +148,9 @@ struct SellView: View {
                     // 1. Upload from drafts (Flutter: same)
                     if !isEditMode, !isMysteryListing, draftCount > 0 {
                         draftsSection
+                    }
+                    if !isEditMode, mysteryIncludedItems == nil, !isMysteryListing {
+                        mysteryBoxListingEntryRow
                     }
                     // 2. Photo upload (Flutter: same) — mystery uses fixed carton hero instead
                     if isMysteryListing {
@@ -167,6 +173,12 @@ struct SellView: View {
                 .padding(.bottom, 100 + keyboardBottomInset)
             }
             .scrollDismissesKeyboard(.interactively)
+            .onChange(of: scheduleListingEnabled) { _, isOn in
+                if isOn {
+                    let minD = Date().addingTimeInterval(120)
+                    if scheduledListingDate < minD { scheduledListingDate = minD }
+                }
+            }
             .background(Theme.Colors.background)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
                 guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
@@ -186,70 +198,7 @@ struct SellView: View {
                     isEditMode ? L10n.string("Save changes") : L10n.string("Upload"),
                     isEnabled: canUpload,
                     isLoading: viewModel.isSubmitting,
-                    action: {
-                        if let pid = editProductId {
-                            viewModel.updateListing(
-                                authToken: authService.authToken,
-                                productId: pid,
-                                existingImagePairs: existingListingImagePairs,
-                                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
-                                description: description.trimmingCharacters(in: .whitespacesAndNewlines),
-                                price: price ?? 0.0,
-                                brand: editingIsMysteryBox ? mysteryBrands.joined(separator: ", ") : (brand ?? ""),
-                                condition: condition ?? "",
-                                size: sizeName ?? "",
-                                categoryId: category?.id,
-                                categoryName: category?.name,
-                                newListingImages: selectedImages,
-                                discountPrice: discountPrice,
-                                parcelSize: parcelSize,
-                                colours: colours,
-                                sizeId: sizeId,
-                                measurements: measurements,
-                                material: material,
-                                styles: styles
-                            )
-                        } else if isMysteryListing {
-                            viewModel.submitMysteryBoxListing(
-                                authToken: authService.authToken,
-                                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
-                                description: description.trimmingCharacters(in: .whitespacesAndNewlines),
-                                price: price ?? 0.0,
-                                brands: mysteryBrands,
-                                condition: condition ?? "",
-                                size: sizeName ?? "",
-                                categoryId: category?.id,
-                                categoryName: category?.name,
-                                parcelSize: parcelSize,
-                                colours: colours,
-                                sizeId: sizeId,
-                                measurements: measurements,
-                                material: material,
-                                styles: styles,
-                                mysteryIncludedProductIds: mysteryProductIds
-                            )
-                        } else {
-                            viewModel.submitListing(
-                                authToken: authService.authToken,
-                                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
-                                description: description.trimmingCharacters(in: .whitespacesAndNewlines),
-                                price: price ?? 0.0,
-                                brand: brand ?? "",
-                                condition: condition ?? "",
-                                size: sizeName ?? "",
-                                categoryId: category?.id,
-                                categoryName: category?.name,
-                                images: selectedImages,
-                                discountPrice: discountPrice,
-                                parcelSize: parcelSize,
-                                colours: colours,
-                                sizeId: sizeId,
-                                measurements: measurements,
-                                material: material,
-                                styles: styles
-                            )
-                        }
-                    }
+                    action: { attemptPrimaryUpload() }
                 )
             }
 
@@ -309,6 +258,14 @@ struct SellView: View {
         } message: {
             if let err = viewModel.submissionError { Text(err) }
         }
+            .alert(L10n.string("Scheduled listing"), isPresented: $showScheduledListingNoBackendAlert) {
+                Button(L10n.string("Cancel"), role: .cancel) {}
+                Button(L10n.string("Upload now")) {
+                    performPrimaryUpload()
+                }
+            } message: {
+                Text(L10n.string("Scheduled publishing isn’t available on the server yet. Your listing will go live immediately after upload."))
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             .toolbar {
@@ -328,18 +285,6 @@ struct SellView: View {
                 if showsTrailingSellToolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         HStack(spacing: Theme.Spacing.md) {
-                            if mysteryIncludedItems == nil {
-                                Button {
-                                    HapticManager.tap()
-                                    mysteryPostingPhase = .picker(initialSelection: nil)
-                                } label: {
-                                    Image(systemName: "shippingbox.fill")
-                                        .font(.system(size: 18, weight: .semibold))
-                                        .foregroundColor(Theme.primaryColor)
-                                }
-                                .buttonStyle(PlainTappableButtonStyle())
-                                .accessibilityLabel(L10n.string("Mystery box"))
-                            }
                             if !isMysteryListing, !selectedImages.isEmpty {
                                 Button(L10n.string("Save draft")) {
                                     saveCurrentAsDraft()
@@ -530,6 +475,84 @@ struct SellView: View {
         discountPrice = nil
         parcelSize = nil
         existingListingImagePairs = []
+        scheduleListingEnabled = false
+        scheduledListingDate = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
+    }
+
+    private func attemptPrimaryUpload() {
+        if !isEditMode, scheduleListingEnabled {
+            let minFuture = Date().addingTimeInterval(60)
+            if scheduledListingDate > minFuture {
+                showScheduledListingNoBackendAlert = true
+                return
+            }
+        }
+        performPrimaryUpload()
+    }
+
+    private func performPrimaryUpload() {
+        if let pid = editProductId {
+            viewModel.updateListing(
+                authToken: authService.authToken,
+                productId: pid,
+                existingImagePairs: existingListingImagePairs,
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                price: price ?? 0.0,
+                brand: editingIsMysteryBox ? mysteryBrands.joined(separator: ", ") : (brand ?? ""),
+                condition: condition ?? "",
+                size: sizeName ?? "",
+                categoryId: category?.id,
+                categoryName: category?.name,
+                newListingImages: selectedImages,
+                discountPrice: discountPrice,
+                parcelSize: parcelSize,
+                colours: colours,
+                sizeId: sizeId,
+                measurements: measurements,
+                material: material,
+                styles: styles
+            )
+        } else if isMysteryListing {
+            viewModel.submitMysteryBoxListing(
+                authToken: authService.authToken,
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                price: price ?? 0.0,
+                brands: mysteryBrands,
+                condition: condition ?? "",
+                size: sizeName ?? "",
+                categoryId: category?.id,
+                categoryName: category?.name,
+                parcelSize: parcelSize,
+                colours: colours,
+                sizeId: sizeId,
+                measurements: measurements,
+                material: material,
+                styles: styles,
+                mysteryIncludedProductIds: mysteryProductIds
+            )
+        } else {
+            viewModel.submitListing(
+                authToken: authService.authToken,
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                price: price ?? 0.0,
+                brand: brand ?? "",
+                condition: condition ?? "",
+                size: sizeName ?? "",
+                categoryId: category?.id,
+                categoryName: category?.name,
+                images: selectedImages,
+                discountPrice: discountPrice,
+                parcelSize: parcelSize,
+                colours: colours,
+                sizeId: sizeId,
+                measurements: measurements,
+                material: material,
+                styles: styles
+            )
+        }
     }
 
     private func loadProductForEdit(productId: Int) async {
@@ -603,6 +626,31 @@ struct SellView: View {
             .padding(.vertical, Theme.Spacing.sm)
         }
         .buttonStyle(HapticTapButtonStyle())
+        .overlay(ContentDivider(), alignment: .bottom)
+    }
+
+    private var mysteryBoxListingEntryRow: some View {
+        Button {
+            HapticManager.tap()
+            mysteryPostingPhase = .picker(initialSelection: nil)
+        } label: {
+            HStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.primaryColor)
+                Text(L10n.string("List a mystery box"))
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(Theme.Colors.primaryText)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Theme.Colors.secondaryText)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainTappableButtonStyle())
         .overlay(ContentDivider(), alignment: .bottom)
     }
     
@@ -1058,6 +1106,41 @@ extension SellView {
             }
             .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
+
+            if !isEditMode {
+                HStack(alignment: .center, spacing: Theme.Spacing.md) {
+                    Toggle("", isOn: $scheduleListingEnabled)
+                        .labelsHidden()
+                        .tint(Theme.primaryColor)
+                    Text(L10n.string("Schedule listing"))
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.primaryText)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.md)
+                .overlay(ContentDivider(), alignment: .bottom)
+
+                if scheduleListingEnabled {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        DatePicker(
+                            L10n.string("Go live on"),
+                            selection: $scheduledListingDate,
+                            in: Date().addingTimeInterval(120)...,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .datePickerStyle(.compact)
+                        .tint(Theme.primaryColor)
+                        Text(L10n.string("The app cannot send this time to the server yet. You will confirm before upload."))
+                            .font(Theme.Typography.caption)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+                    .overlay(ContentDivider(), alignment: .bottom)
+                }
+            }
 
             // Info Banner (Flutter: primary 0.1 bg, primary icon & text)
             HStack(spacing: Theme.Spacing.sm) {
