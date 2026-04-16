@@ -54,6 +54,7 @@ class ProductService: ObservableObject {
               isVacationMode
               isMultibuyEnabled
               meta
+              blueTickVerified
             }
             category {
               id
@@ -122,7 +123,7 @@ class ProductService: ObservableObject {
         return itemsFromProductData(products)
     }
 
-    /// Map GraphQL ProductData array to [Item]. Reused by getAllProducts, filterProductsByPrice, getFavoriteBrandProducts.
+    /// Map GraphQL ProductData array to [Item]. Reused by getAllProducts, filterProductsByPrice, getFavoriteBrandProducts (API name).
     private func itemsFromProductData(_ products: [ProductData]) -> [Item] {
         products.compactMap { product in
             let idString: String
@@ -207,6 +208,7 @@ class ProductService: ObservableObject {
                     username: product.seller?.username ?? "",
                     displayName: product.seller?.displayName ?? "",
                     avatarURL: product.seller?.profilePictureUrl,
+                    blueTickVerified: product.seller?.blueTickVerified ?? false,
                     isVacationMode: product.seller?.isVacationMode ?? false,
                     isMultibuyEnabled: product.seller?.isMultibuyEnabled ?? false,
                     postageOptions: SellerPostageOptions.from(decoded: product.seller?.meta?.value?.postage)
@@ -281,7 +283,7 @@ class ProductService: ObservableObject {
             size { id name }
             brand { id name }
             customBrand likes views userLiked
-            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta }
+            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta blueTickVerified }
             category { id name }
             color materials { id name } styles style status
           }
@@ -317,7 +319,7 @@ class ProductService: ObservableObject {
         }
     }
 
-    /// Products from the user's favorite brands. Matches Flutter getFavoriteBrandProducts(top). Auth required.
+    /// Products from the user's favourite brands. Matches Flutter getFavoriteBrandProducts(top). Auth required.
     func getFavoriteBrandProducts(top: Int = 20) async throws -> [Item] {
         let query = """
         query FavoriteBrandProducts($top: Int!) {
@@ -326,7 +328,7 @@ class ProductService: ObservableObject {
             size { id name }
             brand { id name }
             customBrand likes views userLiked
-            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta }
+            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta blueTickVerified }
             category { id name }
             color materials { id name } styles style status
           }
@@ -809,7 +811,7 @@ class ProductService: ObservableObject {
               likes
               views
               userLiked
-            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta }
+            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta blueTickVerified }
             category { id name }
             color
             materials { id name }
@@ -1174,6 +1176,8 @@ struct SellerData: Decodable {
     let isVacationMode: Bool?
     /// Seller has multi-buy discounts enabled (product `seller` fragment).
     let isMultibuyEnabled: Bool?
+    /// Platform verified badge (admin `blue_tick_verified`).
+    let blueTickVerified: Bool?
     /// Backend may send meta as object or JSON string; use SafeMetaDecode so decoding never fails.
     let meta: SafeMetaDecode?
 }
@@ -1272,7 +1276,7 @@ extension ProductService {
             likes
             views
             userLiked
-            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta }
+            seller { id username displayName profilePictureUrl isVacationMode isMultibuyEnabled meta blueTickVerified }
             category { id name }
             color
             materials { id name }
@@ -1333,6 +1337,7 @@ extension ProductService {
               isVacationMode
               isMultibuyEnabled
               meta
+              blueTickVerified
             }
             category {
               id
@@ -1397,6 +1402,7 @@ extension ProductService {
               isVacationMode
               isMultibuyEnabled
               meta
+              blueTickVerified
             }
             category {
               id
@@ -1472,6 +1478,7 @@ extension ProductService {
               isVacationMode
               isMultibuyEnabled
               meta
+              blueTickVerified
             }
             category {
               id
@@ -1673,6 +1680,7 @@ extension ProductService {
                 username: product.seller?.username ?? "",
                 displayName: product.seller?.displayName ?? "",
                 avatarURL: product.seller?.profilePictureUrl,
+                blueTickVerified: product.seller?.blueTickVerified ?? false,
                 isVacationMode: product.seller?.isVacationMode ?? false,
                 isMultibuyEnabled: product.seller?.isMultibuyEnabled ?? false,
                 postageOptions: SellerPostageOptions.from(decoded: product.seller?.meta?.value?.postage)

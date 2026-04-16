@@ -20,6 +20,8 @@ struct User: Identifiable, Hashable {
     let isStaff: Bool
     /// When true, email has been verified (from viewMe isVerified).
     let isVerified: Bool
+    /// Platform verified badge (admin `blue_tick_verified`); shown as blue tick in profile.
+    let blueTickVerified: Bool
     let isVacationMode: Bool
     let isMultibuyEnabled: Bool
     /// Account settings (from ViewMe)
@@ -55,6 +57,7 @@ struct User: Identifiable, Hashable {
         followersCount: Int = 0,
         isStaff: Bool = false,
         isVerified: Bool = false,
+        blueTickVerified: Bool = false,
         isVacationMode: Bool = false,
         isMultibuyEnabled: Bool = false,
         email: String? = nil,
@@ -84,6 +87,7 @@ struct User: Identifiable, Hashable {
         self.followersCount = followersCount
         self.isStaff = isStaff
         self.isVerified = isVerified
+        self.blueTickVerified = blueTickVerified
         self.isVacationMode = isVacationMode
         self.isMultibuyEnabled = isMultibuyEnabled
         self.email = email

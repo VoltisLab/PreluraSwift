@@ -256,7 +256,7 @@ struct ProfileView: View {
     // MARK: - Profile Section
     private var profileSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            // Row 1: Profile photo and stats centered in remaining space
+            // Row 1: Profile photo and stats centred in remaining space
             HStack(alignment: .center, spacing: 0) {
                 PhotosPicker(selection: $selectedPhoto, matching: .images) {
                     Group {
@@ -336,6 +336,23 @@ struct ProfileView: View {
                 Spacer(minLength: Theme.Spacing.xl)
             }
 
+            if let u = viewModel.user {
+                HStack(alignment: .center, spacing: 6) {
+                    Text(profilePublicDisplayName(for: u))
+                        .font(Theme.Typography.title3.weight(.semibold))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                    if u.blueTickVerified {
+                        Image("VerifiedUserBadge")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 18, height: 17)
+                            .accessibilityLabel("Verified")
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             // Row 2: Stars (tappable → Reviews) only; sale icon decorative only (not tappable)
             VStack(alignment: .leading, spacing: 2) {
                 let hasSaleItems = viewModel.userItems.contains { $0.discountPercentage != nil }
@@ -394,6 +411,12 @@ struct ProfileView: View {
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.top, Theme.Spacing.md)
         .padding(.bottom, Theme.Spacing.xs)
+    }
+
+    private func profilePublicDisplayName(for user: User) -> String {
+        let d = user.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !d.isEmpty { return d }
+        return user.username
     }
 
     /// Stats row next to avatar — compact fonts so we don't increase effective screen width.
@@ -495,7 +518,7 @@ struct ProfileView: View {
             Image(systemName: "umbrella.fill")
                 .font(.system(size: 64))
                 .foregroundColor(Theme.Colors.secondaryText)
-            Text(L10n.string("Vacation mode turned on"))
+            Text(L10n.string("Holiday mode is on"))
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.secondaryText)
                 .multilineTextAlignment(.center)

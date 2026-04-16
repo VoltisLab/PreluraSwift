@@ -36,6 +36,12 @@ struct UserProfileView: View {
         WearhouseSupportBranding.displayTitle(forRecipientUsername: viewModel.user.username)
     }
 
+    private var profilePublicDisplayName: String {
+        let d = viewModel.user.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !d.isEmpty { return d }
+        return viewModel.user.username
+    }
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
         ScrollView {
@@ -49,10 +55,6 @@ struct UserProfileView: View {
                         }
                         if let location = viewModel.user.location, !location.isEmpty {
                             profileLocationRow(location)
-                        }
-                        // Email verified badge: visible to others only when verified (hidden when not)
-                        if viewModel.user.isVerified {
-                            profileVerificationRow()
                         }
                         if viewModel.user.isVacationMode {
                             vacationModeSection(isLoggedInUser: false)
@@ -244,6 +246,21 @@ struct UserProfileView: View {
                 Spacer(minLength: Theme.Spacing.xl)
             }
 
+            HStack(alignment: .center, spacing: 6) {
+                Text(profilePublicDisplayName)
+                    .font(Theme.Typography.title3.weight(.semibold))
+                    .foregroundStyle(Theme.Colors.primaryText)
+                if viewModel.user.blueTickVerified {
+                    Image("VerifiedUserBadge")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 17)
+                        .accessibilityLabel("Verified")
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             VStack(alignment: .leading, spacing: 2) {
                 let hasSaleItems = viewModel.items.contains { $0.discountPercentage != nil }
                 HStack(alignment: .center, spacing: 4) {
@@ -307,21 +324,6 @@ struct UserProfileView: View {
         .padding(.bottom, Theme.Spacing.sm)
     }
 
-    /// Email verified badge (only shown for other users when verified).
-    private func profileVerificationRow() -> some View {
-        HStack(alignment: .center, spacing: 6) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 12))
-                .foregroundColor(Color.green)
-            Text("Email verified")
-                .font(Theme.Typography.subheadline)
-                .foregroundColor(Theme.Colors.secondaryText)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.bottom, Theme.Spacing.sm)
-    }
-
     private func bioSection(_ bio: String) -> some View {
         let limit = 100
         let truncated = bio.count > limit
@@ -369,7 +371,7 @@ struct UserProfileView: View {
             Image(systemName: "umbrella.fill")
                 .font(.system(size: 64))
                 .foregroundColor(Theme.Colors.secondaryText)
-            Text(isLoggedInUser ? L10n.string("Vacation mode turned on") : L10n.string("This member is on vacation"))
+            Text(isLoggedInUser ? L10n.string("Holiday mode is on") : L10n.string("This member is on holiday"))
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.secondaryText)
                 .multilineTextAlignment(.center)

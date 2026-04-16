@@ -420,7 +420,7 @@ struct ItemDetailView: View {
             .allowsHitTesting(true)
             .zIndex(2)
             
-            // Page Indicator (centered at bottom)
+            // Page Indicator (centred at bottom)
             VStack {
                 Spacer()
                 HStack {
@@ -559,10 +559,19 @@ struct ItemDetailView: View {
                     HStack(spacing: Theme.Spacing.sm) {
                         sellerAvatarView
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(effectiveItem.seller.username)
-                                .font(Theme.Typography.body)
-                                .fontWeight(.bold)
-                                .foregroundColor(Theme.Colors.primaryText)
+                            HStack(alignment: .center, spacing: 4) {
+                                Text(effectiveItem.seller.username)
+                                    .font(Theme.Typography.body)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(Theme.Colors.primaryText)
+                                if effectiveItem.seller.blueTickVerified {
+                                    Image("VerifiedUserBadge")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 16, height: 15)
+                                        .accessibilityLabel("Verified")
+                                }
+                            }
                             HStack(spacing: 4) {
                                 ForEach(0..<5, id: \.self) { _ in
                                     Image(systemName: "star")
