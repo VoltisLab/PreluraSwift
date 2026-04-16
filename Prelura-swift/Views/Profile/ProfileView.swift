@@ -167,10 +167,28 @@ struct ProfileView: View {
                 .allowsHitTesting(true)
             }
         }
-        .navigationTitle(viewModel.user?.username ?? L10n.string("Profile"))
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(viewModel.isLoading || authService.isGuestMode)
         .toolbar {
+            if !authService.isGuestMode && !viewModel.isLoading {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 5) {
+                        Text(viewModel.user?.username ?? L10n.string("Profile"))
+                            .font(.headline)
+                            .foregroundStyle(Theme.Colors.primaryText)
+                            .lineLimit(1)
+                        if viewModel.user?.blueTickVerified == true {
+                            Image("VerifiedUserBadge")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 16, height: 15)
+                                .accessibilityLabel("Verified")
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
             if !authService.isGuestMode {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink(value: AppRoute.menu(MenuContext(
@@ -337,20 +355,10 @@ struct ProfileView: View {
             }
 
             if let u = viewModel.user {
-                HStack(alignment: .center, spacing: 6) {
-                    Text(profilePublicDisplayName(for: u))
-                        .font(Theme.Typography.title3.weight(.semibold))
-                        .foregroundStyle(Theme.Colors.primaryText)
-                    if u.blueTickVerified {
-                        Image("VerifiedUserBadge")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 18, height: 17)
-                            .accessibilityLabel("Verified")
-                    }
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(profilePublicDisplayName(for: u))
+                    .font(Theme.Typography.title3.weight(.semibold))
+                    .foregroundStyle(Theme.Colors.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             // Row 2: Stars (tappable → Reviews) only; sale icon decorative only (not tappable)

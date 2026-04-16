@@ -76,10 +76,26 @@ struct UserProfileView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
-        .navigationTitle(profileNavigationTitle)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(false)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 5) {
+                    Text(profileNavigationTitle)
+                        .font(.headline)
+                        .foregroundStyle(Theme.Colors.primaryText)
+                        .lineLimit(1)
+                    if viewModel.user.blueTickVerified {
+                        Image("VerifiedUserBadge")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 16, height: 15)
+                            .accessibilityLabel("Verified")
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: Theme.Spacing.sm) {
                     Button(action: {
@@ -246,20 +262,10 @@ struct UserProfileView: View {
                 Spacer(minLength: Theme.Spacing.xl)
             }
 
-            HStack(alignment: .center, spacing: 6) {
-                Text(profilePublicDisplayName)
-                    .font(Theme.Typography.title3.weight(.semibold))
-                    .foregroundStyle(Theme.Colors.primaryText)
-                if viewModel.user.blueTickVerified {
-                    Image("VerifiedUserBadge")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 18, height: 17)
-                        .accessibilityLabel("Verified")
-                }
-            }
-            .padding(.horizontal, Theme.Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Text(profilePublicDisplayName)
+                .font(Theme.Typography.title3.weight(.semibold))
+                .foregroundStyle(Theme.Colors.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 2) {
                 let hasSaleItems = viewModel.items.contains { $0.discountPercentage != nil }
