@@ -96,7 +96,26 @@ final class AppRouter: ObservableObject {
         return idStr.isEmpty ? nil : idStr
     }
 
-    /// Handle URL (e.g. prelura://product/Ab3xY9k2Mn, https://mywearhouse.co.uk/item/Ab3xY9k2Mn, prelura://user/john).
+    /// Public listing slug for `/item/{slug}` or `prelura://product/{slug}` (opens native `ItemDetailView`).
+    static func productPublicSlugIfPresent(in url: URL) -> String? {
+        let scheme = (url.scheme ?? "").lowercased()
+        if scheme == "prelura", (url.host ?? "").lowercased() == "product" {
+            let parts = url.path.split(separator: "/").map(String.init).filter { !$0.isEmpty }
+            guard let raw = parts.first else { return nil }
+            let slug = (raw.removingPercentEncoding ?? raw).trimmingCharacters(in: .whitespacesAndNewlines)
+            return slug.isEmpty ? nil : slug
+        }
+        guard scheme == "http" || scheme == "https" else { return nil }
+        let host = (url.host ?? "").lowercased()
+        guard isHttpsUniversalLinkHost(host) else { return nil }
+        let parts = url.path.split(separator: "/").map(String.init).filter { !$0.isEmpty }
+        guard parts.count >= 2, parts[0].lowercased() == "item" else { return nil }
+        let raw = parts[1]
+        let slug = (raw.removingPercentEncoding ?? raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        return slug.isEmpty ? nil : slug
+    }
+
+    /// Handle URL (e.g. prelura://product/Ab3xY9k2Mn, https://wearhouse.co.uk/item/Ab3xY9k2Mn, prelura://user/john).
     func handle(url: URL) {
         var dest: DeepLinkDestination?
         let scheme = (url.scheme ?? "").lowercased()

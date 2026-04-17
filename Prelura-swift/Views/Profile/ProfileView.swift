@@ -505,7 +505,7 @@ struct ProfileView: View {
             Image(systemName: "umbrella.fill")
                 .font(.system(size: 64))
                 .foregroundColor(Theme.Colors.secondaryText)
-            Text(L10n.string("Holiday mode is on"))
+            Text(L10n.string("Holiday Mode is on"))
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.secondaryText)
                 .multilineTextAlignment(.center)

@@ -95,65 +95,81 @@ private struct ReportUserDetailsView: View {
     private let fileUploadService = FileUploadService()
 
     var body: some View {
-        List {
-            Section {
-                Text(reason)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(Theme.Colors.primaryText)
-            } header: {
-                Text("Reason")
-            }
-
-            Section {
-                TextEditor(text: $description)
-                    .font(Theme.Typography.body)
-                    .padding(.horizontal, Theme.TextInput.insetHorizontal)
-                    .padding(.vertical, Theme.TextInput.insetVertical)
-                    .frame(minHeight: 120)
-            } header: {
-                Text("Details")
-            }
-
-            Section {
-                PhotosPicker(selection: $selectedPhotoItems, maxSelectionCount: 6, matching: .images) {
-                    HStack {
-                        Image(systemName: "photo.on.rectangle")
-                        Text("Upload photos (optional)")
-                    }
-                    .foregroundColor(Theme.primaryColor)
+        // `TextEditor` in `List` rows is vertically centered by the list; use `ScrollView` like Sell so the caret stays top-leading.
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text("Reason")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                    Text(reason)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(Theme.Spacing.md)
+                        .background(Theme.Colors.secondaryBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
                 }
-                if !selectedPreviewImages.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: Theme.Spacing.xs) {
-                            ForEach(Array(selectedPreviewImages.enumerated()), id: \.offset) { _, image in
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 72, height: 72)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Details")
+                        .font(Theme.Typography.body)
+                        .fontWeight(.medium)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                    PreluraMultilineDescriptionField(
+                        placeholder: "",
+                        text: $description,
+                        minLines: 6,
+                        highlightHashtags: false
+                    )
+                    .accessibilityLabel("Details")
+                }
+
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    PhotosPicker(selection: $selectedPhotoItems, maxSelectionCount: 6, matching: .images) {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "photo.on.rectangle")
+                            Text("Upload photos (optional)")
+                        }
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.primaryColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, Theme.Spacing.sm)
+                    }
+                    .buttonStyle(.plain)
+
+                    if !selectedPreviewImages.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: Theme.Spacing.xs) {
+                                ForEach(Array(selectedPreviewImages.enumerated()), id: \.offset) { _, image in
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 72, height: 72)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            if let successMessage {
-                Section {
+                if let successMessage {
                     Text(successMessage)
                         .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.primaryColor)
+                        .foregroundStyle(Theme.primaryColor)
                 }
-            }
 
-            if let errorMessage {
-                Section {
+                if let errorMessage {
                     Text(errorMessage)
                         .font(Theme.Typography.caption)
-                        .foregroundColor(Theme.Colors.error)
+                        .foregroundStyle(Theme.Colors.error)
                 }
             }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.md)
         }
-        .listStyle(.insetGrouped)
+        .scrollDismissesKeyboard(.interactively)
+        .background(Theme.Colors.background)
         .navigationTitle("Report details")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom, spacing: 0) {

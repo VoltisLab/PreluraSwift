@@ -200,7 +200,34 @@ final class NotificationService {
             private static func parseMetaFromString(_ s: String) -> [String: String]? {
                 guard let data = s.data(using: .utf8),
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-                return json.mapValues { String(describing: $0) }
+                return stringifyMetaObject(json)
+            }
+
+            /// Converts JSON meta to flat `[String: String]` without `String(describing:)` (which breaks nested image objects).
+            private static func stringifyMetaObject(_ json: [String: Any]) -> [String: String] {
+                var out: [String: String] = [:]
+                for (k, v) in json {
+                    switch v {
+                    case let s as String:
+                        out[k] = s
+                    case let i as Int:
+                        out[k] = String(i)
+                    case let b as Bool:
+                        out[k] = b ? "true" : "false"
+                    case let d as Double:
+                        out[k] = String(d)
+                    case let nested as [String: Any]:
+                        if let url = ProductListImageURL.preferredString(fromJSONObject: nested) {
+                            out[k] = url
+                        } else if let data = try? JSONSerialization.data(withJSONObject: nested),
+                                  let jsonStr = String(data: data, encoding: .utf8) {
+                            out[k] = jsonStr
+                        }
+                    default:
+                        break
+                    }
+                }
+                return out
             }
 
             private static func flattenMetaContainer(_ nested: KeyedDecodingContainer<DynamicCodingKeys>) -> [String: String] {
@@ -214,6 +241,15 @@ final class NotificationService {
                         out[key.stringValue] = b ? "true" : "false"
                     } else if let d = try? nested.decode(Double.self, forKey: key) {
                         out[key.stringValue] = String(d)
+                    } else if let sub = try? nested.nestedContainer(keyedBy: DynamicCodingKeys.self, forKey: key) {
+                        let inner = Self.flattenMetaContainer(sub)
+                        if let resolved = ProductListImageURL.preferredString(fromStringKeyedJSON: inner) {
+                            out[key.stringValue] = resolved
+                        } else {
+                            for (ik, iv) in inner {
+                                out["\(key.stringValue).\(ik)"] = iv
+                            }
+                        }
                     }
                 }
                 return out

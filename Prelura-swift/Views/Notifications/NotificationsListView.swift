@@ -54,6 +54,7 @@ struct NotificationsListView: View {
                     ForEach(notifications) { notification in
                         NavigationLink(destination: NotificationDestinationView(notification: notification, onMarkRead: { markAsRead(notification) })) {
                             NotificationRowView(notification: notification)
+                                .environmentObject(authService)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
                         }
@@ -447,8 +448,112 @@ private struct NotificationLookbookDeepLinkHost: View {
     }
 }
 
+/// Caches `Item.isMysteryBox` by product id so bell rows can show `MysteryBoxAnimatedMediaView` instead of the static listing JPEG (same raster as `MysteryBoxListingCoverImage`).
+@MainActor
+private final class NotificationMysteryListingResolver {
+    static let shared = NotificationMysteryListingResolver()
+    private var cache: [Int: Bool] = [:]
+
+    func isMysteryListing(productId: Int, authToken: String?) async -> Bool {
+        if let hit = cache[productId] { return hit }
+        let client = GraphQLClient()
+        client.setAuthToken(authToken)
+        let service = ProductService(client: client)
+        service.updateAuthToken(authToken)
+        guard let item = try? await service.getProduct(id: productId) else {
+            cache[productId] = false
+            return false
+        }
+        let v = item.isMysteryBox
+        cache[productId] = v
+        return v
+    }
+}
+
+/// Fetches the listing’s chrome thumbnail for bell rows when transactional notifications omit image URLs in meta.
+@MainActor
+private final class NotificationListingThumbnailResolver {
+    static let shared = NotificationListingThumbnailResolver()
+    private var cache: [Int: URL] = [:]
+
+    func listingThumbnailURL(productId: Int, authToken: String?) async -> URL? {
+        if let hit = cache[productId] { return hit }
+        let client = GraphQLClient()
+        client.setAuthToken(authToken)
+        let service = ProductService(client: client)
+        service.updateAuthToken(authToken)
+        guard let item = try? await service.getProduct(id: productId) else { return nil }
+        guard let raw = item.thumbnailURLForChrome?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        guard let url = Self.httpURL(from: raw) else { return nil }
+        cache[productId] = url
+        return url
+    }
+
+    private static func httpURL(from raw: String) -> URL? {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return nil }
+        if let u = URL(string: t), u.scheme != nil { return u }
+        let encodedSpaces = t.replacingOccurrences(of: " ", with: "%20")
+        if encodedSpaces != t, let u = URL(string: encodedSpaces), u.scheme != nil { return u }
+        return nil
+    }
+}
+
+/// Loads product/listing art from meta when present; otherwise sender avatar. Retries transient failures and falls back to avatar if the product URL errors.
+private struct NotificationBellThumbnail<FailureIcon: View>: View {
+    let productURL: URL?
+    let avatarURL: URL?
+    let width: CGFloat
+    let height: CGFloat
+    let cornerRadius: CGFloat
+    @ViewBuilder let failureIcon: () -> FailureIcon
+
+    @State private var tier: Int = 0
+
+    private var currentURL: URL? {
+        if tier == 0 { return productURL ?? avatarURL }
+        return avatarURL
+    }
+
+    var body: some View {
+        Group {
+            if let url = currentURL {
+                RetryAsyncImage(
+                    url: url,
+                    width: width,
+                    height: height,
+                    cornerRadius: cornerRadius,
+                    placeholder: {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(Theme.Colors.secondaryBackground)
+                            .overlay(ProgressView().scaleEffect(0.7))
+                    },
+                    failurePlaceholder: {
+                        failureIcon()
+                            .frame(width: width, height: height)
+                            .onAppear {
+                                if tier == 0, let p = productURL, let a = avatarURL, p != a {
+                                    tier = 1
+                                }
+                            }
+                    }
+                )
+                .id("\(tier)-\(url.absoluteString)")
+            } else {
+                failureIcon()
+                    .frame(width: width, height: height)
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            }
+        }
+    }
+}
+
 private struct NotificationRowView: View {
     let notification: AppNotification
+    @EnvironmentObject private var authService: AuthService
+    /// Filled when `modelGroup == offer` and the listing is a mystery box (API omits meta flags but product image is the generated cover JPEG).
+    @State private var resolvedProductIsMysteryBox: Bool?
+    @State private var resolvedTransactionalListingURL: URL?
 
     /// Slightly larger than `Theme.Typography.caption` (13pt) for readability.
     private static let lineFontSize: CGFloat = 15
@@ -497,15 +602,127 @@ private struct NotificationRowView: View {
         modelGroupLower == "product" && notification.message.lowercased().contains("liked your product")
     }
 
-    /// First product image from notification meta (server sends `media_thumbnail` for likes, offers, liked-item-sold, many order rows).
-    private var productThumbnailURL: URL? {
-        guard let meta = notification.meta else { return nil }
-        for key in ["media_thumbnail", "product_image", "product_image_url"] {
-            if let raw = meta[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
-               let u = URL(string: raw) {
-                return u
+    /// Mystery box listing (offer, sale, etc.) — use the same animated tile as chat/product feeds when meta or copy indicates mystery.
+    private var isMysteryBoxRelatedNotification: Bool {
+        let truthy: Set<String> = ["true", "1", "yes"]
+        let falsy: Set<String> = ["false", "0", "no"]
+        if let raw = notification.metaValue(caseInsensitiveKey: "is_mystery_box")?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            if truthy.contains(raw) { return true }
+            if falsy.contains(raw) { return false }
+        }
+        if let meta = notification.meta {
+            let flagKeys: Set<String> = [
+                "is_mystery", "mystery_box", "is_mystery_listing",
+                "product_is_mystery", "mystery", "listing_is_mystery", "ismysterybox", "ismystery"
+            ]
+            for (k, v) in meta {
+                let kl = k.lowercased()
+                guard flagKeys.contains(kl) else { continue }
+                let vv = v.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if truthy.contains(vv) { return true }
+            }
+            func metaAt(_ name: String) -> String? {
+                for (k, v) in meta where k.caseInsensitiveCompare(name) == .orderedSame { return v }
+                return nil
+            }
+            if metaAt("listing_type")?.lowercased() == "mystery" { return true }
+            if metaAt("product_type")?.lowercased() == "mystery" { return true }
+            for titleKey in ["product_title", "title", "product_name", "item_title"] {
+                if let t = metaAt(titleKey)?.lowercased(), t.contains("mystery") { return true }
+            }
+            for (_, v) in meta where v.lowercased().contains("mystery") {
+                return true
             }
         }
+        let m = notification.message.lowercased()
+        if m.contains("mystery box") || m.contains("mystery listing") { return true }
+        if isNewOfferOnListingMessage, m.contains("mystery") { return true }
+        return false
+    }
+
+    /// Prefer animated mystery art when meta/copy says so, after GraphQL resolve, or while resolving (static `media_thumbnail` is the generated mystery JPEG — wrong for bell rows).
+    private var shouldShowMysteryBoxAnimation: Bool {
+        if isMysteryBoxRelatedNotification { return true }
+        if resolvedProductIsMysteryBox == true { return true }
+        // Resolve offer/sale listing type before showing `media_thumbnail` (avoids static mystery JPEG flash).
+        if shouldResolveMysteryFromProduct { return true }
+        if resolvedProductIsMysteryBox == false { return false }
+        return false
+    }
+
+    /// Offer on a listing: `media_thumbnail` is the static JPEG from `MysteryBoxListingCoverImage` — resolve `isMysteryBox` from the product when meta omits flags.
+    private var shouldResolveMysteryFromProduct: Bool {
+        guard let pid = notificationResolvedProductId, pid > 0 else { return false }
+        let mg = modelGroupLower
+        let offerishGroup = mg == "offer" || (mg == "product" && notification.message.lowercased().contains("offer"))
+        let sellerSale = isSellerOrderSaleNotification
+        guard offerishGroup || sellerSale else { return false }
+        if isMysteryBoxRelatedNotification { return false }
+        if resolvedProductIsMysteryBox != nil { return false }
+        return true
+    }
+
+    /// Seller sale rows: fetch listing art when the API did not attach `media_thumbnail`.
+    private var shouldResolveTransactionalListingThumbnail: Bool {
+        guard isSellerOrderSaleNotification else { return false }
+        guard !shouldShowMysteryBoxAnimation else { return false }
+        guard productThumbnailURLFromMeta == nil else { return false }
+        return notificationResolvedProductId != nil
+    }
+
+    /// Image URL from notification meta (flat string, JSON blob, or nested object — see `ProductListImageURL` + `NotificationService` meta parsing).
+    private static let metaImageURLCandidateKeys: [String] = [
+        "media_thumbnail", "product_image", "product_image_url",
+        "thumbnail_url", "thumbnailUrl", "image_url", "imageUrl",
+        "product_thumbnail", "media_url", "lookbook_image", "lookbook_thumbnail",
+        "thumbnail", "image", "photo_url", "photoUrl", "listing_image", "item_image",
+        "listing_image_url", "productImage", "listingImage"
+    ]
+
+    /// Numeric product id from meta (order / sale pushes often omit image URLs but include a listing id).
+    private var notificationResolvedProductIdFromMeta: Int? {
+        guard let meta = notification.meta else { return nil }
+        let keys = [
+            "sold_product_id", "product_id", "productId", "listing_id", "listingId",
+            "item_id", "itemId", "related_product_id", "relatedProductId",
+        ]
+        let lowerIndex: [String: String] = Dictionary(uniqueKeysWithValues: meta.map { ($0.key.lowercased(), $0.value) })
+        for k in keys {
+            let raw = (meta[k] ?? lowerIndex[k.lowercased()])?.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let raw, !raw.isEmpty else { continue }
+            if let v = Int(raw), v > 0 { return v }
+        }
+        return nil
+    }
+
+    private var notificationResolvedProductId: Int? {
+        if let fromMeta = notificationResolvedProductIdFromMeta { return fromMeta }
+        let modelLower = (notification.model ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if modelLower == "product", let mid = notification.modelId, let v = Int(mid), v > 0 { return v }
+        return nil
+    }
+
+    private var productThumbnailURLFromMeta: URL? {
+        guard let meta = notification.meta else { return nil }
+        for key in Self.metaImageURLCandidateKeys {
+            guard let raw = meta[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { continue }
+            if let s = ProductListImageURL.preferredString(from: raw), let u = Self.urlFromHTTPString(s) { return u }
+            if let u = Self.urlFromHTTPString(raw) { return u }
+        }
+        return nil
+    }
+
+    private var senderAvatarURL: URL? {
+        guard let raw = notification.sender?.profilePictureUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        return Self.urlFromHTTPString(raw)
+    }
+
+    private static func urlFromHTTPString(_ raw: String) -> URL? {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return nil }
+        if let u = URL(string: t), u.scheme != nil { return u }
+        let encodedSpaces = t.replacingOccurrences(of: " ", with: "%20")
+        if encodedSpaces != t, let u = URL(string: encodedSpaces), u.scheme != nil { return u }
         return nil
     }
 
@@ -588,24 +805,23 @@ private struct NotificationRowView: View {
         let corner = Self.thumbCornerRadius
         if isSupportNotification {
             WearhouseSupportBranding.supportAvatar(size: Self.productThumbHeight)
-        } else if let url = productThumbnailURL {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                case .failure:
-                    productPlaceholderIcon
-                default:
+        } else if shouldShowMysteryBoxAnimation {
+            MysteryBoxAnimatedMediaView()
+                .frame(width: Self.productThumbWidth, height: Self.productThumbHeight)
+                .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                .overlay(
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
-                        .fill(Theme.Colors.secondaryBackground)
-                        .overlay(ProgressView().scaleEffect(0.7))
-                }
-            }
-            .frame(width: Self.productThumbWidth, height: Self.productThumbHeight)
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                        .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+                )
+        } else if productThumbnailURLFromMeta != nil || resolvedTransactionalListingURL != nil || (!isSellerOrderSaleNotification && senderAvatarURL != nil) {
+            NotificationBellThumbnail(
+                productURL: productThumbnailURLFromMeta ?? resolvedTransactionalListingURL,
+                avatarURL: isSellerOrderSaleNotification ? nil : senderAvatarURL,
+                width: Self.productThumbWidth,
+                height: Self.productThumbHeight,
+                cornerRadius: corner,
+                failureIcon: { productPlaceholderIcon }
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
                     .stroke(Theme.Colors.glassBorder, lineWidth: 1)
@@ -647,6 +863,20 @@ private struct NotificationRowView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, Self.rowVerticalPadding)
+        .task(id: notification.id) {
+            if shouldResolveMysteryFromProduct, let pid = notificationResolvedProductId {
+                let isMystery = await NotificationMysteryListingResolver.shared.isMysteryListing(productId: pid, authToken: authService.authToken)
+                await MainActor.run {
+                    resolvedProductIsMysteryBox = isMystery
+                }
+            }
+            if shouldResolveTransactionalListingThumbnail, let pid = notificationResolvedProductId {
+                let url = await NotificationListingThumbnailResolver.shared.listingThumbnailURL(productId: pid, authToken: authService.authToken)
+                await MainActor.run {
+                    resolvedTransactionalListingURL = url
+                }
+            }
+        }
     }
 
     private func formatDate(_ date: Date) -> String {

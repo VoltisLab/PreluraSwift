@@ -15,6 +15,11 @@ enum ProductListImageURL {
         return resolvedString(fromJSON: obj)
     }
 
+    /// Nested JSON object from notification meta or GraphQL (e.g. `{ "url": "...", "thumbnail": "..." }`).
+    static func preferredString(fromJSONObject json: [String: Any]) -> String? {
+        resolvedString(fromJSON: json)
+    }
+
     /// Raw cell from API: JSON object string or plain `https://` URL.
     static func preferredString(from raw: String?) -> String? {
         guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }

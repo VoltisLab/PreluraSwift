@@ -9,6 +9,17 @@ struct LookbookShareChatPayload: Equatable {
     let posterUsername: String
 }
 
+/// Parsed `product_share` chat payload (JSON in `Message.content`).
+struct ProductShareChatPayload: Equatable {
+    let url: String
+    let imageURL: String?
+    let thumbnailURL: String?
+    let title: String
+    let sellerUsername: String
+    let productId: String?
+    let isMysteryBox: Bool
+}
+
 /// Backend `user_review` chat row (`order_offer_chat.add_user_review_chat_message`).
 struct UserReviewChatPayload: Equatable {
     let reviewId: Int
@@ -105,6 +116,7 @@ struct Message: Identifiable {
             case "account_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             case "product_report": return humanReadableReportLine(json: json, reportType: type, maxLength: 56)
             case "lookbook_share": return "Post shared"
+            case "product_share": return "Listing shared"
             case "user_review": return L10n.string("Left a feedback.")
             default: break
             }
@@ -202,6 +214,9 @@ struct Message: Identifiable {
                     return c.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
                 return "Shared a look"
+            case "product_share":
+                let raw = (json["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return raw.isEmpty ? "Shared a listing" : raw
             case "user_review":
                 if isFromCurrentUser { return L10n.string("You left a feedback.") }
                 let u = senderUsername.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -464,6 +479,41 @@ struct Message: Identifiable {
             thumbnailURL: thumb.flatMap { $0.isEmpty ? nil : $0 },
             caption: cap.flatMap { $0.isEmpty ? nil : $0 },
             posterUsername: poster.isEmpty ? "—" : poster
+        )
+    }
+
+    /// Rich listing forward (`type`: `product_share`).
+    var productSharePayload: ProductShareChatPayload? {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (json["type"] as? String) == "product_share" else { return nil }
+        guard let url = (json["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty else { return nil }
+        let sellerRaw = (json["seller_username"] as? String) ?? (json["sellerUsername"] as? String) ?? ""
+        let seller = sellerRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let titleRaw = (json["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let title = titleRaw.isEmpty ? "Listing" : titleRaw
+        let thumb = ((json["thumbnail_url"] as? String) ?? (json["thumbnailUrl"] as? String))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let img = ((json["image_url"] as? String) ?? (json["imageUrl"] as? String))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let pid: String? = {
+            if let s = json["product_id"] as? String { return s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : s }
+            if let i = json["product_id"] as? Int { return String(i) }
+            if let s = json["productId"] as? String { return s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : s }
+            if let i = json["productId"] as? Int { return String(i) }
+            return nil
+        }()
+        let mystery = (json["is_mystery_box"] as? Bool) ?? (json["isMysteryBox"] as? Bool) ?? false
+        return ProductShareChatPayload(
+            url: url,
+            imageURL: img.flatMap { $0.isEmpty ? nil : $0 },
+            thumbnailURL: thumb.flatMap { $0.isEmpty ? nil : $0 },
+            title: title,
+            sellerUsername: seller.isEmpty ? "—" : seller,
+            productId: pid,
+            isMysteryBox: mystery
         )
     }
 }

@@ -71,12 +71,6 @@ private struct PlanScreenAnimatedBackground: View {
 
 // MARK: - Plan tier cards (Silver and Gold are separate views)
 
-private enum PlanGoldMysteryAddon {
-    case none
-    case upsellPreview
-    case activePreview
-}
-
 private struct PlanMeasuredGoldCardHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -84,70 +78,10 @@ private struct PlanMeasuredGoldCardHeightKey: PreferenceKey {
     }
 }
 
-private struct PlanGoldMysteryAddonPanelView: View {
-    let addon: PlanGoldMysteryAddon
-    let onMysterySubscribe: (() -> Void)?
-    let onMysteryTurnOff: (() -> Void)?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "shippingbox.fill")
-                    .foregroundStyle(PlanPalette.goldA)
-                Text(L10n.string("Unlimited mystery listings"))
-                    .font(Theme.Typography.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-            }
-            switch addon {
-            case .none:
-                EmptyView()
-            case .upsellPreview:
-                Text(L10n.string("£10.99/month when billing goes live. Requires Gold."))
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(.white.opacity(0.7))
-                if let onSub = onMysterySubscribe {
-                    Button(action: {
-                        HapticManager.tap()
-                        onSub()
-                    }) {
-                        Text(L10n.string("Subscribe (preview)"))
-                            .font(Theme.Typography.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(LinearGradient(colors: [PlanPalette.mysticA.opacity(0.9), Theme.primaryColor.opacity(0.95)], startPoint: .leading, endPoint: .trailing))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-            case .activePreview:
-                Text(L10n.string("Preview active — no cap on active mystery boxes."))
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(.white.opacity(0.72))
-                if let off = onMysteryTurnOff {
-                    Button(role: .destructive, action: {
-                        HapticManager.tap()
-                        off()
-                    }) {
-                        Text(L10n.string("Turn off preview"))
-                            .font(Theme.Typography.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(red: 0.07, green: 0.07, blue: 0.09))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-        )
+private struct PlanMeasuredSilverCardHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
@@ -180,11 +114,24 @@ private struct PlanSettingsTierCurrentPill: View {
     }
 }
 
-/// Silver tier: separate view; height follows the **measured** Gold card, not Silver text height.
+private struct PlanTierCardEqualHeightModifier: ViewModifier {
+    let minHeight: CGFloat?
+
+    func body(content: Content) -> some View {
+        if let h = minHeight, h > 0 {
+            content.frame(maxWidth: .infinity, minHeight: h, alignment: .topLeading)
+        } else {
+            content.frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+}
+
+/// Silver tier: separate view; optional `cardMinHeight` keeps Silver and Gold cards the same height in the carousel.
 private struct PlanSilverTierCard: View {
     let isCurrent: Bool
     let features: [String]
-    let minHeightToMatchGoldCard: CGFloat
+    /// When set, expands the card to this height (matches Gold); `nil` for intrinsic sizing (measurement probes).
+    let cardMinHeight: CGFloat?
 
     @State private var sparklePhase: CGFloat = 0
 
@@ -225,7 +172,7 @@ private struct PlanSilverTierCard: View {
             }
         }
         .padding(Theme.Spacing.lg)
-        .frame(maxWidth: .infinity, minHeight: minHeightToMatchGoldCard, alignment: .topLeading)
+        .modifier(PlanTierCardEqualHeightModifier(minHeight: cardMinHeight))
         .background { silverCardBackground }
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .compositingGroup()
@@ -264,13 +211,12 @@ private struct PlanSilverTierCard: View {
     }
 }
 
-/// Gold tier: separate view; reports rendered height so Silver can match without a padded guess.
+/// Gold tier: separate view; optional `cardMinHeight` matches Silver so both cards align in the carousel.
 private struct PlanGoldTierCard: View {
     let isCurrent: Bool
     let features: [String]
-    let goldMysteryAddon: PlanGoldMysteryAddon
-    let onMysterySubscribe: (() -> Void)?
-    let onMysteryTurnOff: (() -> Void)?
+    /// When set, expands the card to this height (matches Silver); `nil` for intrinsic sizing (measurement probes).
+    let cardMinHeight: CGFloat?
     let primaryTitle: String?
     let primaryEnabled: Bool
     let primaryAction: (() -> Void)?
@@ -323,11 +269,6 @@ private struct PlanGoldTierCard: View {
             }
             .animation(.spring(response: 0.45, dampingFraction: 0.82).delay(0.04), value: features.count)
 
-            if goldMysteryAddon != .none {
-                PlanGoldMysteryAddonPanelView(addon: goldMysteryAddon, onMysterySubscribe: onMysterySubscribe, onMysteryTurnOff: onMysteryTurnOff)
-                    .padding(.top, Theme.Spacing.sm)
-            }
-
             if hasFooterActions {
                 VStack(alignment: .leading, spacing: 0) {
                     if let pt = primaryTitle, let pa = primaryAction {
@@ -367,7 +308,7 @@ private struct PlanGoldTierCard: View {
             }
         }
         .padding(Theme.Spacing.lg)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .modifier(PlanTierCardEqualHeightModifier(minHeight: cardMinHeight))
         .background { goldCardBackground }
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .compositingGroup()
@@ -443,36 +384,28 @@ private struct PlanFeatureRow: View {
 
 // MARK: - Settings → Plan
 
-/// Settings → Plan: horizontal carousel of Silver & Gold; unlimited mystery is a compact add-on on the Gold card.
+/// Settings → Plan: horizontal carousel of Silver & Gold tier cards.
 struct PlanSettingsView: View {
     @EnvironmentObject private var authService: AuthService
     private let userService = UserService()
 
     @State private var profileTier: String = ""
     @State private var showGoldPaywall = false
-    @State private var showUnlimitedPaywall = false
     @State private var selectedPage = 0
     @State private var measuredGoldCardHeight: CGFloat = 0
+    @State private var measuredSilverCardHeight: CGFloat = 0
 
     private var serverGold: Bool { SellerMysteryQuota.apiProfileIndicatesGoldTier(profileTier) }
     private var localGold: Bool { SellerPlanUserDefaults.localPlan == .gold }
     private var isGoldEffective: Bool { serverGold || localGold }
-    private var unlimitedMystery: Bool { SellerPlanUserDefaults.unlimitedMysterySubscribed }
 
     private var currentPlanTitle: String {
-        if unlimitedMystery { return L10n.string("Gold + unlimited mystery") }
         if isGoldEffective { return L10n.string("Gold") }
         return L10n.string("Silver")
     }
 
     private var silverIsCurrent: Bool { !isGoldEffective }
     private var goldIsCurrent: Bool { isGoldEffective }
-
-    /// Unlimited add-on UI lives on the Gold card only.
-    private var goldMysteryAddonState: PlanGoldMysteryAddon {
-        guard isGoldEffective else { return .none }
-        return unlimitedMystery ? .activePreview : .upsellPreview
-    }
 
     var body: some View {
         ZStack {
@@ -514,30 +447,36 @@ struct PlanSettingsView: View {
                 measuredGoldCardHeight = h
             }
         }
-        .onChange(of: isGoldEffective) { _, _ in measuredGoldCardHeight = 0 }
-        .onChange(of: unlimitedMystery) { _, _ in measuredGoldCardHeight = 0 }
+        .onPreferenceChange(PlanMeasuredSilverCardHeightKey.self) { h in
+            guard h > 1 else { return }
+            if abs(measuredSilverCardHeight - h) > 0.5 {
+                measuredSilverCardHeight = h
+            }
+        }
+        .onChange(of: isGoldEffective) { _, _ in
+            measuredGoldCardHeight = 0
+            measuredSilverCardHeight = 0
+        }
         .sheet(isPresented: $showGoldPaywall) {
             PlanPaywallSheet(
                 title: L10n.string("Upgrade to Gold"),
                 message: L10n.string("Gold unlocks more mystery box listings and priority visibility. App Store billing will be available soon; you can enable a preview on this device for testing."),
                 primaryTitle: L10n.string("Enable Gold (preview)"),
                 onConfirm: {
-                    SellerPlanUserDefaults.localPlan = .gold
-                    showGoldPaywall = false
+                    Task {
+                        let svc = UserService()
+                        svc.updateAuthToken(authService.authToken)
+                        if let me = try? await svc.getUser(username: nil) {
+                            let key = SellerScheduledListingQuota.stableUserKey(from: me)
+                            SellerScheduledListingQuota.ensureBillingAnchorIfUnset(userKey: key)
+                        }
+                        await MainActor.run {
+                            SellerPlanUserDefaults.localPlan = .gold
+                            showGoldPaywall = false
+                        }
+                    }
                 },
                 onDismiss: { showGoldPaywall = false }
-            )
-        }
-        .sheet(isPresented: $showUnlimitedPaywall) {
-            PlanPaywallSheet(
-                title: L10n.string("Unlimited mystery boxes"),
-                message: L10n.string("Add unlimited active mystery box listings for £10.99/month. This add-on requires Gold. In-app purchase coming soon — enable preview for testing."),
-                primaryTitle: L10n.string("Enable add-on (preview)"),
-                onConfirm: {
-                    SellerPlanUserDefaults.unlimitedMysterySubscribed = true
-                    showUnlimitedPaywall = false
-                },
-                onDismiss: { showUnlimitedPaywall = false }
             )
         }
     }
@@ -561,7 +500,7 @@ struct PlanSettingsView: View {
                 .minimumScaleFactor(0.75)
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [.white, PlanPalette.goldA.opacity(isGoldEffective || unlimitedMystery ? 0.95 : 0.35)],
+                        colors: [.white, PlanPalette.goldA.opacity(isGoldEffective ? 0.95 : 0.35)],
                         startPoint: .leading,
                         endPoint: .trailing
                     )
@@ -574,24 +513,19 @@ struct PlanSettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// TabView may not lay out page 1 while page 0 is visible, so this is only a short-lived guess until the hidden probe measures the real Gold card.
-    private var planCarouselFallbackSlotHeight: CGFloat {
-        if !isGoldEffective { return 480 }
-        switch goldMysteryAddonState {
-        case .none: return 500
-        case .upsellPreview: return 580
-        case .activePreview: return 560
-        }
-    }
+    private let planCarouselFallbackSlotHeight: CGFloat = 480
 
+    /// Carousel height = max(Silver intrinsic, Gold intrinsic) so both tier cards can share one `minHeight` without either looking stretched vs the other.
     private var planCarouselSlotHeight: CGFloat {
-        if measuredGoldCardHeight > 1 { return measuredGoldCardHeight }
+        let g = measuredGoldCardHeight
+        let s = measuredSilverCardHeight
+        let m = max(g, s)
+        if m > 1 { return m }
         return planCarouselFallbackSlotHeight
     }
 
-    /// Same Gold card as the carousel (used for intrinsic-height probe while the Gold tab might not be laid out yet).
     @ViewBuilder
-    private var planGoldTierCardContent: some View {
+    private func planGoldTierCard(cardMinHeight: CGFloat?) -> some View {
         PlanGoldTierCard(
             isCurrent: goldIsCurrent,
             features: [
@@ -601,9 +535,7 @@ struct PlanSettingsView: View {
                 L10n.string("Priority placement in search & category browsing"),
                 L10n.string("Priority seller support"),
             ],
-            goldMysteryAddon: goldMysteryAddonState,
-            onMysterySubscribe: { showUnlimitedPaywall = true },
-            onMysteryTurnOff: { SellerPlanUserDefaults.unlimitedMysterySubscribed = false },
+            cardMinHeight: cardMinHeight,
             primaryTitle: isGoldEffective ? nil : L10n.string("Upgrade to Gold"),
             primaryEnabled: true,
             primaryAction: isGoldEffective ? nil : { showGoldPaywall = true },
@@ -612,50 +544,75 @@ struct PlanSettingsView: View {
         )
     }
 
-    private var carousel: some View {
-        ZStack(alignment: .top) {
-            // Invisible duplicate: measures Gold intrinsic height on first paint (TabView often skips off-screen pages).
-            planGoldTierCardContent
-                .padding(.horizontal, 18)
-                .fixedSize(horizontal: false, vertical: true)
-                .opacity(0)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-                .overlay(
-                    GeometryReader { geo in
-                        Color.clear.preference(key: PlanMeasuredGoldCardHeightKey.self, value: geo.size.height)
-                    }
-                )
-                .zIndex(0)
-
-            TabView(selection: $selectedPage) {
-                silverPage
-                    .tag(0)
-                    .padding(.horizontal, 18)
-                goldPage
-                    .tag(1)
-                    .padding(.horizontal, 18)
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: planCarouselSlotHeight)
-            .zIndex(1)
-        }
-    }
-
-    private var silverPage: some View {
+    /// Intrinsic-height probe for Silver (TabView may not lay out off-screen pages immediately).
+    @ViewBuilder
+    private var planSilverTierCardProbe: some View {
         PlanSilverTierCard(
             isCurrent: silverIsCurrent,
             features: [
                 L10n.string("Unlimited product uploads"),
-                L10n.string("Up to 2 active mystery box listings"),
+                L10n.string("Up to 1 active mystery box listing"),
                 L10n.string("0% selling fees"),
             ],
-            minHeightToMatchGoldCard: planCarouselSlotHeight
+            cardMinHeight: nil
         )
     }
 
-    private var goldPage: some View {
-        planGoldTierCardContent
+    private var carousel: some View {
+        let slotH = planCarouselSlotHeight
+        return ZStack(alignment: .top) {
+            // Invisible probes: measure intrinsic heights (TabView often skips off-screen pages).
+            VStack(spacing: 0) {
+                planGoldTierCard(cardMinHeight: nil)
+                    .padding(.horizontal, 18)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(key: PlanMeasuredGoldCardHeightKey.self, value: geo.size.height)
+                        }
+                    )
+                planSilverTierCardProbe
+                    .padding(.horizontal, 18)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(key: PlanMeasuredSilverCardHeightKey.self, value: geo.size.height)
+                        }
+                    )
+            }
+            .opacity(0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .zIndex(0)
+
+            TabView(selection: $selectedPage) {
+                silverPage(slotHeight: slotH)
+                    .tag(0)
+                    .padding(.horizontal, 18)
+                goldPage(slotHeight: slotH)
+                    .tag(1)
+                    .padding(.horizontal, 18)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: slotH)
+            .zIndex(1)
+        }
+    }
+
+    private func silverPage(slotHeight: CGFloat) -> some View {
+        PlanSilverTierCard(
+            isCurrent: silverIsCurrent,
+            features: [
+                L10n.string("Unlimited product uploads"),
+                L10n.string("Up to 1 active mystery box listing"),
+                L10n.string("0% selling fees"),
+            ],
+            cardMinHeight: slotHeight
+        )
+    }
+
+    private func goldPage(slotHeight: CGFloat) -> some View {
+        planGoldTierCard(cardMinHeight: slotHeight)
     }
 
     private var pageDots: some View {

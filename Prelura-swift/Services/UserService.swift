@@ -232,6 +232,7 @@ class UserService: ObservableObject {
             isVerified
             blueTickVerified
             profileTier
+            isStaff
             reviewStats { noOfReviews rating }
           }
         }
@@ -279,7 +280,7 @@ class UserService: ObservableObject {
             listingsCount: userData.listing ?? 0,
             followingsCount: userData.noOfFollowing ?? 0,
             followersCount: userData.noOfFollowers ?? 0,
-            isStaff: false,
+            isStaff: userData.isStaff ?? false,
             isVerified: userData.isVerified ?? false,
             blueTickVerified: userData.blueTickVerified ?? false,
             profileTier: (userData.profileTier ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),

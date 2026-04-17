@@ -299,6 +299,108 @@ class AdminService: ObservableObject {
         let response: Payload = try await client.execute(query: query, variables: nil, responseType: Payload.self)
         return response.allReports ?? []
     }
+
+    // MARK: - Staff moderation (dashboard mutations; same endpoint as main API)
+
+    func adminSetUserStaff(userId: Int, isStaff: Bool) async throws -> (success: Bool, message: String?) {
+        let mutation = """
+        mutation AdminSetUserStaff($userId: Int!, $isStaff: Boolean!) {
+          adminSetUserStaff(userId: $userId, isStaff: $isStaff) {
+            success
+            message
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let adminSetUserStaff: AdminMutationSimple?
+        }
+        struct AdminMutationSimple: Decodable {
+            let success: Bool?
+            let message: String?
+        }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["userId": userId, "isStaff": isStaff],
+            responseType: Payload.self
+        )
+        let r = response.adminSetUserStaff
+        return (r?.success ?? false, r?.message)
+    }
+
+    func adminSetUserBlueTickVerified(userId: Int, blueTickVerified: Bool) async throws -> (success: Bool, message: String?) {
+        let mutation = """
+        mutation AdminSetUserBlueTickVerified($userId: Int!, $blueTickVerified: Boolean!) {
+          adminSetUserBlueTickVerified(userId: $userId, blueTickVerified: $blueTickVerified) {
+            success
+            message
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let adminSetUserBlueTickVerified: AdminMutationSimple?
+        }
+        struct AdminMutationSimple: Decodable {
+            let success: Bool?
+            let message: String?
+        }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["userId": userId, "blueTickVerified": blueTickVerified],
+            responseType: Payload.self
+        )
+        let r = response.adminSetUserBlueTickVerified
+        return (r?.success ?? false, r?.message)
+    }
+
+    func adminSetUserEmailVerified(userId: Int, emailVerified: Bool) async throws -> (success: Bool, message: String?) {
+        let mutation = """
+        mutation AdminSetUserEmailVerified($userId: Int!, $emailVerified: Boolean!) {
+          adminSetUserEmailVerified(userId: $userId, emailVerified: $emailVerified) {
+            success
+            message
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let adminSetUserEmailVerified: AdminMutationSimple?
+        }
+        struct AdminMutationSimple: Decodable {
+            let success: Bool?
+            let message: String?
+        }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["userId": userId, "emailVerified": emailVerified],
+            responseType: Payload.self
+        )
+        let r = response.adminSetUserEmailVerified
+        return (r?.success ?? false, r?.message)
+    }
+
+    func adminSetUserProfileTier(userId: Int, profileTier: String) async throws -> (success: Bool, message: String?) {
+        let mutation = """
+        mutation AdminSetUserProfileTier($userId: Int!, $profileTier: String!) {
+          adminSetUserProfileTier(userId: $userId, profileTier: $profileTier) {
+            success
+            message
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let adminSetUserProfileTier: AdminMutationSimple?
+        }
+        struct AdminMutationSimple: Decodable {
+            let success: Bool?
+            let message: String?
+        }
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["userId": userId, "profileTier": profileTier],
+            responseType: Payload.self
+        )
+        let r = response.adminSetUserProfileTier
+        return (r?.success ?? false, r?.message)
+    }
 }
 
 private enum AdminGraphQLQueries {

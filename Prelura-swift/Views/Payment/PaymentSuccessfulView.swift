@@ -12,11 +12,14 @@ struct PaymentSuccessfulView: View {
         VStack {
             Spacer()
             VStack(alignment: .leading, spacing: 40) {
-                Text("Order \nSuccessful")
+                Text("Order Successful")
                     .font(Theme.Typography.largeTitle)
                     .fontWeight(.semibold)
                     .foregroundColor(.white)
                     .lineSpacing(4)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.55)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Text("Your order has been placed!\nThanks for choosing sustainable fashion. 🌍✨")
                     .font(Theme.Typography.body)

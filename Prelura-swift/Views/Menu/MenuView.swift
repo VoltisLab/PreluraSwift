@@ -74,7 +74,7 @@ struct MenuView: View {
             }
             NavigationLink(destination: VacationModeView(initialIsOn: displayedVacation)) {
                 HStack {
-                    menuRow(L10n.string("Holiday mode"), icon: "umbrella")
+                    menuRow(L10n.string("Holiday Mode"), icon: "umbrella")
                     Spacer()
                     Text(displayedVacation ? L10n.string("On") : L10n.string("Off"))
                         .font(.system(size: 14))

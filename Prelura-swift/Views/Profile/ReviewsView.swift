@@ -17,14 +17,14 @@ struct ReviewsView: View {
     /// Shown for platform automatic reviews (replaces backend reviewer username in the row).
     private static let platformReviewerDisplayName = "Wearhouse"
 
-    /// Summary row: ~2× previous `title2` (22pt) hero score.
-    private static let summaryScorePointSize: CGFloat = 44
-    /// Main summary stars: ≥1.5× previous 14pt.
-    private static let summaryStarSize: CGFloat = 21
-    /// Breakdown row stars: ≥1.5× previous 11pt.
-    private static let breakdownStarSize: CGFloat = 17
-    /// Per-review row stars: ≥1.5× previous 13pt.
-    private static let rowStarSize: CGFloat = 20
+    /// Summary hero score (large).
+    private static let summaryScorePointSize: CGFloat = 52
+    /// Main summary stars.
+    private static let summaryStarSize: CGFloat = 26
+    /// Breakdown row stars.
+    private static let breakdownStarSize: CGFloat = 20
+    /// Per-review row stars.
+    private static let rowStarSize: CGFloat = 22
 
     private var memberReviews: [UserReview] {
         reviews.filter { !$0.isPlatformAutomaticReview }
@@ -93,7 +93,7 @@ struct ReviewsView: View {
                                 ForEach(Array(displayedReviews.enumerated()), id: \.element.id) { index, review in
                                     reviewBlock(review)
                                         .padding(.horizontal, Theme.Spacing.md)
-                                        .padding(.vertical, Theme.Spacing.md)
+                                        .padding(.vertical, Theme.Spacing.lg)
                                     if index < displayedReviews.count - 1 {
                                         ContentDivider()
                                     }
@@ -124,19 +124,19 @@ struct ReviewsView: View {
 
     private var headerSection: some View {
         VStack(spacing: 0) {
-            VStack(spacing: Theme.Spacing.sm) {
+            VStack(spacing: Theme.Spacing.md) {
                 Text(String(format: "%.1f", rating))
                     .font(.system(size: Self.summaryScorePointSize, weight: .bold, design: .default))
                     .foregroundColor(Theme.Colors.primaryText)
                     .frame(maxWidth: .infinity)
-                HStack(spacing: Theme.Spacing.xs) {
-                    FractionalStarRatingDisplay(rating: rating, starSize: Self.summaryStarSize, spacing: 2)
+                HStack(spacing: Theme.Spacing.sm) {
+                    FractionalStarRatingDisplay(rating: rating, starSize: Self.summaryStarSize, spacing: 3)
                     Text("(\(totalNumber))")
                         .font(Theme.Typography.callout)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
                 .frame(maxWidth: .infinity)
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
                     reviewBreakdownRow(
                         title: L10n.string("Members"),
                         count: memberReviews.count,
@@ -189,29 +189,31 @@ struct ReviewsView: View {
         .padding(.vertical, Theme.Spacing.md)
     }
 
-    /// Review body, then highlight chips below (divider separates rows; no card stroke).
+    /// Review body, then highlight lines (grey label + icon; divider separates rows).
     private func reviewBlock(_ review: UserReview) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             reviewCardContent(review)
             if !review.highlights.isEmpty {
-                HorizontalFlowLayout(
-                    horizontalSpacing: Theme.Spacing.xs,
-                    verticalSpacing: Theme.Spacing.xs
-                ) {
-                    ForEach(review.highlights, id: \.self) { tag in
-                        PillTag(
-                            title: L10n.string(tag),
-                            isSelected: false,
-                            accentWhenUnselected: false,
-                            showShadow: false,
-                            singleLineTitle: true,
-                            visualStyle: .compactOutline,
-                            playsSelectionHaptic: false,
-                            action: {}
-                        )
-                        .allowsHitTesting(false)
-                    }
+                reviewHighlightsView(highlights: review.highlights)
+            }
+        }
+    }
+
+    private func reviewHighlightsView(highlights: [String]) -> some View {
+        HorizontalFlowLayout(
+            horizontalSpacing: Theme.Spacing.lg,
+            verticalSpacing: Theme.Spacing.sm
+        ) {
+            ForEach(highlights, id: \.self) { tag in
+                HStack(spacing: Theme.Spacing.xs) {
+                    Image(systemName: ReviewHighlightGlyph.sfSymbol(forStoredTag: tag))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                    Text(L10n.string(tag))
+                        .font(Theme.Typography.footnote)
+                        .foregroundStyle(Theme.Colors.secondaryText)
                 }
+                .accessibilityElement(children: .combine)
             }
         }
     }
@@ -219,7 +221,7 @@ struct ReviewsView: View {
     private func reviewCardContent(_ review: UserReview) -> some View {
         HStack(alignment: .top, spacing: Theme.Spacing.md) {
             avatarView(review)
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 HStack {
                     Text(review.isPlatformAutomaticReview ? Self.platformReviewerDisplayName : (review.reviewerUsername.isEmpty ? "User" : review.reviewerUsername))
                         .font(Theme.Typography.subheadline)
@@ -230,11 +232,12 @@ struct ReviewsView: View {
                         .font(Theme.Typography.footnote)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
-                FractionalStarRatingDisplay(rating: review.rating, starSize: Self.rowStarSize, spacing: 2)
+                FractionalStarRatingDisplay(rating: review.rating, starSize: Self.rowStarSize, spacing: 3)
                 if !review.comment.isEmpty {
                     Text(review.comment)
                         .font(Theme.Typography.callout)
                         .foregroundColor(Theme.Colors.primaryText)
+                        .padding(.top, 2)
                 }
             }
         }

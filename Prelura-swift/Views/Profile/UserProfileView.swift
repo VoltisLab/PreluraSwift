@@ -22,6 +22,7 @@ struct UserProfileView: View {
     @State private var isMultiBuySelectionMode: Bool = false
     @State private var selectedMultiBuyItemIds: Set<String> = []
     @State private var shopSearchQuery: String = ""
+    @State private var showStaffUserActions = false
 
     init(seller: User, authService: AuthService?) {
         self.seller = seller
@@ -40,6 +41,15 @@ struct UserProfileView: View {
         let d = viewModel.user.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !d.isEmpty { return d }
         return viewModel.user.username
+    }
+
+    /// Staff moderation sheet is only for another user’s profile (not your own).
+    private var isOtherUsersProfile: Bool {
+        guard let me = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !me.isEmpty else {
+            return false
+        }
+        let them = viewModel.user.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return them != me
     }
 
     var body: some View {
@@ -93,6 +103,18 @@ struct UserProfileView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: Theme.Spacing.sm) {
+                    if authService.isStaffMember, isOtherUsersProfile {
+                        Button {
+                            showStaffUserActions = true
+                        } label: {
+                            Text(L10n.string("Actions"))
+                                .font(Theme.Typography.subheadline.weight(.semibold))
+                                .foregroundColor(Theme.primaryColor)
+                                .frame(minHeight: Theme.AppBar.buttonSize)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainTappableButtonStyle())
+                    }
                     Button(action: {
                         HapticManager.selection()
                         activeListingsSheet = .shopSearch
@@ -114,6 +136,14 @@ struct UserProfileView: View {
             }
         }
         .toolbar(.hidden, for: .tabBar)
+        .sheet(isPresented: $showStaffUserActions) {
+            NavigationStack {
+                StaffUserActionsView(user: viewModel.user) {
+                    await viewModel.refreshAsync()
+                }
+                .environmentObject(authService)
+            }
+        }
         .refreshable { await viewModel.refreshAsync() }
         .onAppear {
             viewModel.load()
@@ -372,7 +402,7 @@ struct UserProfileView: View {
             Image(systemName: "umbrella.fill")
                 .font(.system(size: 64))
                 .foregroundColor(Theme.Colors.secondaryText)
-            Text(isLoggedInUser ? L10n.string("Holiday mode is on") : L10n.string("This member is on holiday"))
+            Text(isLoggedInUser ? L10n.string("Holiday Mode is on") : L10n.string("This member is on holiday"))
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.secondaryText)
                 .multilineTextAlignment(.center)

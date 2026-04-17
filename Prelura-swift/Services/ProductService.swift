@@ -1173,7 +1173,7 @@ class ProductService: ObservableObject {
       $status: ProductStatusEnum
       $isMysteryBox: Boolean
       $mysteryIncludedProductIds: [Int]
-      $scheduledPublishAt: String!
+      $scheduledPublishAt: DateTime!
     ) {
       createProduct(
         category: $category

@@ -94,6 +94,7 @@ class InboxViewModel: ObservableObject {
 
     /// Load conversations from API. Merges in existing conversations not in API response; applies optional preview for one conversation.
     func loadConversationsAsync(preview: (id: String, text: String, date: Date)?, currentUsername: String? = nil) async {
+        StartupTiming.mark("InboxViewModel.loadConversationsAsync — begin")
         let hadConversations = !conversations.isEmpty || !archivedConversations.isEmpty
         let existingToMerge = conversations
         if !hadConversations {
@@ -154,6 +155,7 @@ class InboxViewModel: ObservableObject {
             archivedConversations = archivedList
             errorMessage = nil
             isLoading = false
+            StartupTiming.mark("InboxViewModel.loadConversationsAsync — success")
         } catch {
             let isCancelled = (error as? URLError)?.code == .cancelled
                 || error.localizedDescription.lowercased().contains("cancelled")
@@ -165,6 +167,7 @@ class InboxViewModel: ObservableObject {
                 errorMessage = L10n.userFacingError(error)
                 if hadConversations { } else { conversations = []; archivedConversations = [] }
             }
+            StartupTiming.mark("InboxViewModel.loadConversationsAsync — ended (error path)")
         }
     }
 

@@ -48,6 +48,7 @@ class DiscoverViewModel: ObservableObject {
         errorMessage = nil
         
         Task {
+            StartupTiming.mark("DiscoverViewModel.loadData Task — started")
             do {
                 // Preload: run all network fetches in parallel to reduce wait time
                 async let allProductsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50)
@@ -156,9 +157,11 @@ class DiscoverViewModel: ObservableObject {
                 }
                 
                 self.isLoading = false
+                StartupTiming.mark("DiscoverViewModel.loadData — success (all sections)")
             } catch {
                 self.isLoading = false
                 self.errorMessage = L10n.userFacingError(error)
+                StartupTiming.mark("DiscoverViewModel.loadData — failed: \(error.localizedDescription)")
                 print("❌ Discover load error: \(error.localizedDescription)")
             }
         }

@@ -104,6 +104,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        StartupTiming.bootstrap()
+        StartupTiming.mark("AppDelegate.didFinishLaunching — begin")
         configureFirebaseIfPossible()
         if Self.isFirebaseConfigured {
             Messaging.messaging().delegate = self
@@ -121,6 +123,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             Self.logChatPushPayloadIfRelevant(remote, context: "Cold start remote")
         }
         requestNotificationPermissionAndRegister(application: application)
+        StartupTiming.mark("AppDelegate.didFinishLaunching — end")
         return true
     }
 
@@ -157,6 +160,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
         // Use plist BUNDLE_ID as shipped from Firebase; avoid overriding (can confuse FCM ↔ APNs linkage).
         FirebaseApp.configure(options: options)
+        StartupTiming.mark("FirebaseApp.configure completed")
         if let projectId = plist["PROJECT_ID"] as? String {
             pushBootstrapLog.info("Firebase PROJECT_ID=\(projectId, privacy: .public) — must match server GOOGLE_CRED_PROJECT_ID.")
             #if DEBUG

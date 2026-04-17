@@ -56,6 +56,9 @@ struct SellView: View {
     @State private var scheduleListingEnabled: Bool = false
     @State private var scheduledListingDate: Date = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
     @State private var showListingSavedInactiveAlert: Bool = false
+    @State private var scheduledQuotaUsedThisPeriod: Int = 0
+    @State private var scheduledQuotaProfileTier: String = ""
+    @State private var showScheduledQuotaLimitAlert: Bool = false
 
     private enum MysteryPostingPhase: Identifiable {
         /// `initialSelection` is non-nil when re-opening the picker from the compose form.
@@ -92,6 +95,7 @@ struct SellView: View {
         if isMysteryListing {
             let ids = mysteryProductIds
             let p = price ?? 0
+            let scheduleOk = !scheduleListingEnabled || isEditMode || !scheduledListingQuotaAtCap
             return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !ids.isEmpty
@@ -101,12 +105,14 @@ struct SellView: View {
                 && !colours.isEmpty
                 && p > 0 && p <= 100
                 && parcelSize != nil
+                && scheduleOk
         }
         let hasPhotos = !selectedImages.isEmpty || (isEditMode && !existingListingImagePairs.isEmpty)
         let brandOk: Bool = {
             if editingIsMysteryBox { return !mysteryBrands.isEmpty }
             return brand != nil && !(brand?.isEmpty ?? true)
         }()
+        let scheduleOk = !scheduleListingEnabled || isEditMode || !scheduledListingQuotaAtCap
         return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && hasPhotos
@@ -116,6 +122,14 @@ struct SellView: View {
             && !colours.isEmpty
             && price != nil && (price ?? 0) > 0
             && parcelSize != nil
+            && scheduleOk
+    }
+
+    /// Gold vs standard scheduled-create cap (`SellerScheduledListingQuota`).
+    private var scheduledListingQuotaAtCap: Bool {
+        guard !isEditMode, scheduleListingEnabled else { return false }
+        let cap = SellerScheduledListingQuota.monthlyScheduledListingCap(profileTier: scheduledQuotaProfileTier)
+        return scheduledQuotaUsedThisPeriod >= cap
     }
 
     private var mysteryProductIds: [Int] {
@@ -193,6 +207,15 @@ struct SellView: View {
                 if on {
                     let minD = Date().addingTimeInterval(120)
                     if scheduledListingDate < minD { scheduledListingDate = minD }
+                    Task {
+                        await refreshScheduledListingQuota()
+                        await MainActor.run {
+                            if scheduledListingQuotaAtCap {
+                                scheduleListingEnabled = false
+                                showScheduledQuotaLimitAlert = true
+                            }
+                        }
+                    }
                 }
             }
             .background(Theme.Colors.background)
@@ -276,6 +299,7 @@ struct SellView: View {
         .onChange(of: viewModel.submissionSuccess) { _, success in
             guard success else { return }
             HapticManager.success()
+            Task { await refreshScheduledListingQuota() }
             if viewModel.listingSavedInactiveNotice != nil {
                 showListingSavedInactiveAlert = true
                 return
@@ -303,6 +327,11 @@ struct SellView: View {
         } message: {
             Text(L10n.string("You've reached the maximum number of mystery box listings for your plan. Open Settings → Plan to upgrade."))
         }
+        .alert(L10n.string("Scheduled listings"), isPresented: $showScheduledQuotaLimitAlert) {
+            Button(L10n.string("OK"), role: .cancel) {}
+        } message: {
+            Text(L10n.string("You've reached your scheduled listing limit for this billing period. Gold allows more each month. Open Settings → Plan to upgrade."))
+        }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
             .toolbar {
@@ -323,7 +352,9 @@ struct SellView: View {
                             if mysteryIncludedItems == nil {
                                 Button {
                                     HapticManager.tap()
-                                    Task { await openMysteryPickerIfAllowed() }
+                                    // Present immediately; quota is enforced inside `MysteryBoxProductPickerView`
+                                    // so we never block the UI on `getUser` + `getUserProducts`.
+                                    mysteryPostingPhase = .picker(initialSelection: nil)
                                 } label: {
                                     Image(systemName: "shippingbox.fill")
                                         .font(.system(size: 16, weight: .semibold))
@@ -343,6 +374,10 @@ struct SellView: View {
                     didStartEditLoad = true
                     Task { await loadProductForEdit(productId: pid) }
                 }
+                Task { await refreshScheduledListingQuota() }
+            }
+            .onChange(of: authService.authToken) { _, _ in
+                Task { await refreshScheduledListingQuota() }
             }
             .onChange(of: tabCoordinator?.pendingSellPrefill) { _, new in
                 guard new != nil else { return }
@@ -396,6 +431,9 @@ struct SellView: View {
                 case .picker(let initialSelection):
                     MysteryBoxProductPickerView(
                         initialSelection: initialSelection,
+                        onQuotaExceeded: {
+                            showMysteryQuotaAlert = true
+                        },
                         onCancel: {
                             if let initial = initialSelection, !initial.isEmpty {
                                 mysteryPostingPhase = .form(items: initial)
@@ -573,23 +611,6 @@ struct SellView: View {
         }
     }
 
-    private func openMysteryPickerIfAllowed() async {
-        let svc = UserService()
-        svc.updateAuthToken(authService.authToken)
-        do {
-            let user = try await svc.getUser(username: nil)
-            let products = try await svc.getUserProducts(username: nil)
-            let count = SellerMysteryQuota.activeMysteryListingCount(from: products)
-            if let cap = SellerMysteryQuota.mysteryListingCap(profileTier: user.profileTier), count >= cap {
-                await MainActor.run { showMysteryQuotaAlert = true }
-                return
-            }
-            await MainActor.run { mysteryPostingPhase = .picker(initialSelection: nil) }
-        } catch {
-            await MainActor.run { mysteryPostingPhase = .picker(initialSelection: nil) }
-        }
-    }
-
     private func loadDraft(id: String) {
         guard let result = SellDraftStore.loadDraft(id: id, username: authService.username) else { return }
         let d = result.draft
@@ -657,6 +678,21 @@ struct SellView: View {
         existingListingImagePairs = []
         scheduleListingEnabled = false
         scheduledListingDate = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600)
+    }
+
+    private func refreshScheduledListingQuota() async {
+        guard !isEditMode else { return }
+        let svc = UserService()
+        svc.updateAuthToken(authService.authToken)
+        guard authService.authToken != nil else { return }
+        guard let me = try? await svc.getUser(username: nil) else { return }
+        let key = SellerScheduledListingQuota.stableUserKey(from: me)
+        SellerScheduledListingQuota.ensureBillingAnchorIfUnset(userKey: key)
+        let used = SellerScheduledListingQuota.scheduledCreationsInCurrentPeriod(userKey: key, profileTier: me.profileTier)
+        await MainActor.run {
+            scheduledQuotaProfileTier = me.profileTier
+            scheduledQuotaUsedThisPeriod = used
+        }
     }
 
     private func attemptPrimaryUpload() {
@@ -1233,7 +1269,7 @@ extension SellView {
             .buttonStyle(PlainTappableButtonStyle())
             .overlay(ContentDivider(), alignment: .bottom)
 
-            if !isEditMode {
+                if !isEditMode {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     Toggle(isOn: $scheduleListingEnabled) {
                         Text(L10n.string("Schedule listing"))
@@ -1241,6 +1277,14 @@ extension SellView {
                             .foregroundColor(Theme.Colors.primaryText)
                     }
                     .tint(Theme.primaryColor)
+                    Text(String(
+                        format: L10n.string("%d of %d scheduled listings used this billing period."),
+                        locale: .current,
+                        scheduledQuotaUsedThisPeriod,
+                        SellerScheduledListingQuota.monthlyScheduledListingCap(profileTier: scheduledQuotaProfileTier)
+                    ))
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
                 }
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.md)

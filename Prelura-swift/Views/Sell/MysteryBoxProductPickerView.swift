@@ -4,6 +4,8 @@ import SwiftUI
 struct MysteryBoxProductPickerView: View {
     /// When re-opening from the compose form, pre-select these listings.
     var initialSelection: [Item]? = nil
+    /// Called when opening a **new** picker (no initial selection) and the user is at the mystery cap.
+    var onQuotaExceeded: (() -> Void)? = nil
     let onCancel: () -> Void
     let onContinue: ([Item]) -> Void
 
@@ -157,10 +159,19 @@ struct MysteryBoxProductPickerView: View {
                     Button(L10n.string("Cancel"), action: onCancel)
                 }
             }
-            .onAppear {
+            .task {
                 userService.updateAuthToken(authService.authToken)
                 productService.updateAuthToken(authService.authToken)
                 selectedItems = (initialSelection ?? []).filter { !$0.isMysteryBox }
+                let isFreshPicker = (initialSelection ?? []).isEmpty
+                if isFreshPicker {
+                    let allowed = await SellerMysteryQuota.mysteryPickerEntryAllowed(authToken: authService.authToken)
+                    if !allowed {
+                        onQuotaExceeded?()
+                        onCancel()
+                        return
+                    }
+                }
                 loadMyProducts()
             }
             .onChange(of: query) { _, newQuery in

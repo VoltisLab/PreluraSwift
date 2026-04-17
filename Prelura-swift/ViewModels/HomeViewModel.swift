@@ -113,6 +113,7 @@ class HomeViewModel: ObservableObject {
         hasMorePages = true
         
         Task {
+            StartupTiming.mark("HomeViewModel.loadData Task — started")
             do {
                 let categoryFilter = selectedCategory == "All" ? nil : selectedCategory
                 let search = searchText.isEmpty ? nil : searchText
@@ -126,6 +127,7 @@ class HomeViewModel: ObservableObject {
                     )
                     let visible = products.excludingVacationModeSellers().excludingSold()
                     await MainActor.run {
+                        StartupTiming.mark("HomeViewModel.loadData — search-only path applied UI")
                         self.featuredItems = []
                         self.allItems = visible
                         self.filteredItems = visible
@@ -142,6 +144,7 @@ class HomeViewModel: ObservableObject {
                     )
                     let visible = products.excludingVacationModeSellers().excludingSold()
                     await MainActor.run {
+                        StartupTiming.mark("HomeViewModel.loadData — main grid applied UI (before featured strip)")
                         self.allItems = visible
                         self.filteredItems = visible
                         self.isLoading = false
@@ -150,10 +153,12 @@ class HomeViewModel: ObservableObject {
                     let featured = (try? await featuredTask) ?? []
                     await MainActor.run {
                         self.featuredItems = Self.featuredSectionItems(from: featured)
+                        StartupTiming.mark("HomeViewModel.loadData — featured strip applied UI (complete)")
                     }
                 }
             } catch {
                 await MainActor.run {
+                    StartupTiming.mark("HomeViewModel.loadData — failed: \(error.localizedDescription)")
                     self.isLoading = false
                     self.setNetworkError(error)
                     print("Error loading products: \(error.localizedDescription)")

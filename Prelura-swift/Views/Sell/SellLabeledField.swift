@@ -19,29 +19,12 @@ struct SellLabeledField: View {
                 .foregroundColor(Theme.Colors.secondaryText)
 
             if minLines > 1 || (maxLines ?? 1) > 1 {
-                ZStack(alignment: .topLeading) {
-                    if text.isEmpty {
-                        Text(placeholder)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.secondaryText)
-                            .padding(.horizontal, Theme.TextInput.insetHorizontal)
-                            .padding(.vertical, Theme.TextInput.insetVertical)
-                    }
-                    if highlightHashtags {
-                        HashtagHighlightingTextEditor(text: $text)
-                            .frame(minHeight: minLines > 1 ? CGFloat(minLines) * 24 : 44)
-                    } else {
-                        TextEditor(text: $text)
-                            .font(Theme.Typography.body)
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .scrollContentBackground(.hidden)
-                            .padding(.horizontal, Theme.TextInput.insetHorizontal)
-                            .padding(.vertical, Theme.TextInput.insetVertical)
-                            .frame(minHeight: minLines > 1 ? CGFloat(minLines) * 24 : 44)
-                    }
-                }
-                .background(Theme.Colors.secondaryBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 30))
+                PreluraMultilineDescriptionField(
+                    placeholder: placeholder,
+                    text: $text,
+                    minLines: minLines,
+                    highlightHashtags: highlightHashtags
+                )
             } else {
                 TextField(placeholder, text: $text)
                     .font(Theme.Typography.body)

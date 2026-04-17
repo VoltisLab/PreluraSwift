@@ -619,6 +619,16 @@ struct ChatRowView: View {
         return "Post shared"
     }
 
+    fileprivate static func productListingPreviewLine(lastMessageSenderUsername: String?, currentUsername: String?) -> String {
+        if usernamesMatch(lastMessageSenderUsername, currentUsername) {
+            return "You shared a listing"
+        }
+        if let sender = lastMessageSenderUsername?.trimmingCharacters(in: .whitespacesAndNewlines), !sender.isEmpty {
+            return "\(sender) shared a listing"
+        }
+        return "Listing shared"
+    }
+
     fileprivate static func jsonLooksLikeLookbookSharePayload(_ json: [String: Any]) -> Bool {
         if (json["type"] as? String) == "lookbook_share" { return true }
         guard json["type"] == nil else { return false }
@@ -728,6 +738,11 @@ struct ChatRowView: View {
                     return String(format: L10n.string("%@ left a feedback."), name)
                 }
                 return L10n.string("Left a feedback.")
+            case "product_share":
+                return Self.productListingPreviewLine(
+                    lastMessageSenderUsername: conversation.lastMessageSenderUsername,
+                    currentUsername: currentUsername
+                )
             default: return raw.count > 60 ? String(raw.prefix(57)) + "..." : raw
             }
         }

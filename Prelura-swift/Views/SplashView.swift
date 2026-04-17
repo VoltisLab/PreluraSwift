@@ -92,6 +92,7 @@ struct SplashView: View {
         }
         .ignoresSafeArea()
         .onAppear {
+            StartupTiming.mark("SplashView.onAppear (animation starting)")
             startAnimation()
         }
     }

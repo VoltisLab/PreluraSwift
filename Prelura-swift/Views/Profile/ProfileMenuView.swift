@@ -24,7 +24,7 @@ struct ProfileMenuView: View {
                 menuDivider
                 MenuItemRow(title: L10n.string("Multi-buy Discounts"), subtitle: isMultiBuyEnabled ? L10n.string("On") : L10n.string("Off"), icon: "tag.fill", action: { onDismiss(); onSelect(.multiBuyDiscounts) })
                 menuDivider
-                MenuItemRow(title: L10n.string("Holiday mode"), subtitle: isVacationMode ? L10n.string("On") : L10n.string("Off"), icon: "umbrella.fill", action: { onDismiss(); onSelect(.vacationMode) })
+                MenuItemRow(title: L10n.string("Holiday Mode"), subtitle: isVacationMode ? L10n.string("On") : L10n.string("Off"), icon: "umbrella.fill", action: { onDismiss(); onSelect(.vacationMode) })
                 menuDivider
                 MenuItemRow(title: L10n.string("Invite Friend"), icon: "person.badge.plus.fill", action: { onDismiss(); onSelect(.inviteFriend) })
                 menuDivider
@@ -244,7 +244,7 @@ struct ShippingMenuView: View {
     }
 }
 
-// MARK: - Submenu: About Us. Flat links to mywearhouse.co.uk (no nested Legal screen).
+// MARK: - Submenu: About Us. Flat links to wearhouse.co.uk (no nested Legal screen).
 struct AboutWearhouseMenuView: View {
     var body: some View {
         List {
@@ -344,7 +344,7 @@ struct HelpCentreView: View {
             HelpCentreTopic(
                 id: "vacation",
                 icon: "doc.text",
-                title: L10n.string("What's holiday mode?"),
+                title: L10n.string("What's Holiday Mode?"),
                 answer: helpAnswerVacation
             ),
             HelpCentreTopic(
@@ -536,7 +536,7 @@ struct HelpCentreView: View {
     }
 
     private var helpAnswerVacation: String {
-        "Holiday mode hides your listings from browse while you're away. Turn it on from Profile so buyers are not left waiting."
+        "Holiday Mode hides your listings from browse while you're away. Turn it on from Profile so buyers are not left waiting."
     }
 
     private var helpAnswerTrustedSeller: String {

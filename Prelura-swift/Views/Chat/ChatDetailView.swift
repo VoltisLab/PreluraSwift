@@ -102,7 +102,7 @@ struct ChatWithSellerView: View {
     var item: Item? = nil
     /// Prefills the composer when opening the thread (e.g. draft text).
     var precomposedMessage: String? = nil
-    /// When set, this text is sent as the first message once the thread id is ready (composer stays empty). Use for lookbook_share JSON so it never appears as a draft.
+    /// When set, this text is sent as the first message once the thread id is ready (composer stays empty). Use for structured JSON (`lookbook_share`, `product_share`, …) so it never appears as a draft.
     var autoSendMessageOnReady: String? = nil
     let authService: AuthService?
     @State private var resolvedConversation: Conversation?
@@ -830,12 +830,12 @@ struct ChatDetailView: View {
                                 reactionOverlayMessage = message
                             }
                             : nil,
-                        onDoubleTapHeart: displayedConversation.id != "0" && message.lookbookSharePayload == nil
+                        onDoubleTapHeart: displayedConversation.id != "0" && message.lookbookSharePayload == nil && message.productSharePayload == nil
                             ? {
                                 applyChatReaction(message: message, emoji: ChatReactionEmojiUsageStore.doubleTapHeartEmoji)
                             }
                             : nil,
-                        onToggleTimestampVisibility: displayedConversation.id != "0" && message.lookbookSharePayload == nil
+                        onToggleTimestampVisibility: displayedConversation.id != "0" && message.lookbookSharePayload == nil && message.productSharePayload == nil
                             ? {
                                 toggleTimestampVisibility(at: index, message: message)
                             }
@@ -4676,12 +4676,93 @@ struct MessageBubbleView: View {
         .buttonStyle(.plain)
     }
 
+    /// Rich card for `product_share` JSON (same layout as lookbook; mystery listings use animated tile).
+    @ViewBuilder
+    private func productShareBubble(_ payload: ProductShareChatPayload) -> some View {
+        let imageStr = payload.thumbnailURL ?? payload.imageURL
+        let imgW = lookbookSharePreviewWidth
+        let imgH = imgW * 5 / 4
+        let titleLine = payload.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        Button {
+            HapticManager.tap()
+            guard let u = URL(string: payload.url) else { return }
+            if let slug = AppRouter.productPublicSlugIfPresent(in: u) {
+                Task { @MainActor in
+                    appRouter.pendingItem = DeepLinkDestinationItem(destination: .product(publicSlug: slug))
+                }
+            } else {
+                openURL(u)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                Group {
+                    if payload.isMysteryBox {
+                        MysteryBoxAnimatedMediaView()
+                    } else if let s = imageStr, !s.isEmpty, let imgURL = URL(string: s) {
+                        AsyncImage(url: imgURL) { phase in
+                            switch phase {
+                            case .success(let img):
+                                img.resizable().scaledToFill()
+                            case .failure, .empty:
+                                lookbookShareImagePlaceholder
+                            @unknown default:
+                                lookbookShareImagePlaceholder
+                            }
+                        }
+                    } else {
+                        lookbookShareImagePlaceholder
+                    }
+                }
+                .frame(width: imgW, height: imgH)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                if !titleLine.isEmpty {
+                    Text(titleLine)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(isCurrentUser ? Color.white : Theme.Colors.primaryText)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: imgW, alignment: .leading)
+                }
+                Text("@\(payload.sellerUsername) on WEARHOUSE")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isCurrentUser ? Color.white.opacity(0.88) : Theme.Colors.secondaryText)
+                    .frame(maxWidth: imgW, alignment: .leading)
+                Text("Tap to open")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(isCurrentUser ? Color.white : Theme.primaryColor)
+                    .frame(maxWidth: imgW, alignment: .leading)
+            }
+            .frame(width: imgW, alignment: .leading)
+            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.horizontal, Theme.Spacing.sm)
+            .background(
+                isCurrentUser
+                    ? LinearGradient(
+                        colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    : LinearGradient(
+                        colors: [Theme.Colors.chatInlineCardBackground, Theme.Colors.chatInlineCardBackground],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+            )
+            .cornerRadius(18)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
     /// Bubble content with reactions on top corners: others → top-leading, yours → top-trailing.
     @ViewBuilder
     private func bubbleWithCornerReactions(
         emojiMult: Double?,
         bubbleText: String,
-        lookbookPayload: LookbookShareChatPayload?
+        lookbookPayload: LookbookShareChatPayload?,
+        productPayload: ProductShareChatPayload?
     ) -> some View {
         let parts = reactionsPartitioned
         let hasOthers = !parts.others.isEmpty
@@ -4692,6 +4773,26 @@ struct MessageBubbleView: View {
                 if let lb = lookbookPayload {
                     VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 6) {
                         lookbookShareBubble(lb)
+                        if isCurrentUser {
+                            Text("Check this out")
+                                .font(Theme.Typography.body)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.vertical, Theme.Spacing.sm)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Theme.primaryColor, Theme.primaryColor.opacity(0.85)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .cornerRadius(18)
+                        }
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                } else if let pr = productPayload {
+                    VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 6) {
+                        productShareBubble(pr)
                         if isCurrentUser {
                             Text("Check this out")
                                 .font(Theme.Typography.body)
@@ -4742,11 +4843,21 @@ struct MessageBubbleView: View {
     }
 
     @ViewBuilder
-    private func bubbleWithTapGestures(emojiMult: Double?, bubbleText: String, lookbookPayload: LookbookShareChatPayload?) -> some View {
-        let padded = bubbleWithCornerReactions(emojiMult: emojiMult, bubbleText: bubbleText, lookbookPayload: lookbookPayload)
+    private func bubbleWithTapGestures(
+        emojiMult: Double?,
+        bubbleText: String,
+        lookbookPayload: LookbookShareChatPayload?,
+        productPayload: ProductShareChatPayload?
+    ) -> some View {
+        let padded = bubbleWithCornerReactions(
+            emojiMult: emojiMult,
+            bubbleText: bubbleText,
+            lookbookPayload: lookbookPayload,
+            productPayload: productPayload
+        )
             .padding(.top, hasAnyReaction ? 12 : 0)
-        // Lookbook card: inner `Button` must receive taps — no parent tap/double-tap gestures (they still toggled timestamp / fought the button).
-        if lookbookPayload != nil {
+        // Lookbook / product share card: inner `Button` must receive taps — no parent tap/double-tap gestures (they still toggled timestamp / fought the button).
+        if lookbookPayload != nil || productPayload != nil {
             padded
         } else if onDoubleTapHeart != nil, onToggleTimestampVisibility != nil {
             padded.gesture(
@@ -4782,6 +4893,7 @@ struct MessageBubbleView: View {
         let emojiMult = message.emojiOnlyScaleMultiplier
         let bubbleText = message.displayContentForBubble(isFromCurrentUser: isCurrentUser)
         let lookPayload = message.lookbookSharePayload
+        let productPayload = lookPayload == nil ? message.productSharePayload : nil
 
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .top, spacing: Theme.Spacing.xs) {
@@ -4797,7 +4909,7 @@ struct MessageBubbleView: View {
                         }
                     }
                 }
-                bubbleWithTapGestures(emojiMult: emojiMult, bubbleText: bubbleText, lookbookPayload: lookPayload)
+                bubbleWithTapGestures(emojiMult: emojiMult, bubbleText: bubbleText, lookbookPayload: lookPayload, productPayload: productPayload)
                 if !isCurrentUser { Spacer(minLength: Self.bubbleSideSpacerMin) }
             }
             if showTimestamp {

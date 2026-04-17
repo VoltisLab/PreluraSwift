@@ -43,10 +43,29 @@ enum SellerMysteryQuota {
         let tier = profileTier ?? ""
         if apiProfileIndicatesGoldTier(tier) { return 5 }
         if SellerPlanUserDefaults.localPlan == .gold { return 5 }
-        return 2
+        return 1
     }
 
     static func activeMysteryListingCount(from items: [Item]) -> Int {
         items.filter { $0.isMysteryBox && $0.status.uppercased() == "ACTIVE" }.count
+    }
+
+    /// Same rules as the Sell toolbar mystery gate: `false` when the user is at/over their plan’s active mystery cap.
+    /// On network failure returns `true` so we do not block listing (matches prior `openMysteryPickerIfAllowed` catch path).
+    @MainActor
+    static func mysteryPickerEntryAllowed(authToken: String?) async -> Bool {
+        let svc = UserService()
+        svc.updateAuthToken(authToken)
+        do {
+            let user = try await svc.getUser(username: nil)
+            let products = try await svc.getUserProducts(username: nil)
+            let count = activeMysteryListingCount(from: products)
+            if let cap = mysteryListingCap(profileTier: user.profileTier), count >= cap {
+                return false
+            }
+            return true
+        } catch {
+            return true
+        }
     }
 }

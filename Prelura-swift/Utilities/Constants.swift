@@ -15,10 +15,10 @@ struct Constants {
     /// Django `ConversationsConsumer`: inbox list sync + typing for threads the user is in (not per-room chat).
     static let conversationsWebSocketURL = "wss://prelura.voltislabs.uk/ws/conversations/"
     
-    /// Consumer marketing site: legal HTML, help articles. Host these paths on **mywearhouse.co.uk** (or adjust here if routes differ).
-    static let publicWebsiteBaseURL = "https://mywearhouse.co.uk"
+    /// Live consumer site: help, legal, profiles, invites, and **generated share links** (`/item/*`, `/lookbook/*`). Must match production web.
+    static let publicWebsiteBaseURL = "https://wearhouse.co.uk"
 
-    // About WEARHOUSE screen (flat list → WebView on mywearhouse.co.uk)
+    // About WEARHOUSE screen (flat list → WebView on wearhouse.co.uk)
     static var aboutUsURL: String { "\(publicWebsiteBaseURL)/about" }
     static var termsAndConditionsURL: String { "\(publicWebsiteBaseURL)/about" }
     static var privacyPolicyURL: String { "\(publicWebsiteBaseURL)/privacy" }
@@ -49,9 +49,6 @@ struct Constants {
     /// Discover uses “trusted” vendor copy; there is **no** dedicated native “badge” settings screen—web article should state real eligibility from your business rules.
     static var helpArticleTrustedSellerURL: String { "\(publicWebsiteBaseURL)/help/trusted-seller" }
     
-    /// Backend API: GraphQL plus public HTML landings for `/item/*`, `/lookbook/*`, `/join/`, `/app/u/*` (Django `web_public`). Universal links / AASA are served here.
-    static let universalLinksAPIBaseURL = "https://prelura.voltislabs.uk"
-
     /// Public profile URL for sharing, QR, and web (`/profile/{username}` on the consumer site).
     static func profileShareWebURL(forUsername username: String) -> URL? {
         let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -63,8 +60,8 @@ struct Constants {
     /// Invite landing (SMS / contacts share). Consumer domain only.
     static var inviteFriendsLandingURL: String { "\(publicWebsiteBaseURL)/join/" }
 
-    /// Product and lookbook share links (`/item/…`, `/lookbook/…`). These paths are implemented on `universalLinksAPIBaseURL` only; `mywearhouse.co.uk` does not serve them (Safari would 404).
-    static var publicWebItemLinkBaseURL: String { universalLinksAPIBaseURL }
+    /// Product and lookbook share / copy link base — same host as `publicWebsiteBaseURL` (no API/staging domains in user-facing URLs).
+    static var publicWebItemLinkBaseURL: String { publicWebsiteBaseURL }
     
     // API Configuration
     static let apiTimeout: TimeInterval = 60.0

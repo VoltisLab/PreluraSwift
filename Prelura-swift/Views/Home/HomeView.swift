@@ -76,6 +76,7 @@ struct HomeView: View {
     private var homeChromeAndLifecycle: some View {
         homeNavChromeStack
             .onAppear {
+                StartupTiming.mark("HomeView.onAppear")
                 tabCoordinator.homeSameTabTapHandler = {
                     if !viewModel.searchText.isEmpty {
                         viewModel.searchText = ""

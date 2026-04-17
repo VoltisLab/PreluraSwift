@@ -19,6 +19,16 @@ struct AppNotification: Identifiable {
 }
 
 extension AppNotification {
+    /// Looks up a meta value by key name (case-insensitive). Backend may use `is_mystery_box`, `IsMysteryBox`, etc.
+    func metaValue(caseInsensitiveKey key: String) -> String? {
+        guard let meta = meta else { return nil }
+        let lk = key.lowercased()
+        for (k, v) in meta where k.lowercased() == lk {
+            return v
+        }
+        return nil
+    }
+
     /// Chat / DM rows (new message, reactions) stay out of the bell list until they are unread this long.
     private static let chatNotificationMinAgeToShow: TimeInterval = 30 * 60
 

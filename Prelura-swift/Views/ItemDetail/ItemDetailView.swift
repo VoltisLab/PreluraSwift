@@ -17,6 +17,8 @@ struct ItemDetailView: View {
     @State private var offerSheetSortOption: ProfileSortOption = .relevance
     @State private var showPaymentSheet: Bool = false
     @State private var showProductOptionsSheet: Bool = false
+    @State private var showSendProductShareSheet: Bool = false
+    @State private var sendProductShareRecipient: User? = nil
     @State private var showReportSheet: Bool = false
     @State private var showEditListingSheet: Bool = false
     @State private var showDeleteConfirm: Bool = false
@@ -167,6 +169,24 @@ struct ItemDetailView: View {
         .sheet(isPresented: $showProductOptionsSheet) {
             productOptionsSheet
         }
+        .sheet(isPresented: $showSendProductShareSheet) {
+            SendToUserShareSheet(excludeUsername: effectiveItem.seller.username) { user in
+                sendProductShareRecipient = user
+            }
+            .environmentObject(authService)
+        }
+        .sheet(item: $sendProductShareRecipient) { user in
+            NavigationStack {
+                ChatWithSellerView(
+                    seller: user,
+                    item: nil,
+                    precomposedMessage: nil,
+                    autoSendMessageOnReady: productShareMessageJSON(for: effectiveItem),
+                    authService: authService
+                )
+                .environmentObject(authService)
+            }
+        }
         .sheet(isPresented: $showReportSheet) {
             NavigationStack {
                 ReportUserView(
@@ -273,6 +293,16 @@ struct ItemDetailView: View {
             isCurrentUser: isCurrentUser,
             onDismiss: { showProductOptionsSheet = false },
             onShare: { shareProduct(); showProductOptionsSheet = false },
+            onSendToMessages: {
+                guard authService.isAuthenticated else {
+                    showProductOptionsSheet = false
+                    showGuestSignInPrompt = true
+                    return
+                }
+                guard productShareMessageJSON(for: effectiveItem) != nil else { return }
+                showProductOptionsSheet = false
+                showSendProductShareSheet = true
+            },
             onReport: { showProductOptionsSheet = false; showReportSheet = true },
             onEdit: { showProductOptionsSheet = false; showEditListingSheet = true },
             onCopyToNewListing: {
@@ -284,6 +314,34 @@ struct ItemDetailView: View {
             onMarkAsSold: { showProductOptionsSheet = false; showMarkSoldConfirm = true },
             onCopyLink: { copyProductLink(); showProductOptionsSheet = false }
         )
+    }
+
+    /// JSON for `ChatWithSellerView.autoSendMessageOnReady` (rich `product_share` bubble in thread).
+    private func productShareMessageJSON(for item: Item) -> String? {
+        let slug = item.publicWebItemSlug
+        guard !slug.isEmpty else { return nil }
+        let encoded = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
+        guard let link = URL(string: "\(Constants.publicWebItemLinkBaseURL)/item/\(encoded)") else { return nil }
+        var dict: [String: Any] = [
+            "type": "product_share",
+            "url": link.absoluteString,
+            "title": item.title,
+            "seller_username": item.seller.username
+        ]
+        if let pid = item.productId?.trimmingCharacters(in: .whitespacesAndNewlines), !pid.isEmpty {
+            dict["product_id"] = pid
+        }
+        if item.isMysteryBox {
+            dict["is_mystery_box"] = true
+        }
+        if let thumb = item.thumbnailURLForChrome?.trimmingCharacters(in: .whitespacesAndNewlines), !thumb.isEmpty {
+            dict["thumbnail_url"] = thumb
+            dict["image_url"] = thumb
+        }
+        guard JSONSerialization.isValidJSONObject(dict),
+              let data = try? JSONSerialization.data(withJSONObject: dict, options: []),
+              let s = String(data: data, encoding: .utf8) else { return nil }
+        return s
     }
 
     private func shareProduct() {
@@ -1011,6 +1069,8 @@ struct ProductOptionsSheet: View {
     let isCurrentUser: Bool
     let onDismiss: () -> Void
     var onShare: () -> Void = {}
+    /// Opens the same “Send to” sheet as lookbook, then sends a rich `product_share` message.
+    var onSendToMessages: () -> Void = {}
     var onReport: () -> Void = {}
     var onEdit: () -> Void = {}
     var onCopyToNewListing: () -> Void = {}
@@ -1030,7 +1090,7 @@ struct ProductOptionsSheet: View {
         let header: CGFloat = 108
         let row: CGFloat = 54
         let contentVerticalPadding: CGFloat = 32
-        let rows = isCurrentUser ? 5 : 3
+        let rows = isCurrentUser ? 6 : 4
         let dividers: CGFloat = CGFloat(max(0, rows - 1)) * 0.5
         return header + contentVerticalPadding + CGFloat(rows) * row + dividers + 12
     }
@@ -1051,11 +1111,15 @@ struct ProductOptionsSheet: View {
                     optionDivider
                     MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
                     optionDivider
+                    MenuItemRow(title: L10n.string("Send"), icon: "paperplane", action: { onSendToMessages() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                    optionDivider
                     MenuItemRow(title: L10n.string("Mark as sold"), icon: "checkmark.circle", action: { onMarkAsSold() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
                     optionDivider
                     MenuItemRow(title: L10n.string("Delete listing"), icon: "trash", action: { onDelete() }, isDestructive: true)
                 } else {
                     MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                    optionDivider
+                    MenuItemRow(title: L10n.string("Send"), icon: "paperplane", action: { onSendToMessages() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
                     optionDivider
                     MenuItemRow(title: L10n.string("Report listing"), icon: "flag", action: { onReport() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
                     optionDivider

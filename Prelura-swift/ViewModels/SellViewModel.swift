@@ -47,6 +47,15 @@ class SellViewModel: ObservableObject {
                     throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Please select a category."])
                 }
 
+                var scheduledQuotaUserKey: String?
+                if scheduledPublishAt != nil {
+                    userService.updateAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
+                    let me = try await userService.getUser(username: nil)
+                    let key = SellerScheduledListingQuota.stableUserKey(from: me)
+                    try SellerScheduledListingQuota.assertCanCreateScheduledListing(userKey: key, profileTier: me.profileTier)
+                    scheduledQuotaUserKey = key
+                }
+
                 // Convert images to JPEG data (same as Flutter compression for upload)
                 let imageDataList: [Data] = images.compactMap { image in
                     image.jpegData(compressionQuality: 0.85)
@@ -119,6 +128,9 @@ class SellViewModel: ObservableObject {
                 if savedInactiveBecauseScheduled, let at = scheduleAt {
                     PendingScheduledListingActivator.register(productId: newProductId, activateAt: at)
                     await ListingGoLiveReminder.schedule(productId: newProductId, fireDate: at, listingTitle: titleClean)
+                }
+                if savedInactiveBecauseScheduled, let key = scheduledQuotaUserKey {
+                    SellerScheduledListingQuota.recordScheduledListingCreation(userKey: key)
                 }
 
                 isSubmitting = false
@@ -204,6 +216,13 @@ class SellViewModel: ObservableObject {
                     )
                 }
 
+                var scheduledQuotaUserKey: String?
+                if scheduledPublishAt != nil {
+                    let key = SellerScheduledListingQuota.stableUserKey(from: profile)
+                    try SellerScheduledListingQuota.assertCanCreateScheduledListing(userKey: key, profileTier: profile.profileTier)
+                    scheduledQuotaUserKey = key
+                }
+
                 guard let cover = MysteryBoxListingCoverImage.makeImage(),
                       let jpeg = cover.jpegData(compressionQuality: 0.85) else {
                     throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare listing image."])
@@ -270,6 +289,9 @@ class SellViewModel: ObservableObject {
                 if savedInactiveBecauseScheduled, let at = scheduleAt {
                     PendingScheduledListingActivator.register(productId: newProductId, activateAt: at)
                     await ListingGoLiveReminder.schedule(productId: newProductId, fireDate: at, listingTitle: titleClean)
+                }
+                if savedInactiveBecauseScheduled, let key = scheduledQuotaUserKey {
+                    SellerScheduledListingQuota.recordScheduledListingCreation(userKey: key)
                 }
 
                 isSubmitting = false
