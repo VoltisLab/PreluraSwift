@@ -1,0 +1,29 @@
+# Manual staging seed. Requires repo secret: STAGING_SEED_PASSWORD
+# (Settings → Secrets and variables → Actions → STAGING_SEED_PASSWORD)
+#
+# Replace scripts/gha-staging-seed.sh with your real seed command (e.g. curl to
+# staging API, or checkout backend in a follow-up step).
+
+name: Staging seed
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: staging-seed-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run staging seed script
+        env:
+          STAGING_SEED_PASSWORD: ${{ secrets.STAGING_SEED_PASSWORD }}
+        run: bash scripts/gha-staging-seed.sh
