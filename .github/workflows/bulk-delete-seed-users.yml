@@ -1,0 +1,82 @@
+# Soft-delete every user listed in seed-users-report.csv (staff GraphQL: userAdminStats + flagUser).
+# Same behaviour as iOS Admin → Delete user. This does not hard-purge DB rows; accounts are flagged / soft-deleted per backend rules.
+#
+# Secrets: same as Bulk verify — STAFF_AUTH_TOKEN or STAFF_USERNAME + STAFF_PASSWORD; SEED_USERS_CSV (full CSV) or commit the CSV.
+#
+# Safety: you must type the confirmation phrase in the workflow dispatch form.
+
+name: Bulk delete seed users
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_phrase:
+        description: Type exactly DELETE_SEED_USERS to confirm (destructive)
+        required: true
+        default: ''
+      graphql_url:
+        description: Override GraphQL URL (leave empty for script default)
+        required: false
+        default: ''
+
+concurrency:
+  group: bulk-delete-seed-users-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Confirm intent
+        run: |
+          if [[ "${{ inputs.confirm_phrase }}" != "DELETE_SEED_USERS" ]]; then
+            echo "Aborted: confirmation phrase must be exactly DELETE_SEED_USERS"
+            exit 1
+          fi
+
+      - name: Restore seed CSV from secret (recommended)
+        env:
+          SEED_USERS_CSV: ${{ secrets.SEED_USERS_CSV }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${SEED_USERS_CSV:-}" ]]; then
+            printf '%s\n' "$SEED_USERS_CSV" > seed-users-report.csv
+            echo "Wrote seed-users-report.csv from SEED_USERS_CSV ($(wc -l < seed-users-report.csv) lines)."
+          elif [[ -f seed-users-report.csv ]]; then
+            echo "Using seed-users-report.csv from repository checkout."
+          else
+            echo "Missing seed-users-report.csv and empty SEED_USERS_CSV secret."
+            exit 1
+          fi
+
+      - name: Bulk flag (soft-delete) users
+        env:
+          CONFIRM_BULK_DELETE: yes
+          STAFF_AUTH_TOKEN: ${{ secrets.STAFF_AUTH_TOKEN }}
+          STAFF_USERNAME: ${{ secrets.STAFF_USERNAME }}
+          STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+          GRAPHQL_URL: ${{ inputs.graphql_url }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${STAFF_AUTH_TOKEN:-}" ]]; then
+            if [[ -z "${STAFF_USERNAME:-}" || -z "${STAFF_PASSWORD:-}" ]]; then
+              echo "Set STAFF_AUTH_TOKEN, or STAFF_USERNAME + STAFF_PASSWORD."
+              exit 1
+            fi
+          fi
+          if [[ -z "${GRAPHQL_URL:-}" ]]; then unset GRAPHQL_URL; fi
+          bash scripts/bulk-delete-seed-users.sh
+
+      - name: Upload delete log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bulk-delete-seed-users-log
+          path: bulk-delete-seed-users-log.txt
+          if-no-files-found: warn
