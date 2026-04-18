@@ -314,6 +314,13 @@ enum L10n {
         "No Lookbook posts yet": "Δεν υπάρχουν δημοσιεύσεις Lookbook ακόμα",
         "Create a look from Lookbook — it will show up here.": "Δημιουργήστε ένα look από το Lookbook — θα εμφανιστεί εδώ.",
         "Search": "Αναζήτηση",
+        "For You": "Για σένα",
+        "People": "Άνθρωποι",
+        "Nothing in this feed matches your search.": "Τίποτα σε αυτή την ροή δεν ταιριάζει με την αναζήτησή σας.",
+        "No hashtag or people matches in this feed for this search.": "Δεν υπάρχουν hashtag ή άνθρωποι σε αυτή την ροή για αυτή την αναζήτηση.",
+        "No people in this feed match your search.": "Κανένας χρήστης σε αυτή την ροή δεν ταιριάζει με την αναζήτησή σας.",
+        "No tagged products in this feed match your search.": "Κανένα προϊόν με ετικέτα σε αυτή την ροή δεν ταιριάζει με την αναζήτησή σας.",
+        "No hashtags in this feed match your search.": "Κανένα hashtag σε αυτή την ροή δεν ταιριάζει με την αναζήτησή σας.",
         "Lookbook post": "Δημοσίευση Lookbook",
         "Search topics, hashtags, styles…": "Αναζήτηση θεμάτων, hashtag, στυλ…",
         "No looks match your search.": "Δεν ταιριάζει κανένα look με την αναζήτησή σας.",
@@ -434,6 +441,8 @@ enum L10n {
         "Welcome back": "Καλώς ήρθατε πάλι",
         "Username": "Όνομα χρήστη",
         "Enter your username": "Εισάγετε το όνομα χρήστη σας",
+        "Use your username, not your email.": "Χρησιμοποιήστε το όνομα χρήστη, όχι το email.",
+        "Incorrect username or password. Use your username (not your email). For seed accounts, the password is the STAGING_SEED_PASSWORD from GitHub Actions — if that secret was changed after users were created, the old password still applies until you reset it.": "Λάθος όνομα χρήστη ή κωδικός. Χρησιμοποιήστε το όνομα χρήστη (όχι το email). Για δοκιμαστικούς λογαριασμούς, ο κωδικός είναι το STAGING_SEED_PASSWORD από το GitHub Actions — αν αλλάξατε αυτό το μυστικό μετά τη δημιουργία των λογαριασμών, ισχύει ακόμα ο παλιός κωδικός μέχρι να τον επαναφέρετε.",
         "Password": "Κωδικός",
         "Enter your password": "Εισάγετε τον κωδικό σας",
         "Forgot password?": "Ξεχάσατε τον κωδικό;",
@@ -507,6 +516,11 @@ enum L10n {
         "Suggest from title": "Πρόταση από τίτλο",
         "Suggest from photo": "Πρόταση από φωτογραφία",
         "Tap to select photos from your gallery": "Αγγίξτε για να επιλέξετε φωτογραφίες από τη συλλογή σας",
+        "Choose images from Finder": "Επιλέξτε εικόνες από το Finder",
+        "Choose photos from Finder": "Επιλέξτε φωτογραφίες από το Finder",
+        "Tap to choose photo": "Αγγίξτε για να επιλέξετε φωτογραφία",
+        "Tap to choose photos": "Αγγίξτε για να επιλέξετε φωτογραφίες",
+        "Choose a photo from Finder": "Επιλέξτε μια φωτογραφία από το Finder",
         "Item Details": "Στοιχεία προϊόντος",
         "Item Information": "Πληροφορίες προϊόντος",
         "Category": "Κατηγορία",
@@ -1028,6 +1042,9 @@ extension L10n {
             if lower.contains("setlookbookproducttags"),
                lower.contains("cannot query field") || lower.contains("unknown field") {
                 return L10n.string("Updating tagged products isn’t available on this server yet. Your team can deploy setLookbookProductTags when ready.")
+            }
+            if lower.contains("valid credentials") || (lower.contains("invalid") && lower.contains("credential")) {
+                return L10n.string("Incorrect username or password. Use your username (not your email). For seed accounts, the password is the STAGING_SEED_PASSWORD from GitHub Actions — if that secret was changed after users were created, the old password still applies until you reset it.")
             }
             if lower.contains("variable") && lower.contains("$") { return L10n.string("Something went wrong. Please try again.") }
             if lower.contains("syntax") || (lower.contains("graphql") && lower.contains("error")) {
