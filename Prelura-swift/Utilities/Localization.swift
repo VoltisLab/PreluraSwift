@@ -441,7 +441,6 @@ enum L10n {
         "Welcome back": "Καλώς ήρθατε πάλι",
         "Username": "Όνομα χρήστη",
         "Enter your username": "Εισάγετε το όνομα χρήστη σας",
-        "Use your username, not your email.": "Χρησιμοποιήστε το όνομα χρήστη, όχι το email.",
         "Incorrect username or password. Use your username (not your email). For seed accounts, the password is the STAGING_SEED_PASSWORD from GitHub Actions — if that secret was changed after users were created, the old password still applies until you reset it.": "Λάθος όνομα χρήστη ή κωδικός. Χρησιμοποιήστε το όνομα χρήστη (όχι το email). Για δοκιμαστικούς λογαριασμούς, ο κωδικός είναι το STAGING_SEED_PASSWORD από το GitHub Actions — αν αλλάξατε αυτό το μυστικό μετά τη δημιουργία των λογαριασμών, ισχύει ακόμα ο παλιός κωδικός μέχρι να τον επαναφέρετε.",
         "Password": "Κωδικός",
         "Enter your password": "Εισάγετε τον κωδικό σας",

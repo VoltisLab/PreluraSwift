@@ -6,9 +6,9 @@ struct LoginView: View {
     var staffAddAccountMode: Bool = false
     /// Called after a successful login in `staffAddAccountMode` (e.g. dismiss the add-account sheet).
     var onStaffAccountAdded: (() -> Void)? = nil
-    /// Always start empty: DEBUG builds used to prefill demo credentials, which caused “invalid credentials” when logging in as seed users.
-    @State private var username: String = ""
-    @State private var password: String = ""
+    /// Demo credentials for testing; pre-filled so you don't have to type each time.
+    @State private var username: String = "Testuser"
+    @State private var password: String = "Password123!!!"
     @State private var showPassword: Bool = false
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
@@ -38,9 +38,6 @@ struct LoginView: View {
                                 Text(L10n.string("Username"))
                                     .font(Theme.Typography.subheadline)
                                     .foregroundColor(Theme.Colors.authOverVideoText)
-                                Text(L10n.string("Use your username, not your email."))
-                                    .font(Theme.Typography.footnote)
-                                    .foregroundColor(Theme.Colors.authOverVideoText.opacity(0.85))
                                 TextField(L10n.string("Enter your username"), text: $username)
                                     .textFieldStyle(PlainTextFieldStyle())
                                     .textContentType(.username)
