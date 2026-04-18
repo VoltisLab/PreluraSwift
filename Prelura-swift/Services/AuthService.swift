@@ -290,6 +290,36 @@ class AuthService: ObservableObject {
     }
     
     func login(username: String, password: String) async throws -> LoginResponse {
+        let u = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let p = password.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            return try await loginWithCredentials(username: u, password: p)
+        } catch {
+            // Same domain as scripts/seed-register-users.sh (`username@wearhouse.co.uk`). Some backends only match when the login field is the full email.
+            if !u.contains("@"),
+               Self.shouldRetrySeedLoginWithEmailDomain(error),
+               let email = Self.seedLoginEmail(forUsername: u) {
+                return try await loginWithCredentials(username: email, password: p)
+            }
+            throw error
+        }
+    }
+
+    /// Matches default `SEED_EMAIL_DOMAIN` in seed scripts (`wearhouse.co.uk`).
+    private static let seedEmailDomainForLoginRetry = "wearhouse.co.uk"
+
+    private static func seedLoginEmail(forUsername username: String) -> String? {
+        guard !username.isEmpty else { return nil }
+        return "\(username)@\(seedEmailDomainForLoginRetry)"
+    }
+
+    private static func shouldRetrySeedLoginWithEmailDomain(_ error: Error) -> Bool {
+        guard case let GraphQLError.graphQLErrors(errors) = error else { return false }
+        let msg = errors.first?.message.lowercased() ?? ""
+        return msg.contains("valid credentials") || msg.contains("please enter valid")
+    }
+
+    private func loginWithCredentials(username: String, password: String) async throws -> LoginResponse {
         let query = """
         mutation Login($username: String!, $password: String!) {
           login(username: $username, password: $password) {
@@ -303,27 +333,27 @@ class AuthService: ObservableObject {
           }
         }
         """
-        
+
         let variables: [String: Any] = [
             "username": username,
-            "password": password
+            "password": password,
         ]
-        
+
         let response: LoginGraphQLResponse = try await client.execute(
             query: query,
             variables: variables,
             responseType: LoginGraphQLResponse.self
         )
-        
+
         guard let loginData = response.login else {
             throw AuthError.invalidResponse
         }
-        
+
         guard let token = loginData.token,
               let refreshToken = loginData.refreshToken else {
             throw AuthError.invalidResponse
         }
-        
+
         storeTokens(
             token: token,
             refreshToken: refreshToken,
@@ -331,10 +361,9 @@ class AuthService: ObservableObject {
         )
 
         Task { await refreshAccountModerationFromServer() }
-        
-        // Update other services with new token
+
         objectWillChange.send()
-        
+
         return loginData
     }
     
