@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Called from .github/workflows/staging-seed.yml with STAGING_SEED_PASSWORD from Actions secrets.
-# Replace the body with your real seed steps (API calls, remote SSH, etc.).
+# GitHub Actions entry: bulk register users (scripts/seed-register-users.sh).
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
 if [[ -z "${STAGING_SEED_PASSWORD:-}" ]]; then
-  echo "Missing STAGING_SEED_PASSWORD. Add repository secret STAGING_SEED_PASSWORD (GitHub → Settings → Secrets → Actions)."
+  echo "Missing STAGING_SEED_PASSWORD. Add repository secret STAGING_SEED_PASSWORD."
   exit 1
 fi
 
-echo "STAGING_SEED_PASSWORD is present (${#STAGING_SEED_PASSWORD} chars). Edit scripts/gha-staging-seed.sh to run your seed logic."
-exit 0
+bash scripts/seed-register-users.sh

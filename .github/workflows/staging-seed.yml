@@ -1,13 +1,21 @@
-# Manual staging seed. Requires repo secret: STAGING_SEED_PASSWORD
-# (Settings → Secrets and variables → Actions → STAGING_SEED_PASSWORD)
+# Manual staging seed: registers N users via GraphQL `register` (same as iOS AuthService).
+# Secret: STAGING_SEED_PASSWORD (shared password for all seed users — not printed in logs).
 #
-# Replace scripts/gha-staging-seed.sh with your real seed command (e.g. curl to
-# staging API, or checkout backend in a follow-up step).
+# Optional: set repository variable GRAPHQL_URL if your staging API host differs from production default in scripts/seed-register-users.sh
 
 name: Staging seed
 
 on:
   workflow_dispatch:
+    inputs:
+      user_count:
+        description: How many users to register
+        required: false
+        default: '10'
+      graphql_url:
+        description: Override GraphQL endpoint (leave default to use script default)
+        required: false
+        default: ''
 
 concurrency:
   group: staging-seed-${{ github.repository }}
@@ -23,7 +31,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run staging seed script
+      - name: Register seed users
         env:
           STAGING_SEED_PASSWORD: ${{ secrets.STAGING_SEED_PASSWORD }}
-        run: bash scripts/gha-staging-seed.sh
+          SEED_USER_COUNT: ${{ inputs.user_count }}
+          GRAPHQL_URL: ${{ inputs.graphql_url }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GRAPHQL_URL:-}" ]]; then unset GRAPHQL_URL; fi
+          bash scripts/gha-staging-seed.sh
+
+      - name: Upload user report (no passwords)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed-users-report
+          path: seed-users-report.csv
+          if-no-files-found: warn

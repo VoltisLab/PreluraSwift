@@ -1,3 +1,6 @@
+# Local output from scripts/seed-register-users.sh (never commit)
+seed-users-report.csv
+
 # TestFlight credentials (never commit)
 scripts/testflight-credentials.json
 
