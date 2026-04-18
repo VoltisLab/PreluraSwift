@@ -1,0 +1,76 @@
+# Mark all seed accounts as email-verified (staff GraphQL: userAdminStats + adminSetUserEmailVerified).
+#
+# Secrets (repository → Settings → Secrets and variables → Actions):
+#   STAFF_USERNAME + STAFF_PASSWORD   — staff login (same as iOS staff session), or
+#   STAFF_AUTH_TOKEN                  — staff JWT (if set, username/password are ignored)
+#
+# CSV of usernames (gitignored locally):
+#   • Option A — paste full file into secret SEED_USERS_CSV (multiline; same columns as seed-users-report.csv)
+#   • Option B — force-add and push: git add -f seed-users-report.csv && git commit && git push
+#
+# Optional repo variable: GRAPHQL_URL (override default in script)
+
+name: Bulk verify seed emails
+
+on:
+  workflow_dispatch:
+    inputs:
+      graphql_url:
+        description: Override GraphQL URL (leave empty for script default)
+        required: false
+        default: ''
+
+concurrency:
+  group: bulk-verify-seed-emails-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore seed CSV from secret (recommended)
+        env:
+          SEED_USERS_CSV: ${{ secrets.SEED_USERS_CSV }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${SEED_USERS_CSV:-}" ]]; then
+            printf '%s\n' "$SEED_USERS_CSV" > seed-users-report.csv
+            echo "Wrote seed-users-report.csv from SEED_USERS_CSV secret ($(wc -l < seed-users-report.csv) lines)."
+          elif [[ -f seed-users-report.csv ]]; then
+            echo "Using seed-users-report.csv from repository checkout."
+          else
+            echo "Missing seed-users-report.csv and empty SEED_USERS_CSV secret."
+            echo "Add repository secret SEED_USERS_CSV with the full CSV contents, or force-add the file: git add -f seed-users-report.csv"
+            exit 1
+          fi
+
+      - name: Bulk verify email flags
+        env:
+          STAFF_AUTH_TOKEN: ${{ secrets.STAFF_AUTH_TOKEN }}
+          STAFF_USERNAME: ${{ secrets.STAFF_USERNAME }}
+          STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+          GRAPHQL_URL: ${{ inputs.graphql_url }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${STAFF_AUTH_TOKEN:-}" ]]; then
+            if [[ -z "${STAFF_USERNAME:-}" || -z "${STAFF_PASSWORD:-}" ]]; then
+              echo "Set repository secrets STAFF_AUTH_TOKEN, or STAFF_USERNAME + STAFF_PASSWORD."
+              exit 1
+            fi
+          fi
+          if [[ -z "${GRAPHQL_URL:-}" ]]; then unset GRAPHQL_URL; fi
+          bash scripts/bulk-verify-seed-users-email.sh
+
+      - name: Upload verify log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bulk-verify-email-log
+          path: bulk-verify-email-log.txt
+          if-no-files-found: warn
