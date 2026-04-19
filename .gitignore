@@ -32,3 +32,7 @@ Prelura-swift/GoogleService-Info.plist
 
 # Apple APNs auth keys (.p8) — never commit; upload in Firebase Console only (see docs/FIREBASE_IOS_SETUP.md)
 *.p8
+
+# Local script output / scratch (never commit)
+bulk-verify-email-log.txt
+Prelura-swift/pp/
