@@ -10,6 +10,8 @@
 #   SEED_START_INDEX — loop index for name generation (default: 1). Use 51 after a batch of 50 to avoid duplicate handles.
 #   SEED_APPEND_CSV=1 — append to SEED_OUTPUT_CSV and preload existing usernames so suffixes don’t collide.
 #   SEED_EMAIL_DOMAIN (default: wearhouse.co.uk) — email is always ${username}@${SEED_EMAIL_DOMAIN}
+#   Duplicate handling: if register returns "already exists" for username/email (e.g. soft-deleted row),
+#   retries with base1, base2, … so the address is unused (same password).
 #   SEED_BATCH_ID (logged only)
 #   SEED_OUTPUT_CSV (default: seed-users-report.csv) — full audit trail: username,email,status
 #   SEED_LEGACY_NUMERIC_USERNAMES=1 — if set, use old sxu0000001 style instead
@@ -259,49 +261,84 @@ for ((i = SEED_START_INDEX; i <= SEED_END_INDEX; i++)); do
   fi
 
   # Same handle as local part so email matches the login identity (e.g. jfoster@ / mark.james@).
-  email="${username}@${SEED_EMAIL_DOMAIN}"
+  # If the server says username/email already exists (e.g. soft-deleted row still reserves them),
+  # retry with h.clark -> h.clark1 -> h.clark2 so the email local part is unused.
+  base_username="$username"
+  suffix=0
+  reg_max=50
+  registered=0
+  while [[ $suffix -le $reg_max ]]; do
+    if [[ $suffix -eq 0 ]]; then
+      u_try="$base_username"
+    else
+      u_try="${base_username}${suffix}"
+    fi
+    email="${u_try}@${SEED_EMAIL_DOMAIN}"
 
-  payload=$(jq -n \
-    --arg query "$QUERY" \
-    --arg email "$email" \
-    --arg firstName "$firstName" \
-    --arg lastName "$lastName" \
-    --arg username "$username" \
-    --arg password1 "$STAGING_SEED_PASSWORD" \
-    --arg password2 "$STAGING_SEED_PASSWORD" \
-    '{query: $query, variables: {
-      email: $email,
-      firstName: $firstName,
-      lastName: $lastName,
-      username: $username,
-      password1: $password1,
-      password2: $password2
-    }}')
+    payload=$(jq -n \
+      --arg query "$QUERY" \
+      --arg email "$email" \
+      --arg firstName "$firstName" \
+      --arg lastName "$lastName" \
+      --arg username "$u_try" \
+      --arg password1 "$STAGING_SEED_PASSWORD" \
+      --arg password2 "$STAGING_SEED_PASSWORD" \
+      '{query: $query, variables: {
+        email: $email,
+        firstName: $firstName,
+        lastName: $lastName,
+        username: $username,
+        password1: $password1,
+        password2: $password2
+      }}')
 
-  resp=$(curl -sS -X POST "$GRAPHQL_URL" \
-    -H 'Content-Type: application/json' \
-    -H 'Accept: application/json' \
-    --data-binary "$payload" || true)
+    resp=$(curl -sS -X POST "$GRAPHQL_URL" \
+      -H 'Content-Type: application/json' \
+      -H 'Accept: application/json' \
+      --data-binary "$payload" || true)
 
-  if echo "$resp" | jq -e '.errors' >/dev/null 2>&1; then
-    err=$(echo "$resp" | jq -c '.errors')
-    echo "FAIL $username GraphQL top-level: $err"
-    echo "$username,$email,graphql_error" >> "$SEED_OUTPUT_CSV"
+    if echo "$resp" | jq -e '.errors' >/dev/null 2>&1; then
+      err=$(echo "$resp" | jq -c '.errors')
+      echo "FAIL $u_try GraphQL top-level: $err"
+      echo "$u_try,$email,graphql_error" >> "$SEED_OUTPUT_CSV"
+      fail=$((fail + 1))
+      registered=1
+      sleep 0.2
+      break
+    fi
+
+    success=$(echo "$resp" | jq -r '.data.register.success // empty')
+    reg_err=$(echo "$resp" | jq -c '.data.register.errors // null')
+
+    if [[ "$success" == "true" ]]; then
+      if [[ $suffix -gt 0 ]]; then
+        echo "OK   $u_try (retry: base was $base_username)"
+      else
+        echo "OK   $u_try"
+      fi
+      echo "$u_try,$email,ok" >> "$SEED_OUTPUT_CSV"
+      ok=$((ok + 1))
+      registered=1
+      break
+    fi
+
+    if echo "$reg_err" | grep -qiF 'already exists'; then
+      echo "RETRY  $u_try taken on server → trying ${base_username}$((suffix + 1))@${SEED_EMAIL_DOMAIN}"
+      suffix=$((suffix + 1))
+      sleep 0.08
+      continue
+    fi
+
+    echo "FAIL $u_try success=$success errors=$reg_err"
+    echo "$u_try,$email,failed" >> "$SEED_OUTPUT_CSV"
     fail=$((fail + 1))
-    sleep 0.2
-    continue
-  fi
+    registered=1
+    break
+  done
 
-  success=$(echo "$resp" | jq -r '.data.register.success // empty')
-  reg_err=$(echo "$resp" | jq -c '.data.register.errors // null')
-
-  if [[ "$success" == "true" ]]; then
-    echo "OK   $username"
-    echo "$username,$email,ok" >> "$SEED_OUTPUT_CSV"
-    ok=$((ok + 1))
-  else
-    echo "FAIL $username success=$success errors=$reg_err"
-    echo "$username,$email,failed" >> "$SEED_OUTPUT_CSV"
+  if [[ $registered -eq 0 ]] && [[ $suffix -gt $reg_max ]]; then
+    echo "FAIL $base_username gave up after $reg_max duplicate retries"
+    echo "$base_username,${base_username}@${SEED_EMAIL_DOMAIN},failed" >> "$SEED_OUTPUT_CSV"
     fail=$((fail + 1))
   fi
 

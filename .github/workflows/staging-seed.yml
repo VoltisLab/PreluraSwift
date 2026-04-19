@@ -34,6 +34,10 @@ on:
         description: After seed/verify, smoke-test login for first N CSV users (0 = skip)
         required: false
         default: '0'
+      seed_email_domain:
+        description: Email domain for seed addresses (empty = wearhouse.co.uk). Usually leave empty; script retries if username/email already exists on server.
+        required: false
+        default: ''
 
 concurrency:
   group: staging-seed-${{ github.repository }}
@@ -54,10 +58,12 @@ jobs:
           STAGING_SEED_PASSWORD: ${{ secrets.STAGING_SEED_PASSWORD }}
           SEED_USER_COUNT: ${{ inputs.user_count }}
           SEED_START_INDEX: ${{ inputs.seed_start_index }}
+          SEED_EMAIL_DOMAIN: ${{ inputs.seed_email_domain }}
           GRAPHQL_URL: ${{ inputs.graphql_url }}
         run: |
           set -euo pipefail
           if [[ -z "${GRAPHQL_URL:-}" ]]; then unset GRAPHQL_URL; fi
+          if [[ -z "${SEED_EMAIL_DOMAIN:-}" ]]; then unset SEED_EMAIL_DOMAIN; fi
           bash scripts/gha-staging-seed.sh
 
       - name: Verify seed user emails (staff)
