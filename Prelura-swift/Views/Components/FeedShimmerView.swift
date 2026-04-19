@@ -3,6 +3,7 @@ import Shimmer
 
 /// Minimal Home feed skeleton: a few large blocks + simple cards — avoids noisy micro-placeholders (`HomeView` hides the real nav while this shows).
 struct FeedShimmerView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     private let scrollBottomClearance: CGFloat = 112
     private let chipRowBottomSpacing: CGFloat = Theme.Spacing.md
     private let featuredCardWidth: CGFloat = 148
@@ -110,10 +111,10 @@ struct FeedShimmerView: View {
 
     private var productGridShimmer: some View {
         LazyVGrid(
-            columns: [
-                GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                GridItem(.flexible(), spacing: Theme.Spacing.sm)
-            ],
+            columns: WearhouseLayoutMetrics.productGridColumns(
+                horizontalSizeClass: horizontalSizeClass,
+                spacing: Theme.Spacing.sm
+            ),
             alignment: .leading,
             spacing: Theme.Spacing.md,
             pinnedViews: []

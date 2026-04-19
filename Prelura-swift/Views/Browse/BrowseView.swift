@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct BrowseView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var viewModel = BrowseViewModel()
     @State private var searchText: String = ""
     let selectedCategory: Category?
@@ -33,10 +34,10 @@ struct BrowseView: View {
                 } else {
                     ScrollView {
                         LazyVGrid(
-                            columns: [
-                                GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                                GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                            ],
+                            columns: WearhouseLayoutMetrics.productGridColumns(
+                                horizontalSizeClass: horizontalSizeClass,
+                                spacing: Theme.Spacing.sm
+                            ),
                             spacing: Theme.Spacing.sm
                         ) {
                             ForEach(viewModel.filteredItems) { item in

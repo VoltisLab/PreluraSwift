@@ -1,5 +1,53 @@
 import SwiftUI
 
+// MARK: - TLS / transport errors: compact snackbar (replaces large banner when `title` is non-nil)
+
+/// Shown for secure-transport / TLS headline errors instead of ``FeedNetworkBannerView`` (fixed copy, compact bar).
+struct FeedErrorSnackbarView: View {
+    var onTryAgain: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(alignment: .center, spacing: Theme.Spacing.md) {
+            Text(L10n.string("An error occurred, please try again."))
+                .font(Theme.Typography.subheadline)
+                .foregroundStyle(Theme.Colors.primaryText)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let onTryAgain {
+                Button(L10n.string("Try again"), action: onTryAgain)
+                    .font(Theme.Typography.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.primaryColor)
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm + 4)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
+                .fill(Theme.Colors.secondaryBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
+                .strokeBorder(Theme.Colors.secondaryText.opacity(0.22), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.14), radius: 16, x: 0, y: 8)
+    }
+}
+
+/// Large card for generic network errors; for TLS / “Secure connection” use ``FeedErrorSnackbarView`` via this wrapper.
+struct FeedNetworkErrorPresentation: View {
+    let message: String
+    let title: String?
+    var onTryAgain: (() -> Void)? = nil
+
+    var body: some View {
+        if title != nil {
+            FeedErrorSnackbarView(onTryAgain: onTryAgain)
+        } else {
+            FeedNetworkBannerView(message: message, title: nil, onTryAgain: onTryAgain)
+        }
+    }
+}
+
 /// Network / API error card: same inner surface as chat offer cards (`chatInlineCardBackground`), red accent on icon and border, `PrimaryGlassButton` for retry when `onTryAgain` is set.
 struct FeedNetworkBannerView: View {
     let message: String

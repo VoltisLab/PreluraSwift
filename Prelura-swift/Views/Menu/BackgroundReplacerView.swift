@@ -11,6 +11,7 @@ import PhotosUI
 
 struct BackgroundReplacerView: View {
     @State private var selectedItem: PhotosPickerItem?
+    @State private var showMacPhotoImporter: Bool = false
     @State private var sourceImage: UIImage?
     @State private var resultImage: UIImage?
     @State private var selectedTheme: ThemeBackground?
@@ -37,6 +38,15 @@ struct BackgroundReplacerView: View {
         .navigationTitle("Background replacer")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .macOnlyImageFileImporter(
+            isPresented: $showMacPhotoImporter,
+            allowsMultipleSelection: false,
+            maxImageCount: 1
+        ) { images in
+            guard let image = images.first else { return }
+            sourceImage = image
+            step = .pickPhoto
+        }
         .onChange(of: selectedItem) { _, new in
             Task { await loadImage(new) }
         }
@@ -85,6 +95,36 @@ struct BackgroundReplacerView: View {
         }
     }
 
+    private var backgroundReplacerPickLabel: some View {
+        Group {
+            if let img = sourceImage {
+                Image(uiImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: 320)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else {
+                VStack(spacing: Theme.Spacing.md) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 48))
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                    Text(
+                        IOSAppOnMacImageImport.isIOSAppOnMac
+                            ? L10n.string("Choose a photo from Finder")
+                            : L10n.string("Tap to choose photo")
+                    )
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 240)
+                .background(Theme.Colors.secondaryBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     private var pickPhotoSection: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.lg) {
@@ -94,30 +134,17 @@ struct BackgroundReplacerView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
 
-                PhotosPicker(selection: $selectedItem, matching: .images, photoLibrary: .shared()) {
-                    Group {
-                        if let img = sourceImage {
-                            Image(uiImage: img)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(maxHeight: 320)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                        } else {
-                            VStack(spacing: Theme.Spacing.md) {
-                                Image(systemName: "photo.on.rectangle.angled")
-                                    .font(.system(size: 48))
-                                    .foregroundStyle(Theme.Colors.secondaryText)
-                                Text("Tap to choose photo")
-                                    .font(Theme.Typography.body)
-                                    .foregroundColor(Theme.Colors.secondaryText)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 240)
-                            .background(Theme.Colors.secondaryBackground)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                Group {
+                    if IOSAppOnMacImageImport.isIOSAppOnMac {
+                        Button(action: { showMacPhotoImporter = true }) {
+                            backgroundReplacerPickLabel
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        PhotosPicker(selection: $selectedItem, matching: .images, photoLibrary: .shared()) {
+                            backgroundReplacerPickLabel
                         }
                     }
-                    .frame(maxWidth: .infinity)
                 }
                 .disabled(isProcessing)
 

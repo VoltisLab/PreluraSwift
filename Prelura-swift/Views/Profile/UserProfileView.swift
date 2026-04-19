@@ -5,6 +5,7 @@ import Shimmer
 struct UserProfileView: View {
     let seller: User
     @EnvironmentObject var authService: AuthService
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var viewModel: UserProfileViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var selectedBrand: String? = nil
@@ -55,7 +56,7 @@ struct UserProfileView: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
         ScrollView {
-                if viewModel.isLoading && viewModel.items.isEmpty && viewModel.errorMessage == nil {
+                if viewModel.isLoadingProfile && viewModel.errorMessage == nil {
                     ProfileShimmerView()
                 } else {
                     VStack(spacing: 0) {
@@ -77,7 +78,16 @@ struct UserProfileView: View {
                             if !viewModel.items.isEmpty {
                                 filtersSection
                             }
-                            itemsGridSection
+                            if viewModel.isLoadingProducts && viewModel.items.isEmpty {
+                                HStack {
+                                    Spacer()
+                                    ProgressView()
+                                        .padding(.vertical, Theme.Spacing.xl)
+                                    Spacer()
+                                }
+                            } else {
+                                itemsGridSection
+                            }
                         }
                     }
                 }
@@ -143,6 +153,7 @@ struct UserProfileView: View {
                 }
                 .environmentObject(authService)
             }
+            .wearhouseSheetContentColumnIfWide()
         }
         .refreshable { await viewModel.refreshAsync() }
         .onAppear {
@@ -299,9 +310,9 @@ struct UserProfileView: View {
                         HStack(alignment: .center, spacing: 4) {
                             HStack(spacing: 2) {
                                 ForEach(0..<5, id: \.self) { _ in
-                                    Image(systemName: "star.fill")
+                                    Image(systemName: viewModel.user.reviewCount == 0 ? "star" : "star.fill")
                                         .font(.system(size: 13))
-                                        .foregroundColor(.yellow)
+                                        .foregroundColor(viewModel.user.reviewCount == 0 ? Theme.Colors.tertiaryText : .yellow)
                                 }
                             }
                             Text("(\(viewModel.user.reviewCount))")
@@ -709,10 +720,10 @@ struct UserProfileView: View {
             NavigationStack {
                 ScrollView {
                     LazyVGrid(
-                        columns: [
-                            GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                            GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                        ],
+                        columns: WearhouseLayoutMetrics.productGridColumns(
+                            horizontalSizeClass: horizontalSizeClass,
+                            spacing: Theme.Spacing.sm
+                        ),
                         spacing: Theme.Spacing.md
                     ) {
                         ForEach(filteredItems) { item in
@@ -759,7 +770,7 @@ struct UserProfileView: View {
         return Group {
             if items.isEmpty {
                 if let err = viewModel.errorMessage, !err.isEmpty, viewModel.items.isEmpty {
-                    FeedNetworkBannerView(message: err, title: viewModel.errorBannerTitle) {
+                    FeedNetworkErrorPresentation(message: err, title: viewModel.errorBannerTitle) {
                         Task { await viewModel.refreshAsync() }
                     }
                     .padding(.top, Theme.Spacing.md)
@@ -768,10 +779,10 @@ struct UserProfileView: View {
                 }
             } else {
                 LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                        GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                    ],
+                    columns: WearhouseLayoutMetrics.productGridColumns(
+                        horizontalSizeClass: horizontalSizeClass,
+                        spacing: Theme.Spacing.sm
+                    ),
                     spacing: Theme.Spacing.md
                 ) {
                     ForEach(items) { item in

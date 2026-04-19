@@ -36,6 +36,7 @@ struct ListOfContactsView: View {
         }
         .sheet(item: $shareItem) { item in
             ActivityView(activityItems: item.items)
+                .wearhouseSheetContentColumnIfWide()
         }
     }
 

@@ -35,6 +35,8 @@ struct LikeButtonView: View {
     var likeCountFormatting: ((Int) -> String)? = nil
     /// When false, only the heart is shown (e.g. poster chose “Hide likes” on their lookbook post).
     var showLikeCount: Bool = true
+    /// When set, tapping the numeric count does not toggle like (e.g. open likers list).
+    var onLikeCountTap: (() -> Void)? = nil
 
     private static let minTapSize: CGFloat = 56
 
@@ -43,17 +45,59 @@ struct LikeButtonView: View {
     }
 
     var body: some View {
-        Button {
-            HapticManager.like()
-            action()
-        } label: {
-            likePillContent
+        Group {
+            if onLikeCountTap != nil, showLikeCount {
+                HStack(spacing: Theme.Spacing.xs) {
+                    Button {
+                        HapticManager.like()
+                        action()
+                    } label: {
+                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                            .font(.system(size: heartPointSize, weight: .medium))
+                    }
+                    .buttonStyle(PlainTappableButtonStyle())
+                    .frame(minWidth: 40, minHeight: Self.minTapSize, alignment: .center)
+                    .contentShape(Rectangle())
+
+                    Button {
+                        HapticManager.tap()
+                        onLikeCountTap?()
+                    } label: {
+                        Text(displayedLikeCount)
+                            .font(.system(size: likeCountPointSize, weight: .medium))
+                    }
+                    .buttonStyle(PlainTappableButtonStyle())
+                    .frame(minHeight: Self.minTapSize)
+                    .contentShape(Rectangle())
+                }
+                .foregroundColor(isLiked ? .red : (onDarkOverlay ? .white : Theme.Colors.primaryText))
+                .shadow(color: onDarkOverlay ? .black.opacity(0.4) : .clear, radius: 1, x: 0, y: 1)
+                .padding(.horizontal, Theme.Spacing.sm)
+                .padding(.vertical, 6)
+                .background(
+                    Group {
+                        if onDarkOverlay {
+                            Capsule().fill(Color.black.opacity(0.6))
+                        } else {
+                            Color.clear
+                        }
+                    }
+                )
+                .frame(minWidth: Self.minTapSize, minHeight: Self.minTapSize, alignment: .leading)
+            } else {
+                Button {
+                    HapticManager.like()
+                    action()
+                } label: {
+                    likePillContent
+                }
+                // Match icon rows in ScrollViews (e.g. Lookbook): plain style + full label hit area.
+                // Default/HapticTap styles have been unreliable next to TabView + LazyVStack.
+                .buttonStyle(PlainTappableButtonStyle())
+                .frame(minWidth: Self.minTapSize, minHeight: Self.minTapSize, alignment: .leading)
+                .contentShape(Rectangle())
+            }
         }
-        // Match icon rows in ScrollViews (e.g. Lookbook): plain style + full label hit area.
-        // Default/HapticTap styles have been unreliable next to TabView + LazyVStack.
-        .buttonStyle(PlainTappableButtonStyle())
-        .frame(minWidth: Self.minTapSize, minHeight: Self.minTapSize, alignment: .leading)
-        .contentShape(Rectangle())
     }
 
     private var displayedLikeCount: String {

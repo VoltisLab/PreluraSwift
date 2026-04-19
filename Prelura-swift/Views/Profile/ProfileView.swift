@@ -29,6 +29,7 @@ enum ProfileListingsSheet: Identifiable, Equatable {
 
 struct ProfileView: View {
     @EnvironmentObject var authService: AuthService
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ObservedObject var tabCoordinator: TabCoordinator
     @StateObject private var viewModel: ProfileViewModel
     @State private var scrollPosition: String? = "profile_top"
@@ -37,6 +38,7 @@ struct ProfileView: View {
     @State private var expandedCategories: Bool = false
     @State private var selectedCategory: String? = nil
     @State private var selectedPhoto: PhotosPickerItem? = nil
+    @State private var showMacProfilePhotoImporter: Bool = false
     @State private var profileImage: UIImage? = nil
     @State private var isVacationMode: Bool = false
     @State private var profileSort: ProfileSortOption = .newestFirst
@@ -68,14 +70,15 @@ struct ProfileView: View {
                     if authService.isGuestMode {
                         Color.clear.frame(height: 1).id(topId)
                         GuestSignInPromptView()
+                            .wearhouseSheetContentColumnIfWide()
                     } else if viewModel.isLoading {
                         ProfileShimmerView()
                             .frame(minHeight: UIScreen.main.bounds.height)
                     } else {
                         VStack(spacing: 0) {
                             Color.clear.frame(height: 1).id(topId)
-                            if let err = viewModel.errorMessage, !err.isEmpty {
-                                FeedNetworkBannerView(message: err, title: viewModel.errorBannerTitle) {
+                            if let err = viewModel.errorMessage, !err.isEmpty, viewModel.errorBannerTitle == nil {
+                                FeedNetworkBannerView(message: err, title: nil) {
                                     viewModel.refresh()
                                 }
                             }
@@ -104,8 +107,16 @@ struct ProfileView: View {
                                 if !viewModel.userItems.isEmpty {
                                     filtersSection
                                 }
-                                // Items Grid
-                                itemsGridSection
+                                if viewModel.isLoadingProducts && viewModel.userItems.isEmpty {
+                                    HStack {
+                                        Spacer()
+                                        ProgressView()
+                                            .padding(.vertical, Theme.Spacing.xl)
+                                        Spacer()
+                                    }
+                                } else {
+                                    itemsGridSection
+                                }
                             }
                         }
                     }
@@ -170,11 +181,29 @@ struct ProfileView: View {
                 .allowsHitTesting(true)
             }
         }
+        .overlay(alignment: .bottom) {
+            if !authService.isGuestMode,
+               let err = viewModel.errorMessage, !err.isEmpty,
+               viewModel.errorBannerTitle != nil {
+                FeedErrorSnackbarView(onTryAgain: { viewModel.refresh() })
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.bottom, Theme.Spacing.lg)
+            }
+        }
+        .macOnlyImageFileImporter(
+            isPresented: $showMacProfilePhotoImporter,
+            allowsMultipleSelection: false,
+            maxImageCount: 1
+        ) { images in
+            guard let image = images.first else { return }
+            profileImage = image
+            viewModel.uploadProfileImage(image, authToken: authService.authToken)
+        }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarHidden(viewModel.isLoading || authService.isGuestMode)
+        .navigationBarHidden((viewModel.isLoading && viewModel.user == nil) || authService.isGuestMode)
         .toolbar {
-            if !authService.isGuestMode && !viewModel.isLoading {
+            if !authService.isGuestMode && viewModel.user != nil {
                 ToolbarItem(placement: .principal) {
                     UsernameWithVerifiedBadge(
                         username: viewModel.user?.username ?? L10n.string("Profile"),
@@ -265,43 +294,59 @@ struct ProfileView: View {
             )
     }
 
+    @ViewBuilder
+    private var profilePhotoPickerLabel: some View {
+        Group {
+            if let profileImage = profileImage {
+                Image(uiImage: profileImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                    .clipShape(Circle())
+            } else if let user = viewModel.user, let avatarURL = user.avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        Circle()
+                            .fill(Theme.Colors.secondaryBackground)
+                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                            .shimmering()
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                            .clipShape(Circle())
+                    case .failure:
+                        profilePhotoPlaceholder
+                    @unknown default:
+                        profilePhotoPlaceholder
+                    }
+                }
+                .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                .clipShape(Circle())
+            } else {
+                profilePhotoPlaceholder
+            }
+        }
+    }
+
     // MARK: - Profile Section
     private var profileSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             // Row 1: Profile photo and stats centred in remaining space
             HStack(alignment: .center, spacing: 0) {
-                PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                    Group {
-                        if let profileImage = profileImage {
-                            Image(uiImage: profileImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                                .clipShape(Circle())
-                        } else if let user = viewModel.user, let avatarURL = user.avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .empty:
-                                    Circle()
-                                        .fill(Theme.Colors.secondaryBackground)
-                                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                                        .shimmering()
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                                        .clipShape(Circle())
-                                case .failure:
-                                    profilePhotoPlaceholder
-                                @unknown default:
-                                    profilePhotoPlaceholder
-                                }
-                            }
-                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                            .clipShape(Circle())
-                        } else {
-                            profilePhotoPlaceholder
+                Group {
+                    if IOSAppOnMacImageImport.isIOSAppOnMac {
+                        Button {
+                            showMacProfilePhotoImporter = true
+                        } label: {
+                            profilePhotoPickerLabel
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            profilePhotoPickerLabel
                         }
                     }
                 }
@@ -364,9 +409,9 @@ struct ProfileView: View {
                         NavigationLink(value: AppRoute.reviews(username: u.username, rating: u.rating)) {
                             HStack(alignment: .center, spacing: 4) {
                                 ForEach(0..<5, id: \.self) { _ in
-                                    Image(systemName: "star.fill")
+                                    Image(systemName: u.reviewCount == 0 ? "star" : "star.fill")
                                         .font(.system(size: 13))
-                                        .foregroundColor(.yellow)
+                                        .foregroundColor(u.reviewCount == 0 ? Theme.Colors.tertiaryText : .yellow)
                                 }
                                 Text("(\(u.reviewCount))")
                                     .font(Theme.Typography.subheadline)
@@ -387,12 +432,13 @@ struct ProfileView: View {
                     }
                 } else {
                     HStack(alignment: .center, spacing: 4) {
+                        let rc = viewModel.user?.reviewCount ?? 0
                         ForEach(0..<5, id: \.self) { _ in
-                            Image(systemName: "star.fill")
+                            Image(systemName: rc == 0 ? "star" : "star.fill")
                                 .font(.system(size: 13))
-                                .foregroundColor(.yellow)
+                                .foregroundColor(rc == 0 ? Theme.Colors.tertiaryText : .yellow)
                         }
-                        Text("(\(viewModel.user?.reviewCount ?? 0))")
+                        Text("(\(rc))")
                             .font(Theme.Typography.subheadline)
                             .foregroundColor(Theme.Colors.secondaryText)
                             .lineLimit(1)
@@ -820,10 +866,10 @@ struct ProfileView: View {
             NavigationStack {
                 ScrollView {
                     LazyVGrid(
-                        columns: [
-                            GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                            GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                        ],
+                        columns: WearhouseLayoutMetrics.productGridColumns(
+                            horizontalSizeClass: horizontalSizeClass,
+                            spacing: Theme.Spacing.sm
+                        ),
                         spacing: Theme.Spacing.md
                     ) {
                         ForEach(filteredItems) { item in
@@ -903,10 +949,10 @@ struct ProfileView: View {
                 }
             } else {
                 LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                        GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                    ],
+                    columns: WearhouseLayoutMetrics.productGridColumns(
+                        horizontalSizeClass: horizontalSizeClass,
+                        spacing: Theme.Spacing.sm
+                    ),
                     spacing: Theme.Spacing.md
                 ) {
                     ForEach(items) { item in

@@ -102,6 +102,7 @@ struct ItemNotReceivedReportHelpView: View {
     @EnvironmentObject var authService: AuthService
     @State private var description: String = ""
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
+    @State private var showMacNotReceivedPhotoImporter: Bool = false
     @State private var selectedImageDataList: [Data] = []
     @State private var selectedPreviewImages: [UIImage] = []
     @State private var isSubmittingIssue = false
@@ -148,15 +149,35 @@ struct ItemNotReceivedReportHelpView: View {
                             .frame(minHeight: selectedPreviewImages.isEmpty ? 170 : 240)
                             .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.descriptionFieldCornerRadius, style: .continuous))
 
-                        PhotosPicker(selection: $selectedPhotoItems, maxSelectionCount: 6, matching: .images) {
-                            HStack(spacing: Theme.Spacing.xs) {
-                                Image(systemName: "photo")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(Theme.Colors.secondaryText)
-                                if !selectedImageDataList.isEmpty {
-                                    Text("\(selectedImageDataList.count) image\(selectedImageDataList.count == 1 ? "" : "s") selected")
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(Theme.Colors.secondaryText)
+                        Group {
+                            if IOSAppOnMacImageImport.isIOSAppOnMac {
+                                Button {
+                                    showMacNotReceivedPhotoImporter = true
+                                } label: {
+                                    HStack(spacing: Theme.Spacing.xs) {
+                                        Image(systemName: "photo")
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(Theme.Colors.secondaryText)
+                                        if !selectedImageDataList.isEmpty {
+                                            Text("\(selectedImageDataList.count) image\(selectedImageDataList.count == 1 ? "" : "s") selected")
+                                                .font(Theme.Typography.caption)
+                                                .foregroundColor(Theme.Colors.secondaryText)
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                PhotosPicker(selection: $selectedPhotoItems, maxSelectionCount: 6, matching: .images) {
+                                    HStack(spacing: Theme.Spacing.xs) {
+                                        Image(systemName: "photo")
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(Theme.Colors.secondaryText)
+                                        if !selectedImageDataList.isEmpty {
+                                            Text("\(selectedImageDataList.count) image\(selectedImageDataList.count == 1 ? "" : "s") selected")
+                                                .font(Theme.Typography.caption)
+                                                .foregroundColor(Theme.Colors.secondaryText)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -266,6 +287,15 @@ struct ItemNotReceivedReportHelpView: View {
             ) { EmptyView() }
             .hidden()
         )
+        .macOnlyImageFileImporter(
+            isPresented: $showMacNotReceivedPhotoImporter,
+            allowsMultipleSelection: true,
+            maxImageCount: 6
+        ) { images in
+            let capped = Array(images.prefix(6))
+            selectedImageDataList = IOSAppOnMacImageImport.jpegDataList(from: capped, maxCount: 6)
+            selectedPreviewImages = capped
+        }
         .onChange(of: selectedPhotoItems) { _, newItems in
             Task {
                 var loaded: [Data] = []

@@ -5,7 +5,9 @@ import Combine
 class UserProfileViewModel: ObservableObject {
     @Published var user: User
     @Published var items: [Item] = []
-    @Published var isLoading: Bool = false
+    /// Full-page shimmer only on first load (no listings yet).
+    @Published var isLoadingProfile: Bool = false
+    @Published var isLoadingProducts: Bool = false
     @Published var errorMessage: String?
     @Published var errorBannerTitle: String?
     /// Follow state for other user's profile (synced from user.isFollowing on load, updated on toggle).
@@ -53,40 +55,33 @@ class UserProfileViewModel: ObservableObject {
     }
     
     private func loadProfileAndProducts() async {
-        await MainActor.run { isLoading = true; errorMessage = nil; errorBannerTitle = nil }
+        await MainActor.run {
+            errorMessage = nil
+            errorBannerTitle = nil
+            if items.isEmpty {
+                isLoadingProfile = true
+            } else {
+                isLoadingProducts = true
+            }
+        }
         do {
-            // Fetch full profile (bio, location, stats) for this username
             let profileUser = try await userService.getUserByUsername(user.username)
             await MainActor.run {
                 self.user = profileUser
                 self.isFollowing = profileUser.isFollowing ?? false
                 self.displayedFollowersCount = profileUser.followersCount
+                self.isLoadingProfile = false
+                self.isLoadingProducts = true
             }
             let products = try await userService.getUserProducts(username: user.username)
             await MainActor.run {
                 self.items = products
-                self.isLoading = false
+                self.isLoadingProducts = false
             }
         } catch {
             await MainActor.run {
-                self.isLoading = false
-                self.errorMessage = L10n.userFacingError(error)
-                self.errorBannerTitle = L10n.userFacingErrorBannerTitle(error)
-            }
-        }
-    }
-
-    private func loadProducts() async {
-        await MainActor.run { isLoading = true; errorMessage = nil; errorBannerTitle = nil; items = [] }
-        do {
-            let products = try await userService.getUserProducts(username: user.username)
-            await MainActor.run {
-                self.items = products
-                self.isLoading = false
-            }
-        } catch {
-            await MainActor.run {
-                self.isLoading = false
+                self.isLoadingProfile = false
+                self.isLoadingProducts = false
                 self.errorMessage = L10n.userFacingError(error)
                 self.errorBannerTitle = L10n.userFacingErrorBannerTitle(error)
             }

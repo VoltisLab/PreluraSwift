@@ -178,6 +178,7 @@ struct AdminOrderIssuesView: View {
             }
         }
         .environmentObject(authService)
+        .wearhouseSheetContentColumnIfWide()
     }
 
     @ViewBuilder
@@ -236,6 +237,7 @@ struct AdminOrderIssuesView: View {
                 actionResolution = "REFUND_WITHOUT_RETURN"
             }
         }
+        .wearhouseSheetContentColumnIfWide()
     }
 
     @ViewBuilder

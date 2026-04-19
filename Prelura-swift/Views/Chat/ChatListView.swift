@@ -47,6 +47,7 @@ struct ChatListView: View {
         Group {
             if authService.isGuestMode {
                 GuestSignInPromptView()
+                    .wearhouseSheetContentColumnIfWide()
                     .navigationTitle(L10n.string("Messages"))
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbarBackground(Theme.Colors.background, for: .navigationBar)
@@ -143,6 +144,7 @@ struct ChatListView: View {
                             }
                         }
                     }
+                    .wearhouseChatThreadReadableWidthIfPadMac()
                     .background(Theme.Colors.background)
                     .navigationTitle(L10n.string("Messages"))
                     .navigationBarTitleDisplayMode(.inline)

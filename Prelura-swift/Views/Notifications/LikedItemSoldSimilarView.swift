@@ -7,6 +7,7 @@ struct LikedItemSoldSimilarView: View {
     let suggestionQuery: String
 
     @EnvironmentObject private var authService: AuthService
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     private let productService = ProductService()
 
     @State private var similar: [Item] = []
@@ -112,10 +113,10 @@ struct LikedItemSoldSimilarView: View {
                                 .padding(.top, Theme.Spacing.sm)
                         } else {
                             LazyVGrid(
-                                columns: [
-                                    GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                                    GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                                ],
+                                columns: WearhouseLayoutMetrics.productGridColumns(
+                                    horizontalSizeClass: horizontalSizeClass,
+                                    spacing: Theme.Spacing.sm
+                                ),
                                 spacing: Theme.Spacing.md
                             ) {
                                 ForEach(combined) { item in

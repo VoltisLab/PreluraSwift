@@ -3,6 +3,7 @@ import SwiftUI
 /// Full staff-curated featured grid; top banner matches Discover Try Cart strip (150pt hero + dim overlay) with WEARHOUSE artwork.
 struct FeaturedSeeAllView: View {
     @EnvironmentObject var authService: AuthService
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var items: [Item] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -51,6 +52,7 @@ struct FeaturedSeeAllView: View {
         }
         .fullScreenCover(isPresented: $showGuestSignInPrompt) {
             GuestSignInPromptView()
+                .wearhouseSheetContentColumnIfWide()
         }
     }
 
@@ -72,10 +74,10 @@ struct FeaturedSeeAllView: View {
 
     private var featuredGrid: some View {
         LazyVGrid(
-            columns: [
-                GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                GridItem(.flexible(), spacing: Theme.Spacing.sm)
-            ],
+            columns: WearhouseLayoutMetrics.productGridColumns(
+                horizontalSizeClass: horizontalSizeClass,
+                spacing: Theme.Spacing.sm
+            ),
             alignment: .leading,
             spacing: Theme.Spacing.md,
             pinnedViews: []

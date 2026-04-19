@@ -4,6 +4,7 @@ import UIKit
 /// Dashboard screen — seller metrics, KPIs, and charts. Fetches UserEarnings from API; some metrics use derived/placeholder values until backend supports them.
 struct ShopValueView: View {
     @EnvironmentObject var authService: AuthService
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var listingCount: Int = 0
 
     @State private var earnings: UserEarnings?
@@ -98,6 +99,7 @@ struct ShopValueView: View {
                 WithdrawalFlowView(availableBalance: balance, onDismiss: { showWithdrawalFlow = false })
                     .environmentObject(authService)
             }
+            .wearhouseSheetContentColumnIfWide()
         }
     }
 
@@ -154,7 +156,13 @@ struct ShopValueView: View {
             Text(L10n.string("Earnings & balance"))
                 .font(Theme.Typography.headline)
                 .foregroundColor(Theme.Colors.primaryText)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Theme.Spacing.sm) {
+            LazyVGrid(
+                columns: WearhouseLayoutMetrics.productGridColumns(
+                    horizontalSizeClass: horizontalSizeClass,
+                    spacing: Theme.Spacing.sm
+                ),
+                spacing: Theme.Spacing.sm
+            ) {
                 DashboardKPICard(
                     title: L10n.string("Balance"),
                     value: formatCurrency(balance),
@@ -192,7 +200,13 @@ struct ShopValueView: View {
             Text(L10n.string("Performance"))
                 .font(Theme.Typography.headline)
                 .foregroundColor(Theme.Colors.primaryText)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Theme.Spacing.sm) {
+            LazyVGrid(
+                columns: WearhouseLayoutMetrics.productGridColumns(
+                    horizontalSizeClass: horizontalSizeClass,
+                    spacing: Theme.Spacing.sm
+                ),
+                spacing: Theme.Spacing.sm
+            ) {
                 DashboardKPICard(title: L10n.string("Views this month"), value: formatNumber(viewsThisMonth), percentChange: viewsThisMonthPercentChange)
                 DashboardKPICard(title: L10n.string("Items sold"), value: "\(itemsSold)")
                 DashboardKPICard(title: L10n.string("Conversion rate"), value: String(format: "%.1f%%", conversionRate))

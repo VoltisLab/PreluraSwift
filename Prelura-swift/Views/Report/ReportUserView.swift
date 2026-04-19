@@ -84,6 +84,7 @@ private struct ReportUserDetailsView: View {
 
     @State private var description: String = ""
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
+    @State private var showMacReportPhotoImporter: Bool = false
     @State private var selectedImageDataList: [Data] = []
     @State private var selectedPreviewImages: [UIImage] = []
     @State private var errorMessage: String?
@@ -126,17 +127,35 @@ private struct ReportUserDetailsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    PhotosPicker(selection: $selectedPhotoItems, maxSelectionCount: 6, matching: .images) {
-                        HStack(spacing: Theme.Spacing.sm) {
-                            Image(systemName: "photo.on.rectangle")
-                            Text("Upload photos (optional)")
+                    Group {
+                        if IOSAppOnMacImageImport.isIOSAppOnMac {
+                            Button {
+                                showMacReportPhotoImporter = true
+                            } label: {
+                                HStack(spacing: Theme.Spacing.sm) {
+                                    Image(systemName: "photo.on.rectangle")
+                                    Text("Upload photos (optional)")
+                                }
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(Theme.primaryColor)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, Theme.Spacing.sm)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            PhotosPicker(selection: $selectedPhotoItems, maxSelectionCount: 6, matching: .images) {
+                                HStack(spacing: Theme.Spacing.sm) {
+                                    Image(systemName: "photo.on.rectangle")
+                                    Text("Upload photos (optional)")
+                                }
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(Theme.primaryColor)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, Theme.Spacing.sm)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.primaryColor)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, Theme.Spacing.sm)
                     }
-                    .buttonStyle(.plain)
 
                     if !selectedPreviewImages.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -180,6 +199,15 @@ private struct ReportUserDetailsView: View {
             .padding(.vertical, Theme.Spacing.sm)
             .background(Theme.Colors.background)
             .disabled(isSubmitting)
+        }
+        .macOnlyImageFileImporter(
+            isPresented: $showMacReportPhotoImporter,
+            allowsMultipleSelection: true,
+            maxImageCount: 6
+        ) { images in
+            let capped = Array(images.prefix(6))
+            selectedImageDataList = IOSAppOnMacImageImport.jpegDataList(from: capped, maxCount: 6)
+            selectedPreviewImages = capped
         }
         .onChange(of: selectedPhotoItems) { _, newItems in
             Task {

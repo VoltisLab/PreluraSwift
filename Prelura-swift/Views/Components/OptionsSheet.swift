@@ -97,6 +97,7 @@ struct OptionsSheet<Content: View>: View {
             .layoutPriority(1)
 
             content()
+                .wearhouseSheetContentColumnIfWide()
                 .frame(maxWidth: .infinity, alignment: .top)
                 .layoutPriority(0)
 
@@ -112,6 +113,7 @@ struct OptionsSheet<Content: View>: View {
         NavigationStack {
             VStack(spacing: 0) {
                 content()
+                    .wearhouseSheetContentColumnIfWide()
                     .frame(maxWidth: .infinity, alignment: .top)
                 if fillsAvailableVerticalSpace {
                     Spacer(minLength: 0)

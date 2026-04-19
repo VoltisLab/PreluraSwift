@@ -3,8 +3,6 @@ import SwiftUI
 /// Invite a friend — intro plus contact invite and share profile link.
 struct InviteFriendView: View {
     @EnvironmentObject private var authService: AuthService
-    @State private var showShareProfileSheet = false
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
@@ -31,7 +29,7 @@ struct InviteFriendView: View {
                     }
                     .buttonStyle(PlainTappableButtonStyle())
 
-                    Button(action: { showShareProfileSheet = true }) {
+                    NavigationLink(destination: ShareProfileLinkView().environmentObject(authService)) {
                         inviteRow(
                             icon: "link",
                             title: "Share profile link",
@@ -48,10 +46,6 @@ struct InviteFriendView: View {
         .navigationTitle("Invite a friend")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .sheet(isPresented: $showShareProfileSheet) {
-            ShareProfileLinkSheet()
-                .environmentObject(authService)
-        }
     }
 
     private func inviteRow(

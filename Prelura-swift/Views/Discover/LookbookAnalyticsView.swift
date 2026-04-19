@@ -9,6 +9,7 @@ import SwiftUI
 struct LookbookAnalyticsView: View {
     let entry: LookbookEntry
     @EnvironmentObject private var authService: AuthService
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dismiss) private var dismiss
     @State private var refreshed: LookbookEntry?
     @State private var loading = true
@@ -63,7 +64,13 @@ struct LookbookAnalyticsView: View {
                     .foregroundColor(Theme.Colors.primaryText)
                     .padding(.horizontal, Theme.Spacing.md)
 
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Theme.Spacing.md) {
+                LazyVGrid(
+                    columns: WearhouseLayoutMetrics.productGridColumns(
+                        horizontalSizeClass: horizontalSizeClass,
+                        spacing: Theme.Spacing.sm
+                    ),
+                    spacing: Theme.Spacing.md
+                ) {
                     analyticsTile(title: L10n.string("Likes"), value: model.likesCount, symbol: "heart.fill", tint: .pink)
                     analyticsTile(title: L10n.string("Comments"), value: model.commentsCount, symbol: "bubble.right.fill", tint: .cyan)
                     analyticsTile(title: L10n.string("Product opens"), value: model.productLinkClicks, symbol: "bag.fill", tint: Theme.primaryColor)

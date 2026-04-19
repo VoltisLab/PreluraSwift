@@ -145,6 +145,7 @@ struct AccountSettingsView: View {
                 }
             )
             .environmentObject(authService)
+            .wearhouseSheetContentColumnIfWide()
         }
         .sheet(item: $pendingPhoneVerification) { wrapper in
             phoneVerificationSheet(for: wrapper)
@@ -173,6 +174,7 @@ struct AccountSettingsView: View {
                 }
             }
         }
+        .wearhouseSheetContentColumnIfWide()
     }
 
     private var genderPickerSheet: some View {
@@ -186,6 +188,7 @@ struct AccountSettingsView: View {
             .navigationTitle(L10n.string("Gender"))
             .navigationBarTitleDisplayMode(.inline)
         }
+        .wearhouseSheetContentColumnIfWide()
     }
 
     private func formatDOB(_ date: Date) -> String {
@@ -285,6 +288,7 @@ struct AccountSettingsView: View {
                 }
             }
         }
+        .wearhouseSheetContentColumnIfWide()
     }
 
     private func save() {

@@ -106,6 +106,7 @@ struct AdminDashboardView: View {
                 },
                 onCancel: { showDeleteUserSheet = false }
             )
+            .wearhouseSheetContentColumnIfWide()
         }
         .alert("Result", isPresented: $showDeleteUserResult) {
             Button("OK") { deleteUserResult = nil }

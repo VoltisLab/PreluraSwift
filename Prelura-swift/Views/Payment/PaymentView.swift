@@ -260,6 +260,7 @@ struct PaymentView: View {
 
             bottomBar
         }
+        .wearhouseSheetContentColumnIfWide()
         .navigationTitle(L10n.string("Payment"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.Colors.background, for: .navigationBar)

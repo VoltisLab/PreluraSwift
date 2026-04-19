@@ -320,6 +320,7 @@ struct OrderDetailView: View {
                         .navigationTitle("Tracking")
                         .navigationBarTitleDisplayMode(.inline)
                 }
+                .wearhouseSheetContentColumnIfWide()
             }
         }
         .sheet(isPresented: $showMultibuyProblemProductPicker) {
@@ -335,6 +336,7 @@ struct OrderDetailView: View {
                     showMultibuyProblemProductPicker = false
                 }
             )
+            .wearhouseSheetContentColumnIfWide()
         }
         .navigationDestination(item: $orderHelpProductContext) { product in
             OrderHelpView(orderId: effectiveOrder.id, conversationId: "", helpContextProduct: product)
@@ -358,6 +360,7 @@ struct OrderDetailView: View {
                 )
                 .environmentObject(authService)
                 .id(leaveFeedbackRefreshToken)
+                .wearhouseSheetContentColumnIfWide()
             } else {
                 Text("Unable to open feedback for this order.")
                     .font(Theme.Typography.body)
@@ -1384,6 +1387,7 @@ struct OrderDetailView: View {
         }
         .sheet(isPresented: $showConfirmShippingSheet) {
             confirmShippingSheet
+                .wearhouseSheetContentColumnIfWide()
                 .onAppear {
                     // Default carrier from selected shipping service shown on this screen.
                     if confirmShippingCarrier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,

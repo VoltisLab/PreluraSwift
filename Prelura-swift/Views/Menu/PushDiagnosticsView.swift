@@ -274,6 +274,7 @@ struct PushDiagnosticsView: View {
                     }
                 }
             }
+            .wearhouseSheetContentColumnIfWide()
             .presentationDetents([.medium, .large])
         }
         .onAppear {

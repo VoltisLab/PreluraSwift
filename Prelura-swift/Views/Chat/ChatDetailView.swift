@@ -1069,6 +1069,7 @@ struct ChatDetailView: View {
                 }
             }
         }
+        .wearhouseChatThreadReadableWidthIfPadMac()
         .overlay {
             if let msg = reactionOverlayMessage {
                 WhatsAppStyleReactionOverlay(
@@ -1104,6 +1105,7 @@ struct ChatDetailView: View {
                         .onAppear { showExtendedReactionEmojis = false }
                 }
             }
+            .wearhouseSheetContentColumnIfWide()
             .wearhouseGlassModalSheetBackground()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1195,6 +1197,7 @@ struct ChatDetailView: View {
                         }
                     }
             }
+            .wearhouseSheetContentColumnIfWide()
         }
         .alert(item: $folderActionError) { err in
             Alert(

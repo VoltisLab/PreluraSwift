@@ -82,6 +82,65 @@ struct DiscoverShimmerView: View {
     }
 }
 
+/// Shimmer for Discover content **below** the hero (Shop Categories → product strips). Hero uses local assets and renders immediately.
+struct DiscoverBelowFoldShimmerView: View {
+    var body: some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            HStack(spacing: Theme.Spacing.sm) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: 24, height: 24)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: 140, height: 22)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.Spacing.md)
+            ContentDivider()
+            VStack(spacing: 0) {
+                ForEach(0..<2, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(height: 48)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.sm)
+                }
+            }
+            RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                .fill(Theme.Colors.secondaryBackground)
+                .frame(height: 215)
+                .padding(.horizontal, Theme.Spacing.md)
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                HStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(width: 120, height: 20)
+                    Spacer()
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(width: 60, height: 16)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        ForEach(0..<5, id: \.self) { _ in
+                            DiscoverItemShimmer()
+                                .frame(width: 160)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+
+            Spacer(minLength: Theme.Spacing.xl)
+        }
+        .padding(.top, 14)
+        .padding(.bottom, Theme.Spacing.lg)
+        .frame(maxWidth: .infinity)
+        .shimmering()
+    }
+}
+
 private struct DiscoverItemShimmer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {

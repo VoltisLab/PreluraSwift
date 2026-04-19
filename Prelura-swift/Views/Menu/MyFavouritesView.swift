@@ -3,6 +3,7 @@ import SwiftUI
 /// Favourites: liked products (default) and Lookbook photos saved from the feed. Matches Flutter MyFavouriteScreen + local photo bookmarks.
 struct MyFavouritesView: View {
     @EnvironmentObject var authService: AuthService
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var shopAllBag: ShopAllBagStore
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
     /// When true, opened from Shop All (e.g. Try Cart rules already apply from that flow).
@@ -24,15 +25,21 @@ struct MyFavouritesView: View {
 
     private let productService = ProductService()
     private let pageCount = 20
-    private let columns = [
-        GridItem(.flexible(), spacing: Theme.Spacing.sm),
-        GridItem(.flexible(), spacing: Theme.Spacing.sm)
-    ]
-    /// Two folder tiles per row (square thumbs, banner corner radius).
-    private let lookbookFolderGridColumns = [
-        GridItem(.flexible(), spacing: Theme.Spacing.md),
-        GridItem(.flexible(), spacing: Theme.Spacing.md)
-    ]
+
+    private var productGridColumns: [GridItem] {
+        WearhouseLayoutMetrics.productGridColumns(
+            horizontalSizeClass: horizontalSizeClass,
+            spacing: Theme.Spacing.sm
+        )
+    }
+
+    /// Folder tiles per row (2 on phone; 3–4 on iPad / Mac).
+    private var lookbookFolderGridColumns: [GridItem] {
+        WearhouseLayoutMetrics.productGridColumns(
+            horizontalSizeClass: horizontalSizeClass,
+            spacing: Theme.Spacing.md
+        )
+    }
 
     private var isProductsTab: Bool { !lookbookOnly && favouritesSegment == 0 }
 
@@ -198,7 +205,7 @@ struct MyFavouritesView: View {
         } else {
             ScrollView {
                 LazyVGrid(
-                    columns: columns,
+                    columns: productGridColumns,
                     alignment: .leading,
                     spacing: Theme.Spacing.md,
                     pinnedViews: []
@@ -476,6 +483,7 @@ struct MyFavouritesView: View {
 private struct SavedLookbookFavoritesFeedView: View {
     let folderId: String
     var initialPhotoId: String?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
     @State private var useGrid = false
@@ -484,6 +492,8 @@ private struct SavedLookbookFavoritesFeedView: View {
     @State private var followedCommentBoostUsernames: Set<String> = []
     @State private var commentsEntry: LookbookEntry?
     @State private var selectedProductId: ProductIdNavigator?
+    @State private var hashtagNavigationSelection: LookbookHashtagSelection?
+    @State private var likersPostId: String?
     @State private var removeConfirmPostId: String?
     @State private var isSaveSelectionMode = false
     @State private var selectedSaveIds: Set<String> = []
@@ -506,11 +516,7 @@ private struct SavedLookbookFavoritesFeedView: View {
     }
 
     private var gridColumns: [GridItem] {
-        [
-            GridItem(.flexible(), spacing: gridGutter),
-            GridItem(.flexible(), spacing: gridGutter),
-            GridItem(.flexible(), spacing: gridGutter)
-        ]
+        WearhouseLayoutMetrics.lookbookFeedGridColumns(horizontalSizeClass: horizontalSizeClass)
     }
 
     private let productService = ProductService()
@@ -569,7 +575,10 @@ private struct SavedLookbookFavoritesFeedView: View {
                                             if let idx = feedEntries.firstIndex(where: { $0.lookbookPostKey == k }) {
                                                 feedEntries[idx] = updated
                                             }
-                                        }
+                                        },
+                                        feedEntriesForHashtag: feedEntries,
+                                        onHashtagNavigate: { hashtagNavigationSelection = $0 },
+                                        onLikesListTap: { likersPostId = $0.apiPostId }
                                     )
                                     .allowsHitTesting(!isSaveSelectionMode)
                                     .padding(.bottom, lookbookListRowBottomPadding)
@@ -658,7 +667,7 @@ private struct SavedLookbookFavoritesFeedView: View {
             )
         }
         .sheet(item: $commentsEntry) { entry in
-            LookbookCommentsSheet(entry: entry) { newCount in
+            LookbookCommentsSheet(entry: entry, feedEntriesForHashtag: feedEntries) { newCount in
                 let key = entry.apiPostId.lowercased()
                 if let idx = feedEntries.firstIndex(where: { $0.apiPostId.lowercased() == key }) {
                     var updated = feedEntries[idx]
@@ -670,6 +679,18 @@ private struct SavedLookbookFavoritesFeedView: View {
         }
         .navigationDestination(item: $selectedProductId) { nav in
             LookbookProductDetailLoader(productId: nav.id, productService: productService, authService: authService)
+        }
+        .navigationDestination(item: $hashtagNavigationSelection) { sel in
+            LookbookHashtagFeedResultsView(
+                selection: sel,
+                matchingEntries: lookbookEntriesMatchingHashtagKey(entries: feedEntries, key: sel.key)
+            )
+            .environmentObject(authService)
+            .environmentObject(savedLookbookFavorites)
+        }
+        .navigationDestination(item: $likersPostId) { postId in
+            LookbookPostLikersView(postId: postId)
+                .environmentObject(authService)
         }
         .confirmationDialog(
             L10n.string("Remove from this folder?"),
@@ -854,6 +875,7 @@ struct LookbookSaveToFolderSheet: View {
                         }
                     }
                 }
+                .wearhouseSheetContentColumnIfWide()
             }
         }
     }

@@ -22,9 +22,8 @@ struct ProfileSettingsView: View {
     @FocusState private var focusedField: Field?
     @State private var loadedUser: User?
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var showMacProfilePhotoImporter: Bool = false
     @State private var profileImage: UIImage?
-    @State private var showShareProfileSheet = false
-
     private let userService = UserService()
 
     private enum Field { case username, bio, location }
@@ -98,9 +97,7 @@ struct ProfileSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showShareProfileSheet = true
-                } label: {
+                NavigationLink(destination: ShareProfileLinkView().environmentObject(authService)) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(Theme.Colors.primaryText)
@@ -113,10 +110,6 @@ struct ProfileSettingsView: View {
             userService.updateAuthToken(authService.authToken)
             photoVM.updateAuthToken(authService.authToken)
             loadUser()
-        }
-        .sheet(isPresented: $showShareProfileSheet) {
-            ShareProfileLinkSheet()
-                .environmentObject(authService)
         }
         .onChange(of: photoVM.isUploadingProfilePhoto) { _, isUploading in
             if !isUploading, photoVM.profilePhotoUploadError == nil {
@@ -138,61 +131,35 @@ struct ProfileSettingsView: View {
                 Text(err)
             }
         }
+        .macOnlyImageFileImporter(
+            isPresented: $showMacProfilePhotoImporter,
+            allowsMultipleSelection: false,
+            maxImageCount: 1
+        ) { images in
+            guard let image = images.first else { return }
+            profileImage = image
+            photoVM.uploadProfileImage(image, authToken: authService.authToken)
+        }
     }
 
     private var profilePhotoHeader: some View {
         HStack {
             Spacer(minLength: 0)
-            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                ZStack {
-                    if let profileImage {
-                        Image(uiImage: profileImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                            .clipShape(Circle())
-                    } else if let urlString = loadedUser?.avatarURL, !urlString.isEmpty, let url = URL(string: urlString) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .empty:
-                                Circle()
-                                    .fill(Theme.Colors.secondaryBackground)
-                                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                                    .overlay { ProgressView() }
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                                    .clipShape(Circle())
-                            case .failure:
-                                profilePhotoPlaceholder
-                            @unknown default:
-                                profilePhotoPlaceholder
-                            }
-                        }
-                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                        .clipShape(Circle())
-                    } else {
-                        profilePhotoPlaceholder
+            Group {
+                if IOSAppOnMacImageImport.isIOSAppOnMac {
+                    Button {
+                        showMacProfilePhotoImporter = true
+                    } label: {
+                        profilePhotoHeaderLabel
                     }
-                }
-                .overlay {
-                    if photoVM.isUploadingProfilePhoto {
-                        ProgressView()
-                            .tint(.white)
-                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                            .background(Color.black.opacity(0.4))
-                            .clipShape(Circle())
+                    .buttonStyle(.plain)
+                } else {
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        profilePhotoHeaderLabel
                     }
+                    .buttonStyle(.plain)
                 }
-                .overlay(
-                    Circle()
-                        .stroke(Theme.Colors.profileRingBorder, lineWidth: 2.5)
-                        .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
-                )
             }
-            .buttonStyle(.plain)
             .onChange(of: selectedPhoto) { _, newItem in
                 Task {
                     guard let newItem,
@@ -207,6 +174,56 @@ struct ProfileSettingsView: View {
             Spacer(minLength: 0)
         }
         .padding(.bottom, Theme.Spacing.sm)
+    }
+
+    private var profilePhotoHeaderLabel: some View {
+        ZStack {
+            if let profileImage {
+                Image(uiImage: profileImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                    .clipShape(Circle())
+            } else if let urlString = loadedUser?.avatarURL, !urlString.isEmpty, let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        Circle()
+                            .fill(Theme.Colors.secondaryBackground)
+                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                            .overlay { ProgressView() }
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                            .clipShape(Circle())
+                    case .failure:
+                        profilePhotoPlaceholder
+                    @unknown default:
+                        profilePhotoPlaceholder
+                    }
+                }
+                .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                .clipShape(Circle())
+            } else {
+                profilePhotoPlaceholder
+            }
+        }
+        .overlay {
+            if photoVM.isUploadingProfilePhoto {
+                ProgressView()
+                    .tint(.white)
+                    .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+                    .background(Color.black.opacity(0.4))
+                    .clipShape(Circle())
+            }
+        }
+        .overlay(
+            Circle()
+                .stroke(Theme.Colors.profileRingBorder, lineWidth: 2.5)
+                .frame(width: Self.profilePhotoSize, height: Self.profilePhotoSize)
+        )
     }
 
     private var profilePhotoPlaceholder: some View {

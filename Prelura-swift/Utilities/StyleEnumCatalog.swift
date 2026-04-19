@@ -1,6 +1,11 @@
 import Foundation
 
 /// Backend `StyleEnum` values and normalization (shared by sell form, product mapping, and detail display).
+///
+/// **Keep in sync with the GraphQL schema** in the API repo (`StyleEnum`). When the backend adds or removes
+/// enum cases, update ``rawValues`` so offline users and first paint (before introspection succeeds) match
+/// the server. ``StyleEnumValuesLoader`` refreshes from `__type(name: "StyleEnum")` when allowed; the bundle
+/// here is still the source of truth for builds where introspection is disabled.
 enum StyleEnumCatalog {
     static let rawValues: [String] = [
         "WORKWEAR", "WORKOUT", "CASUAL", "PARTY_DRESS", "PARTY_OUTFIT", "FORMAL_WEAR", "EVENING_WEAR",

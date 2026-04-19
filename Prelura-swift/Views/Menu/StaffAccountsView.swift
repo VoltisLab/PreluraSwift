@@ -81,6 +81,7 @@ struct StaffAccountsView: View {
                 }
             }
             .scrollContentBackground(.hidden)
+            .wearhouseSheetContentColumnIfWide()
         }
         .alert(L10n.string("Could not switch account"), isPresented: Binding(
             get: { errorMessage != nil },

@@ -10,7 +10,10 @@ class ProfileViewModel: ObservableObject {
     /// Prefetched with `getUser` so seller multi-buy settings open without a cold `userMultibuyDiscounts` call.
     @Published var multibuyDiscounts: [MultibuyDiscount] = []
     @Published var isMenuVisible: Bool = false
+    /// True only while `viewMe` is in flight on first paint (`user == nil`). Pull-to-refresh does not set this.
     @Published var isLoading: Bool = false
+    /// Listings + multibuy load after profile; grid can show a spinner while this is true.
+    @Published var isLoadingProducts: Bool = false
     @Published var errorMessage: String?
     @Published var errorBannerTitle: String?
     
@@ -69,36 +72,48 @@ class ProfileViewModel: ObservableObject {
     }
     
     func loadUserData() async {
+        let blockFullScreenShimmer = await MainActor.run { user == nil }
         await MainActor.run {
-            isLoading = true
+            if blockFullScreenShimmer {
+                isLoading = true
+            }
             errorMessage = nil
             errorBannerTitle = nil
         }
-        
+
         let previousMultibuyTiers = multibuyDiscounts
         do {
-            // Load profile and listings in parallel. `viewMe` stays allowed under suspension/ban;
-            // `userProducts` is not — if we `try await` both together, a blocked listings query
-            // prevents applying `viewMe` and the tab shows empty zeros + title "Profile".
-            async let userTask = userService.getUser()
+            // 1) `viewMe` first so the header can render. `userProducts` is not allowed under some bans;
+            // applying profile before listings avoids an empty tab title when listings fail.
+            let fetchedUser = try await userService.getUser()
+            await MainActor.run {
+                self.user = fetchedUser
+                if blockFullScreenShimmer {
+                    self.isLoading = false
+                }
+                self.isLoadingProducts = true
+            }
+            // 2) Listings + multibuy in parallel after profile is on-screen.
             async let productsTask = userService.getUserProducts()
-            let fetchedUser = try await userTask
+            async let multibuyTask = userService.getMultibuyDiscounts(userId: nil)
             let products = (try? await productsTask) ?? []
-            var tiers: [MultibuyDiscount] = []
+            let tiers: [MultibuyDiscount]
             do {
-                tiers = try await userService.getMultibuyDiscounts(userId: nil)
+                tiers = try await multibuyTask
             } catch {
                 tiers = previousMultibuyTiers
             }
             await MainActor.run {
-                self.user = fetchedUser
                 self.userItems = products
                 self.multibuyDiscounts = tiers
-                self.isLoading = false
+                self.isLoadingProducts = false
             }
         } catch {
             await MainActor.run {
-                self.isLoading = false
+                if blockFullScreenShimmer {
+                    self.isLoading = false
+                }
+                self.isLoadingProducts = false
                 self.errorMessage = L10n.userFacingError(error)
                 self.errorBannerTitle = L10n.userFacingErrorBannerTitle(error)
                 print("❌ Profile load error: \(error.localizedDescription)")
@@ -118,10 +133,8 @@ class ProfileViewModel: ObservableObject {
     
     func refreshAsync() async {
         await MainActor.run {
-            isLoading = true
             errorMessage = nil
             errorBannerTitle = nil
-            // Keep user and userItems so the UI doesn't flash to empty/shimmer and break layout
         }
         await loadUserData()
     }

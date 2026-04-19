@@ -623,6 +623,7 @@ struct ChatBubbleView: View {
         .id(message.id)
         .fullScreenCover(isPresented: $showGuestSignInPrompt) {
             GuestSignInPromptView()
+                .wearhouseSheetContentColumnIfWide()
         }
     }
 }
@@ -697,16 +698,19 @@ struct AIResultsView: View {
     let items: [Item]
     @ObservedObject var viewModel: HomeViewModel
     @EnvironmentObject private var authService: AuthService
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showGuestSignInPrompt: Bool = false
-
-    private let columns = [
-        GridItem(.flexible(), spacing: Theme.Spacing.sm),
-        GridItem(.flexible(), spacing: Theme.Spacing.sm)
-    ]
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: Theme.Spacing.md) {
+            LazyVGrid(
+                columns: WearhouseLayoutMetrics.productGridColumns(
+                    horizontalSizeClass: horizontalSizeClass,
+                    spacing: Theme.Spacing.sm
+                ),
+                alignment: .leading,
+                spacing: Theme.Spacing.md
+            ) {
                 ForEach(items) { item in
                     NavigationLink(destination: ItemDetailView(item: item, authService: authService)) {
                         HomeItemCard(item: item, onLikeTap: {
@@ -726,6 +730,7 @@ struct AIResultsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(isPresented: $showGuestSignInPrompt) {
             GuestSignInPromptView()
+                .wearhouseSheetContentColumnIfWide()
         }
     }
 }

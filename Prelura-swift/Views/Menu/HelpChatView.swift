@@ -394,6 +394,7 @@ struct HelpChatView: View {
                 messageComposer
             }
         }
+        .wearhouseChatThreadReadableWidthIfPadMac()
         .background(Theme.Colors.background)
         .navigationTitle(navigationTitleText)
         .navigationBarTitleDisplayMode(.inline)

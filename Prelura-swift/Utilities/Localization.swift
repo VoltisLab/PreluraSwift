@@ -312,6 +312,7 @@ enum L10n {
         "Photo": "Φωτογραφία",
         "Lookbook": "Lookbook",
         "No Lookbook posts yet": "Δεν υπάρχουν δημοσιεύσεις Lookbook ακόμα",
+        "You're all caught up": "Τα είδατε όλα",
         "Create a look from Lookbook — it will show up here.": "Δημιουργήστε ένα look από το Lookbook — θα εμφανιστεί εδώ.",
         "Search": "Αναζήτηση",
         "For You": "Για σένα",
@@ -336,6 +337,8 @@ enum L10n {
         "Tagged in look": "Επισημασμένο στο look",
         "In %d looks": "Σε %d εμφανίσεις",
         "No comments yet": "Δεν υπάρχουν σχόλια ακόμα",
+        "No likes yet": "Δεν υπάρχουν ακόμα likes",
+        "Likes": "Likes",
         "Comments": "Σχόλια",
         "1 Comment": "1 σχόλιο",
         "%d comments": "%d σχόλια",
@@ -441,7 +444,7 @@ enum L10n {
         "Welcome back": "Καλώς ήρθατε πάλι",
         "Username": "Όνομα χρήστη",
         "Enter your username": "Εισάγετε το όνομα χρήστη σας",
-        "Incorrect username or password. Use your username (not your email). For seed accounts, the password is the STAGING_SEED_PASSWORD from GitHub Actions — if that secret was changed after users were created, the old password still applies until you reset it.": "Λάθος όνομα χρήστη ή κωδικός. Χρησιμοποιήστε το όνομα χρήστη (όχι το email). Για δοκιμαστικούς λογαριασμούς, ο κωδικός είναι το STAGING_SEED_PASSWORD από το GitHub Actions — αν αλλάξατε αυτό το μυστικό μετά τη δημιουργία των λογαριασμών, ισχύει ακόμα ο παλιός κωδικός μέχρι να τον επαναφέρετε.",
+        "Please enter valid credentials": "Εισάγετε έγκυρα διαπιστευτήρια",
         "Password": "Κωδικός",
         "Enter your password": "Εισάγετε τον κωδικό σας",
         "Forgot password?": "Ξεχάσατε τον κωδικό;",
@@ -597,6 +600,8 @@ enum L10n {
 
         // Notifications & Chat
         "No notifications": "Δεν υπάρχουν ειδοποιήσεις",
+        "No general notifications yet": "Δεν υπάρχουν ειδοποιήσεις εκτός Lookbook ακόμα",
+        "No lookbook notifications yet": "Δεν υπάρχουν ειδοποιήσεις Lookbook ακόμα",
         "Messages": "Μηνύματα",
         "Type a message...": "Πληκτρολογήστε μήνυμα...",
         "Thinking...": "Σκέφτομαι...",
@@ -1042,8 +1047,14 @@ extension L10n {
                lower.contains("cannot query field") || lower.contains("unknown field") {
                 return L10n.string("Updating tagged products isn’t available on this server yet. Your team can deploy setLookbookProductTags when ready.")
             }
-            if lower.contains("valid credentials") || (lower.contains("invalid") && lower.contains("credential")) {
-                return L10n.string("Incorrect username or password. Use your username (not your email). For seed accounts, the password is the STAGING_SEED_PASSWORD from GitHub Actions — if that secret was changed after users were created, the old password still applies until you reset it.")
+            let looksLikeBadLogin =
+                lower.contains("please enter valid")
+                || lower.contains("valid credentials")
+                || (lower.contains("invalid") && lower.contains("credential"))
+                || lower.contains("incorrect username or password")
+                || lower.contains("invalid username or password")
+            if looksLikeBadLogin {
+                return L10n.string("Please enter valid credentials")
             }
             if lower.contains("variable") && lower.contains("$") { return L10n.string("Something went wrong. Please try again.") }
             if lower.contains("syntax") || (lower.contains("graphql") && lower.contains("error")) {

@@ -281,7 +281,7 @@ final class NotificationService {
                 modelGroup: raw.modelGroup,
                 isRead: raw.isRead ?? false,
                 createdAt: createdAt,
-                meta: raw.metaDict
+                meta: BellNotificationMysteryThumbnailMigration.migratedMeta(from: raw.metaDict)
             )
         }
         return (parsed, total)
@@ -301,7 +301,7 @@ final class NotificationService {
     }
 
     /// Marks every unread notification that counts toward the home bell badge as read (same rules and pagination cap as `countUnreadBellEligibleNotifications`). Call when the user opens the notifications list so the bell clears after viewing.
-    func markAllBellEligibleUnreadRead(pageCount: Int = 15, maxPages: Int = 8) async throws {
+    func markAllBellEligibleUnreadRead(pageCount: Int = 40, maxPages: Int = 6) async throws {
         var ids: [Int] = []
         for page in 1...maxPages {
             let (batch, _) = try await getNotifications(pageCount: pageCount, pageNumber: page)

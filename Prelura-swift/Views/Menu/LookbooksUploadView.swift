@@ -300,13 +300,6 @@ private enum LookbookUploadStore {
 
 // MARK: - First page: Upload banner + two bottom buttons (active only when image selected)
 
-/// Style pill raw values for lookbook (subset of StyleSelectionView; same as LookbookView filter pills).
-private let lookbookUploadStylePills: [String] = [
-    "CASUAL", "VINTAGE", "STREETWEAR", "MINIMALIST", "BOHO", "CHIC", "FORMAL_WEAR",
-    "PARTY_DRESS", "LOUNGEWEAR", "ACTIVEWEAR", "Y2K", "DRESSES_GOWNS", "DENIM_JEANS",
-    "SUMMER_STYLES", "WINTER_ESSENTIALS", "ATHLEISURE", "DATE_NIGHT", "VACATION_RESORT_WEAR"
-]
-
 /// Fixed export sizes for lookbook uploads (crop + resize before upload). Aspect = width ÷ height.
 enum LookbookUploadCropPreset: Int, CaseIterable, Identifiable, Equatable {
     case square1080
@@ -370,6 +363,8 @@ struct LookbooksUploadView: View {
     @State private var cropAccumulated: [UIImage] = []
     @State private var cropPreset: LookbookUploadCropPreset = .portrait1080x1350
     @State private var caption: String = ""
+    /// Populated from ``StyleEnumValuesLoader`` (API + cache); starts with cache or bundled catalog for fast paint.
+    @State private var lookbookStylePillRaws: [String] = StyleEnumValuesLoader.cachedRaws()
     @State private var selectedStylePills: Set<String> = []
     @State private var uploadState: UploadState = .idle
     @State private var showTagScreen = false
@@ -382,6 +377,7 @@ struct LookbooksUploadView: View {
     @State private var showLookbookTagProductPicker = false
     @State private var lookbookTagPickedProduct: Item?
     @State private var editRemoteURLs: [URL] = []
+    @State private var showMacLookbookPhotoImporter: Bool = false
     private let userService = UserService()
     private let productService = ProductService()
 
@@ -396,6 +392,87 @@ struct LookbooksUploadView: View {
     }
 
     private var isEditMode: Bool { editingEntry != nil }
+
+    /// Same as picking from Photos on iPhone/iPad, but uses Finder file URLs on Mac.
+    private func startLookbookImportFromMac(_ images: [UIImage]) {
+        let capped = Array(images.prefix(Self.maxPhotosPerPost))
+        guard !capped.isEmpty else { return }
+        rawPickerImages = capped
+        cropQueueIndex = 0
+        cropAccumulated = []
+        showCropFlow = true
+        selectedItems = []
+    }
+
+    @ViewBuilder
+    private func lookbookNewPostPhotoInner(photoPickerMinHeight: CGFloat) -> some View {
+        Group {
+            if selectedImages.count == 1, let image = selectedImages.first {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: photoPickerMinHeight)
+            } else if selectedImages.count > 1 {
+                TabView {
+                    ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, image in
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .automatic))
+                .frame(minHeight: photoPickerMinHeight)
+            } else {
+                VStack(spacing: Theme.Spacing.md) {
+                    Image(systemName: "photo.badge.plus")
+                        .font(.system(size: 44))
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                    Text(
+                        IOSAppOnMacImageImport.isIOSAppOnMac
+                            ? L10n.string("Choose photos from Finder")
+                            : L10n.string("Tap to choose photos")
+                    )
+                    .font(Theme.Typography.body)
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    Text("Up to \(Self.maxPhotosPerPost) — shows as one carousel post")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                }
+                .frame(maxWidth: .infinity, minHeight: photoPickerMinHeight)
+                .background(Theme.Colors.secondaryBackground)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func lookbookNewPostPhotoArea(photoPickerMinHeight: CGFloat) -> some View {
+        if IOSAppOnMacImageImport.isIOSAppOnMac {
+            Button(action: { showMacLookbookPhotoImporter = true }) {
+                lookbookNewPostPhotoInner(photoPickerMinHeight: photoPickerMinHeight)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: photoPickerMinHeight)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            PhotosPicker(
+                selection: $selectedItems,
+                maxSelectionCount: Self.maxPhotosPerPost,
+                matching: .images,
+                photoLibrary: .shared()
+            ) {
+                lookbookNewPostPhotoInner(photoPickerMinHeight: photoPickerMinHeight)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: photoPickerMinHeight)
+                    .contentShape(Rectangle())
+            }
+            .onChange(of: selectedItems) { _, newValue in
+                Task { await loadImages(from: newValue) }
+            }
+        }
+    }
 
     var body: some View {
         GeometryReader { screenGeo in
@@ -446,53 +523,7 @@ struct LookbooksUploadView: View {
                                 .frame(maxWidth: .infinity)
                                 .background(Theme.Colors.secondaryBackground)
                             } else {
-                                PhotosPicker(
-                                    selection: $selectedItems,
-                                    maxSelectionCount: Self.maxPhotosPerPost,
-                                    matching: .images,
-                                    photoLibrary: .shared()
-                                ) {
-                                    Group {
-                                        if selectedImages.count == 1, let image = selectedImages.first {
-                                            Image(uiImage: image)
-                                                .resizable()
-                                                .scaledToFit()
-                                                .frame(maxWidth: .infinity)
-                                                .frame(minHeight: photoPickerMinHeight)
-                                        } else if selectedImages.count > 1 {
-                                            TabView {
-                                                ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, image in
-                                                    Image(uiImage: image)
-                                                        .resizable()
-                                                        .scaledToFit()
-                                                        .frame(maxWidth: .infinity)
-                                                }
-                                            }
-                                            .tabViewStyle(.page(indexDisplayMode: .automatic))
-                                            .frame(minHeight: photoPickerMinHeight)
-                                        } else {
-                                            VStack(spacing: Theme.Spacing.md) {
-                                                Image(systemName: "photo.badge.plus")
-                                                    .font(.system(size: 44))
-                                                    .foregroundStyle(Theme.Colors.secondaryText)
-                                                Text("Tap to choose photos")
-                                                    .font(Theme.Typography.body)
-                                                    .foregroundColor(Theme.Colors.secondaryText)
-                                                Text("Up to \(Self.maxPhotosPerPost) — shows as one carousel post")
-                                                    .font(Theme.Typography.caption)
-                                                    .foregroundColor(Theme.Colors.secondaryText)
-                                            }
-                                            .frame(maxWidth: .infinity, minHeight: photoPickerMinHeight)
-                                            .background(Theme.Colors.secondaryBackground)
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .frame(minHeight: photoPickerMinHeight)
-                                    .contentShape(Rectangle())
-                                }
-                                .onChange(of: selectedItems) { _, newValue in
-                                    Task { await loadImages(from: newValue) }
-                                }
+                                lookbookNewPostPhotoArea(photoPickerMinHeight: photoPickerMinHeight)
                             }
                         }
 
@@ -535,7 +566,7 @@ struct LookbooksUploadView: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: Theme.Spacing.sm) {
-                                    ForEach(lookbookUploadStylePills, id: \.self) { raw in
+                                    ForEach(lookbookStylePillRaws, id: \.self) { raw in
                                         let isSelected = selectedStylePills.contains(raw)
                                         let canSelect = selectedStylePills.count < Self.maxStylePills || isSelected
                                         Button(action: {
@@ -603,6 +634,9 @@ struct LookbooksUploadView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Colors.background)
+        .task(id: authService.authToken) {
+            await refreshLookbookStylePills()
+        }
         .writingToolsBehavior(.disabled)
         .writingToolsAffordanceVisibility(.hidden)
         .overlay {
@@ -647,6 +681,13 @@ struct LookbooksUploadView: View {
             }
         }
         .toolbar(.hidden, for: .tabBar)
+        .macOnlyImageFileImporter(
+            isPresented: $showMacLookbookPhotoImporter,
+            allowsMultipleSelection: true,
+            maxImageCount: Self.maxPhotosPerPost
+        ) { images in
+            startLookbookImportFromMac(images)
+        }
         .task(id: editingEntry?.id) {
             await hydrateEditingEntry()
         }
@@ -877,6 +918,17 @@ struct LookbooksUploadView: View {
         selectedItems = []
     }
 
+    /// Refreshes style chips from GraphQL `StyleEnum` introspection; updates ``lookbookStylePillRaws`` on success.
+    private func refreshLookbookStylePills() async {
+        let client = GraphQLClient()
+        client.setAuthToken(authService.authToken)
+        await StyleEnumValuesLoader.refreshCacheFromBackend(client: client)
+        let raws = StyleEnumValuesLoader.cachedRaws()
+        await MainActor.run {
+            lookbookStylePillRaws = raws
+        }
+    }
+
     private func loadImages(from items: [PhotosPickerItem]) async {
         guard !items.isEmpty else {
             await MainActor.run {
@@ -972,11 +1024,13 @@ struct LookbooksUploadView: View {
                 guard let firstUrl = urls.first else {
                     throw NSError(domain: "LookbooksUpload", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not upload images"])
                 }
+                let styleRaws = StyleEnumCatalog.normalizedUnique(Array(styles), maxCount: Self.maxStylePills)
                 let post = try await service.createLookbook(
                     imageUrl: firstUrl,
                     caption: cap.isEmpty ? nil : cap,
                     tags: tags.isEmpty ? nil : tags,
-                    productSnapshots: snapshots.isEmpty ? nil : snapshots
+                    productSnapshots: snapshots.isEmpty ? nil : snapshots,
+                    styles: styleRaws.isEmpty ? nil : styleRaws
                 )
                 let record = LookbookUploadRecord(
                     id: post.id,
@@ -1473,6 +1527,7 @@ struct LookbookTagProductsView: View {
                 }
             )
             .environmentObject(authService)
+            .wearhouseSheetContentColumnIfWide()
         }
         .onAppear {
             tags = initialTags
@@ -1785,6 +1840,7 @@ struct ProductSearchSheet: View {
     let onSelect: (Item) -> Void
     let onCancel: () -> Void
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var userService = UserService()
     @State private var query: String = ""
     @State private var myProducts: [Item] = []
@@ -1827,10 +1883,10 @@ struct ProductSearchSheet: View {
                                 .padding(.top, Theme.Spacing.sm)
                             }
                             LazyVGrid(
-                                columns: [
-                                    GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                                    GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                                ],
+                                columns: WearhouseLayoutMetrics.productGridColumns(
+                                    horizontalSizeClass: horizontalSizeClass,
+                                    spacing: Theme.Spacing.sm
+                                ),
                                 spacing: Theme.Spacing.md
                             ) {
                                 ForEach(displayedItems) { item in

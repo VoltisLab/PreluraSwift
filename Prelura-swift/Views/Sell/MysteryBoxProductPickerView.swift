@@ -10,6 +10,7 @@ struct MysteryBoxProductPickerView: View {
     let onContinue: ([Item]) -> Void
 
     @EnvironmentObject private var authService: AuthService
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     private let productService = ProductService()
     @StateObject private var userService = UserService()
 
@@ -82,10 +83,10 @@ struct MysteryBoxProductPickerView: View {
                                     .padding(.top, Theme.Spacing.sm)
                                 }
                                 LazyVGrid(
-                                    columns: [
-                                        GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                                        GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                                    ],
+                                    columns: WearhouseLayoutMetrics.productGridColumns(
+                                        horizontalSizeClass: horizontalSizeClass,
+                                        spacing: Theme.Spacing.sm
+                                    ),
                                     spacing: Theme.Spacing.md
                                 ) {
                                     ForEach(displayedItems) { item in

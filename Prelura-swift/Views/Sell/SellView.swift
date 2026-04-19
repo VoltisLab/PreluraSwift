@@ -46,6 +46,8 @@ struct SellView: View {
     @State private var parcelSize: String? = nil
     @State private var draftCount: Int = 0
     @State private var showPhotoPicker: Bool = false
+    /// iOS app on Mac: Finder file importer instead of Photos library.
+    @State private var showMacListingImageImporter: Bool = false
     @State private var showCategoryPicker: Bool = false
     @State private var showDraftsSheet: Bool = false
     @State private var showSaveDraftConfirmation: Bool = false
@@ -398,6 +400,7 @@ struct SellView: View {
                         draftCount = SellDraftStore.draftCount(username: authService.username)
                     }
                 )
+                .wearhouseSheetContentColumnIfWide()
             }
             .alert(L10n.string("Draft saved"), isPresented: $showSaveDraftConfirmation) {
                 Button(L10n.string("OK")) { }
@@ -446,6 +449,7 @@ struct SellView: View {
                         }
                     )
                     .environmentObject(authService)
+                    .wearhouseSheetContentColumnIfWide()
                 case .form(let items):
                     NavigationStack {
                         SellView(
@@ -460,6 +464,7 @@ struct SellView: View {
                         )
                         .environmentObject(authService)
                     }
+                    .wearhouseSheetContentColumnIfWide()
                 }
             }
     }
@@ -819,43 +824,78 @@ struct SellView: View {
 
     // MARK: - Photo Upload Section (horizontal slider of thumbnails)
     private var photoUploadSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            if totalPhotoSlots == 0 {
-                emptyPhotoState
+        Group {
+            let core = VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                if totalPhotoSlots == 0 {
+                    emptyPhotoState
+                } else {
+                    combinedPhotoSlider
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.md)
+            .overlay(ContentDivider(), alignment: .bottom)
+
+            if IOSAppOnMacImageImport.isIOSAppOnMac {
+                core
+                    .macOnlyImageFileImporter(
+                        isPresented: $showMacListingImageImporter,
+                        allowsMultipleSelection: true,
+                        maxImageCount: 20
+                    ) { loaded in
+                        var trimmed = loaded
+                        if isEditMode {
+                            let remaining = max(0, 20 - totalPhotoSlots)
+                            trimmed = Array(loaded.prefix(remaining))
+                        } else {
+                            trimmed = Array(loaded.prefix(20))
+                        }
+                        applyLoadedListingImages(trimmed)
+                    }
             } else {
-                combinedPhotoSlider
+                core
+                    .photosPicker(
+                        isPresented: $showPhotoPicker,
+                        selection: $selectedPhotos,
+                        maxSelectionCount: 20,
+                        matching: .images
+                    )
+                    .onChange(of: selectedPhotos) { _, newItems in
+                        // Clearing `selectedPhotos` after import triggers this again with `[]`; without this guard,
+                        // `selectedImages = loaded` would wipe the images we just applied.
+                        guard !newItems.isEmpty else { return }
+                        Task {
+                            var loaded: [UIImage] = []
+                            for item in newItems {
+                                if let data = try? await item.loadTransferable(type: Data.self),
+                                   let image = UIImage(data: data)?.normalizedForDisplay() {
+                                    loaded.append(image)
+                                }
+                            }
+                            await MainActor.run {
+                                applyLoadedListingImages(loaded)
+                                selectedPhotos = []
+                            }
+                        }
+                    }
             }
         }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.md)
-        .overlay(ContentDivider(), alignment: .bottom)
-        .photosPicker(
-            isPresented: $showPhotoPicker,
-            selection: $selectedPhotos,
-            maxSelectionCount: 20,
-            matching: .images
-        )
-        .onChange(of: selectedPhotos) { _, newItems in
-            // Clearing `selectedPhotos` after import triggers this again with `[]`; without this guard,
-            // `selectedImages = loaded` would wipe the images we just applied.
-            guard !newItems.isEmpty else { return }
-            Task {
-                var loaded: [UIImage] = []
-                for item in newItems {
-                    if let data = try? await item.loadTransferable(type: Data.self),
-                       let image = UIImage(data: data)?.normalizedForDisplay() {
-                        loaded.append(image)
-                    }
-                }
-                await MainActor.run {
-                    if isEditMode, !loaded.isEmpty {
-                        selectedImages.append(contentsOf: loaded)
-                    } else if !loaded.isEmpty {
-                        selectedImages = loaded
-                    }
-                    selectedPhotos = []
-                }
-            }
+    }
+
+    private func presentSellPhotoPicker() {
+        if IOSAppOnMacImageImport.isIOSAppOnMac {
+            showMacListingImageImporter = true
+        } else {
+            showPhotoPicker = true
+        }
+    }
+
+    private func applyLoadedListingImages(_ loaded: [UIImage]) {
+        guard !loaded.isEmpty else { return }
+        if isEditMode, !loaded.isEmpty {
+            selectedImages.append(contentsOf: loaded)
+        } else if !loaded.isEmpty {
+            selectedImages = loaded
         }
     }
 
@@ -971,7 +1011,7 @@ struct SellView: View {
                         )
                     }
                     if totalPhotoSlots < 20 {
-                        SellAddPhotoSliderCell(cellWidth: cellWidth, action: { showPhotoPicker = true })
+                        SellAddPhotoSliderCell(cellWidth: cellWidth, action: { presentSellPhotoPicker() })
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.xs)
@@ -987,7 +1027,7 @@ struct SellView: View {
     }
 
     private var emptyPhotoState: some View {
-        Button(action: { showPhotoPicker = true }) {
+        Button(action: { presentSellPhotoPicker() }) {
             VStack(spacing: Theme.Spacing.sm) {
                 ZStack {
                     Circle()
@@ -1000,7 +1040,11 @@ struct SellView: View {
                 Text(L10n.string("Add up to 20 photos"))
                     .font(Theme.Typography.headline)
                     .foregroundColor(Theme.Colors.primaryText)
-                Text(L10n.string("Tap to select photos from your gallery"))
+                Text(
+                    IOSAppOnMacImageImport.isIOSAppOnMac
+                        ? L10n.string("Choose images from Finder")
+                        : L10n.string("Tap to select photos from your gallery")
+                )
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
@@ -1137,6 +1181,7 @@ extension SellView {
                         forMysteryBoxFlow: isMysteryListing
                     )
                 }
+                .wearhouseSheetContentColumnIfWide()
             }
 
             if isMysteryListing || editingIsMysteryBox {
@@ -2516,6 +2561,7 @@ struct PriceInputView: View {
     var categoryId: String? = nil
     /// When set (e.g. mystery box), price cannot exceed this value (pounds).
     var maximumPrice: Double? = nil
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.presentationMode) var presentationMode
     @State private var priceText: String = ""
     @FocusState private var isFocused: Bool
@@ -2586,10 +2632,13 @@ struct PriceInputView: View {
                                 .foregroundColor(Theme.Colors.secondaryText)
                                 .padding(.horizontal, Theme.Spacing.md)
                         } else if !similarItems.isEmpty {
-                            LazyVGrid(columns: [
-                                GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                                GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                            ], spacing: Theme.Spacing.sm) {
+                            LazyVGrid(
+                                columns: WearhouseLayoutMetrics.productGridColumns(
+                                    horizontalSizeClass: horizontalSizeClass,
+                                    spacing: Theme.Spacing.sm
+                                ),
+                                spacing: Theme.Spacing.sm
+                            ) {
                                 ForEach(similarItems.prefix(10), id: \.id) { item in
                                     PriceSimilarItemCard(item: item)
                                 }
@@ -2645,13 +2694,18 @@ struct PriceInputView: View {
     }
 }
 
-// Shimmer for "Similar sold items" feed while loading (2-column grid matching PriceSimilarItemCard layout).
+// Shimmer for "Similar sold items" feed while loading (column count matches `WearhouseLayoutMetrics` on iPad / Mac).
 private struct PriceSimilarItemsShimmer: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     var body: some View {
-        LazyVGrid(columns: [
-            GridItem(.flexible(), spacing: Theme.Spacing.sm),
-            GridItem(.flexible(), spacing: Theme.Spacing.sm)
-        ], spacing: Theme.Spacing.sm) {
+        LazyVGrid(
+            columns: WearhouseLayoutMetrics.productGridColumns(
+                horizontalSizeClass: horizontalSizeClass,
+                spacing: Theme.Spacing.sm
+            ),
+            spacing: Theme.Spacing.sm
+        ) {
             ForEach(0..<6, id: \.self) { _ in
                 PriceSimilarItemShimmerCell()
             }

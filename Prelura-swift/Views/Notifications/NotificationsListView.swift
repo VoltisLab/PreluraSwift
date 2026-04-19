@@ -5,10 +5,16 @@ struct NotificationsListView: View {
     /// Matches `NotificationRowView` vertical tightening (20% less than former 4pt).
     private static let listRowInsetVertical: CGFloat = 4 * 0.8
 
+    private enum NotificationListSegment: Int, CaseIterable, Hashable {
+        case general = 0
+        case lookbook = 1
+    }
+
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var bellUnreadStore: BellUnreadStore
     @Environment(\.dismiss) private var dismiss
     @State private var notifications: [AppNotification] = []
+    @State private var segment: NotificationListSegment = .general
     @State private var isLoading = true
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
@@ -17,6 +23,15 @@ struct NotificationsListView: View {
     @State private var backendHasMore = true
     private let pageSize = 15
     private let notificationService = NotificationService()
+
+    private var filteredNotifications: [AppNotification] {
+        switch segment {
+        case .general:
+            return notifications.filter { !$0.isLookbookRelatedNotification }
+        case .lookbook:
+            return notifications.filter { $0.isLookbookRelatedNotification }
+        }
+    }
 
     var body: some View {
         Group {
@@ -50,46 +65,25 @@ struct NotificationsListView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List {
-                    ForEach(notifications) { notification in
-                        NavigationLink(destination: NotificationDestinationView(notification: notification, onMarkRead: { markAsRead(notification) })) {
-                            NotificationRowView(notification: notification)
-                                .environmentObject(authService)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(PlainTappableButtonStyle())
-                        .listRowBackground(Theme.Colors.background)
-                        .listRowInsets(
-                            EdgeInsets(
-                                top: Self.listRowInsetVertical,
-                                leading: Theme.Spacing.md,
-                                bottom: Self.listRowInsetVertical,
-                                trailing: Theme.Spacing.md
-                            )
-                        )
-                        .navigationLinkIndicatorVisibility(.hidden)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                deleteNotification(notification)
-                            } label: {
-                                Label(L10n.string("Delete"), systemImage: "trash")
-                            }
-                        }
+                VStack(spacing: 0) {
+                    Picker("", selection: $segment) {
+                        Text(L10n.string("General")).tag(NotificationListSegment.general)
+                        Text(L10n.string("Lookbook")).tag(NotificationListSegment.lookbook)
                     }
-                    .listRowBackground(Theme.Colors.background)
-                    if backendHasMore {
-                        HStack {
-                            Spacer()
-                            if isLoadingMore { ProgressView() }
-                            Spacer()
-                        }
-                        .onAppear { Task { await loadMoreVisible() } }
-                        .listRowBackground(Theme.Colors.background)
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+
+                    if filteredNotifications.isEmpty {
+                        segmentEmptyView
+                    } else {
+                        notificationRowsList
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
+                .task(id: segment) {
+                    await ensureContentForCurrentSegment()
+                }
+                .wearhouseChatThreadReadableWidthIfPadMac()
             }
         }
         .background(Theme.Colors.background)
@@ -113,21 +107,28 @@ struct NotificationsListView: View {
     }
 
     private func reloadFromStart() async {
-        isLoading = true
-        errorMessage = nil
-        nextBackendPage = 1
-        backendHasMore = true
-        defer { isLoading = false }
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+            nextBackendPage = 1
+            backendHasMore = true
+        }
         do {
             try await fetchVisibleBatch(appending: false)
         } catch {
-            await MainActor.run { errorMessage = L10n.userFacingError(error) }
+            await MainActor.run {
+                errorMessage = L10n.userFacingError(error)
+                isLoading = false
+            }
             return
         }
+        await MainActor.run { isLoading = false }
         notificationService.updateAuthToken(authService.authToken)
-        do {
-            try await notificationService.markAllBellEligibleUnreadRead()
-            await MainActor.run {
+        await ensureContentForCurrentSegment()
+        // Mark bell-eligible rows read without blocking first paint (was serializing an extra multi-page fetch before the list appeared).
+        Task { @MainActor in
+            do {
+                try await notificationService.markAllBellEligibleUnreadRead()
                 notifications = notifications.map { n in
                     guard n.shouldCountTowardBellBadge else { return n }
                     return AppNotification(
@@ -143,12 +144,12 @@ struct NotificationsListView: View {
                     )
                 }
                 NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
+                bellUnreadStore.scheduleRefresh(authService: authService)
+            } catch {
+                #if DEBUG
+                print("Wearhouse: markAllBellEligibleUnreadRead failed: \(error)")
+                #endif
             }
-            bellUnreadStore.scheduleRefresh(authService: authService)
-        } catch {
-            #if DEBUG
-            print("Wearhouse: markAllBellEligibleUnreadRead failed: \(error)")
-            #endif
         }
     }
 
@@ -191,6 +192,108 @@ struct NotificationsListView: View {
         } catch {
             await MainActor.run { errorMessage = L10n.userFacingError(error) }
         }
+    }
+
+    /// When the active segment’s filter yields no rows but older pages may contain matches, fetch until we find some or exhaust the feed.
+    private func ensureContentForCurrentSegment() async {
+        for _ in 0..<25 {
+            let stillEmpty = await MainActor.run {
+                switch segment {
+                case .general:
+                    return notifications.filter { !$0.isLookbookRelatedNotification }.isEmpty
+                case .lookbook:
+                    return notifications.filter { $0.isLookbookRelatedNotification }.isEmpty
+                }
+            }
+            if !stillEmpty { return }
+
+            let shouldLoad = await MainActor.run {
+                if let err = errorMessage, !err.isEmpty { return false }
+                return backendHasMore && !isLoading
+            }
+            guard shouldLoad else { return }
+
+            // Avoid stacking concurrent `loadMore` work if the infinite-scroll row is also loading.
+            var spin = 0
+            while spin < 40 {
+                let loadingMore = await MainActor.run { isLoadingMore }
+                if !loadingMore { break }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                spin += 1
+            }
+
+            await loadMoreVisible()
+
+            let failed = await MainActor.run {
+                if let err = errorMessage, !err.isEmpty { return true }
+                return false
+            }
+            if failed { return }
+        }
+    }
+
+    @ViewBuilder
+    private var segmentEmptyView: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            if isLoadingMore {
+                ProgressView()
+            }
+            Image(systemName: "bell.slash")
+                .font(.system(size: 48))
+                .foregroundColor(Theme.Colors.secondaryText)
+            Text(
+                segment == .lookbook
+                    ? L10n.string("No lookbook notifications yet")
+                    : L10n.string("No general notifications yet")
+            )
+            .font(Theme.Typography.body)
+            .foregroundColor(Theme.Colors.secondaryText)
+            .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var notificationRowsList: some View {
+        List {
+            ForEach(filteredNotifications) { notification in
+                NavigationLink(destination: NotificationDestinationView(notification: notification, onMarkRead: { markAsRead(notification) })) {
+                    NotificationRowView(notification: notification)
+                        .environmentObject(authService)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainTappableButtonStyle())
+                .listRowBackground(Theme.Colors.background)
+                .listRowInsets(
+                    EdgeInsets(
+                        top: Self.listRowInsetVertical,
+                        leading: Theme.Spacing.md,
+                        bottom: Self.listRowInsetVertical,
+                        trailing: Theme.Spacing.md
+                    )
+                )
+                .navigationLinkIndicatorVisibility(.hidden)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) {
+                        deleteNotification(notification)
+                    } label: {
+                        Label(L10n.string("Delete"), systemImage: "trash")
+                    }
+                }
+            }
+            .listRowBackground(Theme.Colors.background)
+            if backendHasMore {
+                HStack {
+                    Spacer()
+                    if isLoadingMore { ProgressView() }
+                    Spacer()
+                }
+                .onAppear { Task { await loadMoreVisible() } }
+                .listRowBackground(Theme.Colors.background)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
     }
     
     private func markAsRead(_ notification: AppNotification) {
@@ -506,9 +609,15 @@ private struct NotificationBellThumbnail<FailureIcon: View>: View {
     let width: CGFloat
     let height: CGFloat
     let cornerRadius: CGFloat
+    /// Profile-style circle (comments / follows / likes); listing rows stay rounded-rect.
+    var circular: Bool = false
     @ViewBuilder let failureIcon: () -> FailureIcon
 
     @State private var tier: Int = 0
+
+    private var effectiveCornerRadius: CGFloat {
+        circular ? min(width, height) / 2 : cornerRadius
+    }
 
     private var currentURL: URL? {
         if tier == 0 { return productURL ?? avatarURL }
@@ -522,11 +631,19 @@ private struct NotificationBellThumbnail<FailureIcon: View>: View {
                     url: url,
                     width: width,
                     height: height,
-                    cornerRadius: cornerRadius,
+                    cornerRadius: effectiveCornerRadius,
                     placeholder: {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .fill(Theme.Colors.secondaryBackground)
-                            .overlay(ProgressView().scaleEffect(0.7))
+                        Group {
+                            if circular {
+                                Circle()
+                                    .fill(Theme.Colors.secondaryBackground)
+                                    .overlay(ProgressView().scaleEffect(0.7))
+                            } else {
+                                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                                    .fill(Theme.Colors.secondaryBackground)
+                                    .overlay(ProgressView().scaleEffect(0.7))
+                            }
+                        }
                     },
                     failurePlaceholder: {
                         failureIcon()
@@ -542,8 +659,22 @@ private struct NotificationBellThumbnail<FailureIcon: View>: View {
             } else {
                 failureIcon()
                     .frame(width: width, height: height)
-                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    .modifier(NotificationThumbClipShape(circular: circular, cornerRadius: cornerRadius))
             }
+        }
+    }
+}
+
+/// Shared clip for placeholder rows (avoids `AnyShape` / type erasure at call sites).
+private struct NotificationThumbClipShape: ViewModifier {
+    let circular: Bool
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        if circular {
+            content.clipShape(Circle())
+        } else {
+            content.clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         }
     }
 }
@@ -560,6 +691,8 @@ private struct NotificationRowView: View {
     /// Portrait thumbnail (20% smaller than former 48×64).
     private static let productThumbWidth: CGFloat = 48 * 0.8
     private static let productThumbHeight: CGFloat = 64 * 0.8
+    /// Social rows use a circular avatar with the same vertical weight as the product portrait thumb.
+    private static let socialAvatarDiameter: CGFloat = productThumbHeight
     private static let thumbCornerRadius: CGFloat = 8 * 0.8
     private static let placeholderSymbolPointSize: CGFloat = 22 * 0.8
     /// 20% tighter than former `Theme.Spacing.sm` row padding.
@@ -630,8 +763,10 @@ private struct NotificationRowView: View {
             for titleKey in ["product_title", "title", "product_name", "item_title"] {
                 if let t = metaAt(titleKey)?.lowercased(), t.contains("mystery") { return true }
             }
-            for (_, v) in meta where v.lowercased().contains("mystery") {
-                return true
+            for (_, v) in meta {
+                let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+                if t.lowercased().contains("mystery") { return true }
+                if BellNotificationMysteryThumbnailMigration.isLikelyStaticMysteryCoverURL(t) { return true }
             }
         }
         let m = notification.message.lowercased()
@@ -640,34 +775,80 @@ private struct NotificationRowView: View {
         return false
     }
 
-    /// Prefer animated mystery art when meta/copy says so, after GraphQL resolve, or while resolving (static `media_thumbnail` is the generated mystery JPEG — wrong for bell rows).
+    /// Animated tile when meta/copy/GraphQL says mystery, or for offer rows until we confirm otherwise (hides buggy static cover JPEG).
     private var shouldShowMysteryBoxAnimation: Bool {
         if isMysteryBoxRelatedNotification { return true }
         if resolvedProductIsMysteryBox == true { return true }
-        // Resolve offer/sale listing type before showing `media_thumbnail` (avoids static mystery JPEG flash).
-        if shouldResolveMysteryFromProduct { return true }
-        if resolvedProductIsMysteryBox == false { return false }
+        if shouldTreatOfferAsMysteryUntilResolved { return true }
         return false
     }
 
-    /// Offer on a listing: `media_thumbnail` is the static JPEG from `MysteryBoxListingCoverImage` — resolve `isMysteryBox` from the product when meta omits flags.
+    /// Resolve `Item.isMysteryBox` when meta omits flags but `media_thumbnail` may be the generated mystery JPEG.
     private var shouldResolveMysteryFromProduct: Bool {
         guard let pid = notificationResolvedProductId, pid > 0 else { return false }
-        let mg = modelGroupLower
-        let offerishGroup = mg == "offer" || (mg == "product" && notification.message.lowercased().contains("offer"))
-        let sellerSale = isSellerOrderSaleNotification
-        guard offerishGroup || sellerSale else { return false }
         if isMysteryBoxRelatedNotification { return false }
         if resolvedProductIsMysteryBox != nil { return false }
-        return true
+        let mg = modelGroupLower
+        let m = notification.message.lowercased()
+        if mg == "offer" { return true }
+        if m.contains("sent you an offer") { return true }
+        if isSellerOrderSaleNotification || isNewOfferOnListingMessage { return true }
+        if mg == "product", m.contains("offer") { return true }
+        if mg == "order", m.contains("mystery") || m.contains("offer") { return true }
+        // Buyer/seller order rows sometimes only have avatar + product id — resolve to pick animation vs real product art.
+        if mg == "order", productThumbnailURLFromMeta == nil { return true }
+        return false
     }
 
-    /// Seller sale rows: fetch listing art when the API did not attach `media_thumbnail`.
+    /// Order / sale rows: fetch listing art when meta omitted `media_thumbnail` (buyer “shipped” rows included).
     private var shouldResolveTransactionalListingThumbnail: Bool {
-        guard isSellerOrderSaleNotification else { return false }
         guard !shouldShowMysteryBoxAnimation else { return false }
         guard productThumbnailURLFromMeta == nil else { return false }
-        return notificationResolvedProductId != nil
+        guard notificationResolvedProductId != nil else { return false }
+        if isSellerOrderSaleNotification { return true }
+        let mg = modelGroupLower
+        let m = notification.message.lowercased()
+        if mg == "order", m.contains("shipped") || m.contains("delivered") || m.contains("picked up") { return true }
+        if mg == "offer" { return true }
+        return false
+    }
+
+    /// **Only** comments, follows, and like notifications use a circular **profile** avatar. Everything else
+    /// (offers, orders, lookbook thumbnails, DMs, etc.) uses the normal portrait / product tile.
+    private var isSocialSenderAvatarThumbnail: Bool {
+        if isSupportNotification { return false }
+        if isLikedItemSoldNotification { return false }
+        let mg = modelGroupLower
+        let m = notification.message.lowercased()
+        // Follows
+        if m.contains("followed you") { return true }
+        if m.contains("started following") || m.contains("is now following you") { return true }
+        // Comments (avoid bare `comment` substring — too broad)
+        if mg == "comment" || mg == "comments" { return true }
+        if m.contains("commented") { return true }
+        if m.contains("comment on your") || m.contains("new comment on your") { return true }
+        // Likes — product
+        if isProductLikeMessage { return true }
+        // Likes — lookbook / feed (do not use `modelGroup == lookbook` alone; that catches non-like rows)
+        if m.contains("liked your lookbook") || m.contains("likes your lookbook") { return true }
+        if m.contains("lookbook post"), (m.contains("liked") || m.contains("likes")) { return true }
+        return false
+    }
+
+    /// Orders, offers, sales — listing / product image (never fall back to sender avatar for these).
+    private var isTransactionalProductThumbnail: Bool {
+        if isSupportNotification { return false }
+        let mg = modelGroupLower
+        let m = notification.message.lowercased()
+        if mg == "order" { return true }
+        if mg == "offer" { return true }
+        if isSellerOrderSaleNotification { return true }
+        if isNewOfferOnListingMessage { return true }
+        if m.contains("sent you an offer") { return true }
+        if mg == "product", m.contains("offer") || m.contains("sold") || m.contains("sale") { return true }
+        if m.contains("accepted your offer") { return true }
+        if m.contains("shipped") && m.contains("order") { return true }
+        return false
     }
 
     /// Image URL from notification meta (flat string, JSON blob, or nested object — see `ProductListImageURL` + `NotificationService` meta parsing).
@@ -685,6 +866,8 @@ private struct NotificationRowView: View {
         let keys = [
             "sold_product_id", "product_id", "productId", "listing_id", "listingId",
             "item_id", "itemId", "related_product_id", "relatedProductId",
+            "order_product_id", "orderProductId", "line_item_product_id", "lineItemProductId",
+            "primary_product_id", "primaryProductId", "soldProductId", "listingProductId",
         ]
         let lowerIndex: [String: String] = Dictionary(uniqueKeysWithValues: meta.map { ($0.key.lowercased(), $0.value) })
         for k in keys {
@@ -697,15 +880,32 @@ private struct NotificationRowView: View {
 
     private var notificationResolvedProductId: Int? {
         if let fromMeta = notificationResolvedProductIdFromMeta { return fromMeta }
+        guard let midRaw = notification.modelId?.trimmingCharacters(in: .whitespacesAndNewlines), !midRaw.isEmpty,
+              let v = Int(midRaw), v > 0 else { return nil }
         let modelLower = (notification.model ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if modelLower == "product", let mid = notification.modelId, let v = Int(mid), v > 0 { return v }
+        if modelLower == "product" || modelLower == "offer" { return v }
+        // Some payloads omit `model` but set model_group to Offer/Product.
+        if modelLower.isEmpty, (modelGroupLower == "offer" || modelGroupLower == "product") { return v }
         return nil
+    }
+
+    /// Incoming / counterparty offer rows: show `MysteryBoxAnimatedMediaView` until GraphQL proves the listing isn’t a mystery box (avoids the generated cover JPEG).
+    private var shouldTreatOfferAsMysteryUntilResolved: Bool {
+        guard resolvedProductIsMysteryBox != false else { return false }
+        guard notificationResolvedProductId != nil else { return false }
+        let m = notification.message.lowercased()
+        if modelGroupLower == "offer" { return true }
+        if m.contains("sent you an offer") { return true }
+        if isNewOfferOnListingMessage { return true }
+        return false
     }
 
     private var productThumbnailURLFromMeta: URL? {
         guard let meta = notification.meta else { return nil }
         for key in Self.metaImageURLCandidateKeys {
             guard let raw = meta[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { continue }
+            // Never use generated mystery JPEG in the bell row; animation or GraphQL resolve handles mystery listings.
+            if BellNotificationMysteryThumbnailMigration.isLikelyStaticMysteryCoverURL(raw) { continue }
             if let s = ProductListImageURL.preferredString(from: raw), let u = Self.urlFromHTTPString(s) { return u }
             if let u = Self.urlFromHTTPString(raw) { return u }
         }
@@ -804,7 +1004,7 @@ private struct NotificationRowView: View {
     private var leadingThumbnail: some View {
         let corner = Self.thumbCornerRadius
         if isSupportNotification {
-            WearhouseSupportBranding.supportAvatar(size: Self.productThumbHeight)
+            WearhouseSupportBranding.supportAvatar(size: Self.socialAvatarDiameter)
         } else if shouldShowMysteryBoxAnimation {
             MysteryBoxAnimatedMediaView()
                 .frame(width: Self.productThumbWidth, height: Self.productThumbHeight)
@@ -813,10 +1013,43 @@ private struct NotificationRowView: View {
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .stroke(Theme.Colors.glassBorder, lineWidth: 1)
                 )
-        } else if productThumbnailURLFromMeta != nil || resolvedTransactionalListingURL != nil || (!isSellerOrderSaleNotification && senderAvatarURL != nil) {
+        } else if shouldResolveMysteryFromProduct {
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .fill(Theme.Colors.secondaryBackground)
+                .frame(width: Self.productThumbWidth, height: Self.productThumbHeight)
+                .overlay(ProgressView().scaleEffect(0.72))
+                .overlay(
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+                )
+        } else if isSocialSenderAvatarThumbnail {
+            NotificationBellThumbnail(
+                productURL: nil,
+                avatarURL: senderAvatarURL,
+                width: Self.socialAvatarDiameter,
+                height: Self.socialAvatarDiameter,
+                cornerRadius: Self.socialAvatarDiameter / 2,
+                circular: true,
+                failureIcon: { socialAvatarPlaceholderIcon }
+            )
+            .circularAvatarHairlineBorder()
+        } else if isTransactionalProductThumbnail {
             NotificationBellThumbnail(
                 productURL: productThumbnailURLFromMeta ?? resolvedTransactionalListingURL,
-                avatarURL: isSellerOrderSaleNotification ? nil : senderAvatarURL,
+                avatarURL: nil,
+                width: Self.productThumbWidth,
+                height: Self.productThumbHeight,
+                cornerRadius: corner,
+                failureIcon: { productPlaceholderIcon }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+            )
+        } else if productThumbnailURLFromMeta != nil || resolvedTransactionalListingURL != nil || senderAvatarURL != nil {
+            NotificationBellThumbnail(
+                productURL: productThumbnailURLFromMeta ?? resolvedTransactionalListingURL,
+                avatarURL: senderAvatarURL,
                 width: Self.productThumbWidth,
                 height: Self.productThumbHeight,
                 cornerRadius: corner,
@@ -847,6 +1080,16 @@ private struct NotificationRowView: View {
             )
     }
 
+    private var socialAvatarPlaceholderIcon: some View {
+        Circle()
+            .fill(Theme.Colors.secondaryBackground)
+            .overlay(
+                Image(systemName: "person.fill")
+                    .font(.system(size: Self.placeholderSymbolPointSize, weight: .regular))
+                    .foregroundStyle(Theme.Colors.secondaryText)
+            )
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: Theme.Spacing.md * 0.8) {
             leadingThumbnail
@@ -864,19 +1107,43 @@ private struct NotificationRowView: View {
         }
         .padding(.vertical, Self.rowVerticalPadding)
         .task(id: notification.id) {
-            if shouldResolveMysteryFromProduct, let pid = notificationResolvedProductId {
-                let isMystery = await NotificationMysteryListingResolver.shared.isMysteryListing(productId: pid, authToken: authService.authToken)
-                await MainActor.run {
-                    resolvedProductIsMysteryBox = isMystery
-                }
-            }
-            if shouldResolveTransactionalListingThumbnail, let pid = notificationResolvedProductId {
-                let url = await NotificationListingThumbnailResolver.shared.listingThumbnailURL(productId: pid, authToken: authService.authToken)
-                await MainActor.run {
-                    resolvedTransactionalListingURL = url
-                }
-            }
+            await resolveBellRowThumbnails()
         }
+    }
+
+    /// Fetches mystery flag first, then listing chrome thumbnail in the same task so sale/offer rows can show product art after we know it isn’t a mystery listing.
+    private func resolveBellRowThumbnails() async {
+        guard let pid = notificationResolvedProductId, pid > 0 else { return }
+
+        if isMysteryBoxRelatedNotification {
+            await MainActor.run { resolvedProductIsMysteryBox = true }
+            return
+        }
+
+        let needsMysteryFetch = await MainActor.run { resolvedProductIsMysteryBox == nil && shouldResolveMysteryFromProduct }
+        if needsMysteryFetch {
+            let isMystery = await NotificationMysteryListingResolver.shared.isMysteryListing(productId: pid, authToken: authService.authToken)
+            await MainActor.run { resolvedProductIsMysteryBox = isMystery }
+            if isMystery { return }
+        }
+
+        let mysteryTrue = await MainActor.run { resolvedProductIsMysteryBox == true }
+        if mysteryTrue { return }
+
+        guard productThumbnailURLFromMeta == nil else { return }
+        let noListingURLYet = await MainActor.run { resolvedTransactionalListingURL == nil }
+        guard noListingURLYet else { return }
+
+        let mg = modelGroupLower
+        let m = notification.message.lowercased()
+        let needsListingArt =
+            isSellerOrderSaleNotification
+            || mg == "offer"
+            || (mg == "order" && (m.contains("shipped") || m.contains("delivered") || m.contains("picked up")))
+        guard needsListingArt else { return }
+
+        let url = await NotificationListingThumbnailResolver.shared.listingThumbnailURL(productId: pid, authToken: authService.authToken)
+        await MainActor.run { resolvedTransactionalListingURL = url }
     }
 
     private func formatDate(_ date: Date) -> String {

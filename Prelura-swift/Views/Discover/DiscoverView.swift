@@ -37,47 +37,56 @@ struct DiscoverView: View {
     let brands = ["New Look", "Nike", "Next", "adidas", "Bo", "Ralph Lauren", "Prettylittlething", "River Island", "Zara", "H&M", "ASOS", "Topshop", "Mango", "Bershka", "Pull & Bear", "Stradivarius", "Massimo Dutti", "COS", "Arket", "Weekday"]
     
     private let topId = "discover_top"
+    /// `TabView` tag for Discover (must match `Prelura_swiftApp` / `TabCoordinator`).
+    private static let discoverTabIndex = 1
     /// Nav bar row height–aligned tap target so the system toolbar capsule centers the heart (52×52 was oversized).
     private static let favouritesToolbarSide: CGFloat = 44
 
-    var body: some View {
-        GeometryReader { geometry in
-            discoverScrollContent(geometry: geometry)
+    /// Heavy GraphQL (`DiscoverViewModel.loadData`); only run when Discover is the selected tab so cold start doesn’t compete with Home.
+    private func loadDiscoverContentIfSelectedTab() {
+        guard authService.isAuthenticated else { return }
+        viewModel.updateAuthToken(authService.authToken)
+        guard tabCoordinator.selectedTab == Self.discoverTabIndex else { return }
+        if viewModel.discoverItems.isEmpty {
+            viewModel.refresh()
+        } else {
+            viewModel.refreshRecentlyViewedSection()
         }
+    }
+
+    var body: some View {
+        discoverScrollContent()
         .onChange(of: scrollPosition) { _, new in
             tabCoordinator.reportAtTop(tab: 1, isAtTop: new == topId)
         }
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Discover"))
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarHidden(viewModel.isLoading && viewModel.discoverItems.isEmpty)
         .toolbar { discoverToolbar }
-        .refreshable { await viewModel.refreshAsync() }
         .onAppear {
-            if authService.isAuthenticated {
-                viewModel.updateAuthToken(authService.authToken)
-                if viewModel.discoverItems.isEmpty {
-                    viewModel.refresh()
-                } else {
-                    // Returning to Discover (e.g. from product detail): refresh only recently viewed so the slider updates
-                    viewModel.refreshRecentlyViewedSection()
-                }
-            }
+            loadDiscoverContentIfSelectedTab()
             startTryCartTypewriterTimer()
+        }
+        .onChange(of: tabCoordinator.selectedTab) { _, tab in
+            if tab == Self.discoverTabIndex {
+                loadDiscoverContentIfSelectedTab()
+            }
         }
         .onDisappear {
             tryCartTimer?.invalidate()
             tryCartTimer = nil
         }
         .onChange(of: authService.isAuthenticated) { _, isAuthenticated in
-            if isAuthenticated {
-                viewModel.updateAuthToken(authService.authToken)
+            guard isAuthenticated else { return }
+            viewModel.updateAuthToken(authService.authToken)
+            if tabCoordinator.selectedTab == Self.discoverTabIndex {
                 viewModel.refresh()
             }
         }
         .onChange(of: authService.authToken) { _, newToken in
-            if authService.isAuthenticated {
-                viewModel.updateAuthToken(newToken)
+            guard authService.isAuthenticated else { return }
+            viewModel.updateAuthToken(newToken)
+            if tabCoordinator.selectedTab == Self.discoverTabIndex {
                 viewModel.refresh()
             }
         }
@@ -86,13 +95,16 @@ struct DiscoverView: View {
         }
         .fullScreenCover(isPresented: $showSearchMembersResults) {
             SearchMembersView(query: searchText)
+                .wearhouseSheetContentColumnIfWide()
         }
         .fullScreenCover(isPresented: $showGuestSignInPrompt) {
             GuestSignInPromptView()
+                .wearhouseSheetContentColumnIfWide()
         }
         .fullScreenCover(isPresented: $showVintagePromoFullScreen) {
             VintageShopPromoFlowView()
                 .environmentObject(authService)
+                .wearhouseSheetContentColumnIfWide()
         }
         .searchable(
             text: $searchText,
@@ -106,17 +118,15 @@ struct DiscoverView: View {
     }
 
     @ViewBuilder
-    private func discoverScrollContent(geometry: GeometryProxy) -> some View {
+    private func discoverScrollContent() -> some View {
         ScrollViewReader { proxy in
             ScrollView {
-                if viewModel.isLoading && viewModel.discoverItems.isEmpty {
-                    DiscoverShimmerView()
-                        .frame(width: geometry.size.width)
-                        .frame(minHeight: geometry.size.height)
-                } else {
-                    discoverMainStack
-                }
+                // Hero (brand pills + Explore Lookbook / Try Cart / Wearhouse) uses **local assets** — show immediately.
+                // Full-screen `DiscoverShimmerView` waited for GraphQL and hid these for ~10s (see `DiscoverViewModel.loadData`).
+                discoverMainStack
             }
+            .scrollBounceBehavior(.always, axes: .vertical)
+            .refreshable { await viewModel.refreshAsync() }
             .scrollPosition(id: $scrollPosition, anchor: .top)
             .onAppear {
                 tabCoordinator.reportAtTop(tab: 1, isAtTop: true)
@@ -139,45 +149,54 @@ struct DiscoverView: View {
             exploreLookbookBanner
             tryCartBanner
             vintageShopBanner
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: Theme.Spacing.sm) {
-                    Image(systemName: "square.grid.2x2.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.primaryText)
-                    Text(L10n.string("Shop Categories"))
-                        .font(Theme.Typography.headline)
-                        .foregroundStyle(Theme.Colors.primaryText)
-                }
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, 14)
-                .padding(.bottom, Theme.Spacing.sm)
-                ContentDivider()
-                categoryCirclesSection
-                shopByStyleAndLookbooksBanners
-                    .padding(.top, max(0, Theme.Spacing.md - 10))
-                    .padding(.bottom, Theme.Spacing.lg)
-                ContentDivider()
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.lg)
-                recentlyViewedSection
-                ContentDivider()
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.vertical, Theme.Spacing.lg)
-                brandsYouLoveSection
-                ContentDivider()
-                    .padding(.vertical, Theme.Spacing.lg)
-                topShopsSection
-                ContentDivider()
-                    .padding(.vertical, Theme.Spacing.lg)
-                shopBargainsSection
-                ContentDivider()
-                    .padding(.vertical, Theme.Spacing.lg)
-                onSaleSection
+            if viewModel.isLoading && viewModel.discoverItems.isEmpty {
+                DiscoverBelowFoldShimmerView()
+            } else {
+                discoverBelowBannersContent
             }
-            .padding(.top, 5)
-            .padding(.bottom, Theme.Spacing.lg)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Shop Categories through On Sale (depends on `DiscoverViewModel` network data for product strips).
+    private var discoverBelowBannersContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "square.grid.2x2.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.primaryText)
+                Text(L10n.string("Shop Categories"))
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.primaryText)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, 14)
+            .padding(.bottom, Theme.Spacing.sm)
+            ContentDivider()
+            categoryCirclesSection
+            shopByStyleAndLookbooksBanners
+                .padding(.top, max(0, Theme.Spacing.md - 10))
+                .padding(.bottom, Theme.Spacing.lg)
+            ContentDivider()
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.lg)
+            recentlyViewedSection
+            ContentDivider()
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.lg)
+            brandsYouLoveSection
+            ContentDivider()
+                .padding(.vertical, Theme.Spacing.lg)
+            topShopsSection
+            ContentDivider()
+                .padding(.vertical, Theme.Spacing.lg)
+            shopBargainsSection
+            ContentDivider()
+                .padding(.vertical, Theme.Spacing.lg)
+            onSaleSection
+        }
+        .padding(.top, 5)
+        .padding(.bottom, Theme.Spacing.lg)
     }
 
     @ToolbarContentBuilder

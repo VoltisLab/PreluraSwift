@@ -70,6 +70,7 @@ struct ForumHubView: View {
                 topics.insert(created, at: 0)
             })
             .environmentObject(authService)
+            .wearhouseSheetContentColumnIfWide()
         }
         .task {
             await load()

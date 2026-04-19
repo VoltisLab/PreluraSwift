@@ -106,6 +106,7 @@ struct Prelura_swiftApp: App {
                     SplashView(onFinish: finishSplash)
                 } else {
                     AppearanceRootView()
+                        .wearhouseCenteredRootColumnIfWide()
                 }
             }
             .onAppear { StartupTiming.mark("WindowGroup root onAppear") }
@@ -199,6 +200,7 @@ struct AppearanceRootView: View {
                 .environmentObject(authService)
                 .environmentObject(SavedLookbookFavoritesStore.shared)
                 .environmentObject(LookbookHideLikeCountsStore.shared)
+                .wearhouseSheetContentColumnIfWide()
             }
             .onAppear { registerPushTokenIfNeeded(authService: authService) }
             .onChange(of: authService.isAuthenticated) { _, _ in registerPushTokenIfNeeded(authService: authService) }
@@ -240,6 +242,7 @@ struct AppearanceRootView: View {
                     authService.markOnboardingCompleted()
                 }
             })
+            .wearhouseSheetContentColumnIfWide()
         }
         .animation(.easeInOut(duration: 0.35), value: authService.shouldShowOnboardingAfterLogin)
     }
@@ -328,12 +331,15 @@ struct MainTabView: View {
                 discoverViewModel.updateAuthToken(authService.authToken)
                 inboxViewModel.updateAuthToken(authService.authToken)
                 if authService.isAuthenticated {
-                    if discoverViewModel.discoverItems.isEmpty {
-                        StartupTiming.mark("DiscoverViewModel.refresh() invoked from MainTabView")
-                        discoverViewModel.refresh()
+                    // Discover loads from `DiscoverView.onAppear` when that tab is shown. Eager `refresh()` here
+                    // ran the full Discover GraphQL bundle (several large `allProducts` queries) in parallel with
+                    // Home’s first paint and could duplicate work if the Discover tab also mounted — major cold-start contention.
+                    // Defer inbox prefetch so Home + moderation `getUser` are less likely to contend on the same connection.
+                    StartupTiming.mark("InboxViewModel.prefetch() scheduled (deferred) from MainTabView")
+                    Task {
+                        try? await Task.sleep(nanoseconds: 900_000_000)
+                        await MainActor.run { inboxViewModel.prefetch() }
                     }
-                    StartupTiming.mark("InboxViewModel.prefetch() invoked from MainTabView")
-                    inboxViewModel.prefetch()
                 }
             }
             .onChange(of: appearanceMode) { _, _ in applyTabBarAppearance() }
@@ -342,7 +348,6 @@ struct MainTabView: View {
                 discoverViewModel.updateAuthToken(token)
                 inboxViewModel.updateAuthToken(token)
                 if authService.isAuthenticated {
-                    if discoverViewModel.discoverItems.isEmpty { discoverViewModel.refresh() }
                     inboxViewModel.prefetch()
                 }
             }

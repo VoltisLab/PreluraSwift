@@ -118,6 +118,7 @@ struct DebugLookbookFeedSandboxView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(22)
+            .wearhouseSheetContentColumnIfWide()
         }
     }
 

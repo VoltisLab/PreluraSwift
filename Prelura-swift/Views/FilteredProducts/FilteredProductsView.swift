@@ -47,6 +47,7 @@ enum FilteredProductsActiveSheet: Identifiable, Equatable {
 
 struct FilteredProductsView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authService: AuthService
     @StateObject private var viewModel: FilteredProductsViewModel
@@ -145,7 +146,7 @@ struct FilteredProductsView: View {
                 if let err = viewModel.errorMessage, !err.isEmpty {
                     VStack {
                         Spacer()
-                        FeedNetworkBannerView(message: err, title: viewModel.errorBannerTitle) {
+                        FeedNetworkErrorPresentation(message: err, title: viewModel.errorBannerTitle) {
                             viewModel.loadData()
                         }
                         Spacer()
@@ -168,10 +169,10 @@ struct FilteredProductsView: View {
         } else {
             ScrollView {
                 LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                        GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                    ],
+                    columns: WearhouseLayoutMetrics.productGridColumns(
+                        horizontalSizeClass: horizontalSizeClass,
+                        spacing: Theme.Spacing.sm
+                    ),
                     spacing: Theme.Spacing.md
                 ) {
                     ForEach(viewModel.filteredItems) { item in
@@ -688,7 +689,10 @@ struct FilteredProductsView: View {
                 stylesSheetContent
             }
         }
-        .fullScreenCover(isPresented: $showGuestSignInPrompt) { GuestSignInPromptView() }
+        .fullScreenCover(isPresented: $showGuestSignInPrompt) {
+            GuestSignInPromptView()
+                .wearhouseSheetContentColumnIfWide()
+        }
         .overlay {
             if showTryCartOnboarding {
                 TryCartOnboardingPopupOverlay(onComplete: finishTryCartOnboarding)

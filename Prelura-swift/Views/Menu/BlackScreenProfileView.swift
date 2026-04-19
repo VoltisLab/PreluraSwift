@@ -3,6 +3,7 @@ import SwiftUI
 /// Debug: copy of the profile page with a single custom background colour (hex) to compare how black/dark UI looks.
 struct BlackScreenProfileView: View {
     let hex: String
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var expandedCategories = false
 
     private var backgroundColor: Color { Color(hex: hex) }
@@ -193,10 +194,10 @@ struct BlackScreenProfileView: View {
 
     private var itemsGridPlaceholder: some View {
         LazyVGrid(
-            columns: [
-                GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                GridItem(.flexible(), spacing: Theme.Spacing.sm)
-            ],
+            columns: WearhouseLayoutMetrics.productGridColumns(
+                horizontalSizeClass: horizontalSizeClass,
+                spacing: Theme.Spacing.sm
+            ),
             spacing: Theme.Spacing.md
         ) {
             ForEach(0..<6, id: \.self) { _ in

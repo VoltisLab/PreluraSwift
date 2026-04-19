@@ -31,6 +31,7 @@ struct ItemDetailView: View {
     /// When `shopAllBag` is provided (e.g. Shop All), user must enable this via the toolbar bag button before "Add to bag" appears.
     @State private var isTryCartToolbarActive: Bool = false
     @Environment(\.dismiss) var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject var authService: AuthService
     @Environment(\.optionalTabCoordinator) private var tabCoordinator
 
@@ -157,6 +158,7 @@ struct ItemDetailView: View {
         }
         .fullScreenCover(isPresented: $showGuestSignInPrompt) {
             GuestSignInPromptView()
+                .wearhouseSheetContentColumnIfWide()
         }
         .sheet(isPresented: $showSendOfferSheet) {
             SendOfferSheet(item: effectiveItem, onDismiss: { showSendOfferSheet = false })
@@ -174,6 +176,7 @@ struct ItemDetailView: View {
                 sendProductShareRecipient = user
             }
             .environmentObject(authService)
+            .wearhouseSheetContentColumnIfWide()
         }
         .sheet(item: $sendProductShareRecipient) { user in
             NavigationStack {
@@ -186,6 +189,7 @@ struct ItemDetailView: View {
                 )
                 .environmentObject(authService)
             }
+            .wearhouseSheetContentColumnIfWide()
         }
         .sheet(isPresented: $showReportSheet) {
             NavigationStack {
@@ -202,6 +206,7 @@ struct ItemDetailView: View {
                 }
             }
             .environmentObject(authService)
+            .wearhouseSheetContentColumnIfWide()
         }
         .sheet(isPresented: $showEditListingSheet) {
             NavigationStack {
@@ -220,6 +225,7 @@ struct ItemDetailView: View {
                 )
                 .environmentObject(authService)
             }
+            .wearhouseSheetContentColumnIfWide()
         }
         .alert(L10n.string("Delete listing?"), isPresented: $showDeleteConfirm) {
             Button(L10n.string("Cancel"), role: .cancel) { showDeleteConfirm = false }
@@ -889,10 +895,10 @@ struct ItemDetailView: View {
                 .padding(.vertical, Theme.Spacing.xl)
             } else {
                 LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                        GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                    ],
+                    columns: WearhouseLayoutMetrics.productGridColumns(
+                        horizontalSizeClass: horizontalSizeClass,
+                        spacing: Theme.Spacing.sm
+                    ),
                     spacing: Theme.Spacing.md
                 ) {
                     ForEach(viewModel.memberItems) { memberItem in
@@ -928,10 +934,10 @@ struct ItemDetailView: View {
                 .padding(.vertical, Theme.Spacing.xl)
             } else {
                 LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                        GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                    ],
+                    columns: WearhouseLayoutMetrics.productGridColumns(
+                        horizontalSizeClass: horizontalSizeClass,
+                        spacing: Theme.Spacing.sm
+                    ),
                     spacing: Theme.Spacing.md
                 ) {
                     ForEach(viewModel.similarItems) { similarItem in

@@ -3,6 +3,8 @@ import Shimmer
 
 /// Full-screen profile shimmer matching ProfileView layout: nav bar, avatar 88 + stats row, stars, Categories / Multi-buy / Top brands / Filter-Sort, then product grid. Use when loading; hide navigation bar so this is the only content.
 struct ProfileShimmerView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     var body: some View {
         GeometryReader { geometry in
             let topInset = geometry.safeAreaInsets.top
@@ -119,10 +121,10 @@ struct ProfileShimmerView: View {
 
                     // Product grid (matches itemsGridSection)
                     LazyVGrid(
-                        columns: [
-                            GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                            GridItem(.flexible(), spacing: Theme.Spacing.sm)
-                        ],
+                        columns: WearhouseLayoutMetrics.productGridColumns(
+                            horizontalSizeClass: horizontalSizeClass,
+                            spacing: Theme.Spacing.sm
+                        ),
                         spacing: Theme.Spacing.md
                     ) {
                         ForEach(0..<6, id: \.self) { _ in

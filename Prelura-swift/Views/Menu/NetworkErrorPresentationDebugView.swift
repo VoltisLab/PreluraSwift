@@ -66,7 +66,7 @@ struct NetworkErrorPresentationDebugView: View {
             }
 
             Group {
-                Text("Mapped message + optional banner title")
+                Text("Mapped message + optional TLS headline (snackbar when title is set)")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.tertiaryText)
                 Text("Title: \(title ?? "nil")")
@@ -77,7 +77,7 @@ struct NetworkErrorPresentationDebugView: View {
                     .foregroundStyle(Theme.Colors.primaryText)
             }
 
-            FeedNetworkBannerView(message: mapped, title: title, onTryAgain: {})
+            FeedNetworkErrorPresentation(message: mapped, title: title, onTryAgain: {})
         }
         .padding(.bottom, Theme.Spacing.lg)
     }

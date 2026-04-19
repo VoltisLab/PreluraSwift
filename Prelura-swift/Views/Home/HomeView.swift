@@ -4,6 +4,7 @@ import Shimmer
 struct HomeView: View {
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject private var bellUnreadStore: BellUnreadStore
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var tabCoordinator: TabCoordinator
     @StateObject private var viewModel = HomeViewModel()
@@ -125,6 +126,7 @@ struct HomeView: View {
             )
             .fullScreenCover(isPresented: $showGuestSignInPrompt) {
                 GuestSignInPromptView()
+                    .wearhouseSheetContentColumnIfWide()
             }
     }
 
@@ -178,12 +180,26 @@ struct HomeView: View {
                 } action: { _, scrollMinY in
                     tabCoordinator.reportAtTop(tab: 0, isAtTop: scrollMinY > -Self.feedScrollTopSnap)
                 }
-                .overlay(alignment: .center) {
+                .overlay {
                     if let err = viewModel.errorMessage, !err.isEmpty {
-                        FeedNetworkBannerView(message: err, title: viewModel.errorBannerTitle) {
-                            Task { await viewModel.refreshAsync() }
+                        Group {
+                            if viewModel.errorBannerTitle != nil {
+                                VStack {
+                                    Spacer()
+                                    FeedErrorSnackbarView(onTryAgain: {
+                                        Task { await viewModel.refreshAsync() }
+                                    })
+                                    .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.bottom, 28)
+                                }
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                            } else {
+                                FeedNetworkBannerView(message: err, title: nil) {
+                                    Task { await viewModel.refreshAsync() }
+                                }
+                                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .center)))
+                            }
                         }
-                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .center)))
                     }
                 }
                 .animation(.spring(response: 0.38, dampingFraction: 0.86), value: viewModel.errorMessage)
@@ -320,10 +336,10 @@ struct HomeView: View {
     // MARK: - Product Grid
     private var productGridSection: some View {
         LazyVGrid(
-            columns: [
-                GridItem(.flexible(), spacing: Theme.Spacing.sm),
-                GridItem(.flexible(), spacing: Theme.Spacing.sm)
-            ],
+            columns: WearhouseLayoutMetrics.productGridColumns(
+                horizontalSizeClass: horizontalSizeClass,
+                spacing: Theme.Spacing.sm
+            ),
             alignment: .leading,
             spacing: Theme.Spacing.md,
             pinnedViews: []
@@ -349,7 +365,7 @@ struct HomeView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, Theme.Spacing.xl)
-                .gridCellColumns(2)
+                .gridCellColumns(WearhouseLayoutMetrics.productGridColumnCount(horizontalSizeClass: horizontalSizeClass))
             }
 
             ForEach(viewModel.filteredItems) { item in
@@ -364,7 +380,7 @@ struct HomeView: View {
                         .padding()
                     Spacer()
                 }
-                .gridCellColumns(2)
+                .gridCellColumns(WearhouseLayoutMetrics.productGridColumnCount(horizontalSizeClass: horizontalSizeClass))
             }
         }
         .padding(.horizontal, Theme.Spacing.md)

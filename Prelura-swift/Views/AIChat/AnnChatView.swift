@@ -48,6 +48,7 @@ struct AnnChatView: View {
                     selectedOrderForHelp = nil
                 }
             )
+            .wearhouseSheetContentColumnIfWide()
         }
     }
 

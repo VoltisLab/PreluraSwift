@@ -478,6 +478,7 @@ struct PlanSettingsView: View {
                 },
                 onDismiss: { showGoldPaywall = false }
             )
+            .wearhouseSheetContentColumnIfWide()
         }
     }
 
