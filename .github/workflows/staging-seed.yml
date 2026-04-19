@@ -1,7 +1,10 @@
 # Manual staging seed: registers N users via GraphQL `register` (same as iOS AuthService).
 # Secret: STAGING_SEED_PASSWORD (shared password for all seed users — not printed in logs).
 #
-# Optional: set repository variable GRAPHQL_URL if your staging API host differs from production default in scripts/seed-register-users.sh
+# Optional: verify_emails_after_seed — runs scripts/bulk-verify-seed-users-email.sh (needs STAFF_* secrets).
+# Optional: smoke_login_count — after register (and verify if enabled), tests GraphQL login for the first N CSV rows.
+#
+# Second batch: set seed_start_index so indices don’t collide (e.g. after 3 users use seed_start_index=4).
 
 name: Staging seed
 
@@ -12,10 +15,25 @@ on:
         description: How many users to register
         required: false
         default: '10'
+      seed_start_index:
+        description: First deterministic index (use 4 after registering indices 1-3)
+        required: false
+        default: '1'
       graphql_url:
         description: Override GraphQL endpoint (leave default to use script default)
         required: false
         default: ''
+      verify_emails_after_seed:
+        description: Mark emails verified via staff GraphQL after register
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+        default: 'yes'
+      smoke_login_count:
+        description: After seed/verify, smoke-test login for first N CSV users (0 = skip)
+        required: false
+        default: '0'
 
 concurrency:
   group: staging-seed-${{ github.repository }}
@@ -35,11 +53,41 @@ jobs:
         env:
           STAGING_SEED_PASSWORD: ${{ secrets.STAGING_SEED_PASSWORD }}
           SEED_USER_COUNT: ${{ inputs.user_count }}
+          SEED_START_INDEX: ${{ inputs.seed_start_index }}
           GRAPHQL_URL: ${{ inputs.graphql_url }}
         run: |
           set -euo pipefail
           if [[ -z "${GRAPHQL_URL:-}" ]]; then unset GRAPHQL_URL; fi
           bash scripts/gha-staging-seed.sh
+
+      - name: Verify seed user emails (staff)
+        if: ${{ inputs.verify_emails_after_seed == 'yes' }}
+        env:
+          STAFF_AUTH_TOKEN: ${{ secrets.STAFF_AUTH_TOKEN }}
+          STAFF_USERNAME: ${{ secrets.STAFF_USERNAME }}
+          STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+          GRAPHQL_URL: ${{ inputs.graphql_url }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${STAFF_AUTH_TOKEN:-}" ]]; then
+            if [[ -z "${STAFF_USERNAME:-}" || -z "${STAFF_PASSWORD:-}" ]]; then
+              echo "verify_emails_after_seed=yes requires STAFF_AUTH_TOKEN or STAFF_USERNAME + STAFF_PASSWORD."
+              exit 1
+            fi
+          fi
+          if [[ -z "${GRAPHQL_URL:-}" ]]; then unset GRAPHQL_URL; fi
+          bash scripts/bulk-verify-seed-users-email.sh
+
+      - name: Smoke test seed logins
+        if: ${{ inputs.smoke_login_count != '0' }}
+        env:
+          STAGING_SEED_PASSWORD: ${{ secrets.STAGING_SEED_PASSWORD }}
+          GRAPHQL_URL: ${{ inputs.graphql_url }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GRAPHQL_URL:-}" ]]; then unset GRAPHQL_URL; fi
+          N="${{ inputs.smoke_login_count }}"
+          bash scripts/gha-smoke-test-seed-logins.sh "$N"
 
       - name: Upload user report (no passwords)
         if: always()
