@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import Network
 
 /// Normalizes lookbook post ids for GraphQL `UUID!` variables (e.g. strips `urn:uuid:` or `{}` wrappers).
 enum LookbookPostIdFormatting {
@@ -642,16 +641,17 @@ final class LookbookService {
         let hasNextPage: Bool
     }
 
-    /// Loads the main Lookbook feed. Uses cursor pagination when the schema has `pageInfo` / `after`; otherwise one `lookbooks(first:)` call sized like the first paginated page (not `maxPosts`, which is too slow on large feeds).
+    /// Loads the main Lookbook feed via `lookbooks(first:after:)` with `nodes` + `edges { node }` (no `pageInfo` on prod). Paginates until a short page or duplicate slice; falls back to `lookbooks(first:)` if needed.
     func fetchLookbooksFeed(maxPosts: Int = 500, pageSize: Int = 100) async throws -> [ServerLookbookPost] {
-        let cap = min(maxPosts, 500)
-        let firstBatch = await Self.recommendedLookbookFirstBatchSize()
-        let legacyFirstBatch = min(firstBatch, cap)
+        let cap = min(maxPosts, 2000)
+        /// Same page size for the first request as later pages (no separate “small first slice”).
+        let firstPageLimit = min(max(1, pageSize), 2000)
+        let legacyFirst = min(firstPageLimit, cap)
         do {
             return try await fetchLookbooksFeedPaginated(
                 maxPosts: maxPosts,
                 pageSize: pageSize,
-                firstPageBatchLimit: firstBatch,
+                firstPageBatchLimit: firstPageLimit,
                 includeTaggedProductCount: true
             )
         } catch {
@@ -660,19 +660,19 @@ final class LookbookService {
                     return try await fetchLookbooksFeedPaginated(
                         maxPosts: maxPosts,
                         pageSize: pageSize,
-                        firstPageBatchLimit: firstBatch,
+                        firstPageBatchLimit: firstPageLimit,
                         includeTaggedProductCount: false
                     )
                 } catch {
                     // Paginated query still uses `pageInfo` / `after`; legacy servers reject those even without extended post fields.
                     if graphQLRejectsLookbooksPagination(error) {
-                        return try await fetchLookbooks(first: legacyFirstBatch)
+                        return try await fetchLookbooks(first: legacyFirst)
                     }
                     throw error
                 }
             }
             if graphQLRejectsLookbooksPagination(error) {
-                return try await fetchLookbooks(first: legacyFirstBatch)
+                return try await fetchLookbooks(first: legacyFirst)
             }
             throw error
         }
@@ -681,13 +681,20 @@ final class LookbookService {
     /// Fetches a single page for infinite scroll (same connection shape as the paginated feed query).
     func fetchLookbooksFeedPage(first: Int, after: String?) async throws -> LookbooksFeedPageResult {
         do {
-            return try await fetchLookbooksFeedPage(first: max(1, min(first, 100)), after: after, includeTaggedProductCount: true)
+            return try await fetchLookbooksFeedPage(first: max(1, min(first, 2000)), after: after, includeTaggedProductCount: true)
         } catch {
             if graphQLRejectsExtendedLookbookPostFields(error) {
-                return try await fetchLookbooksFeedPage(first: max(1, min(first, 100)), after: after, includeTaggedProductCount: false)
+                return try await fetchLookbooksFeedPage(first: max(1, min(first, 2000)), after: after, includeTaggedProductCount: false)
             }
             throw error
         }
+    }
+
+    /// Live API (`prelura.voltislabs.uk`): `LookbooksConnectionType` exposes only `nodes` and `edges { node }` — no `pageInfo` or `edge.cursor`.
+    /// Requesting those fields makes the whole operation fail; the client used to fall back to `lookbooks(first: ~80)` only.
+    private static func lookbooksConnectionInferHasNextPage(nonEmptyBatchCount: Int, requestedFirst: Int) -> Bool {
+        guard nonEmptyBatchCount > 0 else { return false }
+        return nonEmptyBatchCount >= requestedFirst
     }
 
     private func fetchLookbooksFeedPage(first: Int, after: String?, includeTaggedProductCount: Bool) async throws -> LookbooksFeedPageResult {
@@ -695,9 +702,8 @@ final class LookbookService {
         let query = """
         query LookbooksFeed($first: Int, $after: String) {
           lookbooks(first: $first, after: $after) {
-            pageInfo { hasNextPage endCursor }
             nodes { \(lf) }
-            edges { cursor node { \(lf) } }
+            edges { node { \(lf) } }
           }
         }
         """
@@ -710,12 +716,7 @@ final class LookbookService {
         struct Response: Decodable {
             let lookbooks: Conn?
         }
-        struct PageInfo: Decodable {
-            let hasNextPage: Bool?
-            let endCursor: String?
-        }
         struct Conn: Decodable {
-            let pageInfo: PageInfo?
             let nodes: [ServerLookbookPost]?
             let edges: [LookbookEdge]?
         }
@@ -726,25 +727,18 @@ final class LookbookService {
             responseType: Response.self
         )
         var batch: [ServerLookbookPost] = []
-        if let nodes = response.lookbooks?.nodes, !nodes.isEmpty {
-            batch = nodes
-        } else if let edges = response.lookbooks?.edges {
+        if let edges = response.lookbooks?.edges, !edges.isEmpty {
             batch = edges.compactMap { $0.node }
         }
-        let hasNext = response.lookbooks?.pageInfo?.hasNextPage == true
-        let end = response.lookbooks?.pageInfo?.endCursor?.trimmingCharacters(in: .whitespacesAndNewlines)
-        var endCursor: String? = (end?.isEmpty == false) ? end : nil
-        if endCursor == nil, let edges = response.lookbooks?.edges {
-            for edge in edges.reversed() {
-                if let c = edge.cursor?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty {
-                    endCursor = c
-                    break
-                }
-            }
+        if batch.isEmpty, let nodes = response.lookbooks?.nodes, !nodes.isEmpty {
+            batch = nodes
         }
-        // Some APIs omit `pageInfo.endCursor` / edge cursors while still setting `hasNextPage`. Without *some*
-        // `after` value the client cannot fetch the next page — use the last post id as a last-resort cursor.
-        if endCursor == nil, hasNext, let last = batch.last {
+        if batch.isEmpty {
+            return LookbooksFeedPageResult(posts: [], endCursor: nil, hasNextPage: false)
+        }
+        let hasNext = Self.lookbooksConnectionInferHasNextPage(nonEmptyBatchCount: batch.count, requestedFirst: first)
+        var endCursor: String? = nil
+        if hasNext, let last = batch.last {
             let id = last.id.trimmingCharacters(in: .whitespacesAndNewlines)
             if !id.isEmpty {
                 endCursor = LookbookPostIdFormatting.graphQLUUIDString(from: id)
@@ -753,38 +747,13 @@ final class LookbookService {
         return LookbooksFeedPageResult(posts: batch, endCursor: endCursor, hasNextPage: hasNext)
     }
 
-    /// First Lookbook request: **20** items on typical Wi‑Fi / Ethernet; **10** when the path looks slower (cellular-only, Low Data Mode, expensive routing, or unsatisfied).
-    private static func recommendedLookbookFirstBatchSize() async -> Int {
-        await withCheckedContinuation { continuation in
-            let monitor = NWPathMonitor()
-            let queue = DispatchQueue(label: "com.prelura.lookbook.firstBatch")
-            monitor.pathUpdateHandler = { path in
-                monitor.cancel()
-                let n: Int
-                if path.status != .satisfied {
-                    n = 10
-                } else if path.isConstrained || path.isExpensive {
-                    n = 10
-                } else {
-                    let hasWifiOrWired = path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)
-                    if path.usesInterfaceType(.cellular), !hasWifiOrWired {
-                        n = 10
-                    } else {
-                        n = 20
-                    }
-                }
-                continuation.resume(returning: n)
-            }
-            monitor.start(queue: queue)
-        }
-    }
-
     private func graphQLRejectsLookbooksPagination(_ error: Error) -> Bool {
         guard case GraphQLError.graphQLErrors(let errs) = error else { return false }
         return errs.contains { e in
             let m = e.message.lowercased()
             return (m.contains("unknown argument") && m.contains("after"))
                 || (m.contains("cannot query field") && m.contains("pageinfo"))
+                || (m.contains("cannot query field") && m.contains("cursor"))
         }
     }
 
@@ -798,9 +767,8 @@ final class LookbookService {
         let query = """
         query LookbooksFeed($first: Int, $after: String) {
           lookbooks(first: $first, after: $after) {
-            pageInfo { hasNextPage endCursor }
             nodes { \(lf) }
-            edges { cursor node { \(lf) } }
+            edges { node { \(lf) } }
           }
         }
         """
@@ -826,12 +794,7 @@ final class LookbookService {
             struct Response: Decodable {
                 let lookbooks: Conn?
             }
-            struct PageInfo: Decodable {
-                let hasNextPage: Bool?
-                let endCursor: String?
-            }
             struct Conn: Decodable {
-                let pageInfo: PageInfo?
                 let nodes: [ServerLookbookPost]?
                 let edges: [LookbookEdge]?
             }
@@ -842,39 +805,43 @@ final class LookbookService {
                 responseType: Response.self
             )
             var batch: [ServerLookbookPost] = []
-            if let nodes = response.lookbooks?.nodes, !nodes.isEmpty {
-                batch = nodes
-            } else if let edges = response.lookbooks?.edges {
+            if let edges = response.lookbooks?.edges, !edges.isEmpty {
                 batch = edges.compactMap { $0.node }
             }
+            if batch.isEmpty, let nodes = response.lookbooks?.nodes, !nodes.isEmpty {
+                batch = nodes
+            }
+            if batch.isEmpty {
+                break
+            }
+            let mergedBefore = merged.count
             for p in batch {
                 if seenIds.insert(p.id).inserted {
                     merged.append(p)
                 }
             }
-            if batch.isEmpty {
+            /// Prod: passing the last post id as `after` can return the same slice (no Relay cursors) — detect and stop.
+            if merged.count == mergedBefore {
                 break
             }
-            let hasNext = response.lookbooks?.pageInfo?.hasNextPage == true
-            let end = response.lookbooks?.pageInfo?.endCursor?.trimmingCharacters(in: .whitespacesAndNewlines)
-            var nextCursor: String? = (end?.isEmpty == false) ? end : nil
-            if nextCursor == nil, let edges = response.lookbooks?.edges {
-                for edge in edges.reversed() {
-                    if let c = edge.cursor?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty {
-                        nextCursor = c
-                        break
-                    }
+            var nextCursor: String? = nil
+            if let last = batch.last {
+                let id = last.id.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !id.isEmpty {
+                    nextCursor = LookbookPostIdFormatting.graphQLUUIDString(from: id)
                 }
             }
             cursor = nextCursor
             iterations += 1
             if merged.count >= maxPosts { break }
-            if !hasNext { break }
             if cursor == nil { break }
-            if iterations > 64 { break }
+            if iterations > max(256, maxPosts / max(32, pageSize) + 64) { break }
+            if batch.count < pageLimit {
+                break
+            }
         } while merged.count < maxPosts
         if merged.isEmpty {
-            let fallbackFirst = min(firstPageBatchLimit, min(maxPosts, 500))
+            let fallbackFirst = min(firstPageBatchLimit, min(maxPosts, 2000))
             return try await fetchLookbooks(first: fallbackFirst, includeTaggedProductCount: includeTaggedProductCount)
         }
         return Array(merged.prefix(maxPosts))
@@ -1154,7 +1121,8 @@ final class LookbookService {
         var id: String { username }
     }
 
-    /// Loads users who liked a post. Tries a few common schema shapes; throws if none succeed.
+    /// Loads users who liked a post. Tries several schema shapes in order.
+    /// If an earlier field decodes but returns `[]` (wrong shape vs production), later variants are still tried until one returns rows or all are exhausted.
     func fetchLookbookPostLikers(postId: String) async throws -> [LookbookPostLikeUser] {
         let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
         let variables: [String: Any] = ["postId": normalized]
@@ -1168,17 +1136,14 @@ final class LookbookService {
         }
         """
         struct RootResponse: Decodable { let lookbookPostLikers: [LookbookPostLikeUser]? }
-        do {
-            let r: RootResponse = try await client.execute(
-                query: qRoot,
-                variables: variables,
-                operationName: "LookbookPostLikers",
-                responseType: RootResponse.self
-            )
-            if let list = r.lookbookPostLikers { return list }
-        } catch {}
+        if let r = try? await client.execute(
+            query: qRoot,
+            variables: variables,
+            operationName: "LookbookPostLikers",
+            responseType: RootResponse.self
+        ), let list = r.lookbookPostLikers, !list.isEmpty { return list }
 
-        let qNested = """
+        let qNestedLikers = """
         query LookbookPostLikersNested($postId: UUID!) {
           lookbookPost(postId: $postId) {
             likers {
@@ -1188,20 +1153,55 @@ final class LookbookService {
           }
         }
         """
-        struct NestedPayload: Decodable { let likers: [LookbookPostLikeUser]? }
-        struct NestedResponse: Decodable { let lookbookPost: NestedPayload? }
-        do {
-            let r: NestedResponse = try await client.execute(
-                query: qNested,
-                variables: variables,
-                operationName: "LookbookPostLikersNested",
-                responseType: NestedResponse.self
-            )
-            if let list = r.lookbookPost?.likers { return list }
-        } catch {}
+        struct NestedLikersPayload: Decodable { let likers: [LookbookPostLikeUser]? }
+        struct NestedLikersResponse: Decodable { let lookbookPost: NestedLikersPayload? }
+        if let r = try? await client.execute(
+            query: qNestedLikers,
+            variables: variables,
+            operationName: "LookbookPostLikersNested",
+            responseType: NestedLikersResponse.self
+        ), let list = r.lookbookPost?.likers, !list.isEmpty { return list }
+
+        let qNestedLikeUsers = """
+        query LookbookPostLikeUsersOnPost($postId: UUID!) {
+          lookbookPost(postId: $postId) {
+            likeUsers {
+              username
+              profilePictureUrl
+            }
+          }
+        }
+        """
+        struct NestedLikeUsersPayload: Decodable { let likeUsers: [LookbookPostLikeUser]? }
+        struct NestedLikeUsersResponse: Decodable { let lookbookPost: NestedLikeUsersPayload? }
+        if let r = try? await client.execute(
+            query: qNestedLikeUsers,
+            variables: variables,
+            operationName: "LookbookPostLikeUsersOnPost",
+            responseType: NestedLikeUsersResponse.self
+        ), let list = r.lookbookPost?.likeUsers, !list.isEmpty { return list }
+
+        let qNestedLikedUsers = """
+        query LookbookPostLikedUsersNested($postId: UUID!) {
+          lookbookPost(postId: $postId) {
+            likedUsers {
+              username
+              profilePictureUrl
+            }
+          }
+        }
+        """
+        struct NestedLikedUsersPayload: Decodable { let likedUsers: [LookbookPostLikeUser]? }
+        struct NestedLikedUsersResponse: Decodable { let lookbookPost: NestedLikedUsersPayload? }
+        if let r = try? await client.execute(
+            query: qNestedLikedUsers,
+            variables: variables,
+            operationName: "LookbookPostLikedUsersNested",
+            responseType: NestedLikedUsersResponse.self
+        ), let list = r.lookbookPost?.likedUsers, !list.isEmpty { return list }
 
         let qAlt = """
-        query LookbookPostLikeUsers($postId: UUID!) {
+        query LookbookPostLikeUsersRoot($postId: UUID!) {
           lookbookPostLikeUsers(postId: $postId) {
             username
             profilePictureUrl
@@ -1209,13 +1209,62 @@ final class LookbookService {
         }
         """
         struct AltResponse: Decodable { let lookbookPostLikeUsers: [LookbookPostLikeUser]? }
-        let r: AltResponse = try await client.execute(
+        if let r = try? await client.execute(
             query: qAlt,
             variables: variables,
-            operationName: "LookbookPostLikeUsers",
+            operationName: "LookbookPostLikeUsersRoot",
             responseType: AltResponse.self
-        )
-        return r.lookbookPostLikeUsers ?? []
+        ), let list = r.lookbookPostLikeUsers, !list.isEmpty { return list }
+
+        // Some backend variants wrap likes under `{ likes { user { ... } } }`.
+        let qNestedLikesUser = """
+        query LookbookPostLikesUsersNested($postId: UUID!) {
+          lookbookPost(postId: $postId) {
+            likes {
+              user {
+                username
+                profilePictureUrl
+              }
+            }
+          }
+        }
+        """
+        struct LikeUserWrapper: Decodable { let user: LookbookPostLikeUser? }
+        struct NestedLikesPayload: Decodable { let likes: [LikeUserWrapper]? }
+        struct NestedLikesResponse: Decodable { let lookbookPost: NestedLikesPayload? }
+        if let r = try? await client.execute(
+            query: qNestedLikesUser,
+            variables: variables,
+            operationName: "LookbookPostLikesUsersNested",
+            responseType: NestedLikesResponse.self
+        ), let rows = r.lookbookPost?.likes {
+            let list = rows.compactMap(\.user)
+            if !list.isEmpty { return list }
+        }
+
+        // Root variants seen on some schemas.
+        let qRootLikesUsers = """
+        query LookbookPostLikesUsersRoot($postId: UUID!) {
+          lookbookPostLikes(postId: $postId) {
+            user {
+              username
+              profilePictureUrl
+            }
+          }
+        }
+        """
+        struct RootLikesResponse: Decodable { let lookbookPostLikes: [LikeUserWrapper]? }
+        if let r = try? await client.execute(
+            query: qRootLikesUsers,
+            variables: variables,
+            operationName: "LookbookPostLikesUsersRoot",
+            responseType: RootLikesResponse.self
+        ), let rows = r.lookbookPostLikes {
+            let list = rows.compactMap(\.user)
+            if !list.isEmpty { return list }
+        }
+
+        return []
     }
 
     /// `clickType`: `"product"` (tagged item) or `"shop"` (view shop).
@@ -1250,6 +1299,38 @@ final class LookbookService {
                 domain: "LookbookService",
                 code: -1,
                 userInfo: [NSLocalizedDescriptionKey: response.recordLookbookLinkClick?.message ?? "Click record failed"]
+            )
+        }
+    }
+
+    /// Feed dwell signal for gentle server-side personalization (`recordLookbookEngagement`).
+    func recordLookbookEngagement(postId: String, dwellSeconds: TimeInterval) async throws {
+        let query = """
+        mutation RecordLookbookEngagement($postId: UUID!, $dwellSeconds: Float) {
+          recordLookbookEngagement(postId: $postId, dwellSeconds: $dwellSeconds) {
+            success
+            message
+          }
+        }
+        """
+        let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
+        let variables: [String: Any] = ["postId": normalized, "dwellSeconds": dwellSeconds]
+        struct Response: Decodable { let recordLookbookEngagement: Payload? }
+        struct Payload: Decodable {
+            let success: Bool?
+            let message: String?
+        }
+        let response: Response = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "RecordLookbookEngagement",
+            responseType: Response.self
+        )
+        guard response.recordLookbookEngagement?.success == true else {
+            throw NSError(
+                domain: "LookbookService",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: response.recordLookbookEngagement?.message ?? "Engagement record failed"]
             )
         }
     }

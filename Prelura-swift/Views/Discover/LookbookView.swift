@@ -8,6 +8,7 @@
 import SwiftUI
 import Shimmer
 import UIKit
+import Network
 
 /// Strips query + fragment so presigned CDN URLs from different sessions still match local upload records.
 fileprivate func lookbookNormalizedMediaURLString(_ raw: String) -> String {
@@ -582,10 +583,33 @@ struct LookbookView: View {
 // MARK: - Feed (posts only)
 
 /// Browse feeds (main + topic): cap network/decodes for faster first paint. “My items” still loads more because it filters client-side.
-private let lookbookFeedBrowseMaxPosts = 200
-private let lookbookFeedBrowsePageSize = 80
+/// Legacy bulk fetch when cursor pagination fails; keep high so the feed isn’t silently capped ~200.
+private let lookbookFeedBrowseMaxPosts = 10_000
+/// Topic / “My items” first fetch: large slice so client-side filters have enough rows.
+private let lookbookFeedBrowseBulkHydrateFirst = 2000
+private let lookbookFeedInitialPaintFirstDefault = 20
+private let lookbookFeedInitialPaintFirstConstrainedNetwork = 10
+/// Main Lookbook feed: each “load more” widens `first` by this stride (`after: nil`); dedupe appends only new rows.
+private let lookbookFeedBrowsePageSize = 20
 private let lookbookFeedMyItemsMaxPosts = 500
 private let lookbookFeedMyItemsPageSize = 100
+
+/// First paint for the main feed: 20 rows normally, 10 on cellular / constrained / Low Power (fast decode + grid).
+private func lookbookFeedInitialPaintBatchSize() async -> Int {
+    await withCheckedContinuation { (cont: CheckedContinuation<Int, Never>) in
+        let monitor = NWPathMonitor()
+        let queue = DispatchQueue(label: "lookbook.feed.initial.nw")
+        var didResume = false
+        monitor.pathUpdateHandler = { path in
+            guard !didResume else { return }
+            didResume = true
+            monitor.cancel()
+            let constrained = path.status != .satisfied || path.isConstrained || path.isExpensive
+            cont.resume(returning: constrained ? lookbookFeedInitialPaintFirstConstrainedNetwork : lookbookFeedInitialPaintFirstDefault)
+        }
+        monitor.start(queue: queue)
+    }
+}
 
 /// Lowercased usernames the viewer follows; used to pick which comment preview to show on each post.
 @MainActor
@@ -686,16 +710,16 @@ private func lookbookRemovePostFromSourceFeed(_ deleted: LookbookEntry, source: 
     source.removeAll { LookbookPostIdFormatting.graphQLUUIDString(from: $0.id).lowercased() == k }
 }
 
-/// Random order on each load / reshuffle — **not** API/chronological. (Round-robin by poster used to leave
-/// heavy posters’ extra posts clustered at the end; a full shuffle keeps the grid unpredictable.)
+/// Maps API posts to feed rows. Order follows **`lookbooks`** unless ``Constants.lookbookDiscoverClientSideShufflesPostOrder`` is enabled (legacy random order).
 private func lookbookShuffledEntriesFromPosts(_ posts: [ServerLookbookPost], localRecords: [LookbookUploadRecord]) -> [LookbookEntry] {
     guard !posts.isEmpty else { return [] }
-    return posts.shuffled().map { post in
+    let ordered: [ServerLookbookPost] = Constants.lookbookDiscoverClientSideShufflesPostOrder ? posts.shuffled() : posts
+    return ordered.map { post in
         LookbookEntry(from: post, localRecord: lookbookFeedLocalRecord(for: post, records: localRecords))
     }
 }
 
-/// Appends unique posts from a load-more request (keeps existing order; new slice shuffled then appended).
+/// Appends unique posts from a load-more request. Optionally shuffles the new slice when client-side shuffle is on.
 private func lookbookAppendEntriesFromNewPosts(
     _ newPosts: [ServerLookbookPost],
     feedSourcePosts: inout [ServerLookbookPost],
@@ -711,8 +735,142 @@ private func lookbookAppendEntriesFromNewPosts(
             appended.append(LookbookEntry(from: p, localRecord: lookbookFeedLocalRecord(for: p, records: localRecords)))
         }
     }
-    appended.shuffle()
+    if Constants.lookbookDiscoverClientSideShufflesPostOrder {
+        appended.shuffle()
+    }
     entries.append(contentsOf: appended)
+}
+
+/// Updates `hasMore` after a load-more. Empty **with** `page.hasNextPage` means the cursor window failed — keep paging (see ``lookbookFeedApplyLoadedPage``). Duplicate slices keep paging when the server says more.
+private func lookbookFeedHasMoreAfterAppend(
+    page: LookbookService.LookbooksFeedPageResult,
+    entriesCountBefore: Int,
+    entriesCountAfter: Int
+) -> Bool {
+    if page.posts.isEmpty { return page.hasNextPage }
+    if entriesCountAfter > entriesCountBefore { return page.hasNextPage }
+    return page.hasNextPage
+}
+
+/// Applies one paginated `lookbooks` page: empty batches, cursor retry by walking older loaded post ids, duplicate-only pages.
+private func lookbookFeedApplyLoadedPage(
+    page: LookbookService.LookbooksFeedPageResult,
+    countBefore: Int,
+    feedSourcePosts: inout [ServerLookbookPost],
+    entries: inout [LookbookEntry],
+    localRecords: [LookbookUploadRecord],
+    feedNextCursor: inout String?,
+    feedCursorRetryIndex: inout Int
+) -> Bool {
+    if page.posts.isEmpty {
+        if page.hasNextPage {
+            if feedCursorRetryIndex >= 8 {
+                feedCursorRetryIndex = 0
+                return false
+            }
+            feedCursorRetryIndex += 1
+            let trimmed = page.endCursor?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if feedCursorRetryIndex <= 2, !trimmed.isEmpty {
+                feedNextCursor = trimmed
+            } else {
+                feedNextCursor = nil
+            }
+            return true
+        }
+        feedCursorRetryIndex = 0
+        return false
+    }
+    lookbookAppendEntriesFromNewPosts(page.posts, feedSourcePosts: &feedSourcePosts, entries: &entries, localRecords: localRecords)
+    feedNextCursor = page.endCursor
+    if countBefore == entries.count, let last = page.posts.last {
+        let lid = LookbookPostIdFormatting.graphQLUUIDString(from: last.id).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !lid.isEmpty { feedNextCursor = lid }
+    }
+    // API can return the same slice when `after` is a post id (no Relay cursors) — never spin load-more on 0 new rows.
+    if entries.count == countBefore && !page.posts.isEmpty {
+        feedCursorRetryIndex = 0
+        return false
+    }
+    let hasMore = lookbookFeedHasMoreAfterAppend(
+        page: page,
+        entriesCountBefore: countBefore,
+        entriesCountAfter: entries.count
+    )
+    if entries.count > countBefore {
+        feedCursorRetryIndex = 0
+    } else if hasMore {
+        feedCursorRetryIndex = min(feedCursorRetryIndex + 1, 8)
+    } else {
+        feedCursorRetryIndex = 0
+    }
+    return hasMore
+}
+
+/// Normalizes `after` for GraphQL: dashed UUIDs, but **does not** rewrite opaque Relay cursors (base64, etc.).
+private func lookbookFeedNormalizeAfterCursor(_ raw: String) -> String {
+    let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !t.isEmpty else { return t }
+    let n = LookbookPostIdFormatting.graphQLUUIDString(from: t)
+    if UUID(uuidString: n) != nil { return n }
+    return t
+}
+
+/// Next-page `after`: prefer **`feedNextCursor`** from the last response when present. If missing, use a loaded post id from the tail of `feedSourcePosts` (`retryIndexFromEnd` walks backward when cursors repeat).
+///
+/// Opaque Relay cursors must pass through unchanged (see ``lookbookFeedNormalizeAfterCursor``).
+private func lookbookFeedCursorAfter(
+    feedNextCursor: String?,
+    feedSourcePosts: [ServerLookbookPost],
+    retryIndexFromEnd: Int = 0
+) -> String? {
+    if let raw = feedNextCursor?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+        return lookbookFeedNormalizeAfterCursor(raw)
+    }
+    guard !feedSourcePosts.isEmpty else { return nil }
+    let fromEnd = max(0, min(retryIndexFromEnd, feedSourcePosts.count - 1))
+    let idx = feedSourcePosts.count - 1 - fromEnd
+    let post = feedSourcePosts[idx]
+    let lastId = LookbookPostIdFormatting.graphQLUUIDString(from: post.id)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    return lastId.isEmpty ? nil : lastId
+}
+
+/// Fetches one page; if the server returns **no rows** for the primary `after`, retries with alternate cursors (opaque vs post id vs relay `endCursor` string).
+private func lookbookFeedFetchPageRetryingEmptyCursor(
+    service: LookbookService,
+    first: Int,
+    feedNextCursor: String?,
+    feedSourcePosts: [ServerLookbookPost],
+    retryIndexFromEnd: Int = 0
+) async throws -> LookbookService.LookbooksFeedPageResult? {
+    guard let primary = lookbookFeedCursorAfter(
+        feedNextCursor: feedNextCursor,
+        feedSourcePosts: feedSourcePosts,
+        retryIndexFromEnd: retryIndexFromEnd
+    ) else {
+        return nil
+    }
+    var page = try await service.fetchLookbooksFeedPage(first: first, after: primary)
+    guard page.posts.isEmpty else { return page }
+
+    var tried = Set<String>([primary])
+    var alternates: [String] = []
+    for off in 0..<min(6, feedSourcePosts.count) {
+        let p = feedSourcePosts[feedSourcePosts.count - 1 - off]
+        let id = LookbookPostIdFormatting.graphQLUUIDString(from: p.id).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !id.isEmpty { alternates.append(id) }
+    }
+    if let raw = feedNextCursor?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+        let normalized = lookbookFeedNormalizeAfterCursor(raw)
+        alternates.append(normalized)
+        if raw != normalized { alternates.append(raw) }
+    }
+    for after in alternates where !after.isEmpty {
+        guard tried.insert(after).inserted else { continue }
+        page = try await service.fetchLookbooksFeedPage(first: first, after: after)
+        if !page.posts.isEmpty { break }
+    }
+    return page
 }
 
 /// Animated hand hint for the Lookbook floating shortcut bar (swipe to collapse / expand).
@@ -786,7 +944,7 @@ private struct LookbookFeedScreenView: View {
     @ObservedObject private var immersiveScrollFeelStore = LookbookImmersiveScrollFeelStore.shared
     @AppStorage("lookbookFloatingBarSwipeTipDismissed_v1") private var lookbookFloatingBarSwipeTipDismissed = false
     @State private var entries: [LookbookEntry] = []
-    /// Snapshot of server posts for the current load; used to re-shuffle on scroll without refetching.
+    /// Snapshot of server posts for the current load (pagination / delete / cursor retry).
     @State private var feedSourcePosts: [ServerLookbookPost] = []
     @State private var followedCommentBoostUsernames: Set<String> = []
     @State private var feedLoading = false
@@ -809,6 +967,8 @@ private struct LookbookFeedScreenView: View {
     @State private var feedNextCursor: String?
     @State private var feedHasMorePages = true
     @State private var feedLoadingMore = false
+    /// When the next page is empty or duplicate-only, walk older post ids / cursors so pagination can advance.
+    @State private var feedCursorRetryIndex = 0
     /// When true, only the show/hide control is visible; swipe L→R on the bar to collapse, R→L (or tap chevron) to expand.
     @State private var lookbookQuickActionsCollapsed = false
     private let productService = ProductService()
@@ -1032,7 +1192,7 @@ private struct LookbookFeedScreenView: View {
                                 columns: WearhouseLayoutMetrics.lookbookFeedGridColumns(horizontalSizeClass: horizontalSizeClass),
                                 spacing: WearhouseLayoutMetrics.lookbookFeedGridGutter
                             ) {
-                                ForEach(entries) { entry in
+                                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                                     LookbookSquareGridThumbnail(entry: entry)
                                         .padding(1)
                                         .background(Theme.Colors.background)
@@ -1049,16 +1209,21 @@ private struct LookbookFeedScreenView: View {
                                                 useGrid = false
                                             }
                                         }
+                                        .onAppear {
+                                            if index == entries.count - 1 {
+                                                Task { await loadMoreFeedAsync() }
+                                            }
+                                        }
                                 }
                             }
                             .padding(2)
-                            lookbookFeedInfiniteScrollFooter
+                            lookbookFeedInfiniteScrollFooter()
                             .padding(.bottom, lookbookFeedQuickActionsBottomClearance)
                         }
                         .scrollBounceBehavior(.always, axes: .vertical)
                         .scrollContentBackground(.hidden)
                         .background(Theme.Colors.background)
-                        .refreshable { await loadFeedFromServerAsync() }
+                            .refreshable { await loadFeedFromServerAsync() }
                         .onScrollGeometryChange(for: CGFloat.self) { geo in
                             -geo.contentOffset.y
                         } action: { _, newY in
@@ -1074,7 +1239,7 @@ private struct LookbookFeedScreenView: View {
                                         lookbookFeedRow(model: row)
                                             .id(row.id)
                                     }
-                                    lookbookFeedInfiniteScrollFooter
+                                    lookbookFeedInfiniteScrollFooter()
                                 }
                                 .padding(.bottom, lookbookFeedListScrollBottomPadding)
                                 .lookbookListScrollTargetLayout(feel: immersiveScrollFeelStore.feel)
@@ -1218,6 +1383,7 @@ private struct LookbookFeedScreenView: View {
                 feedNextCursor = nil
                 feedHasMorePages = true
                 feedLoadingMore = false
+                feedCursorRetryIndex = 0
             }
             return
         }
@@ -1228,13 +1394,15 @@ private struct LookbookFeedScreenView: View {
             feedNextCursor = nil
             feedHasMorePages = true
             feedLoadingMore = false
+            feedCursorRetryIndex = 0
         }
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
         let localRecords = LookbookFeedStore.load()
-        let firstPageSize = min(lookbookFeedBrowsePageSize, 80)
+        let paintFirst = await lookbookFeedInitialPaintBatchSize()
+        let firstPageSize = min(paintFirst, lookbookFeedBrowseMaxPosts)
         do {
             let page = try await service.fetchLookbooksFeedPage(first: firstPageSize, after: nil)
             await MainActor.run {
@@ -1284,65 +1452,95 @@ private struct LookbookFeedScreenView: View {
         }
     }
 
+    /// Main feed: widen `first` by one page (`after: nil`); overlap is deduped in ``lookbookFeedApplyLoadedPage``.
     private func loadMoreFeedAsync() async {
-        guard feedHasMorePages, !feedLoadingMore, !feedLoading, authService.isAuthenticated else { return }
-        let trimmed = feedNextCursor?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let after: String? = {
-            if !trimmed.isEmpty { return trimmed }
-            if let last = entries.last {
-                let s = LookbookPostIdFormatting.graphQLUUIDString(from: last.apiPostId)
-                return s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : s
-            }
-            return nil
-        }()
-        guard let after else {
-            await MainActor.run { feedHasMorePages = false }
-            return
+        let proceed = await MainActor.run { () -> Bool in
+            guard feedHasMorePages, !feedLoadingMore, !feedLoading, authService.isAuthenticated else { return false }
+            feedLoadingMore = true
+            return true
         }
-        await MainActor.run { feedLoadingMore = true }
+        guard proceed else { return }
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
         let localRecords = LookbookFeedStore.load()
-        do {
-            let page = try await service.fetchLookbooksFeedPage(first: lookbookFeedBrowsePageSize, after: after)
+        let loadedCount = await MainActor.run { feedSourcePosts.count }
+        let nextFirst = min(loadedCount + lookbookFeedBrowsePageSize, lookbookFeedBrowseMaxPosts)
+        guard nextFirst > loadedCount else {
             await MainActor.run {
-                var src = feedSourcePosts
-                var ent = entries
-                lookbookAppendEntriesFromNewPosts(page.posts, feedSourcePosts: &src, entries: &ent, localRecords: localRecords)
-                feedSourcePosts = src
-                entries = ent
-                feedNextCursor = page.endCursor
-                feedHasMorePages = page.hasNextPage
+                feedHasMorePages = false
                 feedLoadingMore = false
             }
+            return
+        }
+        func apply(_ page: LookbookService.LookbooksFeedPageResult) {
+            var src = feedSourcePosts
+            var ent = entries
+            var cursor = feedNextCursor
+            var retry = feedCursorRetryIndex
+            let countBefore = ent.count
+            feedHasMorePages = lookbookFeedApplyLoadedPage(
+                page: page,
+                countBefore: countBefore,
+                feedSourcePosts: &src,
+                entries: &ent,
+                localRecords: localRecords,
+                feedNextCursor: &cursor,
+                feedCursorRetryIndex: &retry
+            )
+            feedSourcePosts = src
+            entries = ent
+            feedNextCursor = cursor
+            feedCursorRetryIndex = retry
+            feedLoadingMore = false
+        }
+        do {
+            let page = try await service.fetchLookbooksFeedPage(first: nextFirst, after: nil)
+            await MainActor.run { apply(page) }
         } catch {
             await MainActor.run { feedLoadingMore = false }
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            let canRetry = await MainActor.run {
+                feedHasMorePages && !feedLoading && authService.isAuthenticated
+            }
+            guard canRetry else { return }
+            await MainActor.run { feedLoadingMore = true }
+            do {
+                let page = try await service.fetchLookbooksFeedPage(first: nextFirst, after: nil)
+                await MainActor.run { apply(page) }
+            } catch {
+                await MainActor.run { feedLoadingMore = false }
+            }
         }
     }
 
     @ViewBuilder
-    private var lookbookFeedInfiniteScrollFooter: some View {
+    private func lookbookFeedInfiniteScrollFooter(showBottomScrollSentinel: Bool = true) -> some View {
         Group {
             if feedLoadingMore {
-                HStack {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
+                if useGrid {
+                    LookbookGridLoadMoreShimmerStrip(tileCount: 15)
+                } else {
+                    VStack(spacing: 0) {
+                        LookbookPostCardShimmer()
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .shimmering()
                 }
-                .padding(.vertical, Theme.Spacing.md)
-            } else if !feedHasMorePages && !entries.isEmpty {
-                Text(L10n.string("You're all caught up"))
-                    .font(Theme.Typography.caption)
+            }
+            if !feedHasMorePages, !entries.isEmpty {
+                Text(L10n.string("You're all caught up!"))
+                    .font(Theme.Typography.subheadline)
                     .foregroundStyle(Theme.Colors.secondaryText)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, Theme.Spacing.lg)
+                    .padding(.horizontal, Theme.Spacing.md)
             }
-            if feedHasMorePages, !entries.isEmpty {
+            if showBottomScrollSentinel, feedHasMorePages, !entries.isEmpty, !feedLoadingMore {
                 Color.clear
-                    .frame(height: 32)
+                    .frame(height: 64)
                     .onAppear {
                         Task { await loadMoreFeedAsync() }
                     }
@@ -1679,6 +1877,7 @@ private struct LookbookMyItemsScreenView: View {
     @State private var feedNextCursor: String?
     @State private var feedHasMorePages = true
     @State private var feedLoadingMore = false
+    @State private var feedCursorRetryIndex = 0
     private let productService = ProductService()
 
     private var myEntries: [LookbookEntry] {
@@ -1849,7 +2048,7 @@ private struct LookbookMyItemsScreenView: View {
                                     columns: WearhouseLayoutMetrics.lookbookFeedGridColumns(horizontalSizeClass: horizontalSizeClass),
                                     spacing: WearhouseLayoutMetrics.lookbookFeedGridGutter
                                 ) {
-                                    ForEach(myEntries) { entry in
+                                    ForEach(Array(myEntries.enumerated()), id: \.element.id) { index, entry in
                                         LookbookSquareGridThumbnail(entry: entry)
                                             .padding(1)
                                             .background(Theme.Colors.background)
@@ -1866,10 +2065,15 @@ private struct LookbookMyItemsScreenView: View {
                                                     useGrid = false
                                                 }
                                             }
+                                            .onAppear {
+                                                if index == myEntries.count - 1 {
+                                                    Task { await loadMoreMyItemsFeedAsync() }
+                                                }
+                                            }
                                     }
                                 }
                                 .padding(2)
-                                lookbookMyItemsInfiniteScrollFooter
+                                lookbookMyItemsInfiniteScrollFooter()
                                 .padding(.bottom, showMyItemsGridListFAB ? 56 : 0)
                             }
                             .scrollBounceBehavior(.always, axes: .vertical)
@@ -1891,7 +2095,7 @@ private struct LookbookMyItemsScreenView: View {
                                             lookbookFeedRow(model: row)
                                                 .id(row.id)
                                         }
-                                        lookbookMyItemsInfiniteScrollFooter
+                                        lookbookMyItemsInfiniteScrollFooter()
                                     }
                                     .padding(.bottom, myItemsScrollBottomPadding)
                                     .lookbookListScrollTargetLayout(feel: immersiveScrollFeelStore.feel)
@@ -2065,6 +2269,7 @@ private struct LookbookMyItemsScreenView: View {
                 feedNextCursor = nil
                 feedHasMorePages = true
                 feedLoadingMore = false
+                feedCursorRetryIndex = 0
             }
             return
         }
@@ -2075,13 +2280,14 @@ private struct LookbookMyItemsScreenView: View {
             feedNextCursor = nil
             feedHasMorePages = true
             feedLoadingMore = false
+            feedCursorRetryIndex = 0
         }
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
         let localRecords = LookbookFeedStore.load()
-        let firstPageSize = min(lookbookFeedMyItemsPageSize, 80)
+        let firstPageSize = min(lookbookFeedBrowseBulkHydrateFirst, lookbookFeedMyItemsMaxPosts)
         do {
             let page = try await service.fetchLookbooksFeedPage(first: firstPageSize, after: nil)
             await MainActor.run {
@@ -2130,36 +2336,51 @@ private struct LookbookMyItemsScreenView: View {
     }
 
     private func loadMoreMyItemsFeedAsync() async {
-        guard feedHasMorePages, !feedLoadingMore, !feedLoading, authService.isAuthenticated else { return }
-        let trimmed = feedNextCursor?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let after: String? = {
-            if !trimmed.isEmpty { return trimmed }
-            if let last = entries.last {
-                let s = LookbookPostIdFormatting.graphQLUUIDString(from: last.apiPostId)
-                return s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : s
-            }
-            return nil
-        }()
-        guard let after else {
-            await MainActor.run { feedHasMorePages = false }
-            return
+        let proceed = await MainActor.run { () -> Bool in
+            guard feedHasMorePages, !feedLoadingMore, !feedLoading, authService.isAuthenticated else { return false }
+            feedLoadingMore = true
+            return true
         }
-        await MainActor.run { feedLoadingMore = true }
+        guard proceed else { return }
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
         let localRecords = LookbookFeedStore.load()
+        let retryIdx = await MainActor.run { feedCursorRetryIndex }
         do {
-            let page = try await service.fetchLookbooksFeedPage(first: lookbookFeedMyItemsPageSize, after: after)
+            guard let page = try await lookbookFeedFetchPageRetryingEmptyCursor(
+                service: service,
+                first: lookbookFeedMyItemsPageSize,
+                feedNextCursor: feedNextCursor,
+                feedSourcePosts: feedSourcePosts,
+                retryIndexFromEnd: retryIdx
+            ) else {
+                await MainActor.run {
+                    feedHasMorePages = false
+                    feedLoadingMore = false
+                }
+                return
+            }
             await MainActor.run {
                 var src = feedSourcePosts
                 var ent = entries
-                lookbookAppendEntriesFromNewPosts(page.posts, feedSourcePosts: &src, entries: &ent, localRecords: localRecords)
+                var cursor = feedNextCursor
+                var retry = feedCursorRetryIndex
+                let countBefore = ent.count
+                feedHasMorePages = lookbookFeedApplyLoadedPage(
+                    page: page,
+                    countBefore: countBefore,
+                    feedSourcePosts: &src,
+                    entries: &ent,
+                    localRecords: localRecords,
+                    feedNextCursor: &cursor,
+                    feedCursorRetryIndex: &retry
+                )
                 feedSourcePosts = src
                 entries = ent
-                feedNextCursor = page.endCursor
-                feedHasMorePages = page.hasNextPage
+                feedNextCursor = cursor
+                feedCursorRetryIndex = retry
                 feedLoadingMore = false
             }
         } catch {
@@ -2168,26 +2389,31 @@ private struct LookbookMyItemsScreenView: View {
     }
 
     @ViewBuilder
-    private var lookbookMyItemsInfiniteScrollFooter: some View {
+    private func lookbookMyItemsInfiniteScrollFooter(showBottomScrollSentinel: Bool = true) -> some View {
         Group {
             if feedLoadingMore {
-                HStack {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
+                if useGrid {
+                    LookbookGridLoadMoreShimmerStrip(tileCount: 15)
+                } else {
+                    VStack(spacing: 0) {
+                        LookbookPostCardShimmer()
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .shimmering()
                 }
-                .padding(.vertical, Theme.Spacing.md)
-            } else if !feedHasMorePages && !entries.isEmpty {
-                Text(L10n.string("You're all caught up"))
-                    .font(Theme.Typography.caption)
+            }
+            if !feedHasMorePages, !myEntries.isEmpty {
+                Text(L10n.string("You're all caught up!"))
+                    .font(Theme.Typography.subheadline)
                     .foregroundStyle(Theme.Colors.secondaryText)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, Theme.Spacing.lg)
+                    .padding(.horizontal, Theme.Spacing.md)
             }
-            if feedHasMorePages, !entries.isEmpty {
+            if showBottomScrollSentinel, feedHasMorePages, !entries.isEmpty, !feedLoadingMore {
                 Color.clear
-                    .frame(height: 32)
+                    .frame(height: 64)
                     .onAppear {
                         Task { await loadMoreMyItemsFeedAsync() }
                     }
@@ -2246,6 +2472,7 @@ private struct LookbookTopicFeedView: View {
     @State private var feedNextCursor: String?
     @State private var feedHasMorePages = true
     @State private var feedLoadingMore = false
+    @State private var feedCursorRetryIndex = 0
     private let productService = ProductService()
 
     private var filteredEntries: [LookbookEntry] {
@@ -2407,6 +2634,7 @@ private struct LookbookTopicFeedView: View {
                 feedNextCursor = nil
                 feedHasMorePages = true
                 feedLoadingMore = false
+                feedCursorRetryIndex = 0
             }
             return
         }
@@ -2417,13 +2645,14 @@ private struct LookbookTopicFeedView: View {
             feedNextCursor = nil
             feedHasMorePages = true
             feedLoadingMore = false
+            feedCursorRetryIndex = 0
         }
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
         let localRecords = LookbookFeedStore.load()
-        let firstPageSize = min(lookbookFeedBrowsePageSize, 80)
+        let firstPageSize = min(lookbookFeedBrowseBulkHydrateFirst, lookbookFeedBrowseMaxPosts)
         do {
             let page = try await service.fetchLookbooksFeedPage(first: firstPageSize, after: nil)
             await MainActor.run {
@@ -2474,36 +2703,51 @@ private struct LookbookTopicFeedView: View {
     }
 
     private func loadMoreTopicFeedAsync() async {
-        guard feedHasMorePages, !feedLoadingMore, !feedLoading, authService.isAuthenticated else { return }
-        let trimmed = feedNextCursor?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let after: String? = {
-            if !trimmed.isEmpty { return trimmed }
-            if let last = entries.last {
-                let s = LookbookPostIdFormatting.graphQLUUIDString(from: last.apiPostId)
-                return s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : s
-            }
-            return nil
-        }()
-        guard let after else {
-            await MainActor.run { feedHasMorePages = false }
-            return
+        let proceed = await MainActor.run { () -> Bool in
+            guard feedHasMorePages, !feedLoadingMore, !feedLoading, authService.isAuthenticated else { return false }
+            feedLoadingMore = true
+            return true
         }
-        await MainActor.run { feedLoadingMore = true }
+        guard proceed else { return }
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
         let localRecords = LookbookFeedStore.load()
+        let retryIdx = await MainActor.run { feedCursorRetryIndex }
         do {
-            let page = try await service.fetchLookbooksFeedPage(first: lookbookFeedBrowsePageSize, after: after)
+            guard let page = try await lookbookFeedFetchPageRetryingEmptyCursor(
+                service: service,
+                first: lookbookFeedBrowsePageSize,
+                feedNextCursor: feedNextCursor,
+                feedSourcePosts: feedSourcePosts,
+                retryIndexFromEnd: retryIdx
+            ) else {
+                await MainActor.run {
+                    feedHasMorePages = false
+                    feedLoadingMore = false
+                }
+                return
+            }
             await MainActor.run {
                 var src = feedSourcePosts
                 var ent = entries
-                lookbookAppendEntriesFromNewPosts(page.posts, feedSourcePosts: &src, entries: &ent, localRecords: localRecords)
+                var cursor = feedNextCursor
+                var retry = feedCursorRetryIndex
+                let countBefore = ent.count
+                feedHasMorePages = lookbookFeedApplyLoadedPage(
+                    page: page,
+                    countBefore: countBefore,
+                    feedSourcePosts: &src,
+                    entries: &ent,
+                    localRecords: localRecords,
+                    feedNextCursor: &cursor,
+                    feedCursorRetryIndex: &retry
+                )
                 feedSourcePosts = src
                 entries = ent
-                feedNextCursor = page.endCursor
-                feedHasMorePages = page.hasNextPage
+                feedNextCursor = cursor
+                feedCursorRetryIndex = retry
                 feedLoadingMore = false
             }
         } catch {
@@ -2515,23 +2759,25 @@ private struct LookbookTopicFeedView: View {
     private var lookbookTopicInfiniteScrollFooter: some View {
         Group {
             if feedLoadingMore {
-                HStack {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
+                VStack(spacing: Theme.Spacing.sm) {
+                    LookbookPostCardShimmer()
+                    LookbookPostCardShimmer()
                 }
-                .padding(.vertical, Theme.Spacing.md)
-            } else if !feedHasMorePages && !entries.isEmpty {
-                Text(L10n.string("You're all caught up"))
-                    .font(Theme.Typography.caption)
+                .padding(.horizontal, Theme.Spacing.md)
+                .shimmering()
+            }
+            if !feedHasMorePages, !filteredEntries.isEmpty {
+                Text(L10n.string("You're all caught up!"))
+                    .font(Theme.Typography.subheadline)
                     .foregroundStyle(Theme.Colors.secondaryText)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, Theme.Spacing.lg)
+                    .padding(.horizontal, Theme.Spacing.md)
             }
-            if feedHasMorePages, !entries.isEmpty {
+            if feedHasMorePages, !filteredEntries.isEmpty, !feedLoadingMore {
                 Color.clear
-                    .frame(height: 32)
+                    .frame(height: 64)
                     .onAppear {
                         Task { await loadMoreTopicFeedAsync() }
                     }
@@ -2910,6 +3156,28 @@ private struct LookbookGridShimmerTile: View {
     }
 }
 
+/// Same cell layout as the live lookbook grid; use below real tiles while the next page loads (avoids a bare spinner on black).
+private struct LookbookGridLoadMoreShimmerStrip: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    var tileCount: Int = 15
+
+    var body: some View {
+        LazyVGrid(
+            columns: WearhouseLayoutMetrics.lookbookFeedGridColumns(horizontalSizeClass: horizontalSizeClass),
+            spacing: WearhouseLayoutMetrics.lookbookFeedGridGutter
+        ) {
+            ForEach(0..<tileCount, id: \.self) { _ in
+                LookbookGridShimmerTile()
+                    .padding(1)
+                    .background(Theme.Colors.background)
+                    .aspectRatio(1, contentMode: .fit)
+            }
+        }
+        .padding(.horizontal, 2)
+        .shimmering()
+    }
+}
+
 private struct LookbookPostCardShimmer: View {
     private let mediaAspect: CGFloat = lookbookFeedAsyncImagePlaceholderAspect
     private let avatarSize: CGFloat = 40
@@ -3071,9 +3339,13 @@ struct LookbookFeedPostActionBar: View {
                     heartPointSize: 20,
                     likeCountFormatting: LookbookFeedEngagementCountFormatting.short,
                     showLikeCount: !hideLikeCount,
-                    onLikeCountTap: onLikeCountTap
+                    onLikeCountTap: onLikeCountTap,
+                    heartCountSpacing: 2,
+                    splitHeartMinWidth: 30,
+                    splitHeartFrameAlignment: Alignment(horizontal: .trailing, vertical: .center),
+                    splitClusterHorizontalPadding: 4
                 )
-                .padding(.leading, -Theme.Spacing.sm)
+                .padding(.leading, -Theme.Spacing.xs)
 
                 Button {
                     HapticManager.tap()
@@ -3285,10 +3557,13 @@ fileprivate func lookbookFeedCaptionBodyChunks(_ caption: String) -> [LookbookCa
 /// Hashtags use secondary label grey (not brand purple) for calmer feed captions.
 fileprivate let lookbookFeedCaptionHashtagUIColor = UIColor.secondaryLabel
 
+/// Extra vertical gap between wrapped caption lines; same value drives `NSParagraphStyle`, expanded `Text`, and caption→timestamp stack spacing.
+fileprivate let lookbookFeedCaptionLineSpacingExtra: CGFloat = 2
+
 fileprivate func lookbookFeedCaptionParagraphStyle() -> NSParagraphStyle {
     let p = NSMutableParagraphStyle()
-    // Slight extra line metrics so emoji aren’t clipped by tight UILabel/Text layout (cap ≤ ~3pt effective slack).
-    p.lineSpacing = 3
+    // Tight but uniform with SwiftUI expanded caption; keeps emoji from clipping.
+    p.lineSpacing = lookbookFeedCaptionLineSpacingExtra
     return p
 }
 
@@ -3298,7 +3573,7 @@ fileprivate func lookbookFeedFullCaptionMutableAttributed(username: String, capt
     let reg = UIFont.systemFont(ofSize: 15, weight: .regular)
     let primary = UIColor.label
     m.append(NSAttributedString(string: username, attributes: [.font: bold, .foregroundColor: primary]))
-    m.append(NSAttributedString(string: "  ", attributes: [.font: reg, .foregroundColor: primary]))
+    m.append(NSAttributedString(string: " ", attributes: [.font: reg, .foregroundColor: primary]))
     for chunk in lookbookFeedCaptionBodyChunks(captionBody) {
         switch chunk {
         case .plain(let s):
@@ -3547,6 +3822,8 @@ struct LookbookFeedRowView: View {
     @State private var showLookbookDoubleTapLikeBurst = false
     @State private var lookbookDoubleTapBurstScale: CGFloat = 0.2
     @State private var lookbookDoubleTapBurstOpacity: Double = 0
+    /// Tracks on-screen time for soft feed personalization (`recordLookbookEngagement`).
+    @State private var feedRowVisibleSince: Date?
 
     private let avatarSize: CGFloat = 40
     private let commentPreviewAvatarSize: CGFloat = 28
@@ -3661,6 +3938,17 @@ struct LookbookFeedRowView: View {
 
     private var isHidingLikeCountForPost: Bool {
         hideLikeCountsStore.hidesLikeCount(forPostKey: entry.lookbookPostKey)
+    }
+
+    private func submitLookbookFeedImpression(dwellSeconds: TimeInterval) async {
+        guard authService.isAuthenticated else { return }
+        let raw = entry.apiPostId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+        let client = GraphQLClient()
+        client.setAuthToken(authService.authToken)
+        let service = LookbookService(client: client)
+        service.setAuthToken(authService.authToken)
+        try? await service.recordLookbookEngagement(postId: raw, dwellSeconds: dwellSeconds)
     }
 
     private func performDeletePost() {
@@ -3799,7 +4087,7 @@ struct LookbookFeedRowView: View {
     @ViewBuilder
     private var latestCommentPreviewSection: some View {
         if let c = latestCommentPreview {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: lookbookFeedCaptionLineSpacingExtra) {
                 if entry.commentsCount > 0 {
                     Button {
                         HapticManager.tap()
@@ -3812,6 +4100,7 @@ struct LookbookFeedRowView: View {
                             .padding(.horizontal, Theme.Spacing.md)
                     }
                     .buttonStyle(.plain)
+                    .padding(.bottom, 3)
                 }
                 HStack(alignment: .center, spacing: 8) {
                     NavigationLink {
@@ -3853,7 +4142,7 @@ struct LookbookFeedRowView: View {
                 .padding(.horizontal, Theme.Spacing.md)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 4)
+            .padding(.top, 14)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(Text(lookbookCommentPreviewAccessibilityLabel(comment: c)))
             .accessibilityHint(L10n.string("Opens comments"))
@@ -3936,12 +4225,12 @@ struct LookbookFeedRowView: View {
                     guard foldReserve > 0, w > foldReserve else { return 0 }
                     return w - foldReserve
                 }()
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: lookbookFeedCaptionLineSpacingExtra) {
                     ZStack(alignment: .bottomTrailing) {
                         if lookbookCaptionExpanded {
                             Text(AttributedString(fullAttr))
                                 .multilineTextAlignment(.leading)
-                                .lineSpacing(3)
+                                .lineSpacing(lookbookFeedCaptionLineSpacingExtra)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .environment(\.openURL, OpenURLAction { url in handleCaptionHashtagURL(url) })
                         } else {
@@ -3982,16 +4271,27 @@ struct LookbookFeedRowView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, 3)
-                .padding(.bottom, 4)
+                .padding(.top, 2)
+                .padding(.bottom, lookbookFeedCaptionLineSpacingExtra)
             } else {
                 lookbookFeedPostTimeRow
                     .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.top, 3)
-                    .padding(.bottom, 4)
+                    .padding(.top, 2)
+                    .padding(.bottom, lookbookFeedCaptionLineSpacingExtra)
             }
 
             latestCommentPreviewSection
+        }
+        .onAppear {
+            feedRowVisibleSince = Date()
+        }
+        .onDisappear {
+            guard let start = feedRowVisibleSince else { return }
+            feedRowVisibleSince = nil
+            let dwell = Date().timeIntervalSince(start)
+            guard dwell >= 0.45 else { return }
+            let capped = min(dwell, 45)
+            Task { await submitLookbookFeedImpression(dwellSeconds: capped) }
         }
         .background(Theme.Colors.background)
         .overlay(alignment: .bottom) {
@@ -4117,6 +4417,10 @@ struct LookbookFeedRowView: View {
         }
     }
 
+    private var lookbookFeedPostIsBookmarked: Bool {
+        savedLookbookFavorites.isSaved(postId: entry.apiPostId)
+    }
+
     @ViewBuilder
     private var lookbookFeedPostOptionsMenu: some View {
         Menu {
@@ -4133,6 +4437,21 @@ struct LookbookFeedRowView: View {
                 } label: {
                     Label(L10n.string("Copy link"), systemImage: "link")
                 }
+            }
+            Button {
+                HapticManager.tap()
+                openSendForward()
+            } label: {
+                Label(L10n.string("Send"), systemImage: "paperplane")
+            }
+            Button {
+                HapticManager.tap()
+                showSaveFolderSheet = true
+            } label: {
+                Label(
+                    lookbookFeedPostIsBookmarked ? L10n.string("Saved") : L10n.string("Save"),
+                    systemImage: lookbookFeedPostIsBookmarked ? "bookmark.fill" : "bookmark"
+                )
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -5469,6 +5788,38 @@ struct LookbookHashtagFeedResultsView: View {
     }
 }
 
+private struct LookbookPostLikersShimmerView: View {
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(0..<12, id: \.self) { _ in
+                    HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                        Circle()
+                            .fill(Theme.Colors.secondaryBackground)
+                            .frame(width: 50, height: 50)
+                        VStack(alignment: .leading, spacing: 8) {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Theme.Colors.secondaryBackground)
+                                .frame(height: 16)
+                                .frame(maxWidth: 180, alignment: .leading)
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Theme.Colors.secondaryBackground)
+                                .frame(height: 12)
+                                .frame(maxWidth: 120, alignment: .leading)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.Colors.background)
+        .shimmering()
+    }
+}
+
 struct LookbookPostLikersView: View {
     let postId: String
     @EnvironmentObject private var authService: AuthService
@@ -5479,8 +5830,7 @@ struct LookbookPostLikersView: View {
     var body: some View {
         Group {
             if loading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                LookbookPostLikersShimmerView()
             } else if let err = errorMessage, !err.isEmpty {
                 Text(err)
                     .font(Theme.Typography.subheadline)
