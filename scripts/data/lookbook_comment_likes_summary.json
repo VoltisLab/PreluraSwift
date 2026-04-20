@@ -1,0 +1,22 @@
+{
+  "plan": {
+    "comments_total": 171,
+    "target_histogram_requested": {
+      "2": 54,
+      "1": 61,
+      "5": 14,
+      "4": 32,
+      "3": 10
+    },
+    "skipped_comment_likes_already_5": 0,
+    "skipped_already_at_target": 1,
+    "like_edges_planned": 395,
+    "distribution_note": "per-comment target totals: 10%\u21925, 15%\u21924, 10%\u21923, 30%\u21922, 35%\u21921 (then skip if already enough likes)"
+  },
+  "likes_applied": 395,
+  "skipped_already_liked": 0,
+  "errors": [],
+  "error_count": 0,
+  "plan_fingerprint": "a3cd719182401ce71b3f63c7f7dabbd361cbc54db0f1d37ea265884c0a504f08",
+  "checkpoint_edges": 395
+}

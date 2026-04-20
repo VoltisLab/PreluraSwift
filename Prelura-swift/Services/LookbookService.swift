@@ -634,6 +634,21 @@ final class LookbookService {
         }
     }
 
+    /// User-scoped Lookbooks for "My items".
+    ///
+    /// Requires backend `myLookbooks(first:)` endpoint. No global-feed fallback.
+    func fetchLookbooksForUser(username: String, first: Int = 2000) async throws -> [ServerLookbookPost] {
+        _ = username
+        do {
+            return try await fetchLookbooksForUser(first: first, includeTaggedProductCount: true)
+        } catch {
+            if graphQLRejectsExtendedLookbookPostFields(error) {
+                return try await fetchLookbooksForUser(first: first, includeTaggedProductCount: false)
+            }
+            throw error
+        }
+    }
+
     /// One page of the main Lookbook feed (cursor + `after`). Use for infinite scroll; falls back to empty next cursor when the server omits cursors.
     struct LookbooksFeedPageResult: Sendable {
         let posts: [ServerLookbookPost]
@@ -755,6 +770,34 @@ final class LookbookService {
                 || (m.contains("cannot query field") && m.contains("pageinfo"))
                 || (m.contains("cannot query field") && m.contains("cursor"))
         }
+    }
+
+    private func connectionPosts(_ conn: LookbooksConnection?) -> [ServerLookbookPost] {
+        if let nodes = conn?.nodes, !nodes.isEmpty { return nodes }
+        if let edges = conn?.edges, !edges.isEmpty { return edges.compactMap { $0.node } }
+        return []
+    }
+
+    private func fetchLookbooksForUser(first: Int, includeTaggedProductCount: Bool) async throws -> [ServerLookbookPost] {
+        let limitedFirst = max(1, min(first, 2000))
+        let lf = lookbookPostGraphQLFields(includeExtended: includeTaggedProductCount)
+        let query = """
+        query MyLookbooks($first: Int) {
+          myLookbooks(first: $first) {
+            nodes { \(lf) }
+            edges { node { \(lf) }
+            }
+          }
+        }
+        """
+        struct Response: Decodable { let myLookbooks: LookbooksConnection? }
+        let response: Response = try await client.execute(
+            query: query,
+            variables: ["first": limitedFirst],
+            operationName: "MyLookbooks",
+            responseType: Response.self
+        )
+        return connectionPosts(response.myLookbooks)
     }
 
     private func fetchLookbooksFeedPaginated(
@@ -1121,11 +1164,41 @@ final class LookbookService {
         var id: String { username }
     }
 
+    struct LookbookPostLikersDebugAttempt: Hashable {
+        let variant: String
+        let outcome: String
+    }
+
+    struct LookbookPostLikersDebugReport: Hashable {
+        let users: [LookbookPostLikeUser]
+        let attempts: [LookbookPostLikersDebugAttempt]
+
+        var summary: String {
+            if attempts.isEmpty { return "No query attempts recorded." }
+            return attempts.map { "[\($0.variant)] \($0.outcome)" }.joined(separator: "\n")
+        }
+    }
+
     /// Loads users who liked a post. Tries several schema shapes in order.
     /// If an earlier field decodes but returns `[]` (wrong shape vs production), later variants are still tried until one returns rows or all are exhausted.
     func fetchLookbookPostLikers(postId: String) async throws -> [LookbookPostLikeUser] {
+        let report = await fetchLookbookPostLikersDebug(postId: postId)
+        #if DEBUG
+        if report.users.isEmpty {
+            print("Lookbook likers debug (\(postId))\n\(report.summary)")
+        }
+        #endif
+        return report.users
+    }
+
+    /// Debug helper used by the Likes screen to explain why a non-zero count can still show empty likers.
+    func fetchLookbookPostLikersDebug(postId: String) async -> LookbookPostLikersDebugReport {
         let normalized = LookbookPostIdFormatting.graphQLUUIDString(from: postId)
         let variables: [String: Any] = ["postId": normalized]
+        var attempts: [LookbookPostLikersDebugAttempt] = []
+        func record(_ variant: String, _ outcome: String) {
+            attempts.append(LookbookPostLikersDebugAttempt(variant: variant, outcome: outcome))
+        }
 
         let qRoot = """
         query LookbookPostLikers($postId: UUID!) {
@@ -1136,12 +1209,19 @@ final class LookbookService {
         }
         """
         struct RootResponse: Decodable { let lookbookPostLikers: [LookbookPostLikeUser]? }
-        if let r = try? await client.execute(
-            query: qRoot,
-            variables: variables,
-            operationName: "LookbookPostLikers",
-            responseType: RootResponse.self
-        ), let list = r.lookbookPostLikers, !list.isEmpty { return list }
+        do {
+            let r: RootResponse = try await client.execute(
+                query: qRoot,
+                variables: variables,
+                operationName: "LookbookPostLikers",
+                responseType: RootResponse.self
+            )
+            let list = r.lookbookPostLikers ?? []
+            if !list.isEmpty { return LookbookPostLikersDebugReport(users: list, attempts: attempts) }
+            record("lookbookPostLikers", "ok: empty")
+        } catch {
+            record("lookbookPostLikers", "error: \(error.localizedDescription)")
+        }
 
         let qNestedLikers = """
         query LookbookPostLikersNested($postId: UUID!) {
@@ -1155,12 +1235,19 @@ final class LookbookService {
         """
         struct NestedLikersPayload: Decodable { let likers: [LookbookPostLikeUser]? }
         struct NestedLikersResponse: Decodable { let lookbookPost: NestedLikersPayload? }
-        if let r = try? await client.execute(
-            query: qNestedLikers,
-            variables: variables,
-            operationName: "LookbookPostLikersNested",
-            responseType: NestedLikersResponse.self
-        ), let list = r.lookbookPost?.likers, !list.isEmpty { return list }
+        do {
+            let r: NestedLikersResponse = try await client.execute(
+                query: qNestedLikers,
+                variables: variables,
+                operationName: "LookbookPostLikersNested",
+                responseType: NestedLikersResponse.self
+            )
+            let list = r.lookbookPost?.likers ?? []
+            if !list.isEmpty { return LookbookPostLikersDebugReport(users: list, attempts: attempts) }
+            record("lookbookPost.likers", "ok: empty")
+        } catch {
+            record("lookbookPost.likers", "error: \(error.localizedDescription)")
+        }
 
         let qNestedLikeUsers = """
         query LookbookPostLikeUsersOnPost($postId: UUID!) {
@@ -1174,12 +1261,19 @@ final class LookbookService {
         """
         struct NestedLikeUsersPayload: Decodable { let likeUsers: [LookbookPostLikeUser]? }
         struct NestedLikeUsersResponse: Decodable { let lookbookPost: NestedLikeUsersPayload? }
-        if let r = try? await client.execute(
-            query: qNestedLikeUsers,
-            variables: variables,
-            operationName: "LookbookPostLikeUsersOnPost",
-            responseType: NestedLikeUsersResponse.self
-        ), let list = r.lookbookPost?.likeUsers, !list.isEmpty { return list }
+        do {
+            let r: NestedLikeUsersResponse = try await client.execute(
+                query: qNestedLikeUsers,
+                variables: variables,
+                operationName: "LookbookPostLikeUsersOnPost",
+                responseType: NestedLikeUsersResponse.self
+            )
+            let list = r.lookbookPost?.likeUsers ?? []
+            if !list.isEmpty { return LookbookPostLikersDebugReport(users: list, attempts: attempts) }
+            record("lookbookPost.likeUsers", "ok: empty")
+        } catch {
+            record("lookbookPost.likeUsers", "error: \(error.localizedDescription)")
+        }
 
         let qNestedLikedUsers = """
         query LookbookPostLikedUsersNested($postId: UUID!) {
@@ -1193,12 +1287,19 @@ final class LookbookService {
         """
         struct NestedLikedUsersPayload: Decodable { let likedUsers: [LookbookPostLikeUser]? }
         struct NestedLikedUsersResponse: Decodable { let lookbookPost: NestedLikedUsersPayload? }
-        if let r = try? await client.execute(
-            query: qNestedLikedUsers,
-            variables: variables,
-            operationName: "LookbookPostLikedUsersNested",
-            responseType: NestedLikedUsersResponse.self
-        ), let list = r.lookbookPost?.likedUsers, !list.isEmpty { return list }
+        do {
+            let r: NestedLikedUsersResponse = try await client.execute(
+                query: qNestedLikedUsers,
+                variables: variables,
+                operationName: "LookbookPostLikedUsersNested",
+                responseType: NestedLikedUsersResponse.self
+            )
+            let list = r.lookbookPost?.likedUsers ?? []
+            if !list.isEmpty { return LookbookPostLikersDebugReport(users: list, attempts: attempts) }
+            record("lookbookPost.likedUsers", "ok: empty")
+        } catch {
+            record("lookbookPost.likedUsers", "error: \(error.localizedDescription)")
+        }
 
         let qAlt = """
         query LookbookPostLikeUsersRoot($postId: UUID!) {
@@ -1209,12 +1310,19 @@ final class LookbookService {
         }
         """
         struct AltResponse: Decodable { let lookbookPostLikeUsers: [LookbookPostLikeUser]? }
-        if let r = try? await client.execute(
-            query: qAlt,
-            variables: variables,
-            operationName: "LookbookPostLikeUsersRoot",
-            responseType: AltResponse.self
-        ), let list = r.lookbookPostLikeUsers, !list.isEmpty { return list }
+        do {
+            let r: AltResponse = try await client.execute(
+                query: qAlt,
+                variables: variables,
+                operationName: "LookbookPostLikeUsersRoot",
+                responseType: AltResponse.self
+            )
+            let list = r.lookbookPostLikeUsers ?? []
+            if !list.isEmpty { return LookbookPostLikersDebugReport(users: list, attempts: attempts) }
+            record("lookbookPostLikeUsers", "ok: empty")
+        } catch {
+            record("lookbookPostLikeUsers", "error: \(error.localizedDescription)")
+        }
 
         // Some backend variants wrap likes under `{ likes { user { ... } } }`.
         let qNestedLikesUser = """
@@ -1232,14 +1340,19 @@ final class LookbookService {
         struct LikeUserWrapper: Decodable { let user: LookbookPostLikeUser? }
         struct NestedLikesPayload: Decodable { let likes: [LikeUserWrapper]? }
         struct NestedLikesResponse: Decodable { let lookbookPost: NestedLikesPayload? }
-        if let r = try? await client.execute(
-            query: qNestedLikesUser,
-            variables: variables,
-            operationName: "LookbookPostLikesUsersNested",
-            responseType: NestedLikesResponse.self
-        ), let rows = r.lookbookPost?.likes {
+        do {
+            let r: NestedLikesResponse = try await client.execute(
+                query: qNestedLikesUser,
+                variables: variables,
+                operationName: "LookbookPostLikesUsersNested",
+                responseType: NestedLikesResponse.self
+            )
+            let rows = r.lookbookPost?.likes ?? []
             let list = rows.compactMap(\.user)
-            if !list.isEmpty { return list }
+            if !list.isEmpty { return LookbookPostLikersDebugReport(users: list, attempts: attempts) }
+            record("lookbookPost.likes.user", "ok: empty")
+        } catch {
+            record("lookbookPost.likes.user", "error: \(error.localizedDescription)")
         }
 
         // Root variants seen on some schemas.
@@ -1254,17 +1367,22 @@ final class LookbookService {
         }
         """
         struct RootLikesResponse: Decodable { let lookbookPostLikes: [LikeUserWrapper]? }
-        if let r = try? await client.execute(
-            query: qRootLikesUsers,
-            variables: variables,
-            operationName: "LookbookPostLikesUsersRoot",
-            responseType: RootLikesResponse.self
-        ), let rows = r.lookbookPostLikes {
+        do {
+            let r: RootLikesResponse = try await client.execute(
+                query: qRootLikesUsers,
+                variables: variables,
+                operationName: "LookbookPostLikesUsersRoot",
+                responseType: RootLikesResponse.self
+            )
+            let rows = r.lookbookPostLikes ?? []
             let list = rows.compactMap(\.user)
-            if !list.isEmpty { return list }
+            if !list.isEmpty { return LookbookPostLikersDebugReport(users: list, attempts: attempts) }
+            record("lookbookPostLikes.user", "ok: empty")
+        } catch {
+            record("lookbookPostLikes.user", "error: \(error.localizedDescription)")
         }
 
-        return []
+        return LookbookPostLikersDebugReport(users: [], attempts: attempts)
     }
 
     /// `clickType`: `"product"` (tagged item) or `"shop"` (view shop).

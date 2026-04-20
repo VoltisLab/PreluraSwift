@@ -67,6 +67,7 @@ class GraphQLClient {
         query: String,
         variables: [String: Any]? = nil,
         operationName: String? = nil,
+        additionalHeaders: [String: String]? = nil,
         responseType: T.Type
     ) async throws -> T {
         var request = URLRequest(url: baseURL)
@@ -79,6 +80,11 @@ class GraphQLClient {
         
         if let token = authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let additionalHeaders {
+            for (header, value) in additionalHeaders where !value.isEmpty {
+                request.setValue(value, forHTTPHeaderField: header)
+            }
         }
         
         var body: [String: Any] = ["query": query]
@@ -132,6 +138,7 @@ class GraphQLClient {
         query: String,
         variables: [String: Any]? = nil,
         operationName: String? = nil,
+        additionalHeaders: [String: String]? = nil,
         responseType: T.Type,
         decoder: JSONDecoder
     ) async throws -> T {
@@ -144,6 +151,11 @@ class GraphQLClient {
         request.setValue("no-cache", forHTTPHeaderField: "Pragma")
         if let token = authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let additionalHeaders {
+            for (header, value) in additionalHeaders where !value.isEmpty {
+                request.setValue(value, forHTTPHeaderField: header)
+            }
         }
         var body: [String: Any] = ["query": query]
         if let variables = variables { body["variables"] = variables }

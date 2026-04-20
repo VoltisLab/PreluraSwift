@@ -139,7 +139,7 @@ struct FilteredProductsView: View {
 
     @ViewBuilder
     private var productGridContent: some View {
-        if viewModel.isLoading && viewModel.items.isEmpty {
+        if viewModel.isLoading {
             FeedShimmerView()
         } else if viewModel.items.isEmpty {
             Group {

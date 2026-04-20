@@ -82,61 +82,79 @@ struct DiscoverShimmerView: View {
     }
 }
 
-/// Shimmer for Discover content **below** the hero (Shop Categories → product strips). Hero uses local assets and renders immediately.
-struct DiscoverBelowFoldShimmerView: View {
-    var body: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            HStack(spacing: Theme.Spacing.sm) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 24, height: 24)
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 140, height: 22)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Theme.Spacing.md)
-            ContentDivider()
-            VStack(spacing: 0) {
-                ForEach(0..<2, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Theme.Colors.secondaryBackground)
-                        .frame(height: 48)
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.vertical, Theme.Spacing.sm)
-                }
-            }
-            RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
-                .fill(Theme.Colors.secondaryBackground)
-                .frame(height: 215)
-                .padding(.horizontal, Theme.Spacing.md)
+/// Horizontal product strip (Recently viewed, Brands, Bargains, On Sale) while that section’s data loads.
+struct DiscoverSectionProductStripShimmer: View {
+    var showSeeAllPlaceholder: Bool = true
+    var subtitlePlaceholderHeight: CGFloat = 0
 
-            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                HStack {
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(Theme.Colors.secondaryBackground)
-                        .frame(width: 120, height: 20)
-                    Spacer()
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Theme.Colors.secondaryBackground)
-                        .frame(width: 60, height: 16)
+                        .frame(width: 160, height: 20)
+                    if subtitlePlaceholderHeight > 0 {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Theme.Colors.secondaryBackground)
+                            .frame(width: 220, height: subtitlePlaceholderHeight)
+                    }
                 }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        ForEach(0..<5, id: \.self) { _ in
-                            DiscoverItemShimmer()
-                                .frame(width: 160)
+                Spacer(minLength: 0)
+                if showSeeAllPlaceholder {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Theme.Colors.secondaryBackground)
+                        .frame(width: 52, height: 16)
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        DiscoverItemShimmer()
+                            .frame(width: 160)
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .shimmering()
+    }
+}
+
+/// Top Shops row placeholder (avatars + usernames).
+struct DiscoverTopShopsSectionShimmer: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: 100, height: 20)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(width: 240, height: 12)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.md) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        VStack(spacing: Theme.Spacing.xs) {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Theme.Colors.secondaryBackground)
+                                .frame(width: 100, height: 100)
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Theme.Colors.secondaryBackground)
+                                .frame(width: 72, height: 12)
                         }
                     }
                 }
+                .padding(.horizontal, Theme.Spacing.md)
             }
-            .padding(.horizontal, Theme.Spacing.md)
-
-            Spacer(minLength: Theme.Spacing.xl)
         }
-        .padding(.top, 14)
-        .padding(.bottom, Theme.Spacing.lg)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .shimmering()
     }
 }

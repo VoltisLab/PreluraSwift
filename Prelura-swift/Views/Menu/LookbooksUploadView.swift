@@ -364,7 +364,9 @@ struct LookbooksUploadView: View {
     @State private var cropPreset: LookbookUploadCropPreset = .portrait1080x1350
     @State private var caption: String = ""
     /// Populated from ``StyleEnumValuesLoader`` (API + cache); starts with cache or bundled catalog for fast paint.
-    @State private var lookbookStylePillRaws: [String] = StyleEnumValuesLoader.cachedRaws()
+    @State private var lookbookStylePillRaws: [String] = StyleEnumValuesLoader.cachedRaws().sorted {
+        StyleSelectionView.displayName(for: $0).localizedCaseInsensitiveCompare(StyleSelectionView.displayName(for: $1)) == .orderedAscending
+    }
     @State private var selectedStylePills: Set<String> = []
     @State private var uploadState: UploadState = .idle
     @State private var showTagScreen = false
@@ -923,7 +925,9 @@ struct LookbooksUploadView: View {
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         await StyleEnumValuesLoader.refreshCacheFromBackend(client: client)
-        let raws = StyleEnumValuesLoader.cachedRaws()
+        let raws = StyleEnumValuesLoader.cachedRaws().sorted {
+            StyleSelectionView.displayName(for: $0).localizedCaseInsensitiveCompare(StyleSelectionView.displayName(for: $1)) == .orderedAscending
+        }
         await MainActor.run {
             lookbookStylePillRaws = raws
         }

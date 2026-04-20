@@ -385,22 +385,28 @@ private actor LookbookFeedImagePrefetchCoordinator {
     /// As the user scrolls the feed, extend the warm window in the scroll direction (throttled).
     func extendForScrollDelta(entries: [LookbookEntry], forward: Bool, span: Int = 6) async {
         guard !entries.isEmpty else { return }
+        let lastIdx = entries.count - 1
+        // Feed can shrink (refresh, logout, dedupe); keep water marks in range or subscript crashes.
+        highWaterIndex = min(max(highWaterIndex, 0), lastIdx)
+        lowWaterIndex = min(max(lowWaterIndex, 0), lastIdx)
+
         let now = ContinuousClock.now
         if let t = lastScrollPrefetch, now - t < .milliseconds(280) { return }
         lastScrollPrefetch = now
 
         if forward {
-            let start = min(highWaterIndex + 1, entries.count - 1)
-            guard start < entries.count else { return }
-            let end = min(start + max(1, span) - 1, entries.count - 1)
+            let start = min(highWaterIndex + 1, lastIdx)
+            guard start <= lastIdx else { return }
+            let end = min(start + max(1, span) - 1, lastIdx)
+            guard start <= end else { return }
             for i in start...end {
                 await prefetchURLsSerial(lookbookFeedMediaPrefetchURLs(for: entries[i]))
             }
             highWaterIndex = max(highWaterIndex, end)
         } else {
-            let start = max(lowWaterIndex - 1, 0)
-            guard start >= 0 else { return }
+            let start = min(max(lowWaterIndex - 1, 0), lastIdx)
             let end = max(start - max(1, span) + 1, 0)
+            guard end <= start else { return }
             for i in (end...start).reversed() {
                 await prefetchURLsSerial(lookbookFeedMediaPrefetchURLs(for: entries[i]))
             }
@@ -497,6 +503,12 @@ struct ProductIdNavigator: Identifiable, Hashable {
     let id: String
 }
 
+struct LookbookLikersNavigator: Identifiable, Hashable {
+    let postId: String
+    let expectedLikeCount: Int
+    var id: String { postId.lowercased() }
+}
+
 /// Hashtag opened from feed / comments (`key` is lowercased without `#`).
 struct LookbookHashtagSelection: Hashable {
     let display: String
@@ -591,7 +603,10 @@ private let lookbookFeedInitialPaintFirstDefault = 20
 private let lookbookFeedInitialPaintFirstConstrainedNetwork = 10
 /// Main Lookbook feed: each “load more” widens `first` by this stride (`after: nil`); dedupe appends only new rows.
 private let lookbookFeedBrowsePageSize = 20
-private let lookbookFeedMyItemsMaxPosts = 500
+/// My items should mirror home-feed scale; avoid capping out early when own posts are sparse in a large global feed.
+private let lookbookFeedMyItemsMaxPosts = 10_000
+/// My items first paint: keep this small so own grid appears quickly; older posts still load via pagination.
+private let lookbookFeedMyItemsInitialPaintFirst = 2000
 private let lookbookFeedMyItemsPageSize = 100
 
 /// First paint for the main feed: 20 rows normally, 10 on cellular / constrained / Low Power (fast decode + grid).
@@ -954,7 +969,7 @@ private struct LookbookFeedScreenView: View {
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
     @State private var hashtagNavigationSelection: LookbookHashtagSelection?
-    @State private var likersPostId: String?
+    @State private var likersPostId: LookbookLikersNavigator?
     @State private var useGrid = true
     @State private var immersiveFeedInitialPostId: String?
     /// Outer vertical pager position (`ScrollView` + `scrollTargetLayout`, keyed by `LookbookEntry.id`).
@@ -979,7 +994,7 @@ private struct LookbookFeedScreenView: View {
 
     /// Show quick actions whenever we are not in the initial loading-empty state (so empty / error still gets shortcuts).
     private var showLookbookFeedFloatingActions: Bool {
-        !(feedLoading && entries.isEmpty)
+        !feedLoading
     }
 
     /// Space for the glass shortcut row plus optional first-run swipe tip above it.
@@ -1173,7 +1188,7 @@ private struct LookbookFeedScreenView: View {
             let barBottomInset = lookbookFeedFloatingBarBottomInset(geometry, immersive: immersiveFeedInitialPostId != nil)
             ZStack(alignment: .bottom) {
                 Group {
-                    if feedLoading && entries.isEmpty {
+                    if feedLoading {
                         Group {
                             if useGrid {
                                 LookbookGridShimmerView(
@@ -1360,11 +1375,21 @@ private struct LookbookFeedScreenView: View {
             .environmentObject(authService)
             .environmentObject(savedLookbookFavorites)
         }
-        .navigationDestination(item: $likersPostId) { postId in
-            LookbookPostLikersView(postId: postId)
+        .navigationDestination(item: $likersPostId) { nav in
+            LookbookPostLikersView(postId: nav.postId, expectedLikeCount: nav.expectedLikeCount)
                 .environmentObject(authService)
         }
-        .onAppear { loadFeedFromServer() }
+        /// Initial / auth-change load only. Do **not** use `onAppear { loadFeedFromServer() }`: popping back from
+        /// `navigationDestination` (hashtag, likers, product) re-invokes `onAppear` and was wiping `entries` + grid scroll.
+        /// If `.task` is cancelled/restarted on pop, skip when we already have rows so scroll position is preserved.
+        .task(id: authService.isAuthenticated) {
+            if authService.isAuthenticated {
+                let skip = await MainActor.run { !entries.isEmpty }
+                if !skip { await loadFeedFromServerAsync() }
+            } else {
+                await loadFeedFromServerAsync()
+            }
+        }
     }
 
     private func loadFeedFromServer() {
@@ -1693,7 +1718,7 @@ private struct LookbookFeedScreenView: View {
             immersive: immersive,
             feedEntriesForHashtag: entries,
             onHashtagNavigate: { hashtagNavigationSelection = $0 },
-            onLikesListTap: { likersPostId = $0.apiPostId }
+            onLikesListTap: { likersPostId = LookbookLikersNavigator(postId: $0.apiPostId, expectedLikeCount: $0.likesCount) }
         )
         .padding(.bottom, immersive ? 0 : lookbookSpacing)
     }
@@ -1711,7 +1736,7 @@ struct LookbookSinglePostFeedPresentedView: View {
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
     @State private var hashtagNavigationSelection: LookbookHashtagSelection?
-    @State private var likersPostId: String?
+    @State private var likersPostId: LookbookLikersNavigator?
     private let productService = ProductService()
     let onDismiss: () -> Void
 
@@ -1775,8 +1800,8 @@ struct LookbookSinglePostFeedPresentedView: View {
                 .environmentObject(authService)
                 .environmentObject(savedLookbookFavorites)
             }
-            .navigationDestination(item: $likersPostId) { postId in
-                LookbookPostLikersView(postId: postId)
+            .navigationDestination(item: $likersPostId) { nav in
+                LookbookPostLikersView(postId: nav.postId, expectedLikeCount: nav.expectedLikeCount)
                     .environmentObject(authService)
             }
             .task {
@@ -1809,7 +1834,7 @@ struct LookbookSinglePostFeedPresentedView: View {
             },
             feedEntriesForHashtag: entries,
             onHashtagNavigate: { hashtagNavigationSelection = $0 },
-            onLikesListTap: { likersPostId = $0.apiPostId }
+            onLikesListTap: { likersPostId = LookbookLikersNavigator(postId: $0.apiPostId, expectedLikeCount: $0.likesCount) }
         )
         .padding(.bottom, lookbookSpacing)
     }
@@ -1863,7 +1888,7 @@ private struct LookbookMyItemsScreenView: View {
     @State private var feedLoading = false
     @State private var feedError: String?
     @State private var feedErrorBannerTitle: String?
-    @State private var useGrid = false
+    @State private var useGrid = true
     @State private var commentsEntry: LookbookEntry?
     /// When set, shows a full-screen vertical pager (Instagram/TikTok-style) starting at this post id.
     @State private var immersiveFeedInitialPostId: String?
@@ -1873,20 +1898,29 @@ private struct LookbookMyItemsScreenView: View {
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
     @State private var hashtagNavigationSelection: LookbookHashtagSelection?
-    @State private var likersPostId: String?
+    @State private var likersPostId: LookbookLikersNavigator?
     @State private var feedNextCursor: String?
     @State private var feedHasMorePages = true
     @State private var feedLoadingMore = false
     @State private var feedCursorRetryIndex = 0
     private let productService = ProductService()
 
+    private func normalizeMyItemsUsername(_ value: String?) -> String {
+        guard let value else { return "" }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        let noAt = trimmed.hasPrefix("@") ? String(trimmed.dropFirst()) : trimmed
+        return noAt.lowercased()
+    }
+
     private var myEntries: [LookbookEntry] {
-        guard let me = authService.username?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !me.isEmpty else { return [] }
-        return entries.filter { $0.posterUsername.lowercased() == me }
+        let me = normalizeMyItemsUsername(authService.username)
+        guard !me.isEmpty else { return [] }
+        return entries.filter { normalizeMyItemsUsername($0.posterUsername) == me }
     }
 
     private var showMyItemsGridListFAB: Bool {
-        immersiveFeedInitialPostId == nil && !(feedLoading && entries.isEmpty)
+        immersiveFeedInitialPostId == nil && !feedLoading
     }
 
     private var myItemsScrollBottomPadding: CGFloat {
@@ -2030,7 +2064,7 @@ private struct LookbookMyItemsScreenView: View {
             ZStack(alignment: .bottomTrailing) {
                 ZStack {
                     Group {
-                        if feedLoading && entries.isEmpty {
+                        if feedLoading {
                             Group {
                                 if useGrid {
                                     LookbookGridShimmerView(
@@ -2214,11 +2248,18 @@ private struct LookbookMyItemsScreenView: View {
             .environmentObject(authService)
             .environmentObject(savedLookbookFavorites)
         }
-        .navigationDestination(item: $likersPostId) { postId in
-            LookbookPostLikersView(postId: postId)
+        .navigationDestination(item: $likersPostId) { nav in
+            LookbookPostLikersView(postId: nav.postId, expectedLikeCount: nav.expectedLikeCount)
                 .environmentObject(authService)
         }
-        .onAppear { loadFeedFromServer() }
+        .task(id: authService.isAuthenticated) {
+            if authService.isAuthenticated {
+                let skip = await MainActor.run { !entries.isEmpty }
+                if !skip { await loadFeedFromServerAsync() }
+            } else {
+                await loadFeedFromServerAsync()
+            }
+        }
     }
 
     private var myItemsEmpty: some View {
@@ -2251,6 +2292,12 @@ private struct LookbookMyItemsScreenView: View {
                 .padding(.top, Theme.Spacing.xl)
             }
         }
+    }
+
+    private func myItemsDiag(_ message: String) {
+#if DEBUG
+        print("[MY_ITEMS_DIAG] \(message)")
+#endif
     }
 
     private func loadFeedFromServer() {
@@ -2287,42 +2334,31 @@ private struct LookbookMyItemsScreenView: View {
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
         let localRecords = LookbookFeedStore.load()
-        let firstPageSize = min(lookbookFeedBrowseBulkHydrateFirst, lookbookFeedMyItemsMaxPosts)
+        let firstPageSize = min(lookbookFeedMyItemsInitialPaintFirst, lookbookFeedMyItemsMaxPosts)
+        let viewer = normalizeMyItemsUsername(authService.username)
         do {
-            let page = try await service.fetchLookbooksFeedPage(first: firstPageSize, after: nil)
+            let t0 = Date()
+            let userPosts = try await service.fetchLookbooksForUser(username: viewer, first: firstPageSize)
+            let hydratedEntries = lookbookShuffledEntriesFromPosts(userPosts, localRecords: localRecords)
+            myItemsDiag("userScoped first=\(firstPageSize) posts=\(userPosts.count) elapsedMs=\(Int(Date().timeIntervalSince(t0) * 1000))")
             await MainActor.run {
-                feedSourcePosts = page.posts
-                entries = lookbookShuffledEntriesFromPosts(page.posts, localRecords: localRecords)
-                feedNextCursor = page.endCursor
-                feedHasMorePages = page.hasNextPage
+                feedSourcePosts = userPosts
+                entries = hydratedEntries
+                feedNextCursor = nil
+                feedHasMorePages = false
                 feedLoading = false
                 feedError = nil
                 feedErrorBannerTitle = nil
+                feedCursorRetryIndex = 0
             }
         } catch {
-            do {
-                let posts = try await service.fetchLookbooksFeed(
-                    maxPosts: lookbookFeedMyItemsMaxPosts,
-                    pageSize: lookbookFeedMyItemsPageSize
-                )
-                await MainActor.run {
-                    feedSourcePosts = posts
-                    entries = lookbookShuffledEntriesFromPosts(posts, localRecords: localRecords)
-                    feedNextCursor = nil
-                    feedHasMorePages = false
-                    feedLoading = false
-                    feedError = nil
-                    feedErrorBannerTitle = nil
-                }
-            } catch {
-                await MainActor.run {
-                    feedLoading = false
-                    let cancelled = (error as? URLError)?.code == .cancelled
-                    feedError = cancelled ? nil : L10n.userFacingError(error)
-                    feedErrorBannerTitle = cancelled ? nil : L10n.userFacingErrorBannerTitle(error)
-                }
-                return
+            await MainActor.run {
+                feedLoading = false
+                let cancelled = (error as? URLError)?.code == .cancelled
+                feedError = cancelled ? nil : L10n.userFacingError(error)
+                feedErrorBannerTitle = cancelled ? nil : L10n.userFacingErrorBannerTitle(error)
             }
+            return
         }
         let token = authService.authToken
         Task {
@@ -2347,21 +2383,18 @@ private struct LookbookMyItemsScreenView: View {
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
         let localRecords = LookbookFeedStore.load()
-        let retryIdx = await MainActor.run { feedCursorRetryIndex }
-        do {
-            guard let page = try await lookbookFeedFetchPageRetryingEmptyCursor(
-                service: service,
-                first: lookbookFeedMyItemsPageSize,
-                feedNextCursor: feedNextCursor,
-                feedSourcePosts: feedSourcePosts,
-                retryIndexFromEnd: retryIdx
-            ) else {
-                await MainActor.run {
-                    feedHasMorePages = false
-                    feedLoadingMore = false
-                }
-                return
+        let loadedCount = await MainActor.run { feedSourcePosts.count }
+        let nextFirst = min(loadedCount + lookbookFeedMyItemsPageSize, lookbookFeedMyItemsMaxPosts)
+        guard nextFirst > loadedCount else {
+            await MainActor.run {
+                feedHasMorePages = false
+                feedLoadingMore = false
             }
+            return
+        }
+        do {
+            let t0 = Date()
+            let page = try await service.fetchLookbooksFeedPage(first: nextFirst, after: nil)
             await MainActor.run {
                 var src = feedSourcePosts
                 var ent = entries
@@ -2382,6 +2415,7 @@ private struct LookbookMyItemsScreenView: View {
                 feedNextCursor = cursor
                 feedCursorRetryIndex = retry
                 feedLoadingMore = false
+                myItemsDiag("loadMore first=\(nextFirst) pagePosts=\(page.posts.count) entriesBefore=\(countBefore) entriesAfter=\(ent.count) hasMore=\(feedHasMorePages) elapsedMs=\(Int(Date().timeIntervalSince(t0) * 1000))")
             }
         } catch {
             await MainActor.run { feedLoadingMore = false }
@@ -2444,7 +2478,7 @@ private struct LookbookMyItemsScreenView: View {
             immersive: immersive,
             feedEntriesForHashtag: myEntries,
             onHashtagNavigate: { hashtagNavigationSelection = $0 },
-            onLikesListTap: { likersPostId = $0.apiPostId }
+            onLikesListTap: { likersPostId = LookbookLikersNavigator(postId: $0.apiPostId, expectedLikeCount: $0.likesCount) }
         )
         .padding(.bottom, immersive ? 0 : lookbookSpacing)
     }
@@ -2468,7 +2502,7 @@ private struct LookbookTopicFeedView: View {
     @State private var selectedProductId: ProductIdNavigator?
     @State private var analyticsEntry: LookbookEntry?
     @State private var hashtagNavigationSelection: LookbookHashtagSelection?
-    @State private var likersPostId: String?
+    @State private var likersPostId: LookbookLikersNavigator?
     @State private var feedNextCursor: String?
     @State private var feedHasMorePages = true
     @State private var feedLoadingMore = false
@@ -2486,7 +2520,7 @@ private struct LookbookTopicFeedView: View {
         ZStack {
             Theme.Colors.background.ignoresSafeArea()
             Group {
-                if feedLoading && entries.isEmpty {
+                if feedLoading {
                     LookbookShimmerView()
                 } else if entries.isEmpty {
                     topicEmptyPlaceholder(allLoadedEmpty: true)
@@ -2541,11 +2575,18 @@ private struct LookbookTopicFeedView: View {
             .environmentObject(authService)
             .environmentObject(savedLookbookFavorites)
         }
-        .navigationDestination(item: $likersPostId) { postId in
-            LookbookPostLikersView(postId: postId)
+        .navigationDestination(item: $likersPostId) { nav in
+            LookbookPostLikersView(postId: nav.postId, expectedLikeCount: nav.expectedLikeCount)
                 .environmentObject(authService)
         }
-        .onAppear { loadFeedFromServer() }
+        .task(id: authService.isAuthenticated) {
+            if authService.isAuthenticated {
+                let skip = await MainActor.run { !entries.isEmpty }
+                if !skip { await loadFeedFromServerAsync() }
+            } else {
+                await loadFeedFromServerAsync()
+            }
+        }
     }
 
     private func topicEmptyPlaceholder(allLoadedEmpty: Bool) -> some View {
@@ -2613,7 +2654,7 @@ private struct LookbookTopicFeedView: View {
             },
             feedEntriesForHashtag: filteredEntries,
             onHashtagNavigate: { hashtagNavigationSelection = $0 },
-            onLikesListTap: { likersPostId = $0.apiPostId }
+            onLikesListTap: { likersPostId = LookbookLikersNavigator(postId: $0.apiPostId, expectedLikeCount: $0.likesCount) }
         )
         .padding(.bottom, lookbookSpacing)
     }
@@ -3306,6 +3347,9 @@ private struct LookbookCarouselPageDots: View {
     }
 }
 
+/// Trailing inset for ⋯ / bookmark / caption — tighter than leading `md` so controls align with the nav bar search (trailing toolbar).
+fileprivate let lookbookFeedRowTrailingChromeInset: CGFloat = Theme.Spacing.sm
+
 // MARK: - Feed post action bar (like, comment, send, optional remove-from-folder, save)
 struct LookbookFeedPostActionBar: View {
     let entry: LookbookEntry
@@ -3343,7 +3387,9 @@ struct LookbookFeedPostActionBar: View {
                     heartCountSpacing: 2,
                     splitHeartMinWidth: 30,
                     splitHeartFrameAlignment: Alignment(horizontal: .trailing, vertical: .center),
-                    splitClusterHorizontalPadding: 4
+                    splitClusterHorizontalPadding: 4,
+                    minimumTouchHeight: 44,
+                    splitClusterVerticalPadding: 0
                 )
                 .padding(.leading, -Theme.Spacing.xs)
 
@@ -3405,9 +3451,10 @@ struct LookbookFeedPostActionBar: View {
             .accessibilityLabel(isBookmarked ? L10n.string("Saved") : L10n.string("Save"))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.leading, Theme.Spacing.md)
+        .padding(.trailing, lookbookFeedRowTrailingChromeInset)
         .padding(.top, 0)
-        .padding(.bottom, 0)
+        .padding(.bottom, -4)
         .background(Theme.Colors.background)
     }
 }
@@ -4173,9 +4220,9 @@ struct LookbookFeedRowView: View {
                 posterHeaderLeading(styleSub: styleSub)
                 Spacer(minLength: 0)
                 lookbookFeedPostOptionsMenu
-                    .padding(.trailing, Theme.Spacing.sm - 2)
             }
-            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.leading, Theme.Spacing.md)
+            .padding(.trailing, lookbookFeedRowTrailingChromeInset)
             .padding(.top, 6)
             .padding(.bottom, 10)
 
@@ -4270,13 +4317,15 @@ struct LookbookFeedRowView: View {
                     lookbookFeedPostTimeRow
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.top, 2)
+                .padding(.leading, Theme.Spacing.md)
+                .padding(.trailing, lookbookFeedRowTrailingChromeInset)
+                .padding(.top, 1)
                 .padding(.bottom, lookbookFeedCaptionLineSpacingExtra)
             } else {
                 lookbookFeedPostTimeRow
-                    .padding(.horizontal, Theme.Spacing.md)
-                    .padding(.top, 2)
+                    .padding(.leading, Theme.Spacing.md)
+                    .padding(.trailing, lookbookFeedRowTrailingChromeInset)
+                    .padding(.top, 1)
                     .padding(.bottom, lookbookFeedCaptionLineSpacingExtra)
             }
 
@@ -4452,6 +4501,15 @@ struct LookbookFeedRowView: View {
                     lookbookFeedPostIsBookmarked ? L10n.string("Saved") : L10n.string("Save"),
                     systemImage: lookbookFeedPostIsBookmarked ? "bookmark.fill" : "bookmark"
                 )
+            }
+            if isCurrentUserPost, onPostDeleted != nil {
+                Divider()
+                Button(role: .destructive) {
+                    HapticManager.tap()
+                    showDeletePostConfirm = true
+                } label: {
+                    Label(L10n.string("Delete"), systemImage: "trash")
+                }
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -4791,45 +4849,20 @@ private enum LookbookCommentTimeFormatting {
         }
     }
 
-    /// Feed preview: prefer a comment from someone the viewer follows (case-insensitive username match); otherwise highest `likes / age` (seconds, floored at 60).
+    /// Feed preview: prefer the **newest** comment from someone the viewer follows; otherwise the **newest** comment overall (no like-based ranking).
     static func prominentFeedPreviewComment(
         in comments: [ServerLookbookComment],
         followedUsernamesLowercased: Set<String>
     ) -> ServerLookbookComment? {
         guard !comments.isEmpty else { return nil }
-        let now = Date()
 
         func normalizedUser(_ c: ServerLookbookComment) -> String {
             c.username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
 
-        func ageSeconds(_ c: ServerLookbookComment) -> TimeInterval {
-            let d = parsedDate(from: c.createdAt ?? "") ?? .distantPast
-            return max(0, now.timeIntervalSince(d))
-        }
-
-        func engagementScore(_ c: ServerLookbookComment) -> Double {
-            let likes = Double(c.likesCount ?? 0)
-            let age = max(ageSeconds(c), 60)
-            return likes / age
-        }
-
-        func isBetter(_ a: ServerLookbookComment, than b: ServerLookbookComment) -> Bool {
-            let sa = engagementScore(a)
-            let sb = engagementScore(b)
-            if sa != sb { return sa > sb }
-            let la = a.likesCount ?? 0
-            let lb = b.likesCount ?? 0
-            if la != lb { return la > lb }
-            let da = parsedDate(from: a.createdAt ?? "") ?? .distantPast
-            let db = parsedDate(from: b.createdAt ?? "") ?? .distantPast
-            if da != db { return da > db }
-            return a.id > b.id
-        }
-
         let fromFollowed = comments.filter { followedUsernamesLowercased.contains(normalizedUser($0)) }
         let pool = fromFollowed.isEmpty ? comments : fromFollowed
-        return pool.max { a, b in !isBetter(a, than: b) }
+        return mostRecentlyCreatedComment(in: pool)
     }
 }
 
@@ -5822,10 +5855,12 @@ private struct LookbookPostLikersShimmerView: View {
 
 struct LookbookPostLikersView: View {
     let postId: String
+    var expectedLikeCount: Int? = nil
     @EnvironmentObject private var authService: AuthService
     @State private var users: [LookbookService.LookbookPostLikeUser] = []
     @State private var loading = true
     @State private var errorMessage: String?
+    @State private var backendLikersUnsupported = false
 
     var body: some View {
         Group {
@@ -5840,13 +5875,28 @@ struct LookbookPostLikersView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if users.isEmpty {
                 VStack(spacing: Theme.Spacing.sm) {
-                    Image(systemName: "heart")
-                        .font(.system(size: 40, weight: .regular))
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                    Text(L10n.string("No likes yet"))
-                        .font(Theme.Typography.subheadline)
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                        .multilineTextAlignment(.center)
+                    if backendLikersUnsupported, (expectedLikeCount ?? 0) > 0 {
+                        Image(systemName: "person.2.slash")
+                            .font(.system(size: 40, weight: .regular))
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text(String(format: L10n.string("%d likes"), expectedLikeCount ?? 0))
+                            .font(Theme.Typography.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.Colors.primaryText)
+                            .multilineTextAlignment(.center)
+                        Text(L10n.string("This server returns like counts, but it does not expose who liked this post yet."))
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, Theme.Spacing.lg)
+                    } else {
+                        Image(systemName: "heart")
+                            .font(.system(size: 40, weight: .regular))
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        Text(L10n.string("No likes yet"))
+                            .font(Theme.Typography.subheadline)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                    }
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -5902,18 +5952,24 @@ struct LookbookPostLikersView: View {
     private func loadLikers() async {
         loading = true
         errorMessage = nil
+        backendLikersUnsupported = false
         defer { loading = false }
         let client = GraphQLClient()
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
-        do {
-            let list = try await service.fetchLookbookPostLikers(postId: postId)
-            await MainActor.run { users = list }
-        } catch {
-            await MainActor.run {
-                errorMessage = L10n.userFacingError(error)
-            }
+        let report = await service.fetchLookbookPostLikersDebug(postId: postId)
+        let normalizedOutcomes = report.attempts.map { $0.outcome.lowercased() }
+        let allFailedWithMissingField = !normalizedOutcomes.isEmpty
+            && normalizedOutcomes.allSatisfy { $0.contains("cannot query field") || $0.contains("unknown field") }
+        #if DEBUG
+        if report.users.isEmpty {
+            print("Lookbook likers debug (\(postId))\n\(report.summary)")
+        }
+        #endif
+        await MainActor.run {
+            users = report.users
+            backendLikersUnsupported = report.users.isEmpty && allFailedWithMissingField
         }
     }
 }

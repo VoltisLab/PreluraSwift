@@ -1,0 +1,43 @@
+{
+  "stats": {
+    "posts_scanned": 720,
+    "posts_to_update": 184,
+    "keep_primary_first_prob": 0.1,
+    "primary_anchor_count": 25,
+    "updated_ok": 179,
+    "errors": 5
+  },
+  "errors_sample": [
+    {
+      "username": "jakeru",
+      "postId": "39660da1-118b-4ae2-9ad0-66b0de674516",
+      "phase": "login",
+      "error": "[{\"message\": \"Please enter valid credentials\", \"locations\": [{\"line\": 2, \"column\": 3}], \"path\": [\"login\"]}]"
+    },
+    {
+      "username": "jakeru",
+      "postId": "43e1d82f-dc4e-4b21-b355-397e60b01964",
+      "phase": "login",
+      "error": "[{\"message\": \"Please enter valid credentials\", \"locations\": [{\"line\": 2, \"column\": 3}], \"path\": [\"login\"]}]"
+    },
+    {
+      "username": "jakeru",
+      "postId": "ac56d908-b7d7-4347-aafc-ddbd17705785",
+      "phase": "login",
+      "error": "[{\"message\": \"Please enter valid credentials\", \"locations\": [{\"line\": 2, \"column\": 3}], \"path\": [\"login\"]}]"
+    },
+    {
+      "username": "jakeru",
+      "postId": "6c93aceb-2e6c-4bbe-9efb-fc48ed5edc0d",
+      "phase": "login",
+      "error": "[{\"message\": \"Please enter valid credentials\", \"locations\": [{\"line\": 2, \"column\": 3}], \"path\": [\"login\"]}]"
+    },
+    {
+      "username": "jakeru",
+      "postId": "6d15b554-9454-439c-8709-1a11f451ca92",
+      "phase": "login",
+      "error": "[{\"message\": \"Please enter valid credentials\", \"locations\": [{\"line\": 2, \"column\": 3}], \"path\": [\"login\"]}]"
+    }
+  ],
+  "checkpoint": "/Users/user/prelura-workspace/PreluraIOS/scripts/data/shuffle_hashtag_order_checkpoint.json"
+}

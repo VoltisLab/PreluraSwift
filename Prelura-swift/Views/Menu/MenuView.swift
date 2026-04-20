@@ -16,6 +16,7 @@ struct MenuView: View {
     @State private var displayedVacation: Bool = false
     @State private var isStaffUser: Bool = false
     @State private var showLogoutConfirm = false
+    @State private var userStateRefreshTask: Task<Void, Never>?
 
     private let userService = UserService()
 
@@ -118,10 +119,13 @@ struct MenuView: View {
             displayedMultiBuy = isMultiBuyEnabled
             displayedVacation = isVacationMode
             multibuyTierCache = prefetchedMultibuyDiscounts
-            Task { await refreshUserState() }
+            scheduleUserStateRefresh()
         }
         .onReceive(NotificationCenter.default.publisher(for: .wearhouseUserProfileDidUpdate)) { _ in
-            Task { await refreshUserState() }
+            scheduleUserStateRefresh()
+        }
+        .onDisappear {
+            userStateRefreshTask?.cancel()
         }
         .listStyle(.insetGrouped)
         .background(Theme.Colors.background)
@@ -159,6 +163,11 @@ struct MenuView: View {
         }
     }
 
+    private func scheduleUserStateRefresh() {
+        userStateRefreshTask?.cancel()
+        userStateRefreshTask = Task { await refreshUserState() }
+    }
+
     private func refreshUserState() async {
         userService.updateAuthToken(authService.authToken)
         let cachedTiers = await MainActor.run { multibuyTierCache }
@@ -176,6 +185,8 @@ struct MenuView: View {
                 isStaffUser = user.isStaff
                 multibuyTierCache = tiers
             }
+        } catch is CancellationError {
+            // Menu dismissed or superseded refresh; ignore.
         } catch {
             // Keep displayed state from params / previous fetch
         }

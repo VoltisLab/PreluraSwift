@@ -14,7 +14,7 @@ struct FeaturedSeeAllView: View {
 
     var body: some View {
         Group {
-            if isLoading && items.isEmpty {
+            if isLoading {
                 FeedShimmerView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -143,7 +143,7 @@ struct FeaturedSeeAllView: View {
     }
 
     private func load() async {
-        if items.isEmpty { await MainActor.run { isLoading = true } }
+        await MainActor.run { isLoading = true }
         productService.updateAuthToken(authService.isGuestMode ? nil : authService.authToken)
         do {
             let raw = try await productService.getDiscoverFeaturedProducts()

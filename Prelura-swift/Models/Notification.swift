@@ -1,7 +1,7 @@
 import Foundation
 
 /// In-app notification (matches Flutter NotificationModel / GraphQL NotificationType).
-struct AppNotification: Identifiable {
+struct AppNotification: Identifiable, Codable {
     let id: String
     let sender: NotificationSender?
     let message: String
@@ -12,9 +12,10 @@ struct AppNotification: Identifiable {
     let createdAt: Date?
     let meta: [String: String]?
 
-    struct NotificationSender {
+    struct NotificationSender: Codable {
         let username: String?
         let profilePictureUrl: String?
+        let thumbnailUrl: String?
     }
 }
 
@@ -107,6 +108,11 @@ enum BellNotificationMysteryThumbnailMigration {
         let l = raw.lowercased()
         if l.contains("mystery") { return true }
         if l.contains("mysterybox") || l.contains("mystery_box") { return true }
+        // Generic backend placeholder/default assets that should never render in the bell feed.
+        if l.contains("placeholder") || l.contains("default") { return true }
+        // Moderation / placeholder assets that must not replace the in-app mystery animation tile.
+        if l.contains("unapproved") || l.contains("rejected") || l.contains("pending_review") { return true }
+        if l.contains("moderation") && (l.contains("image") || l.contains("thumb") || l.contains("listing")) { return true }
         // Listing cover upload filenames used when creating mystery listings (see `MysteryBoxListingCoverImage`).
         if l.contains("listing_cover") && (l.hasSuffix(".jpg") || l.hasSuffix(".jpeg") || l.contains(".jpeg")) { return true }
         // Client-generated mystery raster is portrait ~900×1170; some CDNs encode dimensions in the path.

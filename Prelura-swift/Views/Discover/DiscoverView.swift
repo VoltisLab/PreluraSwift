@@ -121,8 +121,7 @@ struct DiscoverView: View {
     private func discoverScrollContent() -> some View {
         ScrollViewReader { proxy in
             ScrollView {
-                // Hero (brand pills + Explore Lookbook / Try Cart / Wearhouse) uses **local assets** — show immediately.
-                // Full-screen `DiscoverShimmerView` waited for GraphQL and hid these for ~10s (see `DiscoverViewModel.loadData`).
+                // Hero + Shop Categories / style banners use **local assets** — show immediately. Product strips use per-section shimmers.
                 discoverMainStack
             }
             .scrollBounceBehavior(.always, axes: .vertical)
@@ -149,17 +148,14 @@ struct DiscoverView: View {
             exploreLookbookBanner
             tryCartBanner
             vintageShopBanner
-            if viewModel.isLoading && viewModel.discoverItems.isEmpty {
-                DiscoverBelowFoldShimmerView()
-            } else {
-                discoverBelowBannersContent
-            }
+            discoverStaticShopCategoriesBlock
+            discoverDynamicSectionsStack
         }
         .frame(maxWidth: .infinity)
     }
 
-    /// Shop Categories through On Sale (depends on `DiscoverViewModel` network data for product strips).
-    private var discoverBelowBannersContent: some View {
+    /// Women / Men rows + Shop by style / Lookbook — local assets + navigation only; not gated on GraphQL.
+    private var discoverStaticShopCategoriesBlock: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Theme.Spacing.sm) {
                 Image(systemName: "square.grid.2x2.fill")
@@ -180,23 +176,111 @@ struct DiscoverView: View {
             ContentDivider()
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.lg)
-            recentlyViewedSection
-            ContentDivider()
-                .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.lg)
-            brandsYouLoveSection
-            ContentDivider()
-                .padding(.vertical, Theme.Spacing.lg)
-            topShopsSection
-            ContentDivider()
-                .padding(.vertical, Theme.Spacing.lg)
-            shopBargainsSection
-            ContentDivider()
-                .padding(.vertical, Theme.Spacing.lg)
-            onSaleSection
         }
         .padding(.top, 5)
+    }
+
+    private var discoverSectionDivider: some View {
+        ContentDivider()
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.lg)
+    }
+
+    private var shouldShowRecentlyViewedSlot: Bool {
+        viewModel.isLoadingRecentlyViewedSection || !viewModel.recentlyViewedItems.isEmpty
+    }
+
+    private var shouldShowBrandsYouLoveSlot: Bool {
+        viewModel.isLoadingBrandsYouLoveSection || !viewModel.brandsYouLoveItems.isEmpty
+    }
+
+    private var shouldShowTopShopsSlot: Bool {
+        viewModel.isLoadingTopShopsSection || !viewModel.topShops.isEmpty
+    }
+
+    private var shouldShowShopBargainsSlot: Bool {
+        viewModel.isLoadingShopBargainsSection || !viewModel.shopBargainsItems.isEmpty
+    }
+
+    private var shouldShowOnSaleSlot: Bool {
+        viewModel.isLoadingOnSaleSection || !viewModel.onSaleItems.isEmpty
+    }
+
+    @ViewBuilder
+    private var discoverDynamicSectionsStack: some View {
+        let r = shouldShowRecentlyViewedSlot
+        let b = shouldShowBrandsYouLoveSlot
+        let t = shouldShowTopShopsSlot
+        let s = shouldShowShopBargainsSlot
+        let o = shouldShowOnSaleSlot
+
+        VStack(alignment: .leading, spacing: 0) {
+            if r {
+                discoverRecentlyViewedSlot
+            }
+            if r && b { discoverSectionDivider }
+            if b {
+                discoverBrandsYouLoveSlot
+            }
+            if (r || b) && t { discoverSectionDivider }
+            if t {
+                discoverTopShopsSlot
+            }
+            if (r || b || t) && s { discoverSectionDivider }
+            if s {
+                discoverShopBargainsSlot
+            }
+            if (r || b || t || s) && o { discoverSectionDivider }
+            if o {
+                discoverOnSaleSlot
+            }
+        }
         .padding(.bottom, Theme.Spacing.lg)
+    }
+
+    @ViewBuilder
+    private var discoverRecentlyViewedSlot: some View {
+        if viewModel.isLoadingRecentlyViewedSection {
+            DiscoverSectionProductStripShimmer(showSeeAllPlaceholder: true, subtitlePlaceholderHeight: 0)
+        } else {
+            recentlyViewedSection
+        }
+    }
+
+    @ViewBuilder
+    private var discoverBrandsYouLoveSlot: some View {
+        if viewModel.isLoadingBrandsYouLoveSection {
+            DiscoverSectionProductStripShimmer(showSeeAllPlaceholder: true, subtitlePlaceholderHeight: 12)
+        } else {
+            brandsYouLoveSection
+        }
+    }
+
+    @ViewBuilder
+    private var discoverTopShopsSlot: some View {
+        if viewModel.isLoadingTopShopsSection {
+            DiscoverTopShopsSectionShimmer()
+        } else {
+            topShopsSection
+        }
+    }
+
+    @ViewBuilder
+    private var discoverShopBargainsSlot: some View {
+        if viewModel.isLoadingShopBargainsSection {
+            DiscoverSectionProductStripShimmer(showSeeAllPlaceholder: true, subtitlePlaceholderHeight: 12)
+        } else {
+            shopBargainsSection
+        }
+    }
+
+    @ViewBuilder
+    private var discoverOnSaleSlot: some View {
+        if viewModel.isLoadingOnSaleSection {
+            DiscoverSectionProductStripShimmer(showSeeAllPlaceholder: true, subtitlePlaceholderHeight: 12)
+        } else {
+            onSaleSection
+        }
     }
 
     @ToolbarContentBuilder

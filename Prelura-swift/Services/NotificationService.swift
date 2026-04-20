@@ -147,6 +147,7 @@ final class NotificationService {
             sender {
               username
               profilePictureUrl
+              thumbnailUrl
             }
           }
           notificationsTotalNumber
@@ -258,6 +259,7 @@ final class NotificationService {
         struct RawSender: Decodable {
             let username: String?
             let profilePictureUrl: String?
+            let thumbnailUrl: String?
         }
         let variables: [String: Any] = ["pageCount": pageCount, "pageNumber": pageNumber]
         let response: Payload = try await client.execute(query: query, variables: variables, responseType: Payload.self)
@@ -274,7 +276,13 @@ final class NotificationService {
             }()
             return AppNotification(
                 id: raw.id,
-                sender: raw.sender.map { s in AppNotification.NotificationSender(username: s.username, profilePictureUrl: s.profilePictureUrl) },
+                sender: raw.sender.map { s in
+                    AppNotification.NotificationSender(
+                        username: s.username,
+                        profilePictureUrl: s.profilePictureUrl,
+                        thumbnailUrl: s.thumbnailUrl
+                    )
+                },
                 message: raw.message ?? "",
                 model: raw.model ?? "",
                 modelId: raw.modelId,

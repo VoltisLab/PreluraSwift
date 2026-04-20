@@ -15,6 +15,7 @@ class SellViewModel: ObservableObject {
     private let fileUploadService = FileUploadService()
     private let materialsService = MaterialsService()
     private let userService = UserService()
+    private let productImageDuplicateGuard = ProductImageDuplicateGuard()
 
     /// Submit the full listing: upload images, then create product via GraphQL (matches Flutter createProduct flow).
     func submitListing(
@@ -63,6 +64,10 @@ class SellViewModel: ObservableObject {
                 guard imageDataList.count == images.count, !imageDataList.isEmpty else {
                     throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare images."])
                 }
+                let duplicateGuardPrepared = try await productImageDuplicateGuard.validateBeforeUpload(
+                    images: images,
+                    authToken: authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN")
+                )
 
                 fileUploadService.setAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
                 productService.updateAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
@@ -132,6 +137,7 @@ class SellViewModel: ObservableObject {
                 if savedInactiveBecauseScheduled, let key = scheduledQuotaUserKey {
                     SellerScheduledListingQuota.recordScheduledListingCreation(userKey: key)
                 }
+                productImageDuplicateGuard.markUploadAccepted(duplicateGuardPrepared)
 
                 isSubmitting = false
                 listingSavedInactiveNotice = savedInactiveBecauseScheduled
@@ -356,11 +362,16 @@ class SellViewModel: ObservableObject {
 
                 var imagePairs: [(url: String, thumbnail: String)]? = nil
                 var imageAction: String? = nil
+                var duplicateGuardPrepared: ProductImageDuplicateGuard.PreparedUpload?
                 if !newListingImages.isEmpty {
                     let imageDataList: [Data] = newListingImages.compactMap { $0.jpegData(compressionQuality: 0.85) }
                     guard imageDataList.count == newListingImages.count else {
                         throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare images."])
                     }
+                    duplicateGuardPrepared = try await productImageDuplicateGuard.validateBeforeUpload(
+                        images: newListingImages,
+                        authToken: authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN")
+                    )
                     let uploaded = try await fileUploadService.uploadProductImages(imageDataList)
                     let combined = existingImagePairs + uploaded
                     imagePairs = combined
@@ -401,6 +412,9 @@ class SellViewModel: ObservableObject {
                     imagePairs: imagePairs,
                     imageAction: imageAction
                 )
+                if let duplicateGuardPrepared {
+                    productImageDuplicateGuard.markUploadAccepted(duplicateGuardPrepared)
+                }
 
                 isSubmitting = false
                 submissionSuccess = true

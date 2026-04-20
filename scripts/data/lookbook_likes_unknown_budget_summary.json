@@ -1,0 +1,42 @@
+{
+  "stats": {
+    "posts_total": 720,
+    "likers_in_list": 189,
+    "total_likes_requested": 2000,
+    "budget_after_global_cap": 2000,
+    "global_capacity": 23051,
+    "shortfall_total_over_capacity": 0,
+    "max_per_post": 33,
+    "pct_can_reach_max": 0.015,
+    "posts_eligible_for_max_slot": 11,
+    "posts_at_exactly_max": 1,
+    "target_histogram_top": {
+      "33": 1,
+      "32": 5,
+      "31": 1,
+      "30": 2,
+      "29": 1,
+      "26": 2,
+      "23": 1,
+      "21": 1,
+      "20": 1,
+      "19": 2,
+      "17": 1,
+      "16": 2
+    },
+    "total_like_edges": 2000,
+    "skipped_no_liker_pool": 0,
+    "edges_reduced_insufficient_pool": 0,
+    "allocator_remainder_unplaced": 0
+  },
+  "likes_applied": 2000,
+  "skipped_already_liked": 0,
+  "errors": [],
+  "error_count": 0,
+  "graphql_url": "https://prelura.voltislabs.uk/graphql/",
+  "plan_fingerprint": "50459da650f14358efd75479df71f6fb71bd15a5ce5c80c1069046409efd6b68",
+  "checkpoint_edges_done": 2000,
+  "checkpoint_file": "/Users/user/prelura-workspace/PreluraIOS/scripts/data/lookbook_likes_unknown_budget_checkpoint.json",
+  "random_seed": 1653896021,
+  "liker_list": "/Users/user/Downloads/seed-usernames-unknown.txt"
+}

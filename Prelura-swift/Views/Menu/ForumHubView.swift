@@ -16,7 +16,7 @@ struct ForumHubView: View {
 
     var body: some View {
         Group {
-            if isLoading && topics.isEmpty {
+            if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let err = loadError, topics.isEmpty {

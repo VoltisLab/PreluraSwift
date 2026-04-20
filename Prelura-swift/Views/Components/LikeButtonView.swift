@@ -37,8 +37,28 @@ struct LikeButtonView: View {
     var showLikeCount: Bool = true
     /// When set, tapping the numeric count does not toggle like (e.g. open likers list).
     var onLikeCountTap: (() -> Void)? = nil
+    /// Horizontal gap between heart and count in split mode; when `nil`, uses `Theme.Spacing.xs`.
+    var heartCountSpacing: CGFloat? = nil
+    /// Min width for the heart-only control in split mode (smaller pulls the count closer when alignment is trailing).
+    var splitHeartMinWidth: CGFloat = 40
+    /// Where the heart glyph sits inside the heart control’s frame (feed rows often use trailing to hug the count).
+    var splitHeartFrameAlignment: Alignment = .center
+    /// Horizontal padding around the heart+count cluster in split mode; when `nil`, uses `Theme.Spacing.sm`.
+    var splitClusterHorizontalPadding: CGFloat? = nil
+    /// Minimum vertical hit target (default 56). Use 44 on dense horizontal toolbars (e.g. lookbook feed) to align with adjacent 44×44 icons.
+    var minimumTouchHeight: CGFloat = 56
+    /// Vertical padding around the heart+count cluster in split mode (default 6). Use 0 on light toolbars to avoid extra gap above the caption.
+    var splitClusterVerticalPadding: CGFloat = 6
 
     private static let minTapSize: CGFloat = 56
+
+    private var resolvedHeartCountSpacing: CGFloat {
+        heartCountSpacing ?? Theme.Spacing.xs
+    }
+
+    private var resolvedSplitClusterHorizontalPadding: CGFloat {
+        splitClusterHorizontalPadding ?? Theme.Spacing.sm
+    }
 
     private var likeCountPointSize: CGFloat {
         heartPointSize <= 14 ? 14 : 15
@@ -47,7 +67,7 @@ struct LikeButtonView: View {
     var body: some View {
         Group {
             if onLikeCountTap != nil, showLikeCount {
-                HStack(spacing: Theme.Spacing.xs) {
+                HStack(spacing: resolvedHeartCountSpacing) {
                     Button {
                         HapticManager.like()
                         action()
@@ -56,7 +76,7 @@ struct LikeButtonView: View {
                             .font(.system(size: heartPointSize, weight: .medium))
                     }
                     .buttonStyle(PlainTappableButtonStyle())
-                    .frame(minWidth: 40, minHeight: Self.minTapSize, alignment: .center)
+                    .frame(minWidth: splitHeartMinWidth, minHeight: minimumTouchHeight, alignment: splitHeartFrameAlignment)
                     .contentShape(Rectangle())
 
                     Button {
@@ -67,13 +87,13 @@ struct LikeButtonView: View {
                             .font(.system(size: likeCountPointSize, weight: .medium))
                     }
                     .buttonStyle(PlainTappableButtonStyle())
-                    .frame(minHeight: Self.minTapSize)
+                    .frame(minHeight: minimumTouchHeight)
                     .contentShape(Rectangle())
                 }
                 .foregroundColor(isLiked ? .red : (onDarkOverlay ? .white : Theme.Colors.primaryText))
                 .shadow(color: onDarkOverlay ? .black.opacity(0.4) : .clear, radius: 1, x: 0, y: 1)
-                .padding(.horizontal, Theme.Spacing.sm)
-                .padding(.vertical, 6)
+                .padding(.horizontal, resolvedSplitClusterHorizontalPadding)
+                .padding(.vertical, splitClusterVerticalPadding)
                 .background(
                     Group {
                         if onDarkOverlay {
@@ -83,7 +103,7 @@ struct LikeButtonView: View {
                         }
                     }
                 )
-                .frame(minWidth: Self.minTapSize, minHeight: Self.minTapSize, alignment: .leading)
+                .frame(minWidth: Self.minTapSize, minHeight: minimumTouchHeight, alignment: .leading)
             } else {
                 Button {
                     HapticManager.like()
@@ -94,7 +114,7 @@ struct LikeButtonView: View {
                 // Match icon rows in ScrollViews (e.g. Lookbook): plain style + full label hit area.
                 // Default/HapticTap styles have been unreliable next to TabView + LazyVStack.
                 .buttonStyle(PlainTappableButtonStyle())
-                .frame(minWidth: Self.minTapSize, minHeight: Self.minTapSize, alignment: .leading)
+                .frame(minWidth: Self.minTapSize, minHeight: minimumTouchHeight, alignment: .leading)
                 .contentShape(Rectangle())
             }
         }
@@ -106,7 +126,7 @@ struct LikeButtonView: View {
     }
 
     private var likePillContent: some View {
-        HStack(spacing: Theme.Spacing.xs) {
+        HStack(spacing: resolvedHeartCountSpacing) {
             Image(systemName: isLiked ? "heart.fill" : "heart")
                 .font(.system(size: heartPointSize, weight: .medium))
             if showLikeCount {

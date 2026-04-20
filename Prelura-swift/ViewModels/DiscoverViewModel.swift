@@ -18,15 +18,20 @@ class DiscoverViewModel: ObservableObject {
     @Published var onSaleItems: [Item] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
-    
+
+    /// Staggered Discover rows: each clears when that slice is ready (Shop Categories / banners stay static in the view).
+    @Published var isLoadingRecentlyViewedSection: Bool = false
+    @Published var isLoadingBrandsYouLoveSection: Bool = false
+    @Published var isLoadingTopShopsSection: Bool = false
+    @Published var isLoadingShopBargainsSection: Bool = false
+    @Published var isLoadingOnSaleSection: Bool = false
+
     private var productService: ProductService
     private var userService: UserService
     private var client: GraphQLClient
-    
+
     init(authService: AuthService? = nil) {
-        // Create services with shared client that has auth token
         self.client = GraphQLClient()
-        // Get token from authService or UserDefaults
         if let authService = authService, let token = authService.authToken {
             self.client.setAuthToken(token)
         } else if let token = UserDefaults.standard.string(forKey: "AUTH_TOKEN") {
@@ -34,141 +39,30 @@ class DiscoverViewModel: ObservableObject {
         }
         self.productService = ProductService(client: self.client)
         self.userService = UserService(client: self.client)
-        // Don't load in init - will be called from view
     }
-    
+
     func updateAuthToken(_ token: String?) {
         client.setAuthToken(token)
         productService.updateAuthToken(token)
         userService.updateAuthToken(token)
     }
-    
+
     func loadData() {
-        isLoading = true
-        errorMessage = nil
-        
+        prepareDiscoverLoadSync()
         Task {
-            StartupTiming.mark("DiscoverViewModel.loadData Task — started")
-            do {
-                // Preload: run all network fetches in parallel to reduce wait time
-                async let allProductsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50)
-                async let onSaleTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, discountPrice: true)
-                async let shopBargainsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, maxPrice: 15.0)
-                async let recentlyViewedTask = productService.getRecentlyViewedProducts()
-                async let discoverFeaturedTask = productService.getDiscoverFeaturedProducts()
-                async let recommendedTask = userService.getRecommendedSellers(pageNumber: 1, pageCount: 20)
-
-                let (allProducts, onSaleProducts, shopBargainsProducts, recentlyViewedProducts, discoverFeatured) = try await (
-                    allProductsTask,
-                    onSaleTask,
-                    shopBargainsTask,
-                    recentlyViewedTask,
-                    discoverFeaturedTask
-                )
-                let recommended = try? await recommendedTask
-
-                // Exclude items from sellers in vacation mode (hidden from catalogues) and sold items
-                let allVisible = allProducts.excludingVacationModeSellers().excludingSold()
-                let onSaleVisible = onSaleProducts.excludingVacationModeSellers().excludingSold()
-                let shopBargainsVisible = shopBargainsProducts.excludingVacationModeSellers().excludingSold()
-                let recentlyViewedVisible = recentlyViewedProducts.excludingVacationModeSellers().excludingSold()
-                
-                // Main product grid
-                self.discoverItems = allVisible
-                
-                guard !allVisible.isEmpty else {
-                    self.isLoading = false
-                    return
-                }
-                
-                // Recently viewed strip: staff-featured first, then user recents (deduped)
-                self.recentlyViewedItems = [Item].mergedDiscoverRecentlyStrip(
-                    featured: discoverFeatured,
-                    recentlyViewed: recentlyViewedVisible
-                )
-                
-                var usedProductIds: Set<UUID> = Set(self.recentlyViewedItems.map { $0.id })
-                
-                // Brands You Love - get products with unique brands from all products
-                // This should ideally use a GraphQL query for favourite brands, but for now use all products
-                var brandsYouLove: [Item] = []
-                var seenBrands: Set<String> = []
-                
-                for product in allVisible {
-                    if let brand = product.brand, !seenBrands.contains(brand), !usedProductIds.contains(product.id) {
-                        brandsYouLove.append(product)
-                        seenBrands.insert(brand)
-                        usedProductIds.insert(product.id)
-                        if brandsYouLove.count >= 5 { break }
-                    }
-                }
-                
-                // If we don't have enough, fill with any products not already used
-                if brandsYouLove.count < 5 {
-                    let remaining = allVisible.filter { !usedProductIds.contains($0.id) }
-                    brandsYouLove.append(contentsOf: remaining.prefix(5 - brandsYouLove.count))
-                }
-                self.brandsYouLoveItems = Array(brandsYouLove.prefix(5))
-                
-                // Update used product IDs
-                usedProductIds.formUnion(Set(self.brandsYouLoveItems.map { $0.id }))
-                
-                // Top Shops - use preloaded recommended or fallback from all products
-                if let recommended = recommended {
-                    self.topShops = recommended.map { rec in
-                        ShopInfo(username: rec.seller.username, avatarURL: rec.seller.avatarURL)
-                    }
-                } else {
-                    var shopMap: [String: (username: String, avatarURL: String?)] = [:]
-                    for product in allVisible {
-                        let username = product.seller.username
-                        if shopMap[username] == nil && !username.isEmpty {
-                            shopMap[username] = (username: username, avatarURL: product.seller.avatarURL)
-                        }
-                    }
-                    self.topShops = Array(shopMap.values.prefix(10)).map { shopInfo in
-                        ShopInfo(username: shopInfo.username, avatarURL: shopInfo.avatarURL)
-                    }
-                }
-                
-                // Shop Bargains - use the separately fetched products under £15, excluding already used products
-                let availableBargains = shopBargainsVisible.filter { !usedProductIds.contains($0.id) }
-                if availableBargains.count >= 5 {
-                    self.shopBargainsItems = Array(availableBargains.prefix(5))
-                } else {
-                    // If not enough bargains, use what we have
-                    self.shopBargainsItems = availableBargains
-                }
-                
-                // Update used product IDs
-                usedProductIds.formUnion(Set(self.shopBargainsItems.map { $0.id }))
-                
-                // On Sale - use the separately fetched discounted products, excluding already used products
-                let availableOnSale = onSaleVisible.filter { !usedProductIds.contains($0.id) }
-                if availableOnSale.count >= 5 {
-                    self.onSaleItems = Array(availableOnSale.prefix(5))
-                } else {
-                    // If not enough on sale, use what we have
-                    self.onSaleItems = availableOnSale
-                }
-                print("🛍️ On Sale items: \(self.onSaleItems.count) products")
-                if !self.onSaleItems.isEmpty {
-                    print("🛍️ First on sale item: \(self.onSaleItems.first?.title ?? "N/A")")
-                }
-                
-                self.isLoading = false
-                StartupTiming.mark("DiscoverViewModel.loadData — success (all sections)")
-            } catch {
-                self.isLoading = false
-                self.errorMessage = L10n.userFacingError(error)
-                StartupTiming.mark("DiscoverViewModel.loadData — failed: \(error.localizedDescription)")
-                print("❌ Discover load error: \(error.localizedDescription)")
-            }
+            await executeDiscoverLoad()
         }
     }
-    
+
     func refresh() {
         loadData()
+    }
+
+    /// Sets loading flags immediately so the Discover UI can show per-section shimmers before the async task runs.
+    private func prepareDiscoverLoadSync() {
+        isLoading = true
+        errorMessage = nil
+        setAllSectionLoading(true)
     }
 
     /// Refetches only recently viewed from the backend (e.g. after user views a product). Keeps rest of discover data unchanged. Order: newest first.
@@ -178,7 +72,11 @@ class DiscoverViewModel: ObservableObject {
                 async let featuredTask = productService.getDiscoverFeaturedProducts()
                 async let recentTask = productService.getRecentlyViewedProducts()
                 let (featured, recent) = try await (featuredTask, recentTask)
-                let merged = [Item].mergedDiscoverRecentlyStrip(featured: featured, recentlyViewed: recent)
+                let merged = [Item].mergedDiscoverRecentlyStrip(
+                    featured: featured,
+                    recentlyViewed: recent,
+                    maxTotal: 5
+                )
                 await MainActor.run {
                     self.recentlyViewedItems = merged
                 }
@@ -219,76 +117,99 @@ class DiscoverViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    // Keep optimistic state so the heart doesn't flip back; surface error for user
                     errorMessage = L10n.userFacingError(error)
                 }
             }
         }
     }
-    
+
     func refreshAsync() async {
-        await MainActor.run {
-            isLoading = true
-            errorMessage = nil
-        }
-        
+        prepareDiscoverLoadSync()
+        await executeDiscoverLoad()
+    }
+
+    // MARK: - Staggered load (parallel network, sequential UI updates)
+
+    private func setAllSectionLoading(_ pending: Bool) {
+        isLoadingRecentlyViewedSection = pending
+        isLoadingBrandsYouLoveSection = pending
+        isLoadingTopShopsSection = pending
+        isLoadingShopBargainsSection = pending
+        isLoadingOnSaleSection = pending
+    }
+
+    private func clearAllSectionLoading() {
+        setAllSectionLoading(false)
+    }
+
+    private func executeDiscoverLoad() async {
+        StartupTiming.mark("DiscoverViewModel.executeDiscoverLoad — started")
+
         do {
+            async let recentlyViewedTask = productService.getRecentlyViewedProducts()
+            async let discoverFeaturedTask = productService.getDiscoverFeaturedProducts()
             async let allProductsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50)
             async let onSaleTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, discountPrice: true)
             async let shopBargainsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, maxPrice: 15.0)
-            async let recentlyViewedTask = productService.getRecentlyViewedProducts()
-            async let discoverFeaturedTask = productService.getDiscoverFeaturedProducts()
+            async let recommendedTask = userService.getRecommendedSellers(pageNumber: 1, pageCount: 20)
 
-            let (allProducts, onSaleProducts, shopBargainsProducts, recentlyViewedProducts, discoverFeatured) = try await (
-                allProductsTask,
-                onSaleTask,
-                shopBargainsTask,
-                recentlyViewedTask,
-                discoverFeaturedTask
-            )
-
-            let allVisible = allProducts.excludingVacationModeSellers().excludingSold()
-            let onSaleVisible = onSaleProducts.excludingVacationModeSellers().excludingSold()
-            let shopBargainsVisible = shopBargainsProducts.excludingVacationModeSellers().excludingSold()
+            // 1) Recently viewed — does not depend on full catalog.
+            let (recentlyViewedProducts, discoverFeatured) = try await (recentlyViewedTask, discoverFeaturedTask)
             let recentlyViewedVisible = recentlyViewedProducts.excludingVacationModeSellers().excludingSold()
-            
-            await MainActor.run {
-                self.discoverItems = allVisible
-                
-                guard !allVisible.isEmpty else {
-                    self.isLoading = false
-                    return
+            recentlyViewedItems = [Item].mergedDiscoverRecentlyStrip(
+                featured: discoverFeatured,
+                recentlyViewed: recentlyViewedVisible,
+                maxTotal: 5
+            )
+            isLoadingRecentlyViewedSection = false
+            StartupTiming.mark("DiscoverViewModel — recently viewed section ready")
+
+            // 2) Main grid + Brands you love (needs catalog).
+            let allProducts = try await allProductsTask
+            let allVisible = allProducts.excludingVacationModeSellers().excludingSold()
+            discoverItems = allVisible
+
+            if allVisible.isEmpty {
+                brandsYouLoveItems = []
+                topShops = []
+                shopBargainsItems = []
+                onSaleItems = []
+                clearAllSectionLoading()
+                isLoading = false
+                StartupTiming.mark("DiscoverViewModel.loadDiscoverContent — empty catalog")
+                return
+            }
+
+            var usedProductIds: Set<UUID> = Set(recentlyViewedItems.map { $0.id })
+
+            let nonMysteryVisible = allVisible.filter { !$0.isMysteryBox }
+
+            var brandsYouLove: [Item] = []
+            var seenBrands: Set<String> = []
+            for product in nonMysteryVisible {
+                if let brand = product.brand, !seenBrands.contains(brand), !usedProductIds.contains(product.id) {
+                    brandsYouLove.append(product)
+                    seenBrands.insert(brand)
+                    usedProductIds.insert(product.id)
+                    if brandsYouLove.count >= 5 { break }
                 }
-                
-                self.recentlyViewedItems = [Item].mergedDiscoverRecentlyStrip(
-                    featured: discoverFeatured,
-                    recentlyViewed: recentlyViewedVisible
-                )
-                
-                var usedProductIds: Set<UUID> = Set(self.recentlyViewedItems.map { $0.id })
-                
-                // Brands You Love - get products with unique brands from all products
-                var brandsYouLove: [Item] = []
-                var seenBrands: Set<String> = []
-                
-                for product in allVisible {
-                    if let brand = product.brand, !seenBrands.contains(brand), !usedProductIds.contains(product.id) {
-                        brandsYouLove.append(product)
-                        seenBrands.insert(brand)
-                        usedProductIds.insert(product.id)
-                        if brandsYouLove.count >= 5 { break }
-                    }
+            }
+            if brandsYouLove.count < 5 {
+                let remaining = nonMysteryVisible.filter { !usedProductIds.contains($0.id) }
+                brandsYouLove.append(contentsOf: remaining.prefix(5 - brandsYouLove.count))
+            }
+            brandsYouLoveItems = Array(brandsYouLove.prefix(5))
+            usedProductIds.formUnion(Set(brandsYouLoveItems.map { $0.id }))
+            isLoadingBrandsYouLoveSection = false
+            StartupTiming.mark("DiscoverViewModel — brands you love section ready")
+
+            // 3) Top shops — `recommendedTask` has been running since the start.
+            let recommended = try? await recommendedTask
+            if let recommended {
+                topShops = recommended.map { rec in
+                    ShopInfo(username: rec.seller.username, avatarURL: rec.seller.avatarURL)
                 }
-                
-                if brandsYouLove.count < 5 {
-                    let remaining = allVisible.filter { !usedProductIds.contains($0.id) }
-                    brandsYouLove.append(contentsOf: remaining.prefix(5 - brandsYouLove.count))
-                }
-                self.brandsYouLoveItems = Array(brandsYouLove.prefix(5))
-                
-                usedProductIds.formUnion(Set(self.brandsYouLoveItems.map { $0.id }))
-                
-                // Top Shops - extract unique seller info from all products
+            } else {
                 var shopMap: [String: (username: String, avatarURL: String?)] = [:]
                 for product in allVisible {
                     let username = product.seller.username
@@ -296,36 +217,44 @@ class DiscoverViewModel: ObservableObject {
                         shopMap[username] = (username: username, avatarURL: product.seller.avatarURL)
                     }
                 }
-                self.topShops = Array(shopMap.values.prefix(10)).map { shopInfo in
+                topShops = Array(shopMap.values.prefix(10)).map { shopInfo in
                     ShopInfo(username: shopInfo.username, avatarURL: shopInfo.avatarURL)
                 }
-                
-                // Shop Bargains - use the separately fetched products under £15
-                let availableBargains = shopBargainsVisible.filter { !usedProductIds.contains($0.id) }
-                if availableBargains.count >= 5 {
-                    self.shopBargainsItems = Array(availableBargains.prefix(5))
-                } else {
-                    self.shopBargainsItems = availableBargains
-                }
-                
-                usedProductIds.formUnion(Set(self.shopBargainsItems.map { $0.id }))
-                
-                // On Sale - use the separately fetched discounted products, excluding already used products
-                let availableOnSale = onSaleVisible.filter { !usedProductIds.contains($0.id) }
-                if availableOnSale.count >= 5 {
-                    self.onSaleItems = Array(availableOnSale.prefix(5))
-                } else {
-                    self.onSaleItems = availableOnSale
-                }
-                print("🛍️ On Sale items (refresh): \(self.onSaleItems.count) products")
-                
-                self.isLoading = false
             }
+            isLoadingTopShopsSection = false
+            StartupTiming.mark("DiscoverViewModel — top shops section ready")
+
+            // 4–5) Bargains + on sale (fetches started at t0; merge uses `usedProductIds` after brands).
+            let (onSaleProducts, shopBargainsProducts) = try await (onSaleTask, shopBargainsTask)
+            let onSaleVisible = onSaleProducts.excludingVacationModeSellers().excludingSold()
+            let shopBargainsVisible = shopBargainsProducts.excludingVacationModeSellers().excludingSold()
+
+            let availableBargains = shopBargainsVisible.filter { !usedProductIds.contains($0.id) }
+            if availableBargains.count >= 5 {
+                shopBargainsItems = Array(availableBargains.prefix(5))
+            } else {
+                shopBargainsItems = availableBargains
+            }
+            usedProductIds.formUnion(Set(shopBargainsItems.map { $0.id }))
+            isLoadingShopBargainsSection = false
+            StartupTiming.mark("DiscoverViewModel — shop bargains section ready")
+
+            let availableOnSale = onSaleVisible.filter { !usedProductIds.contains($0.id) }
+            if availableOnSale.count >= 5 {
+                onSaleItems = Array(availableOnSale.prefix(5))
+            } else {
+                onSaleItems = availableOnSale
+            }
+            isLoadingOnSaleSection = false
+
+            isLoading = false
+            StartupTiming.mark("DiscoverViewModel.loadDiscoverContent — success (all sections)")
         } catch {
-            await MainActor.run {
-                self.isLoading = false
-                self.errorMessage = L10n.userFacingError(error)
-            }
+            isLoading = false
+            clearAllSectionLoading()
+            errorMessage = L10n.userFacingError(error)
+            StartupTiming.mark("DiscoverViewModel.loadDiscoverContent — failed: \(error.localizedDescription)")
+            print("❌ Discover load error: \(error.localizedDescription)")
         }
     }
 }

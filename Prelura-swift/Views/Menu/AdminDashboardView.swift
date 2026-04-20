@@ -38,6 +38,10 @@ struct AdminDashboardView: View {
     // Delete all offers (unsupported)
     @State private var showOffersUnsupported = false
 
+    // Unlock login rate limit by username
+    @State private var showUnlockLoginRateLimitSheet = false
+    @State private var isClearingLoginRateLimit = false
+
     var body: some View {
         List {
             Section {
@@ -62,6 +66,11 @@ struct AdminDashboardView: View {
                     adminRow("Delete user", icon: "person.crop.circle.badge.minus")
                 }
                 .disabled(isDeletingUser)
+
+                Button(action: { showUnlockLoginRateLimitSheet = true }) {
+                    adminRow("Unlock login rate limit", icon: "lock.open", isDestructive: false)
+                }
+                .disabled(isClearingLoginRateLimit)
 
                 Button(role: .destructive, action: { prepareDeleteAllOrders() }) {
                     adminRow("Delete all orders", icon: "bag.badge.minus")
@@ -105,6 +114,19 @@ struct AdminDashboardView: View {
                     showDeleteUserResult = true
                 },
                 onCancel: { showDeleteUserSheet = false }
+            )
+            .wearhouseSheetContentColumnIfWide()
+        }
+        .sheet(isPresented: $showUnlockLoginRateLimitSheet) {
+            UnlockLoginRateLimitSheet(
+                adminService: adminService,
+                isClearing: $isClearingLoginRateLimit,
+                onDone: { message in
+                    showUnlockLoginRateLimitSheet = false
+                    deleteUserResult = message
+                    showDeleteUserResult = true
+                },
+                onCancel: { showUnlockLoginRateLimitSheet = false }
             )
             .wearhouseSheetContentColumnIfWide()
         }
@@ -422,6 +444,79 @@ private struct DeleteUserSheet: View {
             } catch {
                 await MainActor.run {
                     isDeleting = false
+                    errorMessage = L10n.userFacingError(error)
+                }
+            }
+        }
+    }
+}
+
+private struct UnlockLoginRateLimitSheet: View {
+    @ObservedObject var adminService: AdminService
+    @Binding var isClearing: Bool
+    var onDone: (String) -> Void
+    var onCancel: () -> Void
+
+    @State private var username: String = ""
+    @State private var errorMessage: String?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Username", text: $username)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("Unlock login rate limit")
+                } footer: {
+                    Text("Clears temporary login lockouts/attempt throttles for this username.")
+                }
+
+                if let err = errorMessage {
+                    Section {
+                        Text(err)
+                            .foregroundColor(Theme.Colors.error)
+                            .font(Theme.Typography.caption)
+                    }
+                }
+            }
+            .navigationTitle("Unlock login")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Unlock") {
+                        performUnlock()
+                    }
+                    .disabled(username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isClearing)
+                }
+            }
+        }
+    }
+
+    private func performUnlock() {
+        let name = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        errorMessage = nil
+        isClearing = true
+        Task {
+            do {
+                let (success, message) = try await adminService.adminClearLoginRateLimit(username: name)
+                await MainActor.run {
+                    isClearing = false
+                    dismiss()
+                    onDone(success ? (message ?? "Login rate limit cleared.") : (message ?? "Unlock failed."))
+                }
+            } catch {
+                await MainActor.run {
+                    isClearing = false
                     errorMessage = L10n.userFacingError(error)
                 }
             }

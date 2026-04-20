@@ -312,7 +312,7 @@ enum L10n {
         "Photo": "Φωτογραφία",
         "Lookbook": "Lookbook",
         "No Lookbook posts yet": "Δεν υπάρχουν δημοσιεύσεις Lookbook ακόμα",
-        "You're all caught up": "Τα είδατε όλα",
+        "You're all caught up!": "Τα είδατε όλα!",
         "Create a look from Lookbook — it will show up here.": "Δημιουργήστε ένα look από το Lookbook — θα εμφανιστεί εδώ.",
         "Search": "Αναζήτηση",
         "For You": "Για σένα",
@@ -445,6 +445,7 @@ enum L10n {
         "Username": "Όνομα χρήστη",
         "Enter your username": "Εισάγετε το όνομα χρήστη σας",
         "Please enter valid credentials": "Εισάγετε έγκυρα διαπιστευτήρια",
+        "Too many login attempts. Please try again later.": "Πάρα πολλές προσπάθειες σύνδεσης. Δοκιμάστε ξανά αργότερα.",
         "Password": "Κωδικός",
         "Enter your password": "Εισάγετε τον κωδικό σας",
         "Forgot password?": "Ξεχάσατε τον κωδικό;",
@@ -1055,6 +1056,15 @@ extension L10n {
                 || lower.contains("invalid username or password")
             if looksLikeBadLogin {
                 return L10n.string("Please enter valid credentials")
+            }
+            let looksLikeLoginRateLimit =
+                lower.contains("too many login attempts")
+                || lower.contains("too many failed login attempts")
+                || lower.contains("login temporarily locked")
+                || lower.contains("account temporarily locked")
+                || (lower.contains("rate") && lower.contains("login"))
+            if looksLikeLoginRateLimit {
+                return L10n.string("Too many login attempts. Please try again later.")
             }
             if lower.contains("variable") && lower.contains("$") { return L10n.string("Something went wrong. Please try again.") }
             if lower.contains("syntax") || (lower.contains("graphql") && lower.contains("error")) {

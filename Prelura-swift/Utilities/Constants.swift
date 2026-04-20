@@ -65,4 +65,9 @@ struct Constants {
     
     // API Configuration
     static let apiTimeout: TimeInterval = 60.0
+
+    // MARK: - Lookbook Discover
+
+    /// When **false** (default), Discover keeps **`lookbooks`** order from the server ([prelura-app](https://github.com/VoltisLab/prelura-app) ranker: recency + affinities + light engagement + per-viewer jitter). Set **true** only for local experiments to obscure API order with `shuffled()` per page.
+    static let lookbookDiscoverClientSideShufflesPostOrder = false
 }

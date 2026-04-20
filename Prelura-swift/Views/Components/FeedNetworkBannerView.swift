@@ -27,7 +27,7 @@ struct FeedErrorSnackbarView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
-                .strokeBorder(Theme.Colors.secondaryText.opacity(0.22), lineWidth: 1)
+                .strokeBorder(feedNetworkBannerBorderColor, lineWidth: feedNetworkBannerBorderWidth)
         )
         .shadow(color: Color.black.opacity(0.14), radius: 16, x: 0, y: 8)
     }
@@ -47,6 +47,10 @@ struct FeedNetworkErrorPresentation: View {
         }
     }
 }
+
+/// Shared border treatment for all feed network error banners/snackbars.
+private let feedNetworkBannerBorderColor = Theme.Colors.secondaryText.opacity(0.22)
+private let feedNetworkBannerBorderWidth: CGFloat = 1
 
 /// Network / API error card: same inner surface as chat offer cards (`chatInlineCardBackground`), red accent on icon and border, `PrimaryGlassButton` for retry when `onTryAgain` is set.
 struct FeedNetworkBannerView: View {
@@ -118,7 +122,7 @@ struct FeedNetworkBannerView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous)
-                .strokeBorder(Theme.Colors.error.opacity(0.88), lineWidth: 1.5)
+                .strokeBorder(feedNetworkBannerBorderColor, lineWidth: feedNetworkBannerBorderWidth)
         )
         .shadow(color: Color.black.opacity(0.18), radius: 20, x: 0, y: 10)
         /// Insets the card from screen edges; without this, `frame(maxWidth: .infinity)` paints edge-to-edge.

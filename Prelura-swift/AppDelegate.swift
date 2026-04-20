@@ -46,6 +46,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     /// Foreground push we re-post with updated copy so the banner matches in-app wording (avoids duplicate processing).
     private static let wearhouseRepostedSalePushKey = "wearhouse_reposted_sale_v1"
+    /// Foreground push reposted with lowercase username prefix (see ``NotificationUsernameDisplay``).
+    private static let wearhouseUsernameLowercaseRepostKey = "wearhouse_username_lowercase_v1"
 
     private static func isWearhouseLocalPushTest(userInfo: [AnyHashable: Any], requestIdentifier: String) -> Bool {
         if requestIdentifier == kWearhouseLocalPushTestNotificationId { return true }
@@ -453,6 +455,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             completionHandler([])
             return
         }
+        if Self.shouldRepostForegroundNotificationWithLowercaseUsername(notification) {
+            Self.enqueueUsernameLowercasedForegroundCopy(from: notification)
+            NotificationDebugLog.append(
+                source: "present",
+                message: "willPresent — reposted push with lowercase username (foreground)",
+                isError: false
+            )
+            Self.logChatPushPayloadIfRelevant(u, context: "Foreground willPresent (username casing)")
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
+            }
+            completionHandler([])
+            return
+        }
         if let mid = u["gcm.message_id"] {
             pushBootstrapLog.info("willPresent remote notification gcm.message_id=\(String(describing: mid), privacy: .public)")
             print("[Push] Foreground notification (gcm.message_id=\(mid))")
@@ -498,6 +514,62 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         UNUserNotificationCenter.current().add(req) { err in
             if let err {
                 pushBootstrapLog.error("Repost sale notification: \(err.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    private static func usernameStringFromPushUserInfo(_ userInfo: [AnyHashable: Any]) -> String? {
+        let keys = ["username", "sender_username", "senderUsername", "user_name", "sender"]
+        for k in keys {
+            if let s = userInfo[AnyHashable(k)] as? String {
+                let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !t.isEmpty { return t }
+            }
+        }
+        if let data = userInfo["data"] as? [String: Any] {
+            for k in keys {
+                if let s = data[k] as? String {
+                    let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !t.isEmpty { return t }
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func shouldRepostForegroundNotificationWithLowercaseUsername(_ notification: UNNotification) -> Bool {
+        let info = notification.request.content.userInfo
+        if info[AnyHashable(wearhouseUsernameLowercaseRepostKey)] != nil { return false }
+        guard let username = usernameStringFromPushUserInfo(info) else { return false }
+        let c = notification.request.content
+        let newTitle = NotificationUsernameDisplay.replacingLeadingUsername(fullText: c.title, username: username)
+        let sub = c.subtitle
+        let newSub = sub.isEmpty ? "" : NotificationUsernameDisplay.replacingLeadingUsername(fullText: sub, username: username)
+        let newBody = NotificationUsernameDisplay.replacingLeadingUsername(fullText: c.body, username: username)
+        return newTitle != c.title || newSub != sub || newBody != c.body
+    }
+
+    private static func enqueueUsernameLowercasedForegroundCopy(from notification: UNNotification) {
+        let o = notification.request.content
+        var info = o.userInfo
+        info[AnyHashable(wearhouseUsernameLowercaseRepostKey)] = true
+        guard let username = usernameStringFromPushUserInfo(info) else { return }
+        let m = UNMutableNotificationContent()
+        m.title = NotificationUsernameDisplay.replacingLeadingUsername(fullText: o.title, username: username)
+        let sub = o.subtitle
+        if !sub.isEmpty {
+            m.subtitle = NotificationUsernameDisplay.replacingLeadingUsername(fullText: sub, username: username)
+        }
+        m.body = NotificationUsernameDisplay.replacingLeadingUsername(fullText: o.body, username: username)
+        m.sound = o.sound
+        m.badge = o.badge
+        m.userInfo = info
+        m.threadIdentifier = o.threadIdentifier
+        m.categoryIdentifier = o.categoryIdentifier
+        let req = UNNotificationRequest(identifier: "wearhouse-username-copy-" + UUID().uuidString, content: m, trigger: nil)
+        UNUserNotificationCenter.current().add(req) { err in
+            if let err {
+                pushBootstrapLog.error("Repost username-casing notification: \(err.localizedDescription, privacy: .public)")
             }
         }
     }

@@ -1,0 +1,2 @@
+# Optional: extra “anchor” hashtags that seed scripts tend to put first (merge with script defaults).
+# One tag per line (with or without #). Lines starting with # are comments.

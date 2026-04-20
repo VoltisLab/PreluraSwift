@@ -2459,12 +2459,18 @@ struct StyleSelectionView: View {
 
     private static let maxSelections = 2
 
+    private var alphabetizedStyleRaws: [String] {
+        StyleEnumCatalog.rawValues.sorted {
+            StyleEnumCatalog.displayName(for: $0).localizedCaseInsensitiveCompare(StyleEnumCatalog.displayName(for: $1)) == .orderedAscending
+        }
+    }
+
     private var filteredStyles: [String] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if q.isEmpty {
-            return StyleEnumCatalog.rawValues
+            return alphabetizedStyleRaws
         }
-        return StyleEnumCatalog.rawValues.filter {
+        return alphabetizedStyleRaws.filter {
             StyleEnumCatalog.displayName(for: $0).lowercased().contains(q)
         }
     }

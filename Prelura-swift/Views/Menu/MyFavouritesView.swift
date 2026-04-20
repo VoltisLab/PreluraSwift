@@ -179,7 +179,7 @@ struct MyFavouritesView: View {
                 .padding(.horizontal)
         }
 
-        if isLoading && items.isEmpty {
+        if isLoading {
             Spacer()
             ProgressView()
             Spacer()

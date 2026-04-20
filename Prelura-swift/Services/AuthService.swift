@@ -24,6 +24,7 @@ class AuthService: ObservableObject {
 
     private static let kGuestMode = "IS_GUEST_MODE"
     private static let kOnboardingCompleted = "ONBOARDING_COMPLETED"
+    private static let kLoginDeviceInstallId = "wearhouse_login_device_install_id_v1"
     /// Cached from last `viewMe` / `getUser` — staff users may use multi-account switching.
     private static let kViewMeIsStaff = "wearhouse_viewme_is_staff"
     /// Persisted JWT pairs for staff multi-account (usernames must be unique).
@@ -292,16 +293,25 @@ class AuthService: ObservableObject {
     func login(username: String, password: String) async throws -> LoginResponse {
         let u = username.trimmingCharacters(in: .whitespacesAndNewlines)
         let p = password.trimmingCharacters(in: .whitespacesAndNewlines)
+        try enforceClientLoginLockIfNeeded(username: u)
         do {
-            return try await loginWithCredentials(username: u, password: p)
+            let response = try await loginWithCredentials(username: u, password: p)
+            LoginRateLimitGuard.clearStateForSuccessfulLogin(username: u, password: p, deviceInstallId: loginDeviceInstallId())
+            return response
         } catch {
             // Same domain as scripts/seed-register-users.sh (`username@wearhouse.co.uk`). Some backends only match when the login field is the full email.
             if !u.contains("@"),
                Self.shouldRetrySeedLoginWithEmailDomain(error),
                let email = Self.seedLoginEmail(forUsername: u) {
-                return try await loginWithCredentials(username: email, password: p)
+                do {
+                    let response = try await loginWithCredentials(username: email, password: p)
+                    LoginRateLimitGuard.clearStateForSuccessfulLogin(username: u, password: p, deviceInstallId: loginDeviceInstallId())
+                    return response
+                } catch {
+                    throw mapLoginFailure(username: u, password: p, error: error)
+                }
             }
-            throw error
+            throw mapLoginFailure(username: u, password: p, error: error)
         }
     }
 
@@ -342,6 +352,7 @@ class AuthService: ObservableObject {
         let response: LoginGraphQLResponse = try await client.execute(
             query: query,
             variables: variables,
+            additionalHeaders: loginAttemptHeaders(username: username, password: password),
             responseType: LoginGraphQLResponse.self
         )
 
@@ -365,6 +376,97 @@ class AuthService: ObservableObject {
         objectWillChange.send()
 
         return loginData
+    }
+
+    private func loginDeviceInstallId() -> String {
+        let defaults = UserDefaults.standard
+        if let existing = defaults.string(forKey: Self.kLoginDeviceInstallId),
+           !existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            return existing
+        }
+        let next = UUID().uuidString.lowercased()
+        defaults.set(next, forKey: Self.kLoginDeviceInstallId)
+        return next
+    }
+
+    private func loginAttemptHeaders(username: String, password: String) -> [String: String] {
+        let installId = loginDeviceInstallId()
+        let usernameKey = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let credentialFingerprint = LoginRateLimitGuard.credentialFingerprint(
+            username: username,
+            password: password,
+            deviceInstallId: installId
+        )
+        return [
+            "X-Prelura-Device-Install-Id": installId,
+            "X-Prelura-Login-Identifier": usernameKey,
+            "X-Prelura-Login-Credential-Fingerprint": credentialFingerprint,
+        ]
+    }
+
+    private func enforceClientLoginLockIfNeeded(username: String) throws {
+        guard let remaining = LoginRateLimitGuard.activeLockRemainingSeconds(for: username) else { return }
+        throw AuthError.loginRateLimited(remainingSeconds: Int(remaining.rounded(.up)))
+    }
+
+    private func mapLoginFailure(username: String, password: String, error: Error) -> Error {
+        if let lockSeconds = Self.serverLoginRateLimitSeconds(from: error) {
+            return AuthError.loginRateLimited(remainingSeconds: lockSeconds)
+        }
+        if let lockSeconds = LoginRateLimitGuard.registerFailedAttempt(
+            username: username,
+            password: password,
+            deviceInstallId: loginDeviceInstallId()
+        ) {
+            return AuthError.loginRateLimited(remainingSeconds: Int(lockSeconds.rounded(.up)))
+        }
+        return error
+    }
+
+    private static func serverLoginRateLimitSeconds(from error: Error) -> Int? {
+        guard case let GraphQLError.graphQLErrors(errors) = error else { return nil }
+        for e in errors {
+            let message = e.message.trimmingCharacters(in: .whitespacesAndNewlines)
+            let lower = message.lowercased()
+            let hints = [
+                "too many login attempts",
+                "too many failed login attempts",
+                "rate limit",
+                "login temporarily locked",
+                "account temporarily locked",
+                "try again in",
+            ]
+            guard hints.contains(where: { lower.contains($0) }) else { continue }
+            if let parsed = parseRetryDurationSeconds(from: lower) {
+                return max(60, parsed)
+            }
+            // Cross-device account lock policy minimum.
+            return 30 * 60
+        }
+        return nil
+    }
+
+    private static func parseRetryDurationSeconds(from lower: String) -> Int? {
+        let minutePattern = #"(\d+)\s*(minute|minutes|min|mins|m)\b"#
+        if let minutes = firstRegexCaptureInt(pattern: minutePattern, input: lower) {
+            return minutes * 60
+        }
+        let secondPattern = #"(\d+)\s*(second|seconds|sec|secs|s)\b"#
+        if let seconds = firstRegexCaptureInt(pattern: secondPattern, input: lower) {
+            return seconds
+        }
+        return nil
+    }
+
+    private static func firstRegexCaptureInt(pattern: String, input: String) -> Int? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
+        let range = NSRange(input.startIndex..<input.endIndex, in: input)
+        guard let match = regex.firstMatch(in: input, options: [], range: range), match.numberOfRanges > 1 else { return nil }
+        let valueRange = match.range(at: 1)
+        guard valueRange.location != NSNotFound,
+              let swiftRange = Range(valueRange, in: input) else { return nil }
+        return Int(input[swiftRange])
     }
     
     /// Verify email/account with code from verification link. Matches Flutter verifyAccount(code). No auth required.
@@ -648,6 +750,7 @@ enum AuthError: Error, LocalizedError {
     case invalidResponse
     case registrationError(String)
     case networkError(Error)
+    case loginRateLimited(remainingSeconds: Int)
     
     var errorDescription: String? {
         switch self {
@@ -657,6 +760,12 @@ enum AuthError: Error, LocalizedError {
             return message
         case .networkError(let error):
             return L10n.userFacingError(error)
+        case .loginRateLimited(let remainingSeconds):
+            let mins = max(1, Int(ceil(Double(remainingSeconds) / 60.0)))
+            if mins == 1 {
+                return "Too many login attempts. Try again in about 1 minute."
+            }
+            return "Too many login attempts. Try again in about \(mins) minutes."
         }
     }
 }

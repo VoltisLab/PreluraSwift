@@ -155,7 +155,7 @@ struct HomeView: View {
 
     @ViewBuilder
     private var homeMainContent: some View {
-        if viewModel.isLoading && viewModel.filteredItems.isEmpty && viewModel.featuredItems.isEmpty {
+        if viewModel.isLoading {
             FeedShimmerView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {

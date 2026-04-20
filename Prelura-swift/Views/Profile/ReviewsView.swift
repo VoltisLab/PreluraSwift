@@ -65,7 +65,7 @@ struct ReviewsView: View {
 
     var body: some View {
         Group {
-            if isLoading && reviews.isEmpty {
+            if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

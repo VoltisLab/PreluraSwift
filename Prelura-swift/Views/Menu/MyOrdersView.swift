@@ -62,7 +62,7 @@ struct MyOrdersView: View {
                     .padding(.horizontal)
             }
 
-            if isLoading && soldOrders.isEmpty && boughtOrders.isEmpty {
+            if isLoading {
                 Spacer()
                 ProgressView()
                 Spacer()

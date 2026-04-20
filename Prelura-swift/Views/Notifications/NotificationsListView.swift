@@ -1,6 +1,9 @@
 import SwiftUI
+import Shimmer
 
 /// List of in-app notifications (Flutter NotificationsScreen + NotificationsTab).
+///
+/// **Realtime:** There is no dedicated in-app notifications WebSocket in this client; the list refreshes from GraphQL on open, pull-to-refresh, toolbar reload, app foreground (`scenePhase`), and after push-driven `wearhouseInAppNotificationsDidChange` flows elsewhere. Last successful page is cached per username for instant paint offline.
 struct NotificationsListView: View {
     /// Matches `NotificationRowView` vertical tightening (20% less than former 4pt).
     private static let listRowInsetVertical: CGFloat = 4 * 0.8
@@ -21,7 +24,15 @@ struct NotificationsListView: View {
     /// Next GraphQL page to request (1-based). Chat rows are filtered out unless stale unread.
     @State private var nextBackendPage = 1
     @State private var backendHasMore = true
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var imageReloadTokenForRows: Int = 0
+    @State private var lastBecomeActiveReload: Date?
+    /// One GraphQL page size (matches backend `pageCount`).
     private let pageSize = 15
+    /// Initial load: at most this many API pages (15 × 2 = 30 notifications max before pagination).
+    private let maxInitialBackendPages = 2
+    /// Each “load more” / segment backfill: one page at a time to avoid long stalls.
+    private let maxLoadMoreBackendPages = 1
     private let notificationService = NotificationService()
 
     private var filteredNotifications: [AppNotification] {
@@ -35,35 +46,43 @@ struct NotificationsListView: View {
 
     var body: some View {
         Group {
-            if isLoading && notifications.isEmpty && errorMessage == nil {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if isLoading && errorMessage == nil {
+                notificationsListShimmerLayout(includeSegmentPicker: true)
+                    .refreshable { await reloadFromStart() }
             } else if let err = errorMessage, !err.isEmpty, notifications.isEmpty {
-                VStack(spacing: Theme.Spacing.md) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 48))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    Text(err)
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.secondaryText)
-                        .multilineTextAlignment(.center)
-                    Button("Retry") {
-                        errorMessage = nil
-                        Task { await reloadFromStart() }
+                ScrollView {
+                    VStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 48))
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        Text(err)
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                        Button("Retry") {
+                            errorMessage = nil
+                            Task { await reloadFromStart() }
+                        }
+                        .foregroundColor(Theme.primaryColor)
                     }
-                    .foregroundColor(Theme.primaryColor)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Theme.Spacing.xl)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .refreshable { await reloadFromStart() }
             } else if notifications.isEmpty {
-                VStack(spacing: Theme.Spacing.md) {
-                    Image(systemName: "bell.slash")
-                        .font(.system(size: 48))
-                        .foregroundColor(Theme.Colors.secondaryText)
-                    Text(L10n.string("No notifications"))
-                        .font(Theme.Typography.body)
-                        .foregroundColor(Theme.Colors.secondaryText)
+                ScrollView {
+                    VStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "bell.slash")
+                            .font(.system(size: 48))
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        Text(L10n.string("No notifications"))
+                            .font(Theme.Typography.body)
+                            .foregroundColor(Theme.Colors.secondaryText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Theme.Spacing.xl)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .refreshable { await reloadFromStart() }
             } else {
                 VStack(spacing: 0) {
                     Picker("", selection: $segment) {
@@ -89,21 +108,49 @@ struct NotificationsListView: View {
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Notifications"))
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable {
-            await reloadFromStart()
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    imageReloadTokenForRows += 1
+                    Task { await reloadFromStart() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                }
+                .accessibilityLabel("Refresh")
+            }
         }
         .onAppear {
             notificationService.updateAuthToken(authService.authToken)
             bellUnreadStore.scheduleRefresh(authService: authService)
+            restoreNotificationsFromCacheIfAvailable()
             Task { await reloadFromStart() }
         }
         .onChange(of: authService.authToken) { _, newToken in
             notificationService.updateAuthToken(newToken)
+            NotificationMysteryListingResolver.shared.clearCaches()
+            NotificationListingThumbnailResolver.shared.clearCaches()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            let now = Date()
+            if let last = lastBecomeActiveReload, now.timeIntervalSince(last) < 25 { return }
+            lastBecomeActiveReload = now
+            Task { await reloadFromStart() }
         }
         .onDisappear {
             NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
         }
         .toolbar(.hidden, for: .tabBar)
+    }
+
+    private func restoreNotificationsFromCacheIfAvailable() {
+        guard let key = InAppNotificationsCache.accountKey(username: authService.username),
+              let cached = InAppNotificationsCache.load(accountKey: key),
+              !cached.isEmpty else { return }
+        notifications = cached
+        isLoading = false
     }
 
     private func reloadFromStart() async {
@@ -114,7 +161,7 @@ struct NotificationsListView: View {
             backendHasMore = true
         }
         do {
-            try await fetchVisibleBatch(appending: false)
+            try await fetchVisibleBatch(appending: false, maxBackendPages: maxInitialBackendPages)
         } catch {
             await MainActor.run {
                 errorMessage = L10n.userFacingError(error)
@@ -122,9 +169,15 @@ struct NotificationsListView: View {
             }
             return
         }
-        await MainActor.run { isLoading = false }
+        await MainActor.run {
+            isLoading = false
+            if let key = InAppNotificationsCache.accountKey(username: authService.username),
+               !notifications.isEmpty {
+                InAppNotificationsCache.save(notifications, accountKey: key)
+            }
+        }
         notificationService.updateAuthToken(authService.authToken)
-        await ensureContentForCurrentSegment()
+        Task { await ensureContentForCurrentSegment() }
         // Mark bell-eligible rows read without blocking first paint (was serializing an extra multi-page fetch before the list appeared).
         Task { @MainActor in
             do {
@@ -153,12 +206,12 @@ struct NotificationsListView: View {
         }
     }
 
-    /// Pulls one or more backend pages until `pageSize` visible rows or API exhaustion.
-    private func fetchVisibleBatch(appending: Bool) async throws {
+    /// Pulls backend pages until we have `pageSize` visible rows, `maxBackendPages` is reached, or the feed ends.
+    private func fetchVisibleBatch(appending: Bool, maxBackendPages: Int) async throws {
         notificationService.updateAuthToken(authService.authToken)
         var collected: [AppNotification] = []
         var safety = 0
-        while collected.count < pageSize && backendHasMore && safety < 40 {
+        while collected.count < pageSize && backendHasMore && safety < maxBackendPages {
             safety += 1
             let (batch, _) = try await notificationService.getNotifications(pageCount: pageSize, pageNumber: nextBackendPage)
             backendHasMore = batch.count == pageSize
@@ -188,15 +241,15 @@ struct NotificationsListView: View {
         isLoadingMore = true
         defer { isLoadingMore = false }
         do {
-            try await fetchVisibleBatch(appending: true)
+            try await fetchVisibleBatch(appending: true, maxBackendPages: maxLoadMoreBackendPages)
         } catch {
             await MainActor.run { errorMessage = L10n.userFacingError(error) }
         }
     }
 
-    /// When the active segment’s filter yields no rows but older pages may contain matches, fetch until we find some or exhaust the feed.
+    /// When the active segment’s filter yields no rows but older pages may contain matches, fetch a few more pages (bounded).
     private func ensureContentForCurrentSegment() async {
-        for _ in 0..<25 {
+        for _ in 0..<4 {
             let stillEmpty = await MainActor.run {
                 switch segment {
                 case .general:
@@ -234,33 +287,82 @@ struct NotificationsListView: View {
 
     @ViewBuilder
     private var segmentEmptyView: some View {
-        VStack(spacing: Theme.Spacing.md) {
+        Group {
             if isLoadingMore {
-                ProgressView()
+                notificationsListShimmerLayout(includeSegmentPicker: false)
+            } else {
+                ScrollView {
+                    VStack(spacing: Theme.Spacing.md) {
+                        Image(systemName: "bell.slash")
+                            .font(.system(size: 48))
+                            .foregroundColor(Theme.Colors.secondaryText)
+                        Text(
+                            segment == .lookbook
+                                ? L10n.string("No lookbook notifications yet")
+                                : L10n.string("No general notifications yet")
+                        )
+                        .font(Theme.Typography.body)
+                        .foregroundColor(Theme.Colors.secondaryText)
+                        .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Theme.Spacing.xl)
+                }
+                .refreshable { await reloadFromStart() }
             }
-            Image(systemName: "bell.slash")
-                .font(.system(size: 48))
-                .foregroundColor(Theme.Colors.secondaryText)
-            Text(
-                segment == .lookbook
-                    ? L10n.string("No lookbook notifications yet")
-                    : L10n.string("No general notifications yet")
-            )
-            .font(Theme.Typography.body)
-            .foregroundColor(Theme.Colors.secondaryText)
-            .multilineTextAlignment(.center)
+        }
+    }
+
+    /// Skeleton rows (optional segmented control stub) while notifications load.
+    @ViewBuilder
+    private func notificationsListShimmerLayout(includeSegmentPicker: Bool) -> some View {
+        VStack(spacing: 0) {
+            if includeSegmentPicker {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Theme.Colors.secondaryBackground)
+                    .frame(height: 32)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+            }
+            ScrollView {
+                VStack(spacing: Theme.Spacing.md) {
+                    ForEach(0..<8, id: \.self) { _ in
+                        HStack(alignment: .center, spacing: Theme.Spacing.sm) {
+                            Circle()
+                                .fill(Theme.Colors.secondaryBackground)
+                                .frame(width: 44, height: 44)
+                            VStack(alignment: .leading, spacing: 8) {
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Theme.Colors.secondaryBackground)
+                                    .frame(height: 14)
+                                    .frame(maxWidth: .infinity)
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Theme.Colors.secondaryBackground)
+                                    .frame(height: 12)
+                                    .frame(maxWidth: 220, alignment: .leading)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, Theme.Spacing.md)
+                    }
+                }
+                .padding(.top, Theme.Spacing.sm)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.Colors.background)
+        .shimmering()
     }
 
     private var notificationRowsList: some View {
         List {
             ForEach(filteredNotifications) { notification in
                 NavigationLink(destination: NotificationDestinationView(notification: notification, onMarkRead: { markAsRead(notification) })) {
-                    NotificationRowView(notification: notification)
+                    NotificationRowView(notification: notification, imageReloadEpoch: imageReloadTokenForRows)
                         .environmentObject(authService)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
+                        .id(notification.id)
                 }
                 .buttonStyle(PlainTappableButtonStyle())
                 .listRowBackground(Theme.Colors.background)
@@ -294,6 +396,7 @@ struct NotificationsListView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .refreshable { await reloadFromStart() }
     }
     
     private func markAsRead(_ notification: AppNotification) {
@@ -557,6 +660,10 @@ private final class NotificationMysteryListingResolver {
     static let shared = NotificationMysteryListingResolver()
     private var cache: [Int: Bool] = [:]
 
+    func clearCaches() {
+        cache.removeAll()
+    }
+
     func isMysteryListing(productId: Int, authToken: String?) async -> Bool {
         if let hit = cache[productId] { return hit }
         let client = GraphQLClient()
@@ -578,18 +685,43 @@ private final class NotificationMysteryListingResolver {
 private final class NotificationListingThumbnailResolver {
     static let shared = NotificationListingThumbnailResolver()
     private var cache: [Int: URL] = [:]
+    private var negativeIds: Set<Int> = []
+
+    func clearCaches() {
+        cache.removeAll()
+        negativeIds.removeAll()
+    }
 
     func listingThumbnailURL(productId: Int, authToken: String?) async -> URL? {
+        if negativeIds.contains(productId) { return nil }
         if let hit = cache[productId] { return hit }
         let client = GraphQLClient()
         client.setAuthToken(authToken)
         let service = ProductService(client: client)
         service.updateAuthToken(authToken)
-        guard let item = try? await service.getProduct(id: productId) else { return nil }
-        guard let raw = item.thumbnailURLForChrome?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
-        guard let url = Self.httpURL(from: raw) else { return nil }
-        cache[productId] = url
-        return url
+        guard let item = try? await service.getProduct(id: productId) else {
+            negativeIds.insert(productId)
+            return nil
+        }
+        if item.isMysteryBox {
+            negativeIds.insert(productId)
+            return nil
+        }
+        if let raw = item.thumbnailURLForChrome?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+           !BellNotificationMysteryThumbnailMigration.isLikelyStaticMysteryCoverURL(raw),
+           let url = Self.httpURL(from: raw) {
+            cache[productId] = url
+            return url
+        }
+        for raw in item.imageURLs {
+            let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty, !BellNotificationMysteryThumbnailMigration.isLikelyStaticMysteryCoverURL(t),
+                  let url = Self.httpURL(from: t) else { continue }
+            cache[productId] = url
+            return url
+        }
+        negativeIds.insert(productId)
+        return nil
     }
 
     private static func httpURL(from raw: String) -> URL? {
@@ -602,7 +734,7 @@ private final class NotificationListingThumbnailResolver {
     }
 }
 
-/// Loads product/listing art from meta when present; otherwise sender avatar. Retries transient failures and falls back to avatar if the product URL errors.
+/// Loads product/listing art from meta when present; otherwise sender avatar. Retries transient failures, offers a manual reload, then falls back to avatar when both URLs exist.
 private struct NotificationBellThumbnail<FailureIcon: View>: View {
     let productURL: URL?
     let avatarURL: URL?
@@ -611,6 +743,10 @@ private struct NotificationBellThumbnail<FailureIcon: View>: View {
     let cornerRadius: CGFloat
     /// Profile-style circle (comments / follows / likes); listing rows stay rounded-rect.
     var circular: Bool = false
+    /// Bumped from the notifications screen toolbar so every row remounts image loaders.
+    var imageReloadEpoch: Int = 0
+    /// Tapping the reload badge on a failed row.
+    @State private var tapReloadEpoch: Int = 0
     @ViewBuilder let failureIcon: () -> FailureIcon
 
     @State private var tier: Int = 0
@@ -624,6 +760,14 @@ private struct NotificationBellThumbnail<FailureIcon: View>: View {
         return avatarURL
     }
 
+    private var combinedReloadToken: Int {
+        imageReloadEpoch + tapReloadEpoch
+    }
+
+    private var showsManualImageReload: Bool {
+        !circular && currentURL != nil
+    }
+
     var body: some View {
         Group {
             if let url = currentURL {
@@ -632,6 +776,13 @@ private struct NotificationBellThumbnail<FailureIcon: View>: View {
                     width: width,
                     height: height,
                     cornerRadius: effectiveCornerRadius,
+                    maxAutoRetries: 2,
+                    externalReloadToken: combinedReloadToken,
+                    onAutoRetriesExhausted: {
+                        if tier == 0, let p = productURL, let a = avatarURL, p != a {
+                            tier = 1
+                        }
+                    },
                     placeholder: {
                         Group {
                             if circular {
@@ -646,16 +797,25 @@ private struct NotificationBellThumbnail<FailureIcon: View>: View {
                         }
                     },
                     failurePlaceholder: {
-                        failureIcon()
-                            .frame(width: width, height: height)
-                            .onAppear {
-                                if tier == 0, let p = productURL, let a = avatarURL, p != a {
-                                    tier = 1
+                        ZStack(alignment: .bottomTrailing) {
+                            failureIcon()
+                                .frame(width: width, height: height)
+                            if showsManualImageReload {
+                                Button {
+                                    tapReloadEpoch += 1
+                                } label: {
+                                    Image(systemName: "arrow.clockwise.circle.fill")
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(Theme.primaryColor, Theme.Colors.secondaryBackground)
+                                        .font(.system(size: 22))
                                 }
+                                .buttonStyle(.plain)
+                                .padding(2)
+                                .accessibilityLabel("Reload image")
                             }
+                        }
                     }
                 )
-                .id("\(tier)-\(url.absoluteString)")
             } else {
                 failureIcon()
                     .frame(width: width, height: height)
@@ -681,10 +841,14 @@ private struct NotificationThumbClipShape: ViewModifier {
 
 private struct NotificationRowView: View {
     let notification: AppNotification
+    /// Screen-level refresh (toolbar) forces AsyncImage remount + thumbnail re-resolve.
+    var imageReloadEpoch: Int = 0
     @EnvironmentObject private var authService: AuthService
     /// Filled when `modelGroup == offer` and the listing is a mystery box (API omits meta flags but product image is the generated cover JPEG).
     @State private var resolvedProductIsMysteryBox: Bool?
     @State private var resolvedTransactionalListingURL: URL?
+    /// Tracks the last `imageReloadEpoch` we reset for; avoids clearing resolved thumbnails on every list recycle when scrolling.
+    @State private var appliedBellThumbnailReloadEpoch: Int?
 
     /// Slightly larger than `Theme.Typography.caption` (13pt) for readability.
     private static let lineFontSize: CGFloat = 15
@@ -857,7 +1021,9 @@ private struct NotificationRowView: View {
         "thumbnail_url", "thumbnailUrl", "image_url", "imageUrl",
         "product_thumbnail", "media_url", "lookbook_image", "lookbook_thumbnail",
         "thumbnail", "image", "photo_url", "photoUrl", "listing_image", "item_image",
-        "listing_image_url", "productImage", "listingImage"
+        "listing_image_url", "productImage", "listingImage",
+        "sold_product_thumbnail", "sold_product_image", "sold_product_image_url",
+        "sold_item_image", "sold_thumbnail", "order_item_thumbnail", "listing_thumbnail"
     ]
 
     /// Numeric product id from meta (order / sale pushes often omit image URLs but include a listing id).
@@ -913,7 +1079,12 @@ private struct NotificationRowView: View {
     }
 
     private var senderAvatarURL: URL? {
-        guard let raw = notification.sender?.profilePictureUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        let thumbnailRaw = notification.sender?.thumbnailUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !thumbnailRaw.isEmpty, let thumbURL = Self.urlFromHTTPString(thumbnailRaw) {
+            return thumbURL
+        }
+        let raw = notification.sender?.profilePictureUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !raw.isEmpty else { return nil }
         return Self.urlFromHTTPString(raw)
     }
 
@@ -938,12 +1109,12 @@ private struct NotificationRowView: View {
         }
         if isNewOfferOnListingMessage,
            let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
-            let name = username.hasPrefix("@") ? String(username.dropFirst()) : username
+            let name = NotificationUsernameDisplay.canonicalUsernameForDisplay(username)
             return String(format: L10n.string("%@ sent you an offer."), name)
         }
         if isProductLikeMessage,
            let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
-            let name = username.hasPrefix("@") ? String(username.dropFirst()) : username
+            let name = NotificationUsernameDisplay.canonicalUsernameForDisplay(username)
             return String(format: L10n.string("%@ likes your item."), name)
         }
         guard let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty else {
@@ -952,25 +1123,27 @@ private struct NotificationRowView: View {
         let lowerMsg = msg.lowercased()
         let lowerUser = username.lowercased()
         if lowerMsg.hasPrefix(lowerUser + " ") || lowerMsg == lowerUser {
-            return msg
+            return NotificationUsernameDisplay.replacingLeadingUsername(fullText: msg, username: username)
         }
-        return "\(username) \(msg)"
+        // Prepend sender: always show lowercase handle (no leading capital).
+        let display = NotificationUsernameDisplay.canonicalUsernameForDisplay(username)
+        return "\(display) \(msg)"
     }
 
     /// When the line starts with the sender username, return that segment (preserving message casing) and the rest for styled `Text` composition.
     private var usernamePrefixAndBody: (username: String, body: String)? {
         if isSupportNotification { return nil }
         guard let u = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !u.isEmpty else { return nil }
+        let canonical = NotificationUsernameDisplay.canonicalUsernameForDisplay(u)
         let msg = displayMessage
-        guard msg.lowercased().hasPrefix(u.lowercased()) else { return nil }
-        let nameEnd = msg.index(msg.startIndex, offsetBy: u.count)
+        guard msg.lowercased().hasPrefix(canonical) else { return nil }
+        let nameEnd = msg.index(msg.startIndex, offsetBy: canonical.count)
         guard nameEnd <= msg.endIndex else { return nil }
-        let namePart = String(msg[..<nameEnd])
         if nameEnd < msg.endIndex, msg[nameEnd] == " " {
             let afterSpace = msg.index(after: nameEnd)
-            return (namePart, String(msg[afterSpace...]))
+            return (canonical, String(msg[afterSpace...]))
         }
-        if nameEnd == msg.endIndex { return (namePart, "") }
+        if nameEnd == msg.endIndex { return (canonical, "") }
         return nil
     }
 
@@ -1030,16 +1203,19 @@ private struct NotificationRowView: View {
                 height: Self.socialAvatarDiameter,
                 cornerRadius: Self.socialAvatarDiameter / 2,
                 circular: true,
-                failureIcon: { socialAvatarPlaceholderIcon }
+                imageReloadEpoch: imageReloadEpoch,
+                failureIcon: { socialAvatarInitialPlaceholder }
             )
             .circularAvatarHairlineBorder()
         } else if isTransactionalProductThumbnail {
             NotificationBellThumbnail(
                 productURL: productThumbnailURLFromMeta ?? resolvedTransactionalListingURL,
-                avatarURL: nil,
+                avatarURL: senderAvatarURL,
                 width: Self.productThumbWidth,
                 height: Self.productThumbHeight,
                 cornerRadius: corner,
+                circular: false,
+                imageReloadEpoch: imageReloadEpoch,
                 failureIcon: { productPlaceholderIcon }
             )
             .overlay(
@@ -1053,6 +1229,8 @@ private struct NotificationRowView: View {
                 width: Self.productThumbWidth,
                 height: Self.productThumbHeight,
                 cornerRadius: corner,
+                circular: false,
+                imageReloadEpoch: imageReloadEpoch,
                 failureIcon: { productPlaceholderIcon }
             )
             .overlay(
@@ -1080,14 +1258,9 @@ private struct NotificationRowView: View {
             )
     }
 
-    private var socialAvatarPlaceholderIcon: some View {
-        Circle()
-            .fill(Theme.Colors.secondaryBackground)
-            .overlay(
-                Image(systemName: "person.fill")
-                    .font(.system(size: Self.placeholderSymbolPointSize, weight: .regular))
-                    .foregroundStyle(Theme.Colors.secondaryText)
-            )
+    /// No profile photo URL, image load failure, or empty URL: same default as profile (initial on brand circle).
+    private var socialAvatarInitialPlaceholder: some View {
+        UsernameInitialAvatarView(username: senderUsername ?? "", size: Self.socialAvatarDiameter)
     }
 
     var body: some View {
@@ -1106,7 +1279,15 @@ private struct NotificationRowView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, Self.rowVerticalPadding)
-        .task(id: notification.id) {
+        .task(id: "\(notification.id)-\(imageReloadEpoch)") {
+            let toolbarEpochChanged = appliedBellThumbnailReloadEpoch.map { $0 != imageReloadEpoch } ?? true
+            if toolbarEpochChanged {
+                appliedBellThumbnailReloadEpoch = imageReloadEpoch
+                await MainActor.run {
+                    resolvedProductIsMysteryBox = nil
+                    resolvedTransactionalListingURL = nil
+                }
+            }
             await resolveBellRowThumbnails()
         }
     }

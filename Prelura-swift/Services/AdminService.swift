@@ -401,6 +401,96 @@ class AdminService: ObservableObject {
         let r = response.adminSetUserProfileTier
         return (r?.success ?? false, r?.message)
     }
+
+    /// Staff-only: clears login rate limit/lockout for a target username.
+    ///
+    /// Tries multiple mutation names for backend compatibility until one is supported.
+    func adminClearLoginRateLimit(username: String) async throws -> (success: Bool, message: String?) {
+        let clean = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return (false, "Username is required.") }
+
+        // 1) adminClearLoginRateLimit
+        do {
+            let mutation = """
+            mutation AdminClearLoginRateLimit($username: String!) {
+              adminClearLoginRateLimit(username: $username) {
+                success
+                message
+              }
+            }
+            """
+            struct Payload: Decodable { let adminClearLoginRateLimit: AdminMutationSimple? }
+            struct AdminMutationSimple: Decodable { let success: Bool?; let message: String? }
+            let response: Payload = try await client.execute(
+                query: mutation,
+                variables: ["username": clean],
+                responseType: Payload.self
+            )
+            let r = response.adminClearLoginRateLimit
+            return (r?.success ?? false, r?.message)
+        } catch {
+            guard Self.isUnknownAdminMutation(error) else { throw error }
+        }
+
+        // 2) adminResetLoginRateLimit
+        do {
+            let mutation = """
+            mutation AdminResetLoginRateLimit($username: String!) {
+              adminResetLoginRateLimit(username: $username) {
+                success
+                message
+              }
+            }
+            """
+            struct Payload: Decodable { let adminResetLoginRateLimit: AdminMutationSimple? }
+            struct AdminMutationSimple: Decodable { let success: Bool?; let message: String? }
+            let response: Payload = try await client.execute(
+                query: mutation,
+                variables: ["username": clean],
+                responseType: Payload.self
+            )
+            let r = response.adminResetLoginRateLimit
+            return (r?.success ?? false, r?.message)
+        } catch {
+            guard Self.isUnknownAdminMutation(error) else { throw error }
+        }
+
+        // 3) adminUnlockLoginAttempts
+        do {
+            let mutation = """
+            mutation AdminUnlockLoginAttempts($username: String!) {
+              adminUnlockLoginAttempts(username: $username) {
+                success
+                message
+              }
+            }
+            """
+            struct Payload: Decodable { let adminUnlockLoginAttempts: AdminMutationSimple? }
+            struct AdminMutationSimple: Decodable { let success: Bool?; let message: String? }
+            let response: Payload = try await client.execute(
+                query: mutation,
+                variables: ["username": clean],
+                responseType: Payload.self
+            )
+            let r = response.adminUnlockLoginAttempts
+            return (r?.success ?? false, r?.message)
+        } catch {
+            guard Self.isUnknownAdminMutation(error) else { throw error }
+        }
+
+        return (false, "Login rate-limit unlock is not supported on this server yet.")
+    }
+
+    private static func isUnknownAdminMutation(_ error: Error) -> Bool {
+        guard case let GraphQLError.graphQLErrors(errors) = error else { return false }
+        return errors.contains { e in
+            let lower = e.message.lowercased()
+            return lower.contains("cannot query field")
+                || lower.contains("unknown argument")
+                || lower.contains("did you mean")
+                || lower.contains("unknown field")
+        }
+    }
 }
 
 private enum AdminGraphQLQueries {

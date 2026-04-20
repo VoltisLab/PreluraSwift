@@ -22,7 +22,7 @@ struct BlocklistView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
             }
-            if isLoading && users.isEmpty {
+            if isLoading {
                 ProgressView()
                     .padding(Theme.Spacing.xl)
                 Spacer()
