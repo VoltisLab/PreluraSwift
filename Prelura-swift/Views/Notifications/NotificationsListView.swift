@@ -186,6 +186,7 @@ struct NotificationsListView: View {
             Task { await reloadFromStart() }
         }
         .onDisappear {
+            markLoadedUnreadNotificationsReadWhenLeavingScreen()
             NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
         }
         .toolbar(.hidden, for: .tabBar)
@@ -431,7 +432,7 @@ struct NotificationsListView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainTappableButtonStyle())
-                .listRowBackground(Theme.Colors.background)
+                .listRowBackground(notificationListRowChrome(isUnread: !notification.isRead))
                 .listRowInsets(
                     EdgeInsets(
                         top: Self.listRowInsetVertical,
@@ -449,7 +450,6 @@ struct NotificationsListView: View {
                     }
                 }
             }
-            .listRowBackground(Theme.Colors.background)
             if backendHasMore {
                 HStack {
                     Spacer()
@@ -473,7 +473,23 @@ struct NotificationsListView: View {
         .scrollContentBackground(.hidden)
         .refreshable { await reloadFromStart() }
     }
-    
+
+    /// Full-row outline for unread rows; disappears once the row is read (tap detail or leaving this screen).
+    @ViewBuilder
+    private func notificationListRowChrome(isUnread: Bool) -> some View {
+        let corner: CGFloat = 12
+        if isUnread {
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .fill(Theme.Colors.background)
+                .overlay(
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .stroke(Theme.primaryColor, lineWidth: 1.5)
+                )
+        } else {
+            Theme.Colors.background
+        }
+    }
+
     private func markAsRead(_ notification: AppNotification) {
         guard let idInt = Int(notification.id) else { return }
         Task {
@@ -481,20 +497,33 @@ struct NotificationsListView: View {
             await MainActor.run {
                 NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
                 if let idx = notifications.firstIndex(where: { $0.id == notification.id }) {
-                    notifications[idx] = AppNotification(
-                        id: notifications[idx].id,
-                        sender: notifications[idx].sender,
-                        message: notifications[idx].message,
-                        model: notifications[idx].model,
-                        modelId: notifications[idx].modelId,
-                        modelGroup: notifications[idx].modelGroup,
-                        isRead: true,
-                        createdAt: notifications[idx].createdAt,
-                        meta: notifications[idx].meta,
-                        productThumbnailUrl: notifications[idx].productThumbnailUrl,
-                        relatedProductIsMysteryBox: notifications[idx].relatedProductIsMysteryBox
-                    )
+                    notifications[idx] = notifications[idx].withIsRead(true)
                 }
+            }
+        }
+    }
+
+    /// When the user leaves the notifications hub, treat loaded bell-list rows as seen: accent clears on return via cache + server (we do not mark all unread on every refresh — see ``reloadFromStart()``).
+    private func markLoadedUnreadNotificationsReadWhenLeavingScreen() {
+        let idSet = Set(
+            notifications
+                .filter { !$0.isRead && $0.shouldShowOnNotificationsPage() }
+                .compactMap { Int($0.id) }
+        )
+        guard !idSet.isEmpty else { return }
+        let username = authService.username
+        let merged = notifications.map { n in
+            guard let iid = Int(n.id), idSet.contains(iid) else { return n }
+            return n.withIsRead(true)
+        }
+        if let key = InAppNotificationsCache.accountKey(username: username), !merged.isEmpty {
+            InAppNotificationsCache.save(merged, accountKey: key)
+        }
+        notificationService.updateAuthToken(authService.authToken)
+        Task {
+            _ = try? await notificationService.readNotifications(notificationIds: Array(idSet))
+            await MainActor.run {
+                bellUnreadStore.scheduleRefresh(authService: authService)
             }
         }
     }
@@ -893,11 +922,13 @@ private struct NotificationRowView: View {
 
     /// Slightly larger than `Theme.Typography.caption` (13pt) for readability.
     private static let lineFontSize: CGFloat = 15
+    /// Trailing relative time must stay visually subordinate to the message line.
+    private static let timeFontSize: CGFloat = 12
     /// Portrait thumbnail (20% smaller than former 48×64).
     private static let productThumbWidth: CGFloat = 48 * 0.8
     private static let productThumbHeight: CGFloat = 64 * 0.8
-    /// Social rows use a circular avatar with the same vertical weight as the product portrait thumb.
-    private static let socialAvatarDiameter: CGFloat = productThumbHeight
+    /// Social rows: circle diameter matches listing thumb **width** (same column footprint as product tiles; General + Lookbook).
+    private static let socialAvatarDiameter: CGFloat = productThumbWidth
     private static let thumbCornerRadius: CGFloat = 8 * 0.8
     private static let placeholderSymbolPointSize: CGFloat = 22 * 0.8
     /// 20% tighter than former `Theme.Spacing.sm` row padding.
@@ -1153,6 +1184,10 @@ private struct NotificationRowView: View {
         .system(size: Self.lineFontSize, weight: .regular)
     }
 
+    private var notificationTimeFont: Font {
+        .system(size: Self.timeFontSize, weight: .regular)
+    }
+
     private var notificationUsernameFont: Font {
         .system(size: Self.lineFontSize, weight: .semibold)
     }
@@ -1255,7 +1290,7 @@ private struct NotificationRowView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if let date = notification.createdAt {
                     Text(formatDate(date))
-                        .font(notificationBodyFont)
+                        .font(notificationTimeFont)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .fixedSize(horizontal: true, vertical: false)
                 }

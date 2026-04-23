@@ -54,6 +54,23 @@ extension AppNotification {
         shouldShowOnNotificationsPage() && !isRead
     }
 
+    /// Same row with an updated read flag (list optimistic updates / mark-read batch).
+    func withIsRead(_ read: Bool) -> AppNotification {
+        AppNotification(
+            id: id,
+            sender: sender,
+            message: message,
+            model: model,
+            modelId: modelId,
+            modelGroup: modelGroup,
+            isRead: read,
+            createdAt: createdAt,
+            meta: meta,
+            productThumbnailUrl: productThumbnailUrl,
+            relatedProductIsMysteryBox: relatedProductIsMysteryBox
+        )
+    }
+
     /// Lookbook-specific rows. **Conservative:** only the backend’s lookbook `modelGroup` or explicit lookbook id fields in meta.
     /// Message/URL heuristics (word “lookbook” in text or CDN paths) were classifying the majority of General rows as lookbook, emptying the General tab.
     var isLookbookRelatedNotification: Bool {
