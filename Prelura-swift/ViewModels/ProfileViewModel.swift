@@ -96,6 +96,9 @@ class ProfileViewModel: ObservableObject {
             // 2) Listings + multibuy in parallel after profile is on-screen.
             async let productsTask = userService.getUserProducts()
             async let multibuyTask = userService.getMultibuyDiscounts(userId: nil)
+            async let soldOrdersTask: [Order] = {
+                (try? await userService.getUserOrders(isSeller: true, pageNumber: 1, pageCount: 80))?.orders ?? []
+            }()
             let products = (try? await productsTask) ?? []
             let tiers: [MultibuyDiscount]
             do {
@@ -103,8 +106,14 @@ class ProfileViewModel: ObservableObject {
             } catch {
                 tiers = previousMultibuyTiers
             }
+            let soldOrders = await soldOrdersTask
+            let mergedProducts = Self.mergeSellerProductsWithSoldOrders(
+                products,
+                seller: fetchedUser,
+                soldOrders: soldOrders
+            )
             await MainActor.run {
-                self.userItems = products
+                self.userItems = mergedProducts
                 self.multibuyDiscounts = tiers
                 self.isLoadingProducts = false
             }
@@ -208,5 +217,100 @@ class ProfileViewModel: ObservableObject {
         return renderer.image { _ in
             image.draw(in: CGRect(origin: .zero, size: newSize))
         }
+    }
+
+    // MARK: - Sold tab vs My Orders
+
+    /// Order rows that still represent a real sale for overlaying `userProducts` (exclude cancelled/refunded).
+    private static func isActiveSaleOrder(_ order: Order) -> Bool {
+        let st = order.status.uppercased()
+        if st == "CANCELLED" || st == "REFUNDED" { return false }
+        return true
+    }
+
+    /// Product ids from seller orders so profile "Sold" matches My Orders when `userProducts` omits SOLD or returns a stale status.
+    private static func productIdsFromActiveSellerOrders(_ orders: [Order]) -> Set<String> {
+        var ids = Set<String>()
+        for order in orders where isActiveSaleOrder(order) {
+            for p in order.products {
+                let pid = p.id.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !pid.isEmpty { ids.insert(pid) }
+            }
+        }
+        return ids
+    }
+
+    private static func itemFromSellerOrderLine(_ line: OrderProductSummary, seller: User, orderDate: Date) -> Item {
+        let pid = line.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawPrice = line.price?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let price = Double(rawPrice.replacingOccurrences(of: ",", with: ".")) ?? 0
+        let urls: [String]
+        let listURL: String?
+        if line.isMysteryBox {
+            urls = []
+            listURL = nil
+        } else {
+            let img = line.imageUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            urls = img.isEmpty ? [] : [img]
+            listURL = ProductListImageURL.preferredString(from: img.isEmpty ? nil : img) ?? (img.isEmpty ? nil : img)
+        }
+        let materialSummary: String = {
+            let m = line.materials.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            return m.joined(separator: ", ")
+        }()
+        let styleTags: [String] = {
+            guard let s = line.style?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return [] }
+            return [s]
+        }()
+        return Item(
+            id: Item.id(fromProductId: pid),
+            productId: pid,
+            listingCode: nil,
+            title: line.name,
+            description: "",
+            price: price,
+            originalPrice: nil,
+            imageURLs: urls,
+            listDisplayImageURL: listURL,
+            category: .clothing,
+            categoryName: nil,
+            seller: seller,
+            condition: line.condition ?? "",
+            size: line.size,
+            brand: line.brand,
+            colors: line.colors,
+            likeCount: 0,
+            views: 0,
+            createdAt: orderDate,
+            isLiked: false,
+            status: "SOLD",
+            sellCategoryBackendId: nil,
+            sellSizeBackendId: nil,
+            listingMeasurements: nil,
+            materialSummary: materialSummary.isEmpty ? nil : materialSummary,
+            styleTags: styleTags,
+            isMysteryBox: line.isMysteryBox
+        )
+    }
+
+    /// Patch `status` to SOLD when the listing appears on seller orders, and append rows missing from `userProducts`.
+    private static func mergeSellerProductsWithSoldOrders(_ products: [Item], seller: User, soldOrders: [Order]) -> [Item] {
+        let soldIds = productIdsFromActiveSellerOrders(soldOrders)
+        let merged: [Item] = products.map { item in
+            guard let pid = item.productId, soldIds.contains(pid) else { return item }
+            if item.status.uppercased() == "SOLD" { return item }
+            return item.with(status: "SOLD")
+        }
+        let mergedIds = Set(merged.compactMap { $0.productId })
+        var seenExtra = Set<String>()
+        var extras: [Item] = []
+        for order in soldOrders where isActiveSaleOrder(order) {
+            for line in order.products {
+                let pid = line.id.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !pid.isEmpty, !mergedIds.contains(pid), seenExtra.insert(pid).inserted else { continue }
+                extras.append(itemFromSellerOrderLine(line, seller: seller, orderDate: order.createdAt))
+            }
+        }
+        return merged + extras
     }
 }

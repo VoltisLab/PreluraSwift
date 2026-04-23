@@ -11,6 +11,10 @@ struct AppNotification: Identifiable, Codable {
     let isRead: Bool
     let createdAt: Date?
     let meta: [String: String]?
+    /// From GraphQL: listing JPEG for this row; omit when `relatedProductIsMysteryBox` (client uses animated tile only).
+    let productThumbnailUrl: String?
+    /// When true, row uses `MysteryBoxAnimatedMediaView` only—do not load `productThumbnailUrl` as an image.
+    let relatedProductIsMysteryBox: Bool?
 
     struct NotificationSender: Codable {
         let username: String?
@@ -20,7 +24,7 @@ struct AppNotification: Identifiable, Codable {
 }
 
 extension AppNotification {
-    /// Looks up a meta value by key name (case-insensitive). Backend may use `is_mystery_box`, `IsMysteryBox`, etc.
+    /// Looks up a meta value by key name (case-insensitive).
     func metaValue(caseInsensitiveKey key: String) -> String? {
         guard let meta = meta else { return nil }
         let lk = key.lowercased()
@@ -30,7 +34,7 @@ extension AppNotification {
         return nil
     }
 
-    /// Chat / DM rows (new message, reactions) stay out of the bell list until they are unread this long.
+    /// Chat / DM rows (new message, reactions) stay out of the bell list until they are unread this long. Matches `origin/main`.
     private static let chatNotificationMinAgeToShow: TimeInterval = 30 * 60
 
     /// Matches `model_group == "Chat"` from the backend (message + reaction pushes).
@@ -38,7 +42,7 @@ extension AppNotification {
         (modelGroup ?? "").trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Chat") == .orderedSame
     }
 
-    /// Bell list + notification detail list: hide fresh chat noise; inbox tab holds the unread counter.
+    /// Bell list + notification detail: hide read chat; defer **fresh** unread chat by `chatNotificationMinAgeToShow` (inbox has the real-time list). Matches `origin/main` / production Flutter.
     func shouldShowOnNotificationsPage(referenceDate: Date = Date()) -> Bool {
         guard isChatCentricNotification else { return true }
         if isRead { return false }
@@ -50,12 +54,11 @@ extension AppNotification {
         shouldShowOnNotificationsPage() && !isRead
     }
 
-    /// Lookbook-specific rows (feed, likes on looks, lookbook comments, etc.). Used to split the notifications list from general app activity.
+    /// Lookbook-specific rows. **Conservative:** only the backend’s lookbook `modelGroup` or explicit lookbook id fields in meta.
+    /// Message/URL heuristics (word “lookbook” in text or CDN paths) were classifying the majority of General rows as lookbook, emptying the General tab.
     var isLookbookRelatedNotification: Bool {
         let mg = (modelGroup ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if mg == "lookbook" { return true }
-        let m = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if m.contains("lookbook") { return true }
         let lookbookMetaKeys: Set<String> = [
             "lookbook_id", "lookbookid", "lookbook_post_id", "lookbookpostid",
             "lookbook_entry_id", "lookbookentryid",
@@ -68,55 +71,91 @@ extension AppNotification {
     }
 }
 
-// MARK: - Bell list: migrate static mystery listing JPEGs to animated tile
+// MARK: - Bell thumbnails: meta flags & legacy static mystery JPEG URLs
 
-/// Strips legacy `media_thumbnail` URLs that point at generated mystery-box cover JPEGs so rows use `MysteryBoxAnimatedMediaView` instead of a buggy static image.
-enum BellNotificationMysteryThumbnailMigration {
-    private static let metaImageKeys: Set<String> = [
-        "media_thumbnail", "product_image", "product_image_url",
-        "thumbnail_url", "thumbnailUrl", "image_url", "imageUrl",
-        "product_thumbnail", "media_url", "lookbook_image", "lookbook_thumbnail",
-        "thumbnail", "image", "photo_url", "photoUrl", "listing_image", "item_image",
-        "listing_image_url", "productImage", "listingImage",
-    ]
-
-    /// Returns updated meta (or the original reference) with mystery JPEG URLs cleared and `is_mystery_box` set when appropriate.
-    static func migratedMeta(from meta: [String: String]?) -> [String: String]? {
-        guard var m = meta, !m.isEmpty else { return meta }
-        var stripped = false
-        for (k, v) in m {
-            let kl = k.lowercased()
-            let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !t.isEmpty else { continue }
-            let looksLikeImageKey = metaImageKeys.contains(kl) || kl.contains("thumb") || kl.contains("image") || kl.contains("photo")
-            guard looksLikeImageKey || t.hasPrefix("http") else { continue }
-            guard isLikelyStaticMysteryCoverURL(t) else { continue }
-            m[k] = ""
-            stripped = true
-        }
-        if stripped {
-            let hasFlag = m.keys.contains { $0.caseInsensitiveCompare("is_mystery_box") == .orderedSame }
-            if !hasFlag {
-                m["is_mystery_box"] = "true"
-            }
-        }
-        return stripped ? m : meta
-    }
-
-    /// Heuristic: generated listing cover or obvious mystery asset paths (URLs rarely include the word “mystery”).
-    static func isLikelyStaticMysteryCoverURL(_ raw: String) -> Bool {
+enum BellNotificationMysteryHelpers {
+    /// Heuristic: generated cover or obvious placeholder paths — prefer animated mystery tile, never as a “normal” product JPEG.
+    static func isLikelyStaticMysteryOrPlaceholderCoverURL(_ raw: String) -> Bool {
         let l = raw.lowercased()
         if l.contains("mystery") { return true }
         if l.contains("mysterybox") || l.contains("mystery_box") { return true }
-        // Generic backend placeholder/default assets that should never render in the bell feed.
         if l.contains("placeholder") || l.contains("default") { return true }
-        // Moderation / placeholder assets that must not replace the in-app mystery animation tile.
         if l.contains("unapproved") || l.contains("rejected") || l.contains("pending_review") { return true }
         if l.contains("moderation") && (l.contains("image") || l.contains("thumb") || l.contains("listing")) { return true }
-        // Listing cover upload filenames used when creating mystery listings (see `MysteryBoxListingCoverImage`).
         if l.contains("listing_cover") && (l.hasSuffix(".jpg") || l.hasSuffix(".jpeg") || l.contains(".jpeg")) { return true }
-        // Client-generated mystery raster is portrait ~900×1170; some CDNs encode dimensions in the path.
         if l.contains("900") && l.contains("1170") { return true }
+        // Server-generated mystery placeholder tiles (legacy CDN paths without "mystery" in the filename).
+        if l.contains("mystery-cover") || l.contains("mystery_cover") || l.contains("mysterybox-cover") { return true }
         return false
+    }
+}
+
+extension AppNotification {
+    /// When GraphQL `relatedProductIsMysteryBox` is absent, meta may still carry a flag.
+    var bellMysteryFromMeta: Bool {
+        let keys = [
+            "related_product_is_mystery_box", "relatedProductIsMysteryBox",
+            "is_mystery_box", "isMysteryBox", "is_mystery", "mystery", "mystery_box",
+        ]
+        for k in keys {
+            let v = metaValue(caseInsensitiveKey: k)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+            if v == "true" || v == "1" || v == "yes" { return true }
+        }
+        return false
+    }
+}
+
+// MARK: - Bell list: product id resolution
+
+extension AppNotification {
+    /// Numeric product id from flat meta (orders, offers, chat context when the server includes it).
+    var bellProductIdFromMeta: Int? {
+        guard let meta = meta else { return nil }
+        let keys = [
+            "sold_product_id", "product_id", "productId", "listing_id", "listingId",
+            "item_id", "itemId", "related_product_id", "relatedProductId",
+            "order_product_id", "orderProductId", "line_item_product_id", "lineItemProductId",
+            "primary_product_id", "primaryProductId", "soldProductId", "listingProductId",
+            "conversation_product_id", "conversationProductId", "thread_product_id", "threadProductId",
+        ]
+        let lowerIndex: [String: String] = Dictionary(uniqueKeysWithValues: meta.map { ($0.key.lowercased(), $0.value) })
+        for k in keys {
+            let raw = (meta[k] ?? lowerIndex[k.lowercased()])?.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let raw, !raw.isEmpty else { continue }
+            if let v = Int(raw), v > 0 { return v }
+        }
+        return nil
+    }
+
+    /// When `model` / `model_group` point at a listing or offer row, the primary id is often `modelId`.
+    func bellModelBackedProductId(modelGroupLowercased: String) -> Int? {
+        guard let midRaw = modelId?.trimmingCharacters(in: .whitespacesAndNewlines), !midRaw.isEmpty,
+              let v = Int(midRaw), v > 0 else { return nil }
+        let modelLower = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if modelLower == "product" || modelLower == "offer" { return v }
+        if modelLower.isEmpty, (modelGroupLowercased == "offer" || modelGroupLowercased == "product") { return v }
+        return nil
+    }
+
+    /// Stable conversation id for chat / DM bell rows (server may use snake or camel case).
+    var bellConversationIdFromMeta: String? {
+        let raw = metaValue(caseInsensitiveKey: "conversation_id")
+            ?? metaValue(caseInsensitiveKey: "conversationId")
+        let t = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return t.isEmpty ? nil : t
+    }
+
+    /// When the row is order-scoped (`modelId` is often an **order** id, not a product id), used to load line-item art from `userOrders` (seller) so thumbnails work even when `product()` omits images for sold listings.
+    var bellOrderIdForNotificationThumbnail: Int? {
+        for k in ["order_id", "orderId", "related_order_id", "relatedOrderId"] {
+            if let raw = metaValue(caseInsensitiveKey: k)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               let v = Int(raw), v > 0 { return v }
+        }
+        let mg = (modelGroup ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let m = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if mg == "order" || m == "order" {
+            if let mid = modelId?.trimmingCharacters(in: .whitespacesAndNewlines), let v = Int(mid), v > 0 { return v }
+        }
+        return nil
     }
 }

@@ -3,6 +3,8 @@ import Shimmer
 
 /// List of in-app notifications (Flutter NotificationsScreen + NotificationsTab).
 ///
+/// **Row art:** `relatedProductIsMysteryBox` (GraphQL, when present), meta flags, and legacy “static mystery cover” URL heuristics select **animated** mystery art; otherwise JPEG comes from the server field, meta image keys, or a one-shot `product(id:)` when still missing. Chat rows use the same 30-minute unread / hide-read policy as `origin/main` (`AppNotification.shouldShowOnNotificationsPage`).
+///
 /// **Realtime:** There is no dedicated in-app notifications WebSocket in this client; the list refreshes from GraphQL on open, pull-to-refresh, toolbar reload, app foreground (`scenePhase`), and after push-driven `wearhouseInAppNotificationsDidChange` flows elsewhere. Last successful page is cached per username for instant paint offline.
 struct NotificationsListView: View {
     /// Matches `NotificationRowView` vertical tightening (20% less than former 4pt).
@@ -20,8 +22,14 @@ struct NotificationsListView: View {
     @State private var segment: NotificationListSegment = .general
     @State private var isLoading = true
     @State private var isLoadingMore = false
+    /// True while ``ensureContentForCurrentSegmentBody()`` is paging for the active segment so we don’t flash “No … notifications yet” between load-more passes.
+    @State private var isBackfillingSegment = false
+    /// Cancels stale backfill UI when the user switches segments quickly (avoids clearing `isBackfillingSegment` mid-flight for the wrong tab).
+    @State private var segmentBackfillSession = UUID()
     @State private var errorMessage: String?
-    /// Next GraphQL page to request (1-based). Chat rows are filtered out unless stale unread.
+    /// True while a full list reload is in flight. Prevents the infinite-scroll / backfill `loadMore` from racing the initial fetch and **appending a duplicate of page 1** when a cached list kept `isLoading` false.
+    @State private var isReloadingNotifications = false
+    /// Next GraphQL page to request (1-based). Rows are then filtered with `shouldShowOnNotificationsPage` (chat age/read rules, etc.).
     @State private var nextBackendPage = 1
     @State private var backendHasMore = true
     @Environment(\.scenePhase) private var scenePhase
@@ -29,18 +37,41 @@ struct NotificationsListView: View {
     @State private var lastBecomeActiveReload: Date?
     /// One GraphQL page size (matches backend `pageCount`).
     private let pageSize = 15
-    /// Initial load: at most this many API pages (15 × 2 = 30 notifications max before pagination).
-    private let maxInitialBackendPages = 2
-    /// Each “load more” / segment backfill: one page at a time to avoid long stalls.
-    private let maxLoadMoreBackendPages = 1
+    /// Initial load: keep paging the API until we have `pageSize` **visible** rows (after chat-age filtering) or the feed ends. A low cap left users with 1–2 non-chat rows when recent pages were mostly DMs.
+    private let maxInitialBackendPages = 64
+    /// “Load more” / segment backfill: walk several API pages in one call so a **full page of DMs** (all filtered) still advances
+    /// until we have `pageSize` visible rows or a non-full page. `1` left users stuck with 0 new rows per scroll.
+    private let maxLoadMoreBackendPages = 16
     private let notificationService = NotificationService()
 
     private var filteredNotifications: [AppNotification] {
         switch segment {
         case .general:
-            return notifications.filter { !$0.isLookbookRelatedNotification }
+            return Self.dedupeGeneralTabChatRows(notifications.filter { !$0.isLookbookRelatedNotification })
         case .lookbook:
             return notifications.filter { $0.isLookbookRelatedNotification }
+        }
+    }
+
+    /// One row per chat thread in General (newest first) so the list isn’t a wall of duplicate “new message” lines.
+    private static func uniqueByNotificationId(_ items: [AppNotification]) -> [AppNotification] {
+        var seen = Set<String>()
+        return items.filter { seen.insert($0.id).inserted }
+    }
+
+    private static func dedupeGeneralTabChatRows(_ list: [AppNotification]) -> [AppNotification] {
+        let sorted = list.sorted {
+            let a = $0.createdAt ?? .distantPast
+            let b = $1.createdAt ?? .distantPast
+            return a > b
+        }
+        var seenConversation = Set<String>()
+        return sorted.compactMap { n in
+            if n.isChatCentricNotification, let cid = n.bellConversationIdFromMeta, !cid.isEmpty {
+                if seenConversation.contains(cid) { return nil }
+                seenConversation.insert(cid)
+            }
+            return n
         }
     }
 
@@ -99,8 +130,24 @@ struct NotificationsListView: View {
                         notificationRowsList
                     }
                 }
+                .onChange(of: segment) { _, _ in
+                    if filteredNotifications.isEmpty {
+                        isBackfillingSegment = true
+                    } else {
+                        isBackfillingSegment = false
+                    }
+                }
                 .task(id: segment) {
-                    await ensureContentForCurrentSegment()
+                    let session = UUID()
+                    await MainActor.run {
+                        segmentBackfillSession = session
+                        isBackfillingSegment = true
+                    }
+                    await ensureContentForCurrentSegmentBody()
+                    await MainActor.run {
+                        guard segmentBackfillSession == session else { return }
+                        isBackfillingSegment = false
+                    }
                 }
                 .wearhouseChatThreadReadableWidthIfPadMac()
             }
@@ -129,8 +176,7 @@ struct NotificationsListView: View {
         }
         .onChange(of: authService.authToken) { _, newToken in
             notificationService.updateAuthToken(newToken)
-            NotificationMysteryListingResolver.shared.clearCaches()
-            NotificationListingThumbnailResolver.shared.clearCaches()
+            NotificationBellConversationPrefetcher.shared.clear()
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -149,111 +195,131 @@ struct NotificationsListView: View {
         guard let key = InAppNotificationsCache.accountKey(username: authService.username),
               let cached = InAppNotificationsCache.load(accountKey: key),
               !cached.isEmpty else { return }
-        notifications = cached
+        notifications = Self.uniqueByNotificationId(cached)
         isLoading = false
     }
 
     private func reloadFromStart() async {
         await MainActor.run {
-            isLoading = true
+            isReloadingNotifications = true
+            // Keep showing the previous list while refreshing when we have data (avoids empty ↔ shimmer flicker).
+            if notifications.isEmpty {
+                isLoading = true
+            }
             errorMessage = nil
             nextBackendPage = 1
             backendHasMore = true
         }
         do {
-            try await fetchVisibleBatch(appending: false, maxBackendPages: maxInitialBackendPages)
+            let batch = try await fetchVisibleBatch(appending: false, maxBackendPages: maxInitialBackendPages)
+            await NotificationBellConversationPrefetcher.shared.prefetch(
+                notifications: batch,
+                authToken: authService.authToken,
+                currentUsername: authService.username
+            )
         } catch {
             await MainActor.run {
                 errorMessage = L10n.userFacingError(error)
                 isLoading = false
+                isReloadingNotifications = false
             }
             return
         }
         await MainActor.run {
             isLoading = false
-            if let key = InAppNotificationsCache.accountKey(username: authService.username),
-               !notifications.isEmpty {
-                InAppNotificationsCache.save(notifications, accountKey: key)
+            if let key = InAppNotificationsCache.accountKey(username: authService.username) {
+                if notifications.isEmpty {
+                    // Avoid a poisoned 1-item (or empty) list sticking in UserDefaults and painting before every refresh.
+                    InAppNotificationsCache.clear(accountKey: key)
+                } else {
+                    InAppNotificationsCache.save(notifications, accountKey: key)
+                }
             }
         }
         notificationService.updateAuthToken(authService.authToken)
-        Task { await ensureContentForCurrentSegment() }
-        // Mark bell-eligible rows read without blocking first paint (was serializing an extra multi-page fetch before the list appeared).
-        Task { @MainActor in
-            do {
-                try await notificationService.markAllBellEligibleUnreadRead()
-                notifications = notifications.map { n in
-                    guard n.shouldCountTowardBellBadge else { return n }
-                    return AppNotification(
-                        id: n.id,
-                        sender: n.sender,
-                        message: n.message,
-                        model: n.model,
-                        modelId: n.modelId,
-                        modelGroup: n.modelGroup,
-                        isRead: true,
-                        createdAt: n.createdAt,
-                        meta: n.meta
-                    )
-                }
-                NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
-                bellUnreadStore.scheduleRefresh(authService: authService)
-            } catch {
-                #if DEBUG
-                print("Wearhouse: markAllBellEligibleUnreadRead failed: \(error)")
-                #endif
-            }
+        await MainActor.run { isBackfillingSegment = true }
+        await ensureContentForCurrentSegmentBody()
+        await MainActor.run {
+            isBackfillingSegment = false
+            isReloadingNotifications = false
+        }
+        // Do **not** call ``markAllBellEligibleUnreadRead`` on every list load/refresh. That marks almost everything
+        // read on the server; if `notifications` only returns **unread** rows, the next fetch looks “wiped”
+        // (often a single new unread, e.g. a mystery offer). Bell count still refreshes from the unread counter API.
+        await MainActor.run {
+            bellUnreadStore.scheduleRefresh(authService: authService)
+            NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
         }
     }
 
     /// Pulls backend pages until we have `pageSize` visible rows, `maxBackendPages` is reached, or the feed ends.
-    private func fetchVisibleBatch(appending: Bool, maxBackendPages: Int) async throws {
+    @discardableResult
+    private func fetchVisibleBatch(appending: Bool, maxBackendPages: Int) async throws -> [AppNotification] {
         notificationService.updateAuthToken(authService.authToken)
         var collected: [AppNotification] = []
         var safety = 0
-        while collected.count < pageSize && backendHasMore && safety < maxBackendPages {
+        var page = await MainActor.run { nextBackendPage }
+        var hasMore = await MainActor.run { backendHasMore }
+        while collected.count < pageSize && hasMore && safety < maxBackendPages {
             safety += 1
-            let (batch, _) = try await notificationService.getNotifications(pageCount: pageSize, pageNumber: nextBackendPage)
-            backendHasMore = batch.count == pageSize
-            nextBackendPage += 1
+            let (batch, _) = try await notificationService.getNotifications(pageCount: pageSize, pageNumber: page)
+            page += 1
             for n in batch where n.shouldShowOnNotificationsPage() {
                 collected.append(n)
             }
             if batch.isEmpty {
-                backendHasMore = false
+                hasMore = false
                 break
             }
-            if collected.count >= pageSize {
-                break
-            }
+            // A **full** page means more *might* exist. A **short, non-empty** first page (e.g. 2–5 rows) must still allow
+            // a follow-up request—many servers return a short “newest” page first; `notificationsTotalNumber` is unreliable.
+            // After the first request (`safety == 1`), a short page means the feed has ended.
+            let fullPage = (batch.count == pageSize)
+            let shortFirstPageMayHaveMore = (safety == 1) && (batch.count < pageSize) && (batch.count > 0)
+            hasMore = fullPage || shortFirstPageMayHaveMore
+            if collected.count >= pageSize { break }
         }
         await MainActor.run {
+            nextBackendPage = page
+            backendHasMore = hasMore
+            let dedupedCollected = Self.uniqueByNotificationId(collected)
             if appending {
-                notifications.append(contentsOf: collected)
+                let existing = Set(notifications.map(\.id))
+                let onlyNew = dedupedCollected.filter { !existing.contains($0.id) }
+                notifications.append(contentsOf: onlyNew)
             } else {
-                notifications = collected
+                notifications = dedupedCollected
             }
         }
+        return collected
     }
 
     private func loadMoreVisible() async {
-        guard !isLoading, !isLoadingMore, backendHasMore else { return }
+        guard !isReloadingNotifications, !isLoading, !isLoadingMore, backendHasMore else { return }
         isLoadingMore = true
         defer { isLoadingMore = false }
         do {
-            try await fetchVisibleBatch(appending: true, maxBackendPages: maxLoadMoreBackendPages)
+            let batch = try await fetchVisibleBatch(appending: true, maxBackendPages: maxLoadMoreBackendPages)
+            await NotificationBellConversationPrefetcher.shared.prefetch(
+                notifications: batch,
+                authToken: authService.authToken,
+                currentUsername: authService.username
+            )
         } catch {
             await MainActor.run { errorMessage = L10n.userFacingError(error) }
         }
     }
 
-    /// When the active segment’s filter yields no rows but older pages may contain matches, fetch a few more pages (bounded).
-    private func ensureContentForCurrentSegment() async {
-        for _ in 0..<4 {
+    /// When the active segment’s filter yields no rows but older pages may contain matches, keep paging (bounded) until a match or the feed ends.
+    /// A small cap (e.g. 4) caused “No general notifications yet” right after pull-to-refresh when the newest pages were all lookbook-classified.
+    private func ensureContentForCurrentSegmentBody() async {
+        let maxBackfillPages = 40
+        for _ in 0..<maxBackfillPages {
+            if Task.isCancelled { return }
             let stillEmpty = await MainActor.run {
                 switch segment {
                 case .general:
-                    return notifications.filter { !$0.isLookbookRelatedNotification }.isEmpty
+                    return Self.dedupeGeneralTabChatRows(notifications.filter { !$0.isLookbookRelatedNotification }).isEmpty
                 case .lookbook:
                     return notifications.filter { $0.isLookbookRelatedNotification }.isEmpty
                 }
@@ -262,7 +328,7 @@ struct NotificationsListView: View {
 
             let shouldLoad = await MainActor.run {
                 if let err = errorMessage, !err.isEmpty { return false }
-                return backendHasMore && !isLoading
+                return backendHasMore && !isLoading && !isReloadingNotifications
             }
             guard shouldLoad else { return }
 
@@ -288,7 +354,7 @@ struct NotificationsListView: View {
     @ViewBuilder
     private var segmentEmptyView: some View {
         Group {
-            if isLoadingMore {
+            if isLoadingMore || isBackfillingSegment {
                 notificationsListShimmerLayout(includeSegmentPicker: false)
             } else {
                 ScrollView {
@@ -359,10 +425,10 @@ struct NotificationsListView: View {
             ForEach(filteredNotifications) { notification in
                 NavigationLink(destination: NotificationDestinationView(notification: notification, onMarkRead: { markAsRead(notification) })) {
                     NotificationRowView(notification: notification, imageReloadEpoch: imageReloadTokenForRows)
+                        .id(notification.id)
                         .environmentObject(authService)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
-                        .id(notification.id)
                 }
                 .buttonStyle(PlainTappableButtonStyle())
                 .listRowBackground(Theme.Colors.background)
@@ -390,8 +456,17 @@ struct NotificationsListView: View {
                     if isLoadingMore { ProgressView() }
                     Spacer()
                 }
+                .listRowInsets(
+                    EdgeInsets(
+                        top: Self.listRowInsetVertical,
+                        leading: Theme.Spacing.md,
+                        bottom: Self.listRowInsetVertical,
+                        trailing: Theme.Spacing.md
+                    )
+                )
                 .onAppear { Task { await loadMoreVisible() } }
                 .listRowBackground(Theme.Colors.background)
+                .listRowSeparator(.hidden, edges: .bottom)
             }
         }
         .listStyle(.plain)
@@ -415,7 +490,9 @@ struct NotificationsListView: View {
                         modelGroup: notifications[idx].modelGroup,
                         isRead: true,
                         createdAt: notifications[idx].createdAt,
-                        meta: notifications[idx].meta
+                        meta: notifications[idx].meta,
+                        productThumbnailUrl: notifications[idx].productThumbnailUrl,
+                        relatedProductIsMysteryBox: notifications[idx].relatedProductIsMysteryBox
                     )
                 }
             }
@@ -654,86 +731,6 @@ private struct NotificationLookbookDeepLinkHost: View {
     }
 }
 
-/// Caches `Item.isMysteryBox` by product id so bell rows can show `MysteryBoxAnimatedMediaView` instead of the static listing JPEG (same raster as `MysteryBoxListingCoverImage`).
-@MainActor
-private final class NotificationMysteryListingResolver {
-    static let shared = NotificationMysteryListingResolver()
-    private var cache: [Int: Bool] = [:]
-
-    func clearCaches() {
-        cache.removeAll()
-    }
-
-    func isMysteryListing(productId: Int, authToken: String?) async -> Bool {
-        if let hit = cache[productId] { return hit }
-        let client = GraphQLClient()
-        client.setAuthToken(authToken)
-        let service = ProductService(client: client)
-        service.updateAuthToken(authToken)
-        guard let item = try? await service.getProduct(id: productId) else {
-            cache[productId] = false
-            return false
-        }
-        let v = item.isMysteryBox
-        cache[productId] = v
-        return v
-    }
-}
-
-/// Fetches the listing’s chrome thumbnail for bell rows when transactional notifications omit image URLs in meta.
-@MainActor
-private final class NotificationListingThumbnailResolver {
-    static let shared = NotificationListingThumbnailResolver()
-    private var cache: [Int: URL] = [:]
-    private var negativeIds: Set<Int> = []
-
-    func clearCaches() {
-        cache.removeAll()
-        negativeIds.removeAll()
-    }
-
-    func listingThumbnailURL(productId: Int, authToken: String?) async -> URL? {
-        if negativeIds.contains(productId) { return nil }
-        if let hit = cache[productId] { return hit }
-        let client = GraphQLClient()
-        client.setAuthToken(authToken)
-        let service = ProductService(client: client)
-        service.updateAuthToken(authToken)
-        guard let item = try? await service.getProduct(id: productId) else {
-            negativeIds.insert(productId)
-            return nil
-        }
-        if item.isMysteryBox {
-            negativeIds.insert(productId)
-            return nil
-        }
-        if let raw = item.thumbnailURLForChrome?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
-           !BellNotificationMysteryThumbnailMigration.isLikelyStaticMysteryCoverURL(raw),
-           let url = Self.httpURL(from: raw) {
-            cache[productId] = url
-            return url
-        }
-        for raw in item.imageURLs {
-            let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !t.isEmpty, !BellNotificationMysteryThumbnailMigration.isLikelyStaticMysteryCoverURL(t),
-                  let url = Self.httpURL(from: t) else { continue }
-            cache[productId] = url
-            return url
-        }
-        negativeIds.insert(productId)
-        return nil
-    }
-
-    private static func httpURL(from raw: String) -> URL? {
-        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return nil }
-        if let u = URL(string: t), u.scheme != nil { return u }
-        let encodedSpaces = t.replacingOccurrences(of: " ", with: "%20")
-        if encodedSpaces != t, let u = URL(string: encodedSpaces), u.scheme != nil { return u }
-        return nil
-    }
-}
-
 /// Loads product/listing art from meta when present; otherwise sender avatar. Retries transient failures, offers a manual reload, then falls back to avatar when both URLs exist.
 private struct NotificationBellThumbnail<FailureIcon: View>: View {
     let productURL: URL?
@@ -839,16 +836,60 @@ private struct NotificationThumbClipShape: ViewModifier {
     }
 }
 
+/// Maps `conversation_id` from chat bell rows to **subtitle preview** only (chat rows are filtered out of the list, but this stays safe if a row slips in).
+@MainActor
+private final class NotificationBellConversationPrefetcher {
+    static let shared = NotificationBellConversationPrefetcher()
+
+    struct ChatListingHint {
+        /// Inbox-style subtitle from the thread (`ChatRowView.previewText`); when set, prefer over stale API `message` for chat bell rows.
+        let lastMessagePreview: String?
+    }
+
+    private var byConversationId: [String: ChatListingHint] = [:]
+
+    func clear() {
+        byConversationId.removeAll()
+    }
+
+    func listing(forConversationId id: String) -> ChatListingHint? {
+        guard !id.isEmpty else { return nil }
+        return byConversationId[id]
+    }
+
+    func prefetch(notifications: [AppNotification], authToken: String?, currentUsername: String?) async {
+        let ids: [String] = Array(Set(notifications.compactMap { n in
+            guard n.isChatCentricNotification else { return nil }
+            return n.bellConversationIdFromMeta
+        }))
+        guard !ids.isEmpty else { return }
+
+        let chatService = ChatService()
+        chatService.updateAuthToken(authToken)
+        for cid in ids {
+            guard let c = try? await chatService.getConversationByIdForBellPrefetch(conversationId: cid, currentUsername: currentUsername) else { continue }
+            let preview = ChatRowView.previewText(
+                for: c.lastMessage,
+                conversation: c,
+                currentUsername: currentUsername
+            )
+            byConversationId[c.id] = ChatListingHint(lastMessagePreview: preview)
+        }
+    }
+}
+
 private struct NotificationRowView: View {
     let notification: AppNotification
-    /// Screen-level refresh (toolbar) forces AsyncImage remount + thumbnail re-resolve.
+    /// Screen-level refresh (toolbar) forces AsyncImage remount.
     var imageReloadEpoch: Int = 0
     @EnvironmentObject private var authService: AuthService
-    /// Filled when `modelGroup == offer` and the listing is a mystery box (API omits meta flags but product image is the generated cover JPEG).
-    @State private var resolvedProductIsMysteryBox: Bool?
-    @State private var resolvedTransactionalListingURL: URL?
-    /// Tracks the last `imageReloadEpoch` we reset for; avoids clearing resolved thumbnails on every list recycle when scrolling.
-    @State private var appliedBellThumbnailReloadEpoch: Int?
+    @State private var productFetchMystery: Bool = false
+    @State private var productFetchListingURL: URL?
+
+    private let productService = ProductService()
+    private let userService = UserService()
+    /// `userOrders` line-item fetch keyed by order id; avoids re-querying the same order on every row refresh.
+    private static var orderLinePreviewByOrderId: [Int: (productId: Int, imageUrl: String?, isMysteryBox: Bool)] = [:]
 
     /// Slightly larger than `Theme.Typography.caption` (13pt) for readability.
     private static let lineFontSize: CGFloat = 15
@@ -866,8 +907,115 @@ private struct NotificationRowView: View {
         notification.sender?.username
     }
 
+    private var serverProductThumbnailURL: URL? {
+        guard let s = notification.productThumbnailUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
+        return Self.urlFromHTTPString(s)
+    }
+
+    private static let metaImageURLCandidateKeys: [String] = [
+        "listing_image_url", "listingImage", "listing_image", "item_image",
+        "product_image", "product_image_url", "productImage", "product_thumbnail",
+        "sold_product_thumbnail", "sold_product_image", "sold_product_image_url",
+        "sold_item_image", "sold_thumbnail", "order_item_thumbnail", "listing_thumbnail",
+        "media_thumbnail",
+        "thumbnail_url", "thumbnailUrl", "image_url", "imageUrl", "media_url",
+        "lookbook_image", "lookbook_thumbnail", "photo_url", "photoUrl", "thumbnail", "image",
+    ]
+
+    private var metaDerivedListingURL: URL? {
+        Self.metaImageURLFromNotificationExcludingSenderProfile(
+            notification: notification,
+            sender: notification.sender
+        )
+    }
+
+    private var productIdForThumbnailResolve: Int? {
+        if let p = notification.bellProductIdFromMeta { return p }
+        return notification.bellModelBackedProductId(modelGroupLowercased: modelGroupLower)
+    }
+
+    /// Listing art uses animated mystery when the API, meta, URL shape, or product fetch says so.
+    private var listingMysteryAnimated: Bool {
+        if isCelebrationOrBirthdayBellRow { return false }
+        if productFetchMystery { return true }
+        if notification.relatedProductIsMysteryBox == true { return true }
+        if notification.bellMysteryFromMeta { return true }
+        if let s = notification.productThumbnailUrl, BellNotificationMysteryHelpers.isLikelyStaticMysteryOrPlaceholderCoverURL(s) {
+            return true
+        }
+        return false
+    }
+
+    private var firstMetaImageRawString: String? {
+        for key in Self.metaImageURLCandidateKeys {
+            let raw = notification.metaValue(caseInsensitiveKey: key)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !raw.isEmpty else { continue }
+            if let s = ProductListImageURL.preferredString(from: raw) { return s }
+            return raw
+        }
+        return nil
+    }
+
+    /// Non-mystery, non-celebration: prefer server, then meta, then one-shot `getProduct` image.
+    private var displayListingJpegURL: URL? {
+        if isCelebrationOrBirthdayBellRow { return nil }
+        if listingMysteryAnimated { return nil }
+        if let u = serverProductThumbnailURL { return u }
+        if let u = metaDerivedListingURL { return u }
+        return productFetchListingURL
+    }
+
+    private static func metaImageURLFromNotificationExcludingSenderProfile(
+        notification: AppNotification,
+        sender: AppNotification.NotificationSender?
+    ) -> URL? {
+        for key in Self.metaImageURLCandidateKeys {
+            let raw = notification.metaValue(caseInsensitiveKey: key)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !raw.isEmpty else { continue }
+            if BellNotificationMysteryHelpers.isLikelyStaticMysteryOrPlaceholderCoverURL(raw) { continue }
+            let u: URL?
+            if let s = ProductListImageURL.preferredString(from: raw) {
+                u = Self.urlFromHTTPString(s)
+            } else {
+                u = Self.urlFromHTTPString(raw)
+            }
+            guard let resolved = u else { continue }
+            if urlIsSenderProfileImage(resolved, sender: sender) { continue }
+            return resolved
+        }
+        return nil
+    }
+
+    private static func urlIsSenderProfileImage(_ url: URL, sender: AppNotification.NotificationSender?) -> Bool {
+        guard let sender else { return false }
+        let parts: [String] = [sender.thumbnailUrl, sender.profilePictureUrl]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        for p in parts {
+            guard let u = Self.urlFromHTTPString(p) else { continue }
+            if u.absoluteString == url.absoluteString { return true }
+        }
+        return false
+    }
+
+    private var isCelebrationOrBirthdayBellRow: Bool {
+        let m = notification.message
+        if m.contains("🎉"), m.localizedCaseInsensitiveContains("special day") { return true }
+        if m.contains("🥳"), m.localizedCaseInsensitiveContains("special day") { return true }
+        if m.localizedCaseInsensitiveContains("wishing you a birth") { return true }
+        if m.localizedCaseInsensitiveContains("birthday"), m.contains("🎂") || m.contains("🎉") || m.contains("🥳") { return true }
+        return false
+    }
+
     private var modelGroupLower: String {
         (notification.modelGroup ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var prefetchedChatListingHint: NotificationBellConversationPrefetcher.ChatListingHint? {
+        guard notification.isChatCentricNotification, let cid = notification.bellConversationIdFromMeta else { return nil }
+        return NotificationBellConversationPrefetcher.shared.listing(forConversationId: cid)
     }
 
     private var isLikedItemSoldNotification: Bool {
@@ -899,84 +1047,6 @@ private struct NotificationRowView: View {
         modelGroupLower == "product" && notification.message.lowercased().contains("liked your product")
     }
 
-    /// Mystery box listing (offer, sale, etc.) — use the same animated tile as chat/product feeds when meta or copy indicates mystery.
-    private var isMysteryBoxRelatedNotification: Bool {
-        let truthy: Set<String> = ["true", "1", "yes"]
-        let falsy: Set<String> = ["false", "0", "no"]
-        if let raw = notification.metaValue(caseInsensitiveKey: "is_mystery_box")?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-            if truthy.contains(raw) { return true }
-            if falsy.contains(raw) { return false }
-        }
-        if let meta = notification.meta {
-            let flagKeys: Set<String> = [
-                "is_mystery", "mystery_box", "is_mystery_listing",
-                "product_is_mystery", "mystery", "listing_is_mystery", "ismysterybox", "ismystery"
-            ]
-            for (k, v) in meta {
-                let kl = k.lowercased()
-                guard flagKeys.contains(kl) else { continue }
-                let vv = v.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                if truthy.contains(vv) { return true }
-            }
-            func metaAt(_ name: String) -> String? {
-                for (k, v) in meta where k.caseInsensitiveCompare(name) == .orderedSame { return v }
-                return nil
-            }
-            if metaAt("listing_type")?.lowercased() == "mystery" { return true }
-            if metaAt("product_type")?.lowercased() == "mystery" { return true }
-            for titleKey in ["product_title", "title", "product_name", "item_title"] {
-                if let t = metaAt(titleKey)?.lowercased(), t.contains("mystery") { return true }
-            }
-            for (_, v) in meta {
-                let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
-                if t.lowercased().contains("mystery") { return true }
-                if BellNotificationMysteryThumbnailMigration.isLikelyStaticMysteryCoverURL(t) { return true }
-            }
-        }
-        let m = notification.message.lowercased()
-        if m.contains("mystery box") || m.contains("mystery listing") { return true }
-        if isNewOfferOnListingMessage, m.contains("mystery") { return true }
-        return false
-    }
-
-    /// Animated tile when meta/copy/GraphQL says mystery, or for offer rows until we confirm otherwise (hides buggy static cover JPEG).
-    private var shouldShowMysteryBoxAnimation: Bool {
-        if isMysteryBoxRelatedNotification { return true }
-        if resolvedProductIsMysteryBox == true { return true }
-        if shouldTreatOfferAsMysteryUntilResolved { return true }
-        return false
-    }
-
-    /// Resolve `Item.isMysteryBox` when meta omits flags but `media_thumbnail` may be the generated mystery JPEG.
-    private var shouldResolveMysteryFromProduct: Bool {
-        guard let pid = notificationResolvedProductId, pid > 0 else { return false }
-        if isMysteryBoxRelatedNotification { return false }
-        if resolvedProductIsMysteryBox != nil { return false }
-        let mg = modelGroupLower
-        let m = notification.message.lowercased()
-        if mg == "offer" { return true }
-        if m.contains("sent you an offer") { return true }
-        if isSellerOrderSaleNotification || isNewOfferOnListingMessage { return true }
-        if mg == "product", m.contains("offer") { return true }
-        if mg == "order", m.contains("mystery") || m.contains("offer") { return true }
-        // Buyer/seller order rows sometimes only have avatar + product id — resolve to pick animation vs real product art.
-        if mg == "order", productThumbnailURLFromMeta == nil { return true }
-        return false
-    }
-
-    /// Order / sale rows: fetch listing art when meta omitted `media_thumbnail` (buyer “shipped” rows included).
-    private var shouldResolveTransactionalListingThumbnail: Bool {
-        guard !shouldShowMysteryBoxAnimation else { return false }
-        guard productThumbnailURLFromMeta == nil else { return false }
-        guard notificationResolvedProductId != nil else { return false }
-        if isSellerOrderSaleNotification { return true }
-        let mg = modelGroupLower
-        let m = notification.message.lowercased()
-        if mg == "order", m.contains("shipped") || m.contains("delivered") || m.contains("picked up") { return true }
-        if mg == "offer" { return true }
-        return false
-    }
-
     /// **Only** comments, follows, and like notifications use a circular **profile** avatar. Everything else
     /// (offers, orders, lookbook thumbnails, DMs, etc.) uses the normal portrait / product tile.
     private var isSocialSenderAvatarThumbnail: Bool {
@@ -997,85 +1067,6 @@ private struct NotificationRowView: View {
         if m.contains("liked your lookbook") || m.contains("likes your lookbook") { return true }
         if m.contains("lookbook post"), (m.contains("liked") || m.contains("likes")) { return true }
         return false
-    }
-
-    /// Orders, offers, sales — listing / product image (never fall back to sender avatar for these).
-    private var isTransactionalProductThumbnail: Bool {
-        if isSupportNotification { return false }
-        let mg = modelGroupLower
-        let m = notification.message.lowercased()
-        if mg == "order" { return true }
-        if mg == "offer" { return true }
-        if isSellerOrderSaleNotification { return true }
-        if isNewOfferOnListingMessage { return true }
-        if m.contains("sent you an offer") { return true }
-        if mg == "product", m.contains("offer") || m.contains("sold") || m.contains("sale") { return true }
-        if m.contains("accepted your offer") { return true }
-        if m.contains("shipped") && m.contains("order") { return true }
-        return false
-    }
-
-    /// Image URL from notification meta (flat string, JSON blob, or nested object — see `ProductListImageURL` + `NotificationService` meta parsing).
-    private static let metaImageURLCandidateKeys: [String] = [
-        "media_thumbnail", "product_image", "product_image_url",
-        "thumbnail_url", "thumbnailUrl", "image_url", "imageUrl",
-        "product_thumbnail", "media_url", "lookbook_image", "lookbook_thumbnail",
-        "thumbnail", "image", "photo_url", "photoUrl", "listing_image", "item_image",
-        "listing_image_url", "productImage", "listingImage",
-        "sold_product_thumbnail", "sold_product_image", "sold_product_image_url",
-        "sold_item_image", "sold_thumbnail", "order_item_thumbnail", "listing_thumbnail"
-    ]
-
-    /// Numeric product id from meta (order / sale pushes often omit image URLs but include a listing id).
-    private var notificationResolvedProductIdFromMeta: Int? {
-        guard let meta = notification.meta else { return nil }
-        let keys = [
-            "sold_product_id", "product_id", "productId", "listing_id", "listingId",
-            "item_id", "itemId", "related_product_id", "relatedProductId",
-            "order_product_id", "orderProductId", "line_item_product_id", "lineItemProductId",
-            "primary_product_id", "primaryProductId", "soldProductId", "listingProductId",
-        ]
-        let lowerIndex: [String: String] = Dictionary(uniqueKeysWithValues: meta.map { ($0.key.lowercased(), $0.value) })
-        for k in keys {
-            let raw = (meta[k] ?? lowerIndex[k.lowercased()])?.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let raw, !raw.isEmpty else { continue }
-            if let v = Int(raw), v > 0 { return v }
-        }
-        return nil
-    }
-
-    private var notificationResolvedProductId: Int? {
-        if let fromMeta = notificationResolvedProductIdFromMeta { return fromMeta }
-        guard let midRaw = notification.modelId?.trimmingCharacters(in: .whitespacesAndNewlines), !midRaw.isEmpty,
-              let v = Int(midRaw), v > 0 else { return nil }
-        let modelLower = (notification.model ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if modelLower == "product" || modelLower == "offer" { return v }
-        // Some payloads omit `model` but set model_group to Offer/Product.
-        if modelLower.isEmpty, (modelGroupLower == "offer" || modelGroupLower == "product") { return v }
-        return nil
-    }
-
-    /// Incoming / counterparty offer rows: show `MysteryBoxAnimatedMediaView` until GraphQL proves the listing isn’t a mystery box (avoids the generated cover JPEG).
-    private var shouldTreatOfferAsMysteryUntilResolved: Bool {
-        guard resolvedProductIsMysteryBox != false else { return false }
-        guard notificationResolvedProductId != nil else { return false }
-        let m = notification.message.lowercased()
-        if modelGroupLower == "offer" { return true }
-        if m.contains("sent you an offer") { return true }
-        if isNewOfferOnListingMessage { return true }
-        return false
-    }
-
-    private var productThumbnailURLFromMeta: URL? {
-        guard let meta = notification.meta else { return nil }
-        for key in Self.metaImageURLCandidateKeys {
-            guard let raw = meta[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { continue }
-            // Never use generated mystery JPEG in the bell row; animation or GraphQL resolve handles mystery listings.
-            if BellNotificationMysteryThumbnailMigration.isLikelyStaticMysteryCoverURL(raw) { continue }
-            if let s = ProductListImageURL.preferredString(from: raw), let u = Self.urlFromHTTPString(s) { return u }
-            if let u = Self.urlFromHTTPString(raw) { return u }
-        }
-        return nil
     }
 
     private var senderAvatarURL: URL? {
@@ -1116,6 +1107,17 @@ private struct NotificationRowView: View {
            let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
             let name = NotificationUsernameDisplay.canonicalUsernameForDisplay(username)
             return String(format: L10n.string("%@ likes your item."), name)
+        }
+        if notification.isChatCentricNotification,
+           let cid = notification.bellConversationIdFromMeta,
+           let hint = NotificationBellConversationPrefetcher.shared.listing(forConversationId: cid),
+           let line = hint.lastMessagePreview?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !line.isEmpty {
+            if let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty {
+                let display = NotificationUsernameDisplay.canonicalUsernameForDisplay(username)
+                return "\(display) \(line)"
+            }
+            return line
         }
         guard let username = notification.sender?.username?.trimmingCharacters(in: .whitespacesAndNewlines), !username.isEmpty else {
             return msg
@@ -1178,19 +1180,23 @@ private struct NotificationRowView: View {
         let corner = Self.thumbCornerRadius
         if isSupportNotification {
             WearhouseSupportBranding.supportAvatar(size: Self.socialAvatarDiameter)
-        } else if shouldShowMysteryBoxAnimation {
-            MysteryBoxAnimatedMediaView()
+        } else if isCelebrationOrBirthdayBellRow, !isSocialSenderAvatarThumbnail {
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .fill(Theme.Colors.secondaryBackground)
                 .frame(width: Self.productThumbWidth, height: Self.productThumbHeight)
-                .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                .overlay(
+                    Image(systemName: "gift.fill")
+                        .font(.system(size: Self.placeholderSymbolPointSize * 1.1, weight: .semibold))
+                        .foregroundStyle(Theme.primaryColor)
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .stroke(Theme.Colors.glassBorder, lineWidth: 1)
                 )
-        } else if shouldResolveMysteryFromProduct {
-            RoundedRectangle(cornerRadius: corner, style: .continuous)
-                .fill(Theme.Colors.secondaryBackground)
+        } else if listingMysteryAnimated, !isSocialSenderAvatarThumbnail {
+            MysteryBoxAnimatedMediaView()
                 .frame(width: Self.productThumbWidth, height: Self.productThumbHeight)
-                .overlay(ProgressView().scaleEffect(0.72))
+                .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .stroke(Theme.Colors.glassBorder, lineWidth: 1)
@@ -1207,44 +1213,22 @@ private struct NotificationRowView: View {
                 failureIcon: { socialAvatarInitialPlaceholder }
             )
             .circularAvatarHairlineBorder()
-        } else if isTransactionalProductThumbnail {
-            NotificationBellThumbnail(
-                productURL: productThumbnailURLFromMeta ?? resolvedTransactionalListingURL,
-                avatarURL: senderAvatarURL,
-                width: Self.productThumbWidth,
-                height: Self.productThumbHeight,
-                cornerRadius: corner,
-                circular: false,
-                imageReloadEpoch: imageReloadEpoch,
-                failureIcon: { productPlaceholderIcon }
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
-            )
-        } else if productThumbnailURLFromMeta != nil || resolvedTransactionalListingURL != nil || senderAvatarURL != nil {
-            NotificationBellThumbnail(
-                productURL: productThumbnailURLFromMeta ?? resolvedTransactionalListingURL,
-                avatarURL: senderAvatarURL,
-                width: Self.productThumbWidth,
-                height: Self.productThumbHeight,
-                cornerRadius: corner,
-                circular: false,
-                imageReloadEpoch: imageReloadEpoch,
-                failureIcon: { productPlaceholderIcon }
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
-            )
         } else {
-            productPlaceholderIcon
-                .frame(width: Self.productThumbWidth, height: Self.productThumbHeight)
-                .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: corner, style: .continuous)
-                        .stroke(Theme.Colors.glassBorder, lineWidth: 1)
-                )
+            // Non-social rows: server / meta / `getProduct` JPEG, or placeholder — never the sender’s profile in the bell list.
+            NotificationBellThumbnail(
+                productURL: displayListingJpegURL,
+                avatarURL: nil,
+                width: Self.productThumbWidth,
+                height: Self.productThumbHeight,
+                cornerRadius: corner,
+                circular: false,
+                imageReloadEpoch: imageReloadEpoch,
+                failureIcon: { productPlaceholderIcon }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .stroke(Theme.Colors.glassBorder, lineWidth: 1)
+            )
         }
     }
 
@@ -1280,51 +1264,71 @@ private struct NotificationRowView: View {
         }
         .padding(.vertical, Self.rowVerticalPadding)
         .task(id: "\(notification.id)-\(imageReloadEpoch)") {
-            let toolbarEpochChanged = appliedBellThumbnailReloadEpoch.map { $0 != imageReloadEpoch } ?? true
-            if toolbarEpochChanged {
-                appliedBellThumbnailReloadEpoch = imageReloadEpoch
-                await MainActor.run {
-                    resolvedProductIsMysteryBox = nil
-                    resolvedTransactionalListingURL = nil
-                }
-            }
-            await resolveBellRowThumbnails()
+            await resolveProductThumbnailIfNeeded()
         }
     }
 
-    /// Fetches mystery flag first, then listing chrome thumbnail in the same task so sale/offer rows can show product art after we know it isn’t a mystery listing.
-    private func resolveBellRowThumbnails() async {
-        guard let pid = notificationResolvedProductId, pid > 0 else { return }
+    @MainActor
+    private func resolveProductThumbnailIfNeeded() async {
+        productFetchMystery = false
+        productFetchListingURL = nil
+        if isSupportNotification { return }
+        if isSocialSenderAvatarThumbnail { return }
+        if isCelebrationOrBirthdayBellRow { return }
+        if notification.relatedProductIsMysteryBox == true { return }
+        if notification.bellMysteryFromMeta { return }
+        if let s = notification.productThumbnailUrl,
+           BellNotificationMysteryHelpers.isLikelyStaticMysteryOrPlaceholderCoverURL(s) { return }
+        if let s = firstMetaImageRawString,
+           BellNotificationMysteryHelpers.isLikelyStaticMysteryOrPlaceholderCoverURL(s) { return }
+        if serverProductThumbnailURL != nil { return }
+        if metaDerivedListingURL != nil { return }
 
-        if isMysteryBoxRelatedNotification {
-            await MainActor.run { resolvedProductIsMysteryBox = true }
+        productService.updateAuthToken(authService.authToken)
+        userService.updateAuthToken(authService.authToken)
+
+        var orderLine: (productId: Int, imageUrl: String?, isMysteryBox: Bool)?
+        if let orderId = notification.bellOrderIdForNotificationThumbnail {
+            if let cached = Self.orderLinePreviewByOrderId[orderId] {
+                orderLine = cached
+            } else if let loaded = try? await userService.getSoldOrderLineItemPreviewForBell(orderId: orderId) {
+                Self.orderLinePreviewByOrderId[orderId] = loaded
+                orderLine = loaded
+            }
+            if let ol = orderLine {
+                if ol.isMysteryBox {
+                    productFetchMystery = true
+                    return
+                }
+                if let uStr = ol.imageUrl, let u = Self.urlFromHTTPString(uStr) {
+                    productFetchListingURL = u
+                    return
+                }
+            }
+        }
+
+        let productId = productIdForThumbnailResolve ?? orderLine?.productId
+        guard let pid = productId else { return }
+
+        guard let item = try? await productService.getProduct(id: pid) else { return }
+        if item.isMysteryBox {
+            productFetchMystery = true
             return
         }
-
-        let needsMysteryFetch = await MainActor.run { resolvedProductIsMysteryBox == nil && shouldResolveMysteryFromProduct }
-        if needsMysteryFetch {
-            let isMystery = await NotificationMysteryListingResolver.shared.isMysteryListing(productId: pid, authToken: authService.authToken)
-            await MainActor.run { resolvedProductIsMysteryBox = isMystery }
-            if isMystery { return }
+        if let s = item.listDisplayImageURL?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty,
+           let u = Self.urlFromHTTPString(s) {
+            productFetchListingURL = u
+            return
         }
-
-        let mysteryTrue = await MainActor.run { resolvedProductIsMysteryBox == true }
-        if mysteryTrue { return }
-
-        guard productThumbnailURLFromMeta == nil else { return }
-        let noListingURLYet = await MainActor.run { resolvedTransactionalListingURL == nil }
-        guard noListingURLYet else { return }
-
-        let mg = modelGroupLower
-        let m = notification.message.lowercased()
-        let needsListingArt =
-            isSellerOrderSaleNotification
-            || mg == "offer"
-            || (mg == "order" && (m.contains("shipped") || m.contains("delivered") || m.contains("picked up")))
-        guard needsListingArt else { return }
-
-        let url = await NotificationListingThumbnailResolver.shared.listingThumbnailURL(productId: pid, authToken: authService.authToken)
-        await MainActor.run { resolvedTransactionalListingURL = url }
+        for raw in item.imageURLs {
+            if let u = Self.urlFromHTTPString(raw) {
+                productFetchListingURL = u
+                return
+            }
+        }
+        if let uStr = orderLine?.imageUrl, let u = Self.urlFromHTTPString(uStr) {
+            productFetchListingURL = u
+        }
     }
 
     private func formatDate(_ date: Date) -> String {

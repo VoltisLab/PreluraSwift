@@ -1815,6 +1815,30 @@ class UserService: ObservableObject {
         return (orders, total)
     }
 
+    /// For notification bell art: the seller’s `userOrders` response still includes per-line `imagesUrl` (same listing the buyer saw). The standalone `product(id:)` query may return **SOLD** listings with empty images for public-style responses—use this to recover the real thumbnail. Mystery rows must not return a JPEG (clients use ``MysteryBoxAnimatedMediaView``).
+    func getSoldOrderLineItemPreviewForBell(orderId: Int) async throws -> (productId: Int, imageUrl: String?, isMysteryBox: Bool)? {
+        var page = 1
+        let pageCount = 80
+        while page <= 6 {
+            let (orders, _) = try await getUserOrders(isSeller: true, pageNumber: page, pageCount: pageCount)
+            if let o = orders.first(where: { Int($0.id) == orderId }),
+               let first = o.products.first,
+               let pid = Int(first.id) {
+                if first.isMysteryBox {
+                    return (productId: pid, imageUrl: nil, isMysteryBox: true)
+                }
+                let url: String? = {
+                    guard let raw = first.imageUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+                    return ProductListImageURL.preferredString(from: raw) ?? raw
+                }()
+                return (productId: pid, imageUrl: url, isMysteryBox: false)
+            }
+            if orders.count < pageCount { break }
+            page += 1
+        }
+        return nil
+    }
+
     /// Turn off all multi-buy discounts for the current user.
     func deactivateMultibuyDiscounts() async throws {
         let mutation = """
@@ -1866,6 +1890,7 @@ class UserService: ObservableObject {
         return nil
     }
     
+    /// The seller’s full closet for “My profile” / wardrobe pickers. Response should include **ACTIVE**, **SOLD**, **HIDDEN** (and **INACTIVE** for scheduled) so the app can show Sold / Hidden tabs; the marketplace hides non-public rows separately.
     func getUserProducts(username: String? = nil) async throws -> [Item] {
         let query = """
         query UserProducts($username: String) {
