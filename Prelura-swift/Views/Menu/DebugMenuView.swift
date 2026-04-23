@@ -12,7 +12,8 @@ private enum DebugMenuItem: String, CaseIterable, Identifiable {
     case notificationMatrix
     case orderChatMock
     case profileCards
-    case feedNetworkBanner
+    case snackbarsGallery
+    case appBannersGallery
     case networkErrorTLS
     case lookbookSandbox
     case likeButtonOnly
@@ -39,7 +40,8 @@ private enum DebugMenuItem: String, CaseIterable, Identifiable {
         case .notificationMatrix: return "Notification matrix"
         case .orderChatMock: return "Order"
         case .profileCards: return "Profile cards, and components"
-        case .feedNetworkBanner: return "Feed network banner"
+        case .snackbarsGallery: return "Snackbars gallery"
+        case .appBannersGallery: return "Banners gallery (excl. Discover)"
         case .networkErrorTLS: return "Network error mapping (TLS)"
         case .lookbookSandbox: return "Lookbook feed sandbox"
         case .likeButtonOnly: return "Like button only"
@@ -66,7 +68,8 @@ private enum DebugMenuItem: String, CaseIterable, Identifiable {
         case .notificationMatrix: return "list.bullet.rectangle.portrait"
         case .orderChatMock: return "bubble.left.and.bubble.right"
         case .profileCards: return "square.stack.3d.up"
-        case .feedNetworkBanner: return "wifi.exclamationmark"
+        case .snackbarsGallery: return "capsule.portrait.fill"
+        case .appBannersGallery: return "rectangle.stack.fill"
         case .networkErrorTLS: return "lock.trianglebadge.exclamationmark"
         case .lookbookSandbox: return "rectangle.stack"
         case .likeButtonOnly: return "heart"
@@ -168,7 +171,8 @@ struct DebugMenuView: View {
         case .notificationMatrix: NotificationTypeMatrixDebugView()
         case .orderChatMock: OrderChatMockDebugView()
         case .profileCards: ProfileCardsComponentsView()
-        case .feedNetworkBanner: FeedNetworkBannerDebugView()
+        case .snackbarsGallery: SnackbarsDebugGalleryView()
+        case .appBannersGallery: AppBannersDebugGalleryView()
         case .networkErrorTLS: NetworkErrorPresentationDebugView()
         case .lookbookSandbox: DebugLookbookFeedSandboxView()
         case .likeButtonOnly: DebugLikeButtonOnlyView()

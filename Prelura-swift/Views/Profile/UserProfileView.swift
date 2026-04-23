@@ -15,6 +15,7 @@ struct UserProfileView: View {
     @State private var filterCondition: String? = nil
     @State private var filterMinPrice: String = ""
     @State private var filterMaxPrice: String = ""
+    @State private var listingScope: ProfileListingScope = .all
     @State private var activeListingsSheet: ProfileListingsSheet?
     @State private var topBrandsScrollId: String? = nil
     @State private var showProfilePhotoFullScreen: Bool = false
@@ -586,10 +587,29 @@ struct UserProfileView: View {
                     activeListingsSheet = .sort
                 }) {
                     HStack(spacing: Theme.Spacing.xs) {
-                        Text(L10n.string(profileSort.rawValue))
-                            .font(Theme.Typography.subheadline)
                         Image(systemName: "arrow.up.arrow.down")
                             .font(.system(size: 12))
+                        Text(L10n.string(profileSort.rawValue))
+                            .font(Theme.Typography.subheadline)
+                    }
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                            .fill(Theme.Colors.secondaryBackground)
+                    )
+                }
+                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
+
+                Button(action: {
+                    activeListingsSheet = .listingScope
+                }) {
+                    HStack(spacing: Theme.Spacing.xs) {
+                        Image(systemName: "eye")
+                            .font(.system(size: 12))
+                        Text(listingScope.shortTitle)
+                            .font(Theme.Typography.subheadline)
                     }
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.horizontal, Theme.Spacing.md)
@@ -612,6 +632,8 @@ struct UserProfileView: View {
                 userProfileFilterSheet
             case .shopSearch:
                 userProfileShopSearchSheetContent
+            case .listingScope:
+                userProfileListingScopeSheet
             }
         }
     }
@@ -626,6 +648,12 @@ struct UserProfileView: View {
     private var userProfileSortSheet: some View {
         OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false, chromeStyle: .navigationDone) {
             SortSheetContent(selectedSort: $profileSort, onApply: { activeListingsSheet = nil })
+        }
+    }
+
+    private var userProfileListingScopeSheet: some View {
+        OptionsSheet(title: L10n.string("Listing visibility"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false, chromeStyle: .navigationDone) {
+            ProfileListingScopeSheetContent(selected: $listingScope, onApply: { activeListingsSheet = nil })
         }
     }
 
@@ -752,6 +780,14 @@ struct UserProfileView: View {
     // MARK: - Items Grid
     private var itemsGridSection: some View {
         var items = viewModel.items
+        switch listingScope {
+        case .all:
+            items = items.filter { !$0.isHidden }
+        case .sold:
+            items = items.filter { $0.isSold }
+        case .hidden:
+            items = items.filter { $0.isHidden }
+        }
         if let selectedBrand = selectedBrand { items = items.filter { $0.brand == selectedBrand } }
         if let selectedCategory = selectedCategory {
             items = items.filter { ($0.categoryName ?? $0.category.name) == selectedCategory }
@@ -767,6 +803,9 @@ struct UserProfileView: View {
         case .priceAsc: items = items.sorted { $0.price < $1.price }
         case .priceDesc: items = items.sorted { $0.price > $1.price }
         }
+        if isMultiBuySelectionMode {
+            items = items.filter { $0.status.uppercased() == "ACTIVE" && !$0.isHidden }
+        }
         return Group {
             if items.isEmpty {
                 if let err = viewModel.errorMessage, !err.isEmpty, viewModel.items.isEmpty {
@@ -775,7 +814,7 @@ struct UserProfileView: View {
                     }
                     .padding(.top, Theme.Spacing.md)
                 } else {
-                    profileListingsEmptyState(hasAnyListings: !viewModel.items.isEmpty)
+                    profileListingsEmptyState(hasAnyListings: !viewModel.items.isEmpty, scope: listingScope)
                 }
             } else {
                 LazyVGrid(
@@ -831,18 +870,21 @@ struct UserProfileView: View {
     }
 
     /// Shown when the profile listings grid is empty: no listings yet, or no items match filters.
-    private func profileListingsEmptyState(hasAnyListings: Bool) -> some View {
-        VStack(spacing: Theme.Spacing.lg) {
+    private func profileListingsEmptyState(hasAnyListings: Bool, scope: ProfileListingScope) -> some View {
+        let message = profileListingsEmptyPrimaryMessage(hasAnyListings: hasAnyListings, scope: scope)
+        let showFilterHint = hasAnyListings
+            && message == L10n.string("No items match your filters")
+        return VStack(spacing: Theme.Spacing.lg) {
             Spacer(minLength: 40)
             Image(systemName: "tshirt")
                 .font(.system(size: 56))
                 .foregroundColor(Theme.Colors.secondaryText.opacity(0.7))
-            Text(hasAnyListings ? L10n.string("No items match your filters") : L10n.string("No listings yet"))
+            Text(message)
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Theme.Spacing.xl)
-            if hasAnyListings {
+            if showFilterHint {
                 Text(L10n.string("Try adjusting your filters"))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
@@ -851,6 +893,21 @@ struct UserProfileView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Spacing.xl)
+    }
+
+    private func profileListingsEmptyPrimaryMessage(hasAnyListings: Bool, scope: ProfileListingScope) -> String {
+        if !hasAnyListings { return L10n.string("No listings yet") }
+        let all = viewModel.items
+        switch scope {
+        case .all:
+            return L10n.string("No items match your filters")
+        case .sold:
+            if !all.contains(where: { $0.isSold }) { return L10n.string("No sold listings") }
+            return L10n.string("No items match your filters")
+        case .hidden:
+            if !all.contains(where: { $0.isHidden }) { return L10n.string("No hidden listings") }
+            return L10n.string("No items match your filters")
+        }
     }
 }
 

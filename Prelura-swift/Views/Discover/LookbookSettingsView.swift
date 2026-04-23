@@ -15,6 +15,18 @@ struct LookbookSettingsView: View {
     var body: some View {
         List {
             Section {
+                NavigationLink {
+                    LookbookMyItemsScreenView()
+                } label: {
+                    Text(L10n.string("My items"))
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.primaryText)
+                }
+            } header: {
+                Text(L10n.string("My posts"))
+            }
+
+            Section {
                 Toggle(isOn: Binding(
                     get: { hideLikeCountsStore.hideAllLikeCountsGlobally },
                     set: { hideLikeCountsStore.setHideAllLikeCountsGlobally($0) }

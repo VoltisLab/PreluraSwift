@@ -189,11 +189,11 @@ extension View {
         )
     }
 
-    /// Keeps the navigation bar from flashing the wrong scheme or material while scrolling (notably with `.searchable` + `.navigationBarDrawer`).
+    /// Home / Discover (and similar feeds): solid bar at rest, **automatic** visibility so the bar can soften as content scrolls under it (matches Profile / default stacks). Avoid `.visible`, which pins the bar and creates a sharp seam with `.searchable(.navigationBarDrawer)` above a white `ScrollView`.
     func preluraNavigationBarChrome() -> some View {
         self
             .toolbarBackground(Theme.Colors.background, for: .navigationBar)
-            .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+            .toolbarBackgroundVisibility(.automatic, for: .navigationBar)
             .toolbarColorScheme(Theme.effectiveColorScheme, for: .navigationBar)
     }
 }

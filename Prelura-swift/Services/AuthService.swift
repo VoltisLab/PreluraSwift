@@ -320,7 +320,8 @@ class AuthService: ObservableObject {
 
     private static func seedLoginEmail(forUsername username: String) -> String? {
         guard !username.isEmpty else { return nil }
-        return "\(username)@\(seedEmailDomainForLoginRetry)"
+        // Seed accounts from scripts typically use lowercase local parts; retry matches `user@wearhouse.co.uk`.
+        return "\(username.lowercased())@\(seedEmailDomainForLoginRetry)"
     }
 
     private static func shouldRetrySeedLoginWithEmailDomain(_ error: Error) -> Bool {
@@ -353,6 +354,7 @@ class AuthService: ObservableObject {
             query: query,
             variables: variables,
             additionalHeaders: loginAttemptHeaders(username: username, password: password),
+            includeAuthorization: false,
             responseType: LoginGraphQLResponse.self
         )
 
@@ -483,6 +485,7 @@ class AuthService: ObservableObject {
         let response: Payload = try await client.execute(
             query: mutation,
             variables: ["code": code],
+            includeAuthorization: false,
             responseType: Payload.self
         )
         return response.verifyAccount?.success ?? false
@@ -502,6 +505,7 @@ class AuthService: ObservableObject {
         let response: Payload = try await client.execute(
             query: mutation,
             variables: ["email": email],
+            includeAuthorization: false,
             responseType: Payload.self
         )
         return response.resendActivationEmail?.success ?? false
@@ -543,6 +547,7 @@ class AuthService: ObservableObject {
         let response: RegisterGraphQLResponse = try await client.execute(
             query: query,
             variables: variables,
+            includeAuthorization: false,
             responseType: RegisterGraphQLResponse.self
         )
         
@@ -625,7 +630,7 @@ class AuthService: ObservableObject {
         struct ResetPasswordResult: Decodable {
             let message: String?
         }
-        let response: Payload = try await client.execute(query: query, variables: ["email": email], responseType: Payload.self)
+        let response: Payload = try await client.execute(query: query, variables: ["email": email], includeAuthorization: false, responseType: Payload.self)
         if response.resetPassword == nil {
             throw AuthError.invalidResponse
         }
@@ -647,7 +652,7 @@ class AuthService: ObservableObject {
             let message: String?
         }
         let variables: [String: Any] = ["email": email, "code": code, "password": newPassword]
-        let response: Payload = try await client.execute(query: query, variables: variables, responseType: Payload.self)
+        let response: Payload = try await client.execute(query: query, variables: variables, includeAuthorization: false, responseType: Payload.self)
         if response.passwordReset == nil {
             throw AuthError.invalidResponse
         }

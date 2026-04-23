@@ -77,7 +77,12 @@ struct NetworkErrorPresentationDebugView: View {
                     .foregroundStyle(Theme.Colors.primaryText)
             }
 
-            FeedNetworkErrorPresentation(message: mapped, title: title, onTryAgain: {})
+            FeedNetworkErrorPresentation(
+                message: mapped,
+                title: title,
+                onTryAgain: {},
+                appliesOuterScreenGutter: false
+            )
         }
         .padding(.bottom, Theme.Spacing.lg)
     }

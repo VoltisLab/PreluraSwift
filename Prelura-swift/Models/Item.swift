@@ -176,6 +176,9 @@ struct Item: Identifiable, Hashable {
     /// True when product status is SOLD (hide Buy/Offer, show sold state).
     var isSold: Bool { status.uppercased() == "SOLD" }
 
+    /// Hidden from the public shop (seller or admin) — still returned for the owner in `userProducts` when the API includes it.
+    var isHidden: Bool { status.uppercased() == "HIDDEN" }
+
     /// Path segment for universal links and sharing (`/item/{slug}`).
     var publicWebItemSlug: String {
         let lc = listingCode?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

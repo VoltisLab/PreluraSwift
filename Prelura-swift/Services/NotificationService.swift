@@ -166,8 +166,13 @@ final class NotificationService {
             let isRead: Bool?
             let createdAt: String?
             let metaDict: [String: String]?
+            let productThumbnailUrl: String?
+            let relatedProductIsMysteryBox: Bool?
             let sender: RawSender?
-            enum CodingKeys: String, CodingKey { case id, message, model, modelId, modelGroup, isRead, createdAt, meta, sender }
+            enum CodingKeys: String, CodingKey {
+                case id, message, model, modelId, modelGroup, isRead, createdAt, meta, sender
+                case productThumbnailUrl, relatedProductIsMysteryBox
+            }
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
                 let idValue: String
@@ -182,6 +187,8 @@ final class NotificationService {
                 isRead = try c.decodeIfPresent(Bool.self, forKey: .isRead)
                 createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
                 sender = try c.decodeIfPresent(RawSender.self, forKey: .sender)
+                productThumbnailUrl = try c.decodeIfPresent(String.self, forKey: .productThumbnailUrl)
+                relatedProductIsMysteryBox = try c.decodeIfPresent(Bool.self, forKey: .relatedProductIsMysteryBox)
 
                 if c.contains(.meta) {
                     if try c.decodeNil(forKey: .meta) {
@@ -289,7 +296,9 @@ final class NotificationService {
                 modelGroup: raw.modelGroup,
                 isRead: raw.isRead ?? false,
                 createdAt: createdAt,
-                meta: BellNotificationMysteryThumbnailMigration.migratedMeta(from: raw.metaDict)
+                meta: raw.metaDict,
+                productThumbnailUrl: raw.productThumbnailUrl,
+                relatedProductIsMysteryBox: raw.relatedProductIsMysteryBox
             )
         }
         return (parsed, total)
@@ -308,7 +317,7 @@ final class NotificationService {
         return count
     }
 
-    /// Marks every unread notification that counts toward the home bell badge as read (same rules and pagination cap as `countUnreadBellEligibleNotifications`). Call when the user opens the notifications list so the bell clears after viewing.
+    /// Marks every unread notification that counts toward the home bell badge as read (same rules and pagination cap as `countUnreadBellEligibleNotifications`). On iOS, ``NotificationsListView`` calls this on the **second** consecutive visit to the list (or after individual row taps via `readNotifications`); the first visit only primes—no mutation—so “accent = unread” until tap or second open.
     func markAllBellEligibleUnreadRead(pageCount: Int = 40, maxPages: Int = 6) async throws {
         var ids: [Int] = []
         for page in 1...maxPages {

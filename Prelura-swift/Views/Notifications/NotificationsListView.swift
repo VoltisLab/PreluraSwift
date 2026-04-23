@@ -6,6 +6,8 @@ import Shimmer
 /// **Row art:** `relatedProductIsMysteryBox` (GraphQL, when present), meta flags, and legacy “static mystery cover” URL heuristics select **animated** mystery art; otherwise JPEG comes from the server field, meta image keys, or a one-shot `product(id:)` when still missing. Chat rows use the same 30-minute unread / hide-read policy as `origin/main` (`AppNotification.shouldShowOnNotificationsPage`).
 ///
 /// **Realtime:** There is no dedicated in-app notifications WebSocket in this client; the list refreshes from GraphQL on open, pull-to-refresh, toolbar reload, app foreground (`scenePhase`), and after push-driven `wearhouseInAppNotificationsDidChange` flows elsewhere. Last successful page is cached per username for instant paint offline.
+///
+/// **Read / accent rules:** Row fill = unread (`!isRead`). Tapping a row calls `readNotifications` for that id immediately. Untapped unreads stay unread until the user opens this screen **twice** (second visit runs ``NotificationService/markAllBellEligibleUnreadRead()``); pull/foreground reloads do not advance that gate. Primed state is per-account in `UserDefaults` (backend only sees `readNotifications`—no new API).
 struct NotificationsListView: View {
     /// Matches `NotificationRowView` vertical tightening (20% less than former 4pt).
     private static let listRowInsetVertical: CGFloat = 4 * 0.8
@@ -35,6 +37,8 @@ struct NotificationsListView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var imageReloadTokenForRows: Int = 0
     @State private var lastBecomeActiveReload: Date?
+    /// Set from the two-visit gate in `onAppear` only; consumed on the next **successful** ``reloadFromStart()`` (not pull/foreground).
+    @State private var shouldMarkBellEligibleUnreadAfterNextSuccessfulReload = false
     /// One GraphQL page size (matches backend `pageCount`).
     private let pageSize = 15
     /// Initial load: keep paging the API until we have `pageSize` **visible** rows (after chat-age filtering) or the feed ends. A low cap left users with 1–2 non-chat rows when recent pages were mostly DMs.
@@ -171,6 +175,7 @@ struct NotificationsListView: View {
         .onAppear {
             notificationService.updateAuthToken(authService.authToken)
             bellUnreadStore.scheduleRefresh(authService: authService)
+            applyNotificationsSecondVisitBulkReadGate()
             restoreNotificationsFromCacheIfAvailable()
             Task { await reloadFromStart() }
         }
@@ -186,10 +191,30 @@ struct NotificationsListView: View {
             Task { await reloadFromStart() }
         }
         .onDisappear {
-            markLoadedUnreadNotificationsReadWhenLeavingScreen()
             NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
         }
         .toolbar(.hidden, for: .tabBar)
+    }
+
+    /// Per-account: `false` until first list open primes; second open runs bulk `readNotifications` then clears.
+    private static func notificationsSecondVisitPrimedKey(accountKey: String) -> String {
+        "wearhouse.notifications.secondVisitPrimed.\(accountKey)"
+    }
+
+    /// First visit: prime for next time, no bulk. Second visit: bulk after successful reload; primed cleared only after mutation succeeds.
+    private func applyNotificationsSecondVisitBulkReadGate() {
+        guard let accountKey = InAppNotificationsCache.accountKey(username: authService.username) else {
+            shouldMarkBellEligibleUnreadAfterNextSuccessfulReload = false
+            return
+        }
+        let key = Self.notificationsSecondVisitPrimedKey(accountKey: accountKey)
+        let primed = UserDefaults.standard.bool(forKey: key)
+        if primed {
+            shouldMarkBellEligibleUnreadAfterNextSuccessfulReload = true
+        } else {
+            shouldMarkBellEligibleUnreadAfterNextSuccessfulReload = false
+            UserDefaults.standard.set(true, forKey: key)
+        }
     }
 
     private func restoreNotificationsFromCacheIfAvailable() {
@@ -244,9 +269,16 @@ struct NotificationsListView: View {
             isBackfillingSegment = false
             isReloadingNotifications = false
         }
-        // Do **not** call ``markAllBellEligibleUnreadRead`` on every list load/refresh. That marks almost everything
-        // read on the server; if `notifications` only returns **unread** rows, the next fetch looks “wiped”
-        // (often a single new unread, e.g. a mystery offer). Bell count still refreshes from the unread counter API.
+        let runOpenMarkRead = await MainActor.run {
+            if shouldMarkBellEligibleUnreadAfterNextSuccessfulReload {
+                shouldMarkBellEligibleUnreadAfterNextSuccessfulReload = false
+                return true
+            }
+            return false
+        }
+        if runOpenMarkRead {
+            await markBellEligibleUnreadReadOnNotificationsOpened()
+        }
         await MainActor.run {
             bellUnreadStore.scheduleRefresh(authService: authService)
             NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
@@ -474,17 +506,13 @@ struct NotificationsListView: View {
         .refreshable { await reloadFromStart() }
     }
 
-    /// Full-row outline for unread rows; disappears once the row is read (tap detail or leaving this screen).
+    /// Unread rows: light primary tint fill across the full row (no stroke). Clears when read (tap) or after a **second** visit to this list without tap (bulk read).
     @ViewBuilder
     private func notificationListRowChrome(isUnread: Bool) -> some View {
         let corner: CGFloat = 12
         if isUnread {
             RoundedRectangle(cornerRadius: corner, style: .continuous)
-                .fill(Theme.Colors.background)
-                .overlay(
-                    RoundedRectangle(cornerRadius: corner, style: .continuous)
-                        .stroke(Theme.primaryColor, lineWidth: 1.5)
-                )
+                .fill(Theme.primaryColor.opacity(0.1))
         } else {
             Theme.Colors.background
         }
@@ -503,31 +531,30 @@ struct NotificationsListView: View {
         }
     }
 
-    /// When the user leaves the notifications hub, treat loaded bell-list rows as seen: accent clears on return via cache + server (we do not mark all unread on every refresh — see ``reloadFromStart()``).
-    private func markLoadedUnreadNotificationsReadWhenLeavingScreen() {
-        let idSet = Set(
-            notifications
-                .filter { !$0.isRead && $0.shouldShowOnNotificationsPage() }
-                .compactMap { Int($0.id) }
-        )
-        guard !idSet.isEmpty else { return }
-        let username = authService.username
-        let merged = notifications.map { n in
-            guard let iid = Int(n.id), idSet.contains(iid) else { return n }
-            return n.withIsRead(true)
-        }
-        if let key = InAppNotificationsCache.accountKey(username: username), !merged.isEmpty {
-            InAppNotificationsCache.save(merged, accountKey: key)
-        }
+    /// Second list visit only (see ``applyNotificationsSecondVisitBulkReadGate()``): bell-eligible unreads → `readNotifications` batch; then clear primed so the next pair of visits repeats the rule.
+    private func markBellEligibleUnreadReadOnNotificationsOpened() async {
         notificationService.updateAuthToken(authService.authToken)
-        Task {
-            _ = try? await notificationService.readNotifications(notificationIds: Array(idSet))
+        do {
+            try await notificationService.markAllBellEligibleUnreadRead()
+        } catch {
             await MainActor.run {
-                bellUnreadStore.scheduleRefresh(authService: authService)
+                shouldMarkBellEligibleUnreadAfterNextSuccessfulReload = true
+            }
+            return
+        }
+        await MainActor.run {
+            if let accountKey = InAppNotificationsCache.accountKey(username: authService.username) {
+                UserDefaults.standard.set(false, forKey: Self.notificationsSecondVisitPrimedKey(accountKey: accountKey))
+            }
+            notifications = notifications.map { n in
+                n.shouldCountTowardBellBadge ? n.withIsRead(true) : n
+            }
+            if let key = InAppNotificationsCache.accountKey(username: authService.username), !notifications.isEmpty {
+                InAppNotificationsCache.save(notifications, accountKey: key)
             }
         }
     }
-    
+
     private func deleteNotification(_ notification: AppNotification) {
         guard let idInt = Int(notification.id) else { return }
         Task {

@@ -7,13 +7,43 @@ import Foundation
 ///
 /// This app uses the backend's GraphQL API at the URLs below; schema and endpoints are shared with the Flutter app and other clients.
 struct Constants {
+    #if DEBUG
+    /// Set **`true`** only when `prelura-app` is running on this Mac (`docker compose up -d`, GraphQL on **8006**). Default **`false`** uses production `prelura.voltislabs.uk` so Debug builds work without Docker; if you see “Unable to connect” on login, either start local Docker or leave this **`false`**.
+    static let preluraUseLocalDockerBackend = false
+    private static let localDockerRoot = "http://127.0.0.1:8006"
+    private static let localDockerWSRoot = "ws://127.0.0.1:8006"
+    #endif
+
     // GraphQL Endpoints (backend: https://github.com/VoltisLab/prelura-app)
-    static let graphQLBaseURL = "https://prelura.voltislabs.uk/graphql/"
-    static let graphQLUploadURL = "https://prelura.voltislabs.uk/graphql/uploads/"
+    static var graphQLBaseURL: String {
+        #if DEBUG
+        if preluraUseLocalDockerBackend { return "\(localDockerRoot)/graphql/" }
+        #endif
+        return "https://prelura.voltislabs.uk/graphql/"
+    }
+
+    static var graphQLUploadURL: String {
+        #if DEBUG
+        if preluraUseLocalDockerBackend { return "\(localDockerRoot)/graphql/uploads/" }
+        #endif
+        return "https://prelura.voltislabs.uk/graphql/uploads/"
+    }
+
     /// WebSocket for chat (same host as GraphQL so messages send/save to the same backend).
-    static let chatWebSocketBaseURL = "wss://prelura.voltislabs.uk/ws/chat/"
+    static var chatWebSocketBaseURL: String {
+        #if DEBUG
+        if preluraUseLocalDockerBackend { return "\(localDockerWSRoot)/ws/chat/" }
+        #endif
+        return "wss://prelura.voltislabs.uk/ws/chat/"
+    }
+
     /// Django `ConversationsConsumer`: inbox list sync + typing for threads the user is in (not per-room chat).
-    static let conversationsWebSocketURL = "wss://prelura.voltislabs.uk/ws/conversations/"
+    static var conversationsWebSocketURL: String {
+        #if DEBUG
+        if preluraUseLocalDockerBackend { return "\(localDockerWSRoot)/ws/conversations/" }
+        #endif
+        return "wss://prelura.voltislabs.uk/ws/conversations/"
+    }
     
     /// Live consumer site: help, legal, profiles, invites, and **generated share links** (`/item/*`, `/lookbook/*`). Must match production web.
     static let publicWebsiteBaseURL = "https://wearhouse.co.uk"

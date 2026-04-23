@@ -27,6 +27,12 @@ struct ItemDetailView: View {
     @State private var showMarkSoldError: Bool = false
     @State private var deleteErrorMessage: String?
     @State private var markSoldErrorMessage: String?
+    @State private var showHideFromShopConfirm: Bool = false
+    @State private var showShowInShopConfirm: Bool = false
+    @State private var showVisibilityError: Bool = false
+    @State private var visibilityErrorMessage: String?
+    /// `product.status` before “Hide from shop” (same session) so unhide can restore `SOLD` vs `ACTIVE`.
+    @State private var statusStashBeforeHide: String?
     @State private var showGuestSignInPrompt: Bool = false
     /// When `shopAllBag` is provided (e.g. Shop All), user must enable this via the toolbar bag button before "Add to bag" appears.
     @State private var isTryCartToolbarActive: Bool = false
@@ -112,7 +118,7 @@ struct ItemDetailView: View {
             }
 
             // Bottom Action Buttons
-            if !isCurrentUser, !effectiveItem.isSold {
+            if !isCurrentUser, !effectiveItem.isSold, !effectiveItem.isHidden {
                 bottomActionButtons
             }
         }
@@ -272,6 +278,62 @@ struct ItemDetailView: View {
         } message: {
             if let msg = markSoldErrorMessage { Text(msg) }
         }
+        .alert(L10n.string("Hide from shop?"), isPresented: $showHideFromShopConfirm) {
+            Button(L10n.string("Cancel"), role: .cancel) { showHideFromShopConfirm = false }
+            Button(L10n.string("Hide from shop"), role: .destructive) {
+                guard let productId = item.productId else { return }
+                Task {
+                    do {
+                        try await viewModel.updateListingStatus(productId: productId, status: "HIDDEN")
+                        if let updated = await viewModel.loadProduct(productId: productId) {
+                            await MainActor.run { displayedItem = updated }
+                        }
+                        await MainActor.run { showHideFromShopConfirm = false }
+                    } catch {
+                        await MainActor.run {
+                            visibilityErrorMessage = L10n.userFacingError(error)
+                            showVisibilityError = true
+                            showHideFromShopConfirm = false
+                        }
+                    }
+                }
+            }
+        } message: {
+            Text(L10n.string("Your listing will be hidden from your shop. You can show it again anytime."))
+        }
+        .alert(L10n.string("Show in shop?"), isPresented: $showShowInShopConfirm) {
+            Button(L10n.string("Cancel"), role: .cancel) { showShowInShopConfirm = false }
+            Button(L10n.string("Show in shop")) {
+                guard let productId = item.productId else { return }
+                let raw = (statusStashBeforeHide ?? "").uppercased()
+                let restore: String = (raw == "SOLD" || raw == "ACTIVE" || raw == "INACTIVE") ? raw : "ACTIVE"
+                Task {
+                    do {
+                        try await viewModel.updateListingStatus(productId: productId, status: restore)
+                        if let updated = await viewModel.loadProduct(productId: productId) {
+                            await MainActor.run { displayedItem = updated }
+                        }
+                        await MainActor.run {
+                            statusStashBeforeHide = nil
+                            showShowInShopConfirm = false
+                        }
+                    } catch {
+                        await MainActor.run {
+                            visibilityErrorMessage = L10n.userFacingError(error)
+                            showVisibilityError = true
+                            showShowInShopConfirm = false
+                        }
+                    }
+                }
+            }
+        } message: {
+            Text(L10n.string("This listing will be visible in your shop again if it is still available."))
+        }
+        .alert(L10n.string("Error"), isPresented: $showVisibilityError) {
+            Button(L10n.string("OK")) { showVisibilityError = false; visibilityErrorMessage = nil }
+        } message: {
+            if let msg = visibilityErrorMessage { Text(msg) }
+        }
         .toolbar(.hidden, for: .tabBar)
     }
     
@@ -318,6 +380,8 @@ struct ItemDetailView: View {
             },
             onDelete: { showProductOptionsSheet = false; showDeleteConfirm = true },
             onMarkAsSold: { showProductOptionsSheet = false; showMarkSoldConfirm = true },
+            onHideFromShop: { showProductOptionsSheet = false; showHideFromShopConfirm = true },
+            onShowInShop: { showProductOptionsSheet = false; showShowInShopConfirm = true },
             onCopyLink: { copyProductLink(); showProductOptionsSheet = false }
         )
     }
@@ -1082,6 +1146,8 @@ struct ProductOptionsSheet: View {
     var onCopyToNewListing: () -> Void = {}
     var onDelete: () -> Void = {}
     var onMarkAsSold: () -> Void = {}
+    var onHideFromShop: () -> Void = {}
+    var onShowInShop: () -> Void = {}
     var onCopyLink: () -> Void = {}
 
     private var optionDivider: some View {
@@ -1091,49 +1157,50 @@ struct ProductOptionsSheet: View {
             .padding(.horizontal, Theme.Spacing.md)
     }
 
-    /// Height for `.presentationDetents(.height(...))`: header (handle + title + close) + padded rows + dividers (matches `MenuRowContent` vertical padding).
-    private var sheetHeightDetent: CGFloat {
-        let header: CGFloat = 108
-        let row: CGFloat = 54
-        let contentVerticalPadding: CGFloat = 32
-        let rows = isCurrentUser ? 6 : 4
-        let dividers: CGFloat = CGFloat(max(0, rows - 1)) * 0.5
-        return header + contentVerticalPadding + CGFloat(rows) * row + dividers + 12
-    }
-
     var body: some View {
         OptionsSheet(
             title: L10n.string("Options"),
             onDismiss: onDismiss,
-            detents: [.height(sheetHeightDetent)],
+            detents: [.medium, .large],
             useCustomCornerRadius: false,
             fillsAvailableVerticalSpace: false
         ) {
-            VStack(alignment: .leading, spacing: 0) {
-                if isCurrentUser {
-                    MenuItemRow(title: L10n.string("Edit listing"), icon: "square.and.pencil", action: { onEdit() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
-                    optionDivider
-                    MenuItemRow(title: L10n.string("Copy to a new listing"), icon: "doc.on.doc", action: { onCopyToNewListing() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
-                    optionDivider
-                    MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
-                    optionDivider
-                    MenuItemRow(title: L10n.string("Send"), icon: "paperplane", action: { onSendToMessages() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
-                    optionDivider
-                    MenuItemRow(title: L10n.string("Mark as sold"), icon: "checkmark.circle", action: { onMarkAsSold() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
-                    optionDivider
-                    MenuItemRow(title: L10n.string("Delete listing"), icon: "trash", action: { onDelete() }, isDestructive: true)
-                } else {
-                    MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
-                    optionDivider
-                    MenuItemRow(title: L10n.string("Send"), icon: "paperplane", action: { onSendToMessages() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
-                    optionDivider
-                    MenuItemRow(title: L10n.string("Report listing"), icon: "flag", action: { onReport() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
-                    optionDivider
-                    MenuItemRow(title: L10n.string("Copy link"), icon: "link", action: { onCopyLink() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if isCurrentUser {
+                        MenuItemRow(title: L10n.string("Edit listing"), icon: "square.and.pencil", action: { onEdit() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                        optionDivider
+                        MenuItemRow(title: L10n.string("Copy to a new listing"), icon: "doc.on.doc", action: { onCopyToNewListing() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                        optionDivider
+                        MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                        optionDivider
+                        MenuItemRow(title: L10n.string("Send"), icon: "paperplane", action: { onSendToMessages() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                        optionDivider
+                        if !item.isHidden, !item.isSold {
+                            MenuItemRow(title: L10n.string("Mark as sold"), icon: "checkmark.circle", action: { onMarkAsSold() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                            optionDivider
+                        }
+                        if item.isHidden {
+                            MenuItemRow(title: L10n.string("Show in shop"), icon: "eye", action: { onShowInShop() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                            optionDivider
+                        } else {
+                            MenuItemRow(title: L10n.string("Hide from shop"), icon: "eye.slash", action: { onHideFromShop() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                            optionDivider
+                        }
+                        MenuItemRow(title: L10n.string("Delete listing"), icon: "trash", action: { onDelete() }, isDestructive: true)
+                    } else {
+                        MenuItemRow(title: L10n.string("Share"), icon: "square.and.arrow.up", action: { onShare() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                        optionDivider
+                        MenuItemRow(title: L10n.string("Send"), icon: "paperplane", action: { onSendToMessages() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                        optionDivider
+                        MenuItemRow(title: L10n.string("Report listing"), icon: "flag", action: { onReport() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                        optionDivider
+                        MenuItemRow(title: L10n.string("Copy link"), icon: "link", action: { onCopyLink() }, iconAndSubtitleColor: Theme.Colors.secondaryText)
+                    }
                 }
+                .padding(.vertical, Theme.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.vertical, Theme.Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

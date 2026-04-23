@@ -229,16 +229,11 @@ class SellViewModel: ObservableObject {
                     scheduledQuotaUserKey = key
                 }
 
-                guard let cover = MysteryBoxListingCoverImage.makeImage(),
-                      let jpeg = cover.jpegData(compressionQuality: 0.85) else {
-                    throw NSError(domain: "SellViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare listing image."])
-                }
+                // No uploaded listing images: in-app art is `MysteryBoxAnimatedMediaView` only. Server must allow empty `imagesUrl` for mystery listings.
+                let imageUrl: [(url: String, thumbnail: String)] = []
 
-                fileUploadService.setAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
                 productService.updateAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
                 materialsService.setAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
-
-                let imageUrl = try await fileUploadService.uploadProductImages([jpeg])
 
                 let brandParts = brands.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
                 guard !brandParts.isEmpty else {

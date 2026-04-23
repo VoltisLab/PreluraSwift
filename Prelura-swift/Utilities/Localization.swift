@@ -245,6 +245,18 @@ enum L10n {
         // Home
         "Search items, brands or styles": "Αναζήτηση προϊόντων, εμπορικών σημάτων ή στυλ",
         "All": "Όλα",
+        "Hidden": "Κρυφό",
+        "Listing visibility": "Ορατότητα αγγελιών",
+        "No sold listings": "Δεν υπάρχουν πωλημένες αγγελίες",
+        "No hidden listings": "Δεν υπάρχουν κρυφές αγγελίες",
+        "Hide from shop": "Απόκρυψη από το κατάστημα",
+        "Show in shop": "Εμφάνιση στο κατάστημα",
+        "Hide from shop?": "Απόκρυψη από το κατάστημα;",
+        "Show in shop?": "Εμφάνιση στο κατάστημα;",
+        "Your listing will be hidden from your shop. You can show it again anytime.":
+            "Η αγγελία σας θα αποκρυφτεί από το κατάστημά σας. Μπορείτε να την εμφανίσετε ξανά οποτεδήποτε.",
+        "This listing will be visible in your shop again if it is still available.":
+            "Η αγγελία θα είναι ξανά ορατή στο κατάστημά σας, εφόσον εξακολουθεί να είναι διαθέσιμη.",
         "Women": "Γυναίκες",
         "Men": "Άνδρες",
         "Kids": "Παιδικά",
@@ -298,6 +310,8 @@ enum L10n {
         "Lookbook": "Lookbook",
         "Explore Lookbook": "Εξερεύνηση Lookbook",
         "Lookbook settings": "Ρυθμίσεις Lookbook",
+        "My posts": "Οι δημοσιεύσεις μου",
+        "My items": "Τα στοιχεία μου",
         "Lookbook hub settings subtitle": "Προτιμήσεις και επιλογές για το Lookbook.",
         "Lookbook settings footer": "Εδώ θα εμφανίζονται επιλογές που αφορούν τις δημοσιεύσεις και την εμπειρία Lookbook.",
         "Show lookbook shortcuts": "Εμφάνιση συντομεύσεων Lookbook",
@@ -990,6 +1004,8 @@ extension L10n {
         if lower.contains("variable") && lower.contains("$") { return false }
         if lower.contains("operation") && lower.contains("document") { return false }
         if lower.contains("swift.decoding") || lower.contains("swift/decoding") { return false }
+        if lower.contains("decoding") && lower.contains("signature") { return false }
+        if lower.contains("jwt") && (lower.contains("invalid") || lower.contains("expired") || lower.contains("malformed")) { return false }
         if lower == "the operation couldn’t be completed." { return false }
         if lower.hasPrefix("error domain=") { return false }
         return true

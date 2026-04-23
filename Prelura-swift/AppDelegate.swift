@@ -25,6 +25,8 @@ extension Notification.Name {
     static let wearhouseDeviceTokenDidUpdate = Notification.Name("WearhouseDeviceTokenDidUpdate")
     /// Posted when vacation mode (or other profile flags) are updated so Profile can refresh.
     static let wearhouseUserProfileDidUpdate = Notification.Name("WearhouseUserProfileDidUpdate")
+    /// Seller listing hide/show or status changed — refresh my-profile shop grid.
+    static let wearhouseSellerListingsDidChange = Notification.Name("WearhouseSellerListingsDidChange")
     /// Posted when the user views a product so Discover (and Recently viewed) can refresh.
     static let wearhouseRecentlyViewedDidUpdate = Notification.Name("WearhouseRecentlyViewedDidUpdate")
     /// Posted after admin wipes orders/payments so Dashboard can refetch `userEarnings`.
@@ -452,7 +454,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
             }
-            completionHandler([])
+            // Still show a foreground banner; reposted copy is added asynchronously (empty options hid all banners).
+            completionHandler([.banner, .badge, .sound])
             return
         }
         if Self.shouldRepostForegroundNotificationWithLowercaseUsername(notification) {
@@ -466,7 +469,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
             }
-            completionHandler([])
+            completionHandler([.banner, .badge, .sound])
             return
         }
         if let mid = u["gcm.message_id"] {

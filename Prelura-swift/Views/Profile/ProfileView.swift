@@ -24,6 +24,7 @@ enum ProfileListingsSheet: Identifiable, Equatable {
     case sort
     case filter
     case shopSearch
+    case listingScope
     var id: Self { self }
 }
 
@@ -42,6 +43,7 @@ struct ProfileView: View {
     @State private var profileImage: UIImage? = nil
     @State private var isVacationMode: Bool = false
     @State private var profileSort: ProfileSortOption = .newestFirst
+    @State private var listingScope: ProfileListingScope = .all
     @State private var filterCondition: String? = nil
     @State private var filterMinPrice: String = ""
     @State private var filterMaxPrice: String = ""
@@ -136,6 +138,9 @@ struct ProfileView: View {
             }
             .onChange(of: scrollPosition) { _, new in
                 tabCoordinator.reportAtTop(tab: 4, isAtTop: new == topId)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .wearhouseSellerListingsDidChange)) { _ in
+                viewModel.refresh()
             }
             .background(Theme.Colors.background)
             .refreshable {
@@ -728,10 +733,29 @@ struct ProfileView: View {
                     activeListingsSheet = .sort
                 }) {
                     HStack(spacing: Theme.Spacing.xs) {
-                        Text(L10n.string(profileSort.rawValue))
-                            .font(Theme.Typography.subheadline)
                         Image(systemName: "arrow.up.arrow.down")
                             .font(.system(size: 12))
+                        Text(L10n.string(profileSort.rawValue))
+                            .font(Theme.Typography.subheadline)
+                    }
+                    .foregroundColor(Theme.Colors.secondaryText)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.Glass.cornerRadius)
+                            .fill(Theme.Colors.secondaryBackground)
+                    )
+                }
+                .buttonStyle(HapticTapButtonStyle(haptic: { HapticManager.selection() }))
+
+                Button(action: {
+                    activeListingsSheet = .listingScope
+                }) {
+                    HStack(spacing: Theme.Spacing.xs) {
+                        Image(systemName: "eye")
+                            .font(.system(size: 12))
+                        Text(listingScope.shortTitle)
+                            .font(Theme.Typography.subheadline)
                     }
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.horizontal, Theme.Spacing.md)
@@ -754,6 +778,8 @@ struct ProfileView: View {
                 profileFilterSheet
             case .shopSearch:
                 shopSearchSheetContent
+            case .listingScope:
+                profileListingScopeSheet
             }
         }
     }
@@ -769,6 +795,12 @@ struct ProfileView: View {
     private var profileSortSheet: some View {
         OptionsSheet(title: L10n.string("Sort"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false, chromeStyle: .navigationDone) {
             SortSheetContent(selectedSort: $profileSort, onApply: { activeListingsSheet = nil })
+        }
+    }
+
+    private var profileListingScopeSheet: some View {
+        OptionsSheet(title: L10n.string("Listing visibility"), onDismiss: { activeListingsSheet = nil }, useCustomCornerRadius: false, chromeStyle: .navigationDone) {
+            ProfileListingScopeSheetContent(selected: $listingScope, onApply: { activeListingsSheet = nil })
         }
     }
 
@@ -905,7 +937,15 @@ struct ProfileView: View {
     // MARK: - Items Grid Section
     private var itemsGridSection: some View {
         var items = viewModel.userItems
-        
+        switch listingScope {
+        case .all:
+            items = items.filter { !$0.isHidden }
+        case .sold:
+            items = items.filter { $0.isSold }
+        case .hidden:
+            items = items.filter { $0.isHidden }
+        }
+
         if !selectedBrands.isEmpty {
             items = items.filter { item in
                 guard let b = item.brand else { return false }
@@ -939,13 +979,17 @@ struct ProfileView: View {
             items = items.sorted { $0.price > $1.price }
         }
 
+        if isMultiBuySelectionMode {
+            items = items.filter { $0.status.uppercased() == "ACTIVE" && !$0.isHidden }
+        }
+
         return Group {
             if items.isEmpty {
                 let hideEmptyForNetwork = !(viewModel.errorMessage?.isEmpty ?? true) && viewModel.userItems.isEmpty
                 if hideEmptyForNetwork {
                     Color.clear.frame(height: 1)
                 } else {
-                    profileListingsEmptyState(hasAnyListings: !viewModel.userItems.isEmpty)
+                    profileListingsEmptyState(hasAnyListings: !viewModel.userItems.isEmpty, scope: listingScope)
                 }
             } else {
                 LazyVGrid(
@@ -997,18 +1041,21 @@ struct ProfileView: View {
         }
     }
 
-    private func profileListingsEmptyState(hasAnyListings: Bool) -> some View {
-        VStack(spacing: Theme.Spacing.lg) {
+    private func profileListingsEmptyState(hasAnyListings: Bool, scope: ProfileListingScope) -> some View {
+        let message = profileListingsEmptyPrimaryMessage(hasAnyListings: hasAnyListings, scope: scope)
+        let showFilterHint = hasAnyListings
+            && message == L10n.string("No items match your filters")
+        return VStack(spacing: Theme.Spacing.lg) {
             Spacer(minLength: 40)
             Image(systemName: "tshirt")
                 .font(.system(size: 56))
                 .foregroundColor(Theme.Colors.secondaryText.opacity(0.7))
-            Text(hasAnyListings ? L10n.string("No items match your filters") : L10n.string("No listings yet"))
+            Text(message)
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Theme.Spacing.xl)
-            if hasAnyListings {
+            if showFilterHint {
                 Text(L10n.string("Try adjusting your filters"))
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
@@ -1017,6 +1064,21 @@ struct ProfileView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Spacing.xl)
+    }
+
+    private func profileListingsEmptyPrimaryMessage(hasAnyListings: Bool, scope: ProfileListingScope) -> String {
+        if !hasAnyListings { return L10n.string("No listings yet") }
+        let all = viewModel.userItems
+        switch scope {
+        case .all:
+            return L10n.string("No items match your filters")
+        case .sold:
+            if !all.contains(where: { $0.isSold }) { return L10n.string("No sold listings") }
+            return L10n.string("No items match your filters")
+        case .hidden:
+            if !all.contains(where: { $0.isHidden }) { return L10n.string("No hidden listings") }
+            return L10n.string("No items match your filters")
+        }
     }
 }
 
@@ -1120,6 +1182,25 @@ struct WardrobeItemCard: View {
                     // Like count overlay - shared component (56pt tap area, same visual)
                     if !mysteryBoxAddChipMode {
                         LikeButtonView(isLiked: item.isLiked, likeCount: item.likeCount, action: { onLikeTap?() })
+                            .padding(Theme.Spacing.xs)
+                    }
+                }
+                .overlay(alignment: .topLeading) {
+                    if item.isHidden {
+                        Text(L10n.string("Hidden"))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color.black.opacity(0.55)))
+                            .padding(Theme.Spacing.xs)
+                    } else if item.isSold {
+                        Text(L10n.string("Sold"))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color.black.opacity(0.55)))
                             .padding(Theme.Spacing.xs)
                     }
                 }

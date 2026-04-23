@@ -1,56 +1,16 @@
 import SwiftUI
 
-/// Kraft / cardboard tones for the isometric mystery box (not flat white).
-private enum MysteryCardboard {
-    static let topA = Color(red: 0.88, green: 0.78, blue: 0.64)
-    static let topB = Color(red: 0.72, green: 0.58, blue: 0.42)
-    static let leftA = Color(red: 0.66, green: 0.50, blue: 0.36)
-    static let leftB = Color(red: 0.46, green: 0.33, blue: 0.22)
-    static let rightA = Color(red: 0.78, green: 0.62, blue: 0.44)
-    static let rightB = Color(red: 0.54, green: 0.40, blue: 0.28)
+/// Isometric “box” faces on brand (purple / white) — no kraft brown, so small tiles don’t look like a second raster asset.
+private enum MysteryBoxGloss {
+    static let topA = Color.white.opacity(0.52)
+    static let topB = Color.white.opacity(0.22)
+    static let leftA = Color(red: 0.78, green: 0.58, blue: 0.95)
+    static let leftB = Color(red: 0.42, green: 0.18, blue: 0.62)
+    static let rightA = Color(red: 0.88, green: 0.68, blue: 0.98)
+    static let rightB = Color(red: 0.52, green: 0.28, blue: 0.78)
 }
 
-/// Angled highlight band sweeping **right → left** across the tile (ray-of-light look).
-private struct MysteryBoxLightSweepOverlay: View {
-    private let cycle: TimeInterval = 2.65
-    private let tiltDegrees: CGFloat = -26
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 45.0, paused: false)) { timeline in
-            GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
-                let u = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: cycle) / cycle
-                let span = max(hypot(w, h) * 0.5, 1)
-                // u: 0…1 → band travels from right side toward left
-                let travel = (CGFloat(u) - 0.5) * (w + span * 1.1)
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                .clear,
-                                Color.white.opacity(0.035),
-                                Color.white.opacity(0.09),
-                                Color.white.opacity(0.14),
-                                Color.white.opacity(0.09),
-                                Color.white.opacity(0.035),
-                                .clear,
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: span * 0.28, height: max(w, h) * 2.35)
-                    .rotationEffect(.degrees(tiltDegrees))
-                    .position(x: w * 0.5 + travel, y: h * 0.52)
-                    .blendMode(.softLight)
-            }
-        }
-        .allowsHitTesting(false)
-    }
-}
-
-/// In-app mystery box art: primary gradient, cardboard isometric box, animated “?” on the left face, light sweep.
+/// In-app mystery box art: primary gradient, glossy isometric box, animated “?” on the left face.
 struct MysteryBoxAnimatedMediaView: View {
     @State private var questionPulse = false
     @State private var boxBounce = false
@@ -92,8 +52,6 @@ struct MysteryBoxAnimatedMediaView: View {
                     MysteryBoxPseudo3D(side: side, questionPulse: questionPulse)
                         .offset(y: boxBounce ? -side * 0.016 : side * 0.016)
                 }
-
-                MysteryBoxLightSweepOverlay()
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
@@ -136,7 +94,7 @@ private struct MysteryBoxPseudo3D: View {
             ])
             .fill(
                 LinearGradient(
-                    colors: [MysteryCardboard.topA, MysteryCardboard.topB],
+                    colors: [MysteryBoxGloss.topA, MysteryBoxGloss.topB],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -145,7 +103,7 @@ private struct MysteryBoxPseudo3D: View {
             PolygonShape(points: MysteryBoxIsoLeftFace.points)
             .fill(
                 LinearGradient(
-                    colors: [MysteryCardboard.leftA, MysteryCardboard.leftB],
+                    colors: [MysteryBoxGloss.leftA, MysteryBoxGloss.leftB],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -159,7 +117,7 @@ private struct MysteryBoxPseudo3D: View {
             ])
             .fill(
                 LinearGradient(
-                    colors: [MysteryCardboard.rightA, MysteryCardboard.rightB],
+                    colors: [MysteryBoxGloss.rightA, MysteryBoxGloss.rightB],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -170,14 +128,14 @@ private struct MysteryBoxPseudo3D: View {
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.22, green: 0.12, blue: 0.08).opacity(0.92),
-                            Color(red: 0.38, green: 0.22, blue: 0.14).opacity(0.98),
+                            Color.white.opacity(0.98),
+                            Color.white.opacity(0.72),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
-                .shadow(color: .white.opacity(0.22), radius: 0, y: 0)
+                .shadow(color: .black.opacity(0.2), radius: 1, y: 1)
                 .rotation3DEffect(.degrees(-56), axis: (0, 1, 0), anchor: .center, perspective: 0.42)
                 .rotation3DEffect(.degrees(5), axis: (1, 0, 0), anchor: .center, perspective: 0.42)
                 .offset(x: -boxSize * 0.19, y: boxSize * 0.14)

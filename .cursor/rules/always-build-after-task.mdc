@@ -1,6 +1,6 @@
 # Always Build and Relaunch After Tasks
 
-**Do not skip this.** After completing any coding task that changes the iOS app, run a full **Debug** build, then **install and launch on both iPhone 14 and iPhone 14 Alt** using **`.cursor/commands/relaunch.md`** (`/relaunch` or `/relaunch-both` — same flow).
+**Do not skip this.** After completing any coding task that changes the iOS app, run a full **Debug** build, then **install and launch on iPhone 14 only** — same as **`/relaunch`** (`.cursor/commands/relaunch.md`).
 
 1. **Build** from the iOS project root:
    ```bash
@@ -8,6 +8,8 @@
    ```
    Wait for the build to finish. If it fails, report the error and fix before continuing.
 
-2. **Relaunch on both simulators** — follow **`/relaunch`** end-to-end (create **iPhone 14 Alt** if missing, then terminate → install → launch on **iPhone 14** and **iPhone 14 Alt**). Do **not** relaunch on only one simulator unless the user explicitly asks for a single device.
+2. **Relaunch on iPhone 14** — boot if needed, terminate `com.prelura.preloved`, install the freshly built `Prelura-swift.app` from `Debug-iphonesimulator`, launch. **Do not** use iPhone 14 Alt or other sims unless the user asked.
 
-3. **Report** build result and **both** launch outputs (process IDs). Boot simulators first if needed.
+3. **Report** build result and the iPhone 14 **launch process ID** from `simctl launch` output.
+
+For **two simulators** when explicitly requested, use `/relaunch-both` and `.cursor/commands/relaunch-both.md`.

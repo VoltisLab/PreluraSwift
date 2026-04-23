@@ -38,12 +38,19 @@ struct FeedNetworkErrorPresentation: View {
     let message: String
     let title: String?
     var onTryAgain: (() -> Void)? = nil
+    /// When `true`, ``FeedNetworkBannerView`` adds extra horizontal margin outside the card (Home, Lookbook, etc.). Set `false` when the parent already supplies horizontal padding.
+    var appliesOuterScreenGutter: Bool = true
 
     var body: some View {
         if title != nil {
             FeedErrorSnackbarView(onTryAgain: onTryAgain)
         } else {
-            FeedNetworkBannerView(message: message, title: nil, onTryAgain: onTryAgain)
+            FeedNetworkBannerView(
+                message: message,
+                title: nil,
+                onTryAgain: onTryAgain,
+                appliesOuterScreenGutter: appliesOuterScreenGutter
+            )
         }
     }
 }
@@ -59,6 +66,8 @@ struct FeedNetworkBannerView: View {
     var title: String? = nil
     /// When set, shows a primary “Try again” action; otherwise shows a pull-to-refresh hint.
     var onTryAgain: (() -> Void)? = nil
+    /// When `true`, adds horizontal margin **outside** the card so it does not sit flush to a padded parent. Use `false` in pre-padded debug / list rows.
+    var appliesOuterScreenGutter: Bool = true
 
     private let iconColumnSize: CGFloat = 56
     private let iconGlyphSize: CGFloat = 22
@@ -125,8 +134,8 @@ struct FeedNetworkBannerView: View {
                 .strokeBorder(feedNetworkBannerBorderColor, lineWidth: feedNetworkBannerBorderWidth)
         )
         .shadow(color: Color.black.opacity(0.18), radius: 20, x: 0, y: 10)
-        /// Insets the card from screen edges; without this, `frame(maxWidth: .infinity)` paints edge-to-edge.
-        .padding(.horizontal, Theme.Spacing.lg)
+        /// Insets the card from screen edges when a parent is full-bleed; set `appliesOuterScreenGutter` false when the parent already has horizontal padding.
+        .padding(.horizontal, appliesOuterScreenGutter ? Theme.Spacing.lg : 0)
     }
 }
 

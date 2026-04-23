@@ -1,5 +1,6 @@
 #!/bin/bash
-# Regenerate the primary iOS app icon PNGs from "Primary Logo.svg" in a folder.
+# Regenerate the primary iOS app icon PNGs from "Primary Logo.svg" in a folder
+# and, when present, "Admin Logo.svg" into `AppIcon-Admin` (MyPrelura / staff build).
 # Default: ~/Downloads/Logos/Primary Logo.svg
 #
 # Requires: macOS qlmanage + sips (no extra installs).
@@ -10,6 +11,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOGOS="${1:-$HOME/Downloads/Logos}"
 ASSETS="$ROOT/Prelura-swift/Assets.xcassets"
 SVG="$LOGOS/Primary Logo.svg"
+SVG_ADMIN="$LOGOS/Admin Logo.svg"
 
 gen_icons() {
   local svg_path="$1"
@@ -53,5 +55,13 @@ gen_icons() {
 [[ -f "$SVG" ]] || { echo "❌ Missing: $SVG"; exit 1; }
 
 gen_icons "$SVG" "$ASSETS/AppIcon.appiconset"
+
+if [[ -f "$SVG_ADMIN" ]]; then
+  mkdir -p "$ASSETS/AppIcon-Admin.appiconset"
+  cp "$ASSETS/AppIcon.appiconset/Contents.json" "$ASSETS/AppIcon-Admin.appiconset/Contents.json"
+  gen_icons "$SVG_ADMIN" "$ASSETS/AppIcon-Admin.appiconset"
+else
+  echo "ℹ️  No Admin Logo.svg at: $SVG_ADMIN (skip AppIcon-Admin)"
+fi
 
 echo "Done. Rebuild the app in Xcode."

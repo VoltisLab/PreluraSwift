@@ -491,35 +491,35 @@ struct ShareProfileLinkView: View {
     private let exportWidth: CGFloat = 390
 
     var body: some View {
-        ZStack {
+            ZStack {
             backgroundLayer
-                .ignoresSafeArea()
+                    .ignoresSafeArea()
 
-            Group {
-                if isLoading {
-                    ProgressView()
-                        .tint(Theme.primaryColor)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let loadError {
-                    Text(loadError)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                        .multilineTextAlignment(.center)
-                        .padding(Theme.Spacing.lg)
-                } else if let user {
+                Group {
+                    if isLoading {
+                        ProgressView()
+                            .tint(Theme.primaryColor)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if let loadError {
+                        Text(loadError)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(Theme.Spacing.lg)
+                    } else if let user {
                     loadedContent(user: user)
-                } else {
-                    Text(L10n.string("Couldn't load profile"))
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.secondaryText)
+                    } else {
+                        Text(L10n.string("Couldn't load profile"))
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .navigationTitle(L10n.string("Share profile"))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
+            .navigationTitle(L10n.string("Share profile"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
                     Task { await exportAndShare() }
@@ -604,26 +604,26 @@ struct ShareProfileLinkView: View {
         let linkString = Constants.profileShareWebURL(forUsername: user.username)?.absoluteString ?? ""
 
         return ZStack(alignment: .bottomTrailing) {
-            ScrollView {
-                VStack(spacing: Theme.Spacing.lg) {
-                    profileHeader(user: user)
+        ScrollView {
+            VStack(spacing: Theme.Spacing.lg) {
+                profileHeader(user: user)
 
-                    statsGrid(user: user)
+                statsGrid(user: user)
 
                     if let qrImage = shareProfileQRCodeImage(from: linkString) {
-                        Image(uiImage: qrImage)
-                            .resizable()
-                            .interpolation(.none)
-                            .scaledToFit()
-                            .frame(width: qrDisplaySize, height: qrDisplaySize)
-                            .padding(Theme.Spacing.sm)
-                            .background(Color.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-
-                    linkField(urlString: linkString)
+                    Image(uiImage: qrImage)
+                        .resizable()
+                        .interpolation(.none)
+                        .scaledToFit()
+                        .frame(width: qrDisplaySize, height: qrDisplaySize)
+                        .padding(Theme.Spacing.sm)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-                .padding(.horizontal, Theme.Spacing.md)
+
+                linkField(urlString: linkString)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
                 .padding(.bottom, 96)
             }
 

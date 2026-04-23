@@ -28,6 +28,13 @@ extension GraphQLClient {
             "token expired",
             "jwt expired",
             "signature has expired",
+            "error decoding signature",
+            "decoding signature",
+            "invalid signature",
+            "signature verification failed",
+            "signature verification",
+            "jwt decode",
+            "malformed jwt",
             "refresh token is invalid",
             "refresh token has expired",
             "invalid refresh token",
@@ -68,6 +75,8 @@ class GraphQLClient {
         variables: [String: Any]? = nil,
         operationName: String? = nil,
         additionalHeaders: [String: String]? = nil,
+        /// Set false for login, register, and other operations that must not send a stale JWT (some gateways validate Bearer before credentials).
+        includeAuthorization: Bool = true,
         responseType: T.Type
     ) async throws -> T {
         var request = URLRequest(url: baseURL)
@@ -78,7 +87,7 @@ class GraphQLClient {
         request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
         request.setValue("no-cache", forHTTPHeaderField: "Pragma")
         
-        if let token = authToken {
+        if includeAuthorization, let token = authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         if let additionalHeaders {
@@ -118,7 +127,9 @@ class GraphQLClient {
         
         if let errors = graphQLResponse.errors, !errors.isEmpty {
             postAccountRestrictionRefreshIfNeeded(errors)
-            postAuthSessionInvalidShouldSignOutIfNeeded(errors)
+            if includeAuthorization {
+                postAuthSessionInvalidShouldSignOutIfNeeded(errors)
+            }
             throw GraphQLError.graphQLErrors(errors)
         }
         
@@ -139,6 +150,7 @@ class GraphQLClient {
         variables: [String: Any]? = nil,
         operationName: String? = nil,
         additionalHeaders: [String: String]? = nil,
+        includeAuthorization: Bool = true,
         responseType: T.Type,
         decoder: JSONDecoder
     ) async throws -> T {
@@ -149,7 +161,7 @@ class GraphQLClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
         request.setValue("no-cache", forHTTPHeaderField: "Pragma")
-        if let token = authToken {
+        if includeAuthorization, let token = authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         if let additionalHeaders {
@@ -176,7 +188,9 @@ class GraphQLClient {
         }
         if let errors = graphQLResponse.errors, !errors.isEmpty {
             postAccountRestrictionRefreshIfNeeded(errors)
-            postAuthSessionInvalidShouldSignOutIfNeeded(errors)
+            if includeAuthorization {
+                postAuthSessionInvalidShouldSignOutIfNeeded(errors)
+            }
             throw GraphQLError.graphQLErrors(errors)
         }
         if !(200...299).contains(httpResponse.statusCode) {

@@ -91,6 +91,17 @@ final class AISearchService {
         "teal": "Teal", "turquoise": "Teal", "aqua": "Teal"
     ]
 
+    /// Explicit colour blend outcomes for "x + y", "x plus y", "mix x and y".
+    /// We only apply this when the user expresses blend intent.
+    private static let colourBlendMap: [String: String] = [
+        "blue|green": "Teal",
+        "blue|red": "Purple",
+        "blue|yellow": "Green",
+        "red|white": "Pink",
+        "red|yellow": "Orange",
+        "black|white": "Grey"
+    ]
+
     /// Category / product term synonyms (training doc: jumper→sweater, trainers→sneakers; query 63 "cotton white t shirt").
     static let categorySynonyms: [String: String] = [
         "jumper": "sweater", "jumpers": "sweater", "sweaters": "sweater",
@@ -255,6 +266,49 @@ final class AISearchService {
         "than", "something", "close"
     ]
 
+    // MARK: - Lenny search result guardrails
+
+    /// Filler / intent words that should not force a text match on listings (e.g. "blazer for work" → still match "blazer").
+    private static let relevanceExtraStopwords: Set<String> = [
+        "work", "office", "nice", "great", "good", "brand", "tags", "just", "need", "free", "cheap", "budget",
+        "looking", "something", "anything", "everything", "really", "very", "quite", "super"
+    ]
+
+    /// Product words from the parsed query that should appear in listing text (title, description, or category) so random catalogue hits are dropped.
+    func relevanceProductTerms(for parsed: ParsedSearch) -> [String] {
+        let colourLower = Set(parsed.appliedColourNames.map { $0.lowercased() })
+        let parts = parsed.searchText
+            .split(separator: " ")
+            .map { String($0).trimmingCharacters(in: .punctuationCharacters).lowercased() }
+            .filter { !$0.isEmpty && !colourLower.contains($0) && !Self.searchStopwords.contains($0) && !Self.relevanceExtraStopwords.contains($0) }
+        return parts.filter { term in
+            let lc = term.lowercased()
+            if Self.categoryKeywords.contains(where: { $0.lowercased() == lc }) { return true }
+            if Self.materialKeywords.contains(where: { $0.lowercased() == lc }) { return true }
+            if Self.styleKeywords.contains(where: { $0.lowercased() == lc }) { return true }
+            if Self.seasonKeywords.contains(where: { $0.lowercased() == lc }) { return true }
+            return term.count >= 4
+        }
+    }
+
+    /// True when structured `colors` match, or title/description contain the colour as a whole word (many listings omit structured colours).
+    static func itemMatchesRequestedColours(_ item: Item, appliedColourNames: [String]) -> Bool {
+        guard !appliedColourNames.isEmpty else { return true }
+        let structured = item.colors.contains { c in
+            appliedColourNames.contains { $0.caseInsensitiveCompare(c) == .orderedSame }
+        }
+        if structured { return true }
+        let hayLower = (item.title + " " + item.description).lowercased()
+        for name in appliedColourNames {
+            let pattern = "\\b" + NSRegularExpression.escapedPattern(for: name.lowercased()) + "\\b"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               regex.firstMatch(in: hayLower, range: NSRange(hayLower.startIndex..., in: hayLower)) != nil {
+                return true
+            }
+        }
+        return false
+    }
+
     /// Happy events → cheerful response (training doc §Event Queries 81–90: wedding, party, graduation, holiday, birthday, date night, travel).
     static let happyEventWords: [String] = [
         "birthday", "wedding", "festival", "holiday", "holidays", "celebration", "party", "vacation", "trip",
@@ -407,6 +461,79 @@ final class AISearchService {
         return best?.match
     }
 
+    /// Canonical base for colour blending.
+    /// Example: navy behaves like blue; maroon behaves like red.
+    private static func blendBaseColour(for appColour: String) -> String {
+        switch appColour.lowercased() {
+        case "navy": return "Blue"
+        case "maroon": return "Red"
+        default: return appColour
+        }
+    }
+
+    /// Resolve a query token to one of our app colours (exact/alias/fuzzy).
+    private func resolveAppColour(from token: String) -> String? {
+        let lower = token.trimmingCharacters(in: .punctuationCharacters).lowercased()
+        guard !lower.isEmpty else { return nil }
+        if let exact = Self.appColours.first(where: { $0.lowercased() == lower }) { return exact }
+        if let alias = Self.colourAliases[lower] { return alias }
+        if lower.count >= minLengthForFuzzy, let fuzzy = fuzzyMatchColour(word: lower) { return fuzzy }
+        return nil
+    }
+
+    /// Deduce a blended colour (e.g. blue + red -> purple) when explicitly requested by the user.
+    private func deducedBlendColour(firstToken: String, secondToken: String) -> String? {
+        guard let first = resolveAppColour(from: firstToken),
+              let second = resolveAppColour(from: secondToken) else { return nil }
+        let left = Self.blendBaseColour(for: first)
+        let right = Self.blendBaseColour(for: second)
+        let key = [left.lowercased(), right.lowercased()].sorted().joined(separator: "|")
+        return Self.colourBlendMap[key]
+    }
+
+    /// Applies colour-deduction expressions to query text.
+    /// We only rewrite when user intent indicates blending ("+", "plus", "mix", "blend", "combine", etc.).
+    private func applyColourDeduction(in query: String) -> (rewritten: String, hint: String?) {
+        var rewritten = query
+        var hints: [String] = []
+        let lower = query.lowercased()
+        let hasBlendCue = lower.contains("mix")
+            || lower.contains("blend")
+            || lower.contains("combine")
+            || lower.contains("combined")
+            || lower.contains("equals")
+            || lower.contains("makes")
+            || lower.contains("turns")
+
+        var patterns: [String] = [
+            #"(?i)\b([a-z]+)\s*\+\s*([a-z]+)\b"#,
+            #"(?i)\b([a-z]+)\s+plus\s+([a-z]+)\b"#,
+            #"(?i)\b(?:mix|blend|combine|combined|combination)\s+([a-z]+)\s+(?:and|with)\s+([a-z]+)\b"#
+        ]
+        if hasBlendCue {
+            patterns.append(#"(?i)\b([a-z]+)\s+(?:and|with)\s+([a-z]+)\b"#)
+        }
+
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let matches = regex.matches(in: rewritten, range: NSRange(rewritten.startIndex..., in: rewritten))
+            guard !matches.isEmpty else { continue }
+            for match in matches.reversed() {
+                guard match.numberOfRanges >= 3,
+                      let wholeRange = Range(match.range, in: rewritten),
+                      let firstRange = Range(match.range(at: 1), in: rewritten),
+                      let secondRange = Range(match.range(at: 2), in: rewritten) else { continue }
+                let first = String(rewritten[firstRange])
+                let second = String(rewritten[secondRange])
+                guard let blended = deducedBlendColour(firstToken: first, secondToken: second) else { continue }
+                rewritten.replaceSubrange(wholeRange, with: blended)
+                hints.append("Interpreting \(first.lowercased()) + \(second.lowercased()) as \(blended.lowercased())")
+            }
+        }
+
+        return (rewritten, hints.last)
+    }
+
     /// Parses the raw query: normalize conversational phrasing, synonym expansion, colours, category, price, event; builds search string (training doc: always detect category/colour).
     func parse(query: String) -> ParsedSearch {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -422,6 +549,8 @@ final class AISearchService {
                 expandedQuery = regex.stringByReplacingMatches(in: expandedQuery, range: NSRange(expandedQuery.startIndex..., in: expandedQuery), withTemplate: appColour)
             }
         }
+        let deduction = applyColourDeduction(in: expandedQuery)
+        expandedQuery = deduction.rewritten
         let priceMax = extractPriceMax(from: expandedQuery)
         let detectedEvent = detectEvent(from: expandedQuery)
 
@@ -509,12 +638,14 @@ final class AISearchService {
             return [searchText] + terms
         }()
 
-        let hint: String?
-        if let (req, mapped) = usedAlias, !appliedColours.isEmpty {
-            hint = "Showing results closest to \"\(req)\" (\(mapped))"
-        } else {
-            hint = nil
+        var hintParts: [String] = []
+        if let blendHint = deduction.hint {
+            hintParts.append(blendHint)
         }
+        if let (req, mapped) = usedAlias, !appliedColours.isEmpty {
+            hintParts.append("Showing results closest to \"\(req)\" (\(mapped))")
+        }
+        let hint = hintParts.isEmpty ? nil : hintParts.joined(separator: ". ")
 
         return ParsedSearch(
             searchText: searchText,

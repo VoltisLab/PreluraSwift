@@ -299,6 +299,80 @@ class ChatService: ObservableObject {
         )
     }
 
+    /// Narrow `conversationById` for the notifications bell: no `offerHistory` (large) and no full negotiation thread.
+    func getConversationByIdForBellPrefetch(conversationId: String, currentUsername: String? = nil) async throws -> Conversation? {
+        let query = """
+        query ConversationBellPrefetch($id: ID!) {
+          conversationById(id: $id) {
+            id
+            recipient {
+              id
+              username
+              displayName
+              profilePictureUrl
+            }
+            lastMessage {
+              id
+              text
+              createdAt
+              sender { username }
+            }
+            unreadMessagesCount
+            offer {
+              id
+              status
+              offerPrice
+              createdBy
+              updatedBy
+              buyer { username profilePictureUrl }
+              products { id name seller { username profilePictureUrl } }
+              createdAt
+            }
+            order {
+              id
+              publicId
+              status
+              priceTotal
+              createdAt
+              products { id name imagesUrl price isMysteryBox }
+            }
+          }
+        }
+        """
+        let variables: [String: Any] = ["id": conversationId]
+        struct ConversationByIdResponse: Decodable {
+            let conversationById: ConversationData?
+            enum CodingKeys: String, CodingKey { case conversationById = "conversationById" }
+        }
+        let response: ConversationByIdResponse = try await client.execute(
+            query: query,
+            variables: variables,
+            operationName: "ConversationBellPrefetch",
+            responseType: ConversationByIdResponse.self
+        )
+        guard let conv = response.conversationById else { return nil }
+        guard let idString = Conversation.idString(from: conv.id) else { return nil }
+        let offer: OfferInfo? = conv.offer.flatMap { Conversation.offerInfo(from: $0) }
+        let order: ConversationOrder? = conv.order.flatMap { Self.mapConversationOrderData($0) }
+        let lastTime = parseGraphQLDateString(conv.lastMessage?.createdAt) ?? order?.createdAt
+        return Conversation(
+            id: idString,
+            recipient: Self.userFromRecipientRow(
+                id: conv.recipient?.id,
+                username: conv.recipient?.username ?? "",
+                displayName: conv.recipient?.displayName ?? "",
+                profilePictureUrl: conv.recipient?.profilePictureUrl
+            ),
+            lastMessage: conv.lastMessage?.text,
+            lastMessageSenderUsername: conv.lastMessage?.sender?.username,
+            lastMessageTime: lastTime,
+            unreadCount: conv.unreadMessagesCount ?? 0,
+            offer: offer,
+            order: order,
+            offerHistory: nil
+        )
+    }
+
     /// Resolve a thread for opening from push or universal link: prefer `conversationById`, then inbox list, else minimal placeholder (correct id preserves the real chat).
     func resolveConversationForOpening(conversationId: String, fallbackUsername: String, currentUsername: String?) async -> Conversation {
         if let full = try? await getConversationById(conversationId: conversationId, currentUsername: currentUsername) {

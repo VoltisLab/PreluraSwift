@@ -172,7 +172,7 @@ struct LookbookEntry: Identifiable {
         if let ss = serverPost.styles, !ss.isEmpty {
             self.styles = StyleEnumCatalog.normalizedUnique(ss, maxCount: 3)
         } else {
-            self.styles = localRecord?.styles ?? []
+        self.styles = localRecord?.styles ?? []
         }
         self.serverTaggedProductCount = serverPost.taggedProductCount
 
@@ -1089,11 +1089,11 @@ private struct LookbookFeedScreenView: View {
         )
     }
 
-    /// Shortcuts row: back (pop lookbook or exit immersive) → explore → create / my items / settings. Search + grid/list live in the nav bar.
-    /// Per-icon `.glassEffect` only (same as `lookbookFeedCollapseToggle`). `GlassEffectContainer` adds grouped elevation/shadow that the standalone chevron does not get.
+    /// Shortcuts row: back → explore → create → settings → show/hide chevron, split evenly across the width (not clustered on one side).
+    /// Per-icon `.glassEffect` only (same as `lookbookFeedCollapseToggle`).
     @ViewBuilder
-    private var lookbookFeedQuickActionsIconCluster: some View {
-        HStack(spacing: 8) {
+    private var lookbookFeedQuickActionsFullWidthRow: some View {
+        HStack(spacing: 0) {
             Button {
                 HapticManager.selection()
                 if immersiveFeedInitialPostId != nil {
@@ -1106,6 +1106,7 @@ private struct LookbookFeedScreenView: View {
             }
             .buttonStyle(.plain)
             .contentShape(Circle())
+            .frame(maxWidth: .infinity)
             .accessibilityLabel(L10n.string("Back"))
 
             NavigationLink {
@@ -1115,6 +1116,7 @@ private struct LookbookFeedScreenView: View {
             }
             .buttonStyle(.plain)
             .contentShape(Circle())
+            .frame(maxWidth: .infinity)
             .accessibilityLabel(L10n.string("Explore"))
 
             NavigationLink {
@@ -1124,16 +1126,8 @@ private struct LookbookFeedScreenView: View {
             }
             .buttonStyle(.plain)
             .contentShape(Circle())
+            .frame(maxWidth: .infinity)
             .accessibilityLabel(L10n.string("Create a post"))
-
-            NavigationLink {
-                LookbookMyItemsScreenView()
-            } label: {
-                lookbookFeedGlassCircleLabel(systemName: "person.crop.square")
-            }
-            .buttonStyle(.plain)
-            .contentShape(Circle())
-            .accessibilityLabel(L10n.string("My items"))
 
             NavigationLink {
                 LookbookSettingsView()
@@ -1142,27 +1136,28 @@ private struct LookbookFeedScreenView: View {
             }
             .buttonStyle(.plain)
             .contentShape(Circle())
+            .frame(maxWidth: .infinity)
             .accessibilityLabel(L10n.string("Settings"))
+
+            lookbookFeedCollapseToggle
+                .frame(maxWidth: .infinity)
         }
     }
 
     @ViewBuilder
     private func lookbookFeedFloatingQuickActionsBar(bottomInset: CGFloat) -> some View {
+        Group {
+            if lookbookQuickActionsCollapsed {
         HStack {
             Spacer(minLength: 0)
-            HStack(spacing: lookbookQuickActionsCollapsed ? 0 : 8) {
-                lookbookFeedQuickActionsIconCluster
-                    .opacity(lookbookQuickActionsCollapsed ? 0 : 1)
-                    .offset(x: lookbookQuickActionsCollapsed ? 14 : 0, y: lookbookQuickActionsCollapsed ? 6 : 0)
-                    .scaleEffect(lookbookQuickActionsCollapsed ? 0.88 : 1, anchor: .trailing)
-                    .frame(width: lookbookQuickActionsCollapsed ? 0 : nil, alignment: .trailing)
-                    .clipped()
-                    .allowsHitTesting(!lookbookQuickActionsCollapsed)
-                    .accessibilityHidden(lookbookQuickActionsCollapsed)
-
                 lookbookFeedCollapseToggle
+                }
+            } else {
+                lookbookFeedQuickActionsFullWidthRow
+            }
             }
             .padding(.horizontal, Theme.Spacing.md)
+        .padding(.bottom, bottomInset)
             .animation(lookbookQuickActionsSpring, value: lookbookQuickActionsCollapsed)
             .simultaneousGesture(
                 DragGesture(minimumDistance: 28)
@@ -1179,8 +1174,6 @@ private struct LookbookFeedScreenView: View {
                         }
                     }
             )
-        }
-        .padding(.bottom, bottomInset)
     }
 
     var body: some View {
@@ -1214,15 +1207,15 @@ private struct LookbookFeedScreenView: View {
                                         .aspectRatio(1, contentMode: .fit)
                                         .contentShape(Rectangle())
                                         .onTapGesture {
-                                            HapticManager.tap()
-                                            lookbookScheduleFeedImagePrefetchFromGrid(entries: entries, centerEntry: entry)
-                                            let rowId = lookbookFeedRowStableId(for: entry)
-                                            var tx = Transaction()
-                                            tx.animation = nil
-                                            withTransaction(tx) {
-                                                pendingFeedListScrollRowId = rowId
-                                                useGrid = false
-                                            }
+                                        HapticManager.tap()
+                                        lookbookScheduleFeedImagePrefetchFromGrid(entries: entries, centerEntry: entry)
+                                        let rowId = lookbookFeedRowStableId(for: entry)
+                                        var tx = Transaction()
+                                        tx.animation = nil
+                                        withTransaction(tx) {
+                                            pendingFeedListScrollRowId = rowId
+                                            useGrid = false
+                                        }
                                         }
                                         .onAppear {
                                             if index == entries.count - 1 {
@@ -1425,7 +1418,7 @@ private struct LookbookFeedScreenView: View {
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
-        let localRecords = LookbookFeedStore.load()
+            let localRecords = LookbookFeedStore.load()
         let paintFirst = await lookbookFeedInitialPaintBatchSize()
         let firstPageSize = min(paintFirst, lookbookFeedBrowseMaxPosts)
         do {
@@ -1447,21 +1440,21 @@ private struct LookbookFeedScreenView: View {
                 )
                 await MainActor.run {
                     feedSourcePosts = posts
-                    entries = lookbookShuffledEntriesFromPosts(posts, localRecords: localRecords)
+                entries = lookbookShuffledEntriesFromPosts(posts, localRecords: localRecords)
                     feedNextCursor = nil
                     feedHasMorePages = false
-                    feedLoading = false
-                    feedError = nil
-                    feedErrorBannerTitle = nil
-                }
-            } catch {
-                await MainActor.run {
-                    feedLoading = false
-                    let isCancelled = (error as? CancellationError) != nil
-                        || (error as? URLError)?.code == .cancelled
-                        || error.localizedDescription.lowercased().contains("cancelled")
-                    feedError = isCancelled ? nil : L10n.userFacingError(error)
-                    feedErrorBannerTitle = isCancelled ? nil : L10n.userFacingErrorBannerTitle(error)
+                feedLoading = false
+                feedError = nil
+                feedErrorBannerTitle = nil
+            }
+        } catch {
+            await MainActor.run {
+                feedLoading = false
+                let isCancelled = (error as? CancellationError) != nil
+                    || (error as? URLError)?.code == .cancelled
+                    || error.localizedDescription.lowercased().contains("cancelled")
+                feedError = isCancelled ? nil : L10n.userFacingError(error)
+                feedErrorBannerTitle = isCancelled ? nil : L10n.userFacingErrorBannerTitle(error)
                 }
                 return
             }
@@ -1877,7 +1870,7 @@ private struct LookbookExploreScreenView: View {
 
 // MARK: - My items (own posts, list or 3-column grid)
 
-private struct LookbookMyItemsScreenView: View {
+struct LookbookMyItemsScreenView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
@@ -2089,15 +2082,15 @@ private struct LookbookMyItemsScreenView: View {
                                             .aspectRatio(1, contentMode: .fit)
                                             .contentShape(Rectangle())
                                             .onTapGesture {
-                                                HapticManager.tap()
-                                                lookbookScheduleFeedImagePrefetchFromGrid(entries: myEntries, centerEntry: entry)
-                                                let rowId = lookbookFeedRowStableId(for: entry)
-                                                var tx = Transaction()
-                                                tx.animation = nil
-                                                withTransaction(tx) {
-                                                    pendingMyItemsListScrollRowId = rowId
-                                                    useGrid = false
-                                                }
+                                            HapticManager.tap()
+                                            lookbookScheduleFeedImagePrefetchFromGrid(entries: myEntries, centerEntry: entry)
+                                            let rowId = lookbookFeedRowStableId(for: entry)
+                                            var tx = Transaction()
+                                            tx.animation = nil
+                                            withTransaction(tx) {
+                                                pendingMyItemsListScrollRowId = rowId
+                                                useGrid = false
+                                            }
                                             }
                                             .onAppear {
                                                 if index == myEntries.count - 1 {
@@ -2333,7 +2326,7 @@ private struct LookbookMyItemsScreenView: View {
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
-        let localRecords = LookbookFeedStore.load()
+            let localRecords = LookbookFeedStore.load()
         let firstPageSize = min(lookbookFeedMyItemsInitialPaintFirst, lookbookFeedMyItemsMaxPosts)
         let viewer = normalizeMyItemsUsername(authService.username)
         do {
@@ -2692,7 +2685,7 @@ private struct LookbookTopicFeedView: View {
         client.setAuthToken(authService.authToken)
         let service = LookbookService(client: client)
         service.setAuthToken(authService.authToken)
-        let localRecords = LookbookFeedStore.load()
+            let localRecords = LookbookFeedStore.load()
         let firstPageSize = min(lookbookFeedBrowseBulkHydrateFirst, lookbookFeedBrowseMaxPosts)
         do {
             let page = try await service.fetchLookbooksFeedPage(first: firstPageSize, after: nil)
@@ -2713,22 +2706,22 @@ private struct LookbookTopicFeedView: View {
                 )
                 await MainActor.run {
                     feedSourcePosts = posts
-                    entries = lookbookShuffledEntriesFromPosts(posts, localRecords: localRecords)
+                entries = lookbookShuffledEntriesFromPosts(posts, localRecords: localRecords)
                     feedNextCursor = nil
                     feedHasMorePages = false
-                    feedLoading = false
-                    feedError = nil
-                    feedErrorBannerTitle = nil
-                }
-            } catch {
-                await MainActor.run {
-                    feedLoading = false
-                    let isCancelled = (error as? CancellationError) != nil
-                        || (error as? URLError)?.code == .cancelled
-                        || error.localizedDescription.lowercased().contains("cancelled")
-                    feedError = isCancelled ? nil : L10n.userFacingError(error)
-                    feedErrorBannerTitle = isCancelled ? nil : L10n.userFacingErrorBannerTitle(error)
-                }
+                feedLoading = false
+                feedError = nil
+                feedErrorBannerTitle = nil
+            }
+        } catch {
+            await MainActor.run {
+                feedLoading = false
+                let isCancelled = (error as? CancellationError) != nil
+                    || (error as? URLError)?.code == .cancelled
+                    || error.localizedDescription.lowercased().contains("cancelled")
+                feedError = isCancelled ? nil : L10n.userFacingError(error)
+                feedErrorBannerTitle = isCancelled ? nil : L10n.userFacingErrorBannerTitle(error)
+            }
                 return
             }
         }
@@ -3633,7 +3626,7 @@ fileprivate func lookbookFeedFullCaptionMutableAttributed(username: String, capt
                     .link: href,
                 ]))
             } else {
-                m.append(NSAttributedString(string: s, attributes: [.font: reg, .foregroundColor: lookbookFeedCaptionHashtagUIColor]))
+            m.append(NSAttributedString(string: s, attributes: [.font: reg, .foregroundColor: lookbookFeedCaptionHashtagUIColor]))
             }
         }
     }
@@ -4136,10 +4129,10 @@ struct LookbookFeedRowView: View {
         if let c = latestCommentPreview {
             VStack(alignment: .leading, spacing: lookbookFeedCaptionLineSpacingExtra) {
                 if entry.commentsCount > 0 {
-                    Button {
-                        HapticManager.tap()
-                        onCommentsTap(entry)
-                    } label: {
+            Button {
+                HapticManager.tap()
+                onCommentsTap(entry)
+            } label: {
                         Text(LookbookFeedEngagementCountFormatting.fullCommentCountPhrase(entry.commentsCount))
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Colors.secondaryText)
@@ -4148,8 +4141,8 @@ struct LookbookFeedRowView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.bottom, 3)
-                }
-                HStack(alignment: .center, spacing: 8) {
+                    }
+                    HStack(alignment: .center, spacing: 8) {
                     NavigationLink {
                         UserProfileView(seller: lookbookCommentPreviewProfileUser(c), authService: authService)
                     } label: {
@@ -4176,19 +4169,19 @@ struct LookbookFeedRowView: View {
                             onCommentsTap(entry)
                         } label: {
                             Text(c.text)
-                                .font(Theme.Typography.subheadline)
-                                .foregroundStyle(Theme.Colors.primaryText)
-                                .lineLimit(3)
-                                .multilineTextAlignment(.leading)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .fixedSize(horizontal: false, vertical: true)
+                            .font(Theme.Typography.subheadline)
+                            .foregroundStyle(Theme.Colors.primaryText)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
                         }
                         .buttonStyle(.plain)
                     }
+                    }
+                    .padding(.horizontal, Theme.Spacing.md)
                 }
-                .padding(.horizontal, Theme.Spacing.md)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 14)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(Text(lookbookCommentPreviewAccessibilityLabel(comment: c)))
@@ -4276,9 +4269,9 @@ struct LookbookFeedRowView: View {
                     ZStack(alignment: .bottomTrailing) {
                         if lookbookCaptionExpanded {
                             Text(AttributedString(fullAttr))
-                                .multilineTextAlignment(.leading)
+                            .multilineTextAlignment(.leading)
                                 .lineSpacing(lookbookFeedCaptionLineSpacingExtra)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                                 .environment(\.openURL, OpenURLAction { url in handleCaptionHashtagURL(url) })
                         } else {
                             LookbookFeedCollapsedCaptionLabel(
@@ -4487,20 +4480,20 @@ struct LookbookFeedRowView: View {
                     Label(L10n.string("Copy link"), systemImage: "link")
                 }
             }
-            Button {
-                HapticManager.tap()
+                Button {
+                    HapticManager.tap()
                 openSendForward()
-            } label: {
+                } label: {
                 Label(L10n.string("Send"), systemImage: "paperplane")
-            }
-            Button {
-                HapticManager.tap()
+                }
+                Button {
+                    HapticManager.tap()
                 showSaveFolderSheet = true
-            } label: {
-                Label(
+                } label: {
+                    Label(
                     lookbookFeedPostIsBookmarked ? L10n.string("Saved") : L10n.string("Save"),
                     systemImage: lookbookFeedPostIsBookmarked ? "bookmark.fill" : "bookmark"
-                )
+                    )
             }
             if isCurrentUserPost, onPostDeleted != nil {
                 Divider()
@@ -5109,7 +5102,7 @@ struct LookbookCommentsSheet: View {
             NavigationLink {
                 UserProfileView(seller: commentRowProfileUser(c), authService: authService)
             } label: {
-                LookbookCommentAvatar(profilePictureUrl: c.profilePictureUrl, username: c.username, size: 32)
+            LookbookCommentAvatar(profilePictureUrl: c.profilePictureUrl, username: c.username, size: 32)
             }
             .buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 4) {
@@ -5117,10 +5110,10 @@ struct LookbookCommentsSheet: View {
                     NavigationLink {
                         UserProfileView(seller: commentRowProfileUser(c), authService: authService)
                     } label: {
-                        Text(c.username)
-                            .font(Theme.Typography.body.weight(.semibold))
-                            .foregroundColor(Theme.Colors.primaryText)
-                            .lineLimit(1)
+                    Text(c.username)
+                        .font(Theme.Typography.body.weight(.semibold))
+                        .foregroundColor(Theme.Colors.primaryText)
+                        .lineLimit(1)
                     }
                     .buttonStyle(.plain)
                     Spacer(minLength: Theme.Spacing.sm)
@@ -6034,8 +6027,8 @@ private struct LookbookFeedSearchView: View {
         let qBody = hashtagSortBody
         return grouped.hashtags
             .map { row in
-                LookbookFeedSearchHashtagRow(id: row.key, display: row.display, count: row.count, sample: row.sample)
-            }
+            LookbookFeedSearchHashtagRow(id: row.key, display: row.display, count: row.count, sample: row.sample)
+        }
             .sorted { a, b in
                 let ak = a.id.lowercased()
                 let bk = b.id.lowercased()
@@ -6043,7 +6036,7 @@ private struct LookbookFeedSearchView: View {
                 let bp = qBody.isEmpty ? false : bk.hasPrefix(qBody)
                 if ap != bp { return ap && !bp }
                 return ak < bk
-            }
+        }
     }
 
     private var productRows: [LookbookFeedSearchProductRow] {
@@ -6137,7 +6130,7 @@ private struct LookbookFeedSearchView: View {
     }
 
     private var lookbookFeedSearchForYouTab: some View {
-        ScrollView {
+                ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if grouped.forYouEntries.isEmpty {
                     Text(L10n.string("No hashtag or people matches in this feed for this search."))
@@ -6181,28 +6174,28 @@ private struct LookbookFeedSearchView: View {
                 } else {
                     ForEach(Array(accountRows.enumerated()), id: \.element.id) { index, row in
                         VStack(spacing: 0) {
-                            NavigationLink {
-                                UserProfileView(seller: row.user, authService: authService)
-                            } label: {
+                                NavigationLink {
+                                    UserProfileView(seller: row.user, authService: authService)
+                                } label: {
                                 HStack(alignment: .center, spacing: Theme.Spacing.sm) {
                                     lookbookFeedSearchProfileCircle(entry: row.entry, size: 50)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("@\(row.user.username)")
-                                            .font(Theme.Typography.body)
-                                            .foregroundStyle(Theme.Colors.primaryText)
-                                            .lineLimit(1)
-                                        Text(L10n.string("In this feed"))
-                                            .font(Theme.Typography.caption)
-                                            .foregroundStyle(Theme.Colors.secondaryText)
-                                            .lineLimit(1)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("@\(row.user.username)")
+                                                .font(Theme.Typography.body)
+                                                .foregroundStyle(Theme.Colors.primaryText)
+                                                .lineLimit(1)
+                                            Text(L10n.string("In this feed"))
+                                                .font(Theme.Typography.caption)
+                                                .foregroundStyle(Theme.Colors.secondaryText)
+                                                .lineLimit(1)
+                                        }
+                                        Spacer(minLength: 0)
                                     }
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.horizontal, Theme.Spacing.md)
                                 .padding(.vertical, Theme.Spacing.sm)
                                 .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
+                                }
+                                .buttonStyle(.plain)
                             if index < accountRows.count - 1 {
                                 Divider()
                                     .padding(.leading, Theme.Spacing.md + 50 + Theme.Spacing.sm)
@@ -6224,30 +6217,30 @@ private struct LookbookFeedSearchView: View {
                 } else {
                     ForEach(Array(productRows.enumerated()), id: \.element.id) { index, row in
                         VStack(spacing: 0) {
-                            Button {
+                                Button {
                                 HapticManager.tap()
-                                selectedProduct = ProductIdNavigator(id: row.snapshot.productId)
-                            } label: {
-                                HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                                    lookbookFeedSearchProductThumb(snapshot: row.snapshot, fallbackEntry: row.entry)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(row.snapshot.title)
-                                            .font(Theme.Typography.body)
-                                            .foregroundStyle(Theme.Colors.primaryText)
-                                            .lineLimit(3)
-                                            .multilineTextAlignment(.leading)
-                                        Text(L10n.string("Tagged in look"))
-                                            .font(Theme.Typography.caption)
-                                            .foregroundStyle(Theme.Colors.secondaryText)
-                                            .lineLimit(1)
+                                    selectedProduct = ProductIdNavigator(id: row.snapshot.productId)
+                                } label: {
+                                    HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                                        lookbookFeedSearchProductThumb(snapshot: row.snapshot, fallbackEntry: row.entry)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(row.snapshot.title)
+                                                .font(Theme.Typography.body)
+                                                .foregroundStyle(Theme.Colors.primaryText)
+                                                .lineLimit(3)
+                                                .multilineTextAlignment(.leading)
+                                            Text(L10n.string("Tagged in look"))
+                                                .font(Theme.Typography.caption)
+                                                .foregroundStyle(Theme.Colors.secondaryText)
+                                                .lineLimit(1)
+                                        }
+                                        Spacer(minLength: 0)
                                     }
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.horizontal, Theme.Spacing.md)
                                 .padding(.vertical, Theme.Spacing.sm)
                                 .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
+                                }
+                                .buttonStyle(.plain)
                             if index < productRows.count - 1 {
                                 Divider()
                                     .padding(.leading, Theme.Spacing.md + 50 + Theme.Spacing.sm)

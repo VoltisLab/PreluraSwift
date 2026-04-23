@@ -1,16 +1,15 @@
-# Relaunch After Every Task
+---
+description: After iOS coding tasks, build and relaunch Prelura on iPhone 14 sim only
+alwaysApply: true
+---
 
-**After completing any coding task, always run a build (see `always-build-after-task.mdc`).** For a full relaunch, **always use both simulators** via **`/relaunch`** or **`/relaunch-both`** (same steps; see `.cursor/commands/relaunch.md`) — not iPhone 14 alone.
+# Relaunch after every task
 
-1. **Rebuild** from iOS project root (prefer generic simulator destination to avoid OS mismatch):  
-   `xcodebuild -project Prelura-swift.xcodeproj -scheme Prelura-swift -destination 'generic/platform=iOS Simulator' -configuration Debug build`
+**After completing any coding task that touches the iOS app, do not end the turn until you have run `/relaunch`:** Debug build, install, and launch on the **iPhone 14** simulator only (`com.prelura.preloved`). Do **not** use iPhone 14 Alt, other simulators, or a physical device unless the user explicitly asks.
 
-2. **Ensure iPhone 14 Alt** exists; create if missing (see `relaunch.md`).
+1. **Build** (example):  
+   `xcodebuild -project Prelura-swift.xcodeproj -scheme Prelura-swift -destination 'platform=iOS Simulator,name=iPhone 14' -configuration Debug build`
+2. **Install & launch** on iPhone 14: `xcrun simctl install` / `launch` with the built `Prelura-swift.app` and bundle id `com.prelura.preloved`.
+3. **Report** build result (e.g. BUILD SUCCEEDED) and launch PID.
 
-3. **iPhone 14** — terminate (ignore errors), install `<path-to-Prelura-swift.app>`, launch `com.prelura.preloved`.
-
-4. **iPhone 14 Alt** — same `.app`: boot, terminate, install, launch.
-
-5. **Report** build/install/launch result and **both** process IDs.
-
-If the user runs `/relaunch` or `/relaunch-both`, follow the matching file under `.cursor/commands/` and include monitoring in the report.
+If the user runs `/relaunch-both` or asks for two sims, use `.cursor/commands/relaunch-both.md` instead. Default: **iPhone 14 only** (`.cursor/commands/relaunch.md`).

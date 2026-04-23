@@ -328,6 +328,7 @@ struct MainTabView: View {
             .onAppear {
                 StartupTiming.mark("MainTabView inner onAppear — tab bar + discover/inbox kickoff")
                 applyTabBarAppearance()
+                applyNavigationBarAppearance()
                 discoverViewModel.updateAuthToken(authService.authToken)
                 inboxViewModel.updateAuthToken(authService.authToken)
                 if authService.isAuthenticated {
@@ -342,8 +343,14 @@ struct MainTabView: View {
                     }
                 }
             }
-            .onChange(of: appearanceMode) { _, _ in applyTabBarAppearance() }
-            .onChange(of: colorScheme) { _, _ in applyTabBarAppearance() }
+            .onChange(of: appearanceMode) { _, _ in
+                applyTabBarAppearance()
+                applyNavigationBarAppearance()
+            }
+            .onChange(of: colorScheme) { _, _ in
+                applyTabBarAppearance()
+                applyNavigationBarAppearance()
+            }
             .onChange(of: authService.authToken) { _, token in
                 discoverViewModel.updateAuthToken(token)
                 inboxViewModel.updateAuthToken(token)
@@ -439,6 +446,32 @@ struct MainTabView: View {
         UITabBar.appearance().standardAppearance = appearance
         if #available(iOS 15.0, *) {
             UITabBar.appearance().scrollEdgeAppearance = appearance
+        }
+    }
+
+    /// Split **standard** vs **scroll-edge** navigation chrome: opaque at rest (reads white / #0C0C0C like the feed), transparent at scroll edge so list content can move under the bar—same idea as Profile without `.toolbarBackgroundVisibility(.visible)` fighting the system. Home/Discover still set SwiftUI ``Theme/preluraNavigationBarChrome()`` for scheme + tint.
+    private func applyNavigationBarAppearance() {
+        let opaque = UINavigationBarAppearance()
+        opaque.configureWithOpaqueBackground()
+        if isDark {
+            opaque.backgroundColor = UIColor(red: 12/255, green: 12/255, blue: 12/255, alpha: 1)
+        } else {
+            opaque.backgroundColor = UIColor.systemBackground
+        }
+        opaque.shadowColor = .clear
+        opaque.shadowImage = UIImage()
+
+        let scrollEdge = UINavigationBarAppearance()
+        scrollEdge.configureWithTransparentBackground()
+        scrollEdge.shadowColor = .clear
+        scrollEdge.shadowImage = UIImage()
+
+        let nav = UINavigationBar.appearance()
+        nav.standardAppearance = opaque
+        nav.compactAppearance = opaque
+        nav.scrollEdgeAppearance = scrollEdge
+        if #available(iOS 15.0, *) {
+            nav.compactScrollEdgeAppearance = scrollEdge
         }
     }
 }

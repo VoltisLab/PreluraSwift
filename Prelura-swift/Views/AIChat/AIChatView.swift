@@ -382,21 +382,17 @@ struct AIChatView: View {
                 maxPrice: parsed.priceMax
             )
             var filtered = products.excludingVacationModeSellers()
-            if useBroadSearch && !parsed.appliedColourNames.isEmpty {
+            if !parsed.appliedColourNames.isEmpty {
                 filtered = filtered.filter { item in
-                    item.colors.contains { c in
-                        parsed.appliedColourNames.contains { $0.caseInsensitiveCompare(c) == .orderedSame }
-                    }
+                    AISearchService.itemMatchesRequestedColours(item, appliedColourNames: parsed.appliedColourNames)
                 }
-                if filtered.isEmpty && index == 0 {
-                    let fullQueryProducts = try await productService.getAllProducts(
-                        pageNumber: 1,
-                        pageCount: pageSize,
-                        search: parsed.searchText.isEmpty ? nil : parsed.searchText,
-                        parentCategory: categoryFilter,
-                        maxPrice: parsed.priceMax
-                    )
-                    filtered = fullQueryProducts.excludingVacationModeSellers()
+            }
+            let relevanceTerms = aiSearch.relevanceProductTerms(for: parsed)
+            if !relevanceTerms.isEmpty {
+                filtered = filtered.filter { item in
+                    let hay = (item.title + " " + item.description + " " + (item.categoryName ?? "") + " " + item.category.name)
+                        .lowercased()
+                    return relevanceTerms.contains { hay.contains($0) }
                 }
             }
             if let sizeTerm = parsed.sizeTerm, !filtered.isEmpty {

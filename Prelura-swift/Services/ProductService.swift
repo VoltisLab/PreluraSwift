@@ -443,7 +443,7 @@ class ProductService: ObservableObject {
         return nil
     }
 
-    /// Create a product (listing). Upload images first via FileUploadService.uploadProductImages, then call this with the returned imageUrl list.
+    /// Create a product (listing). Upload images first via FileUploadService.uploadProductImages, then call this with the returned imageUrl list. Mystery-box listings may pass an empty `imageUrl` when the server allows no photos (UI uses ``MysteryBoxAnimatedMediaView`` only).
     /// Matches Flutter CreateProduct mutation and Variables$Mutation$CreateProduct.
     ///
     /// **Scheduled publish:** When `scheduledPublishAt` is set, we use a mutation variant that sends ISO8601 `scheduledPublishAt` so the **server** can activate the listing at that time without the app open. Requires the GraphQL schema to expose `scheduledPublishAt` on `createProduct`. If the API does not support it yet, scheduled creates will fail until the backend ships; ``PendingScheduledListingActivator`` remains a fallback when the user opens the app after that time.

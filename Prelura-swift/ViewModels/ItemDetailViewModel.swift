@@ -142,6 +142,7 @@ class ItemDetailViewModel: ObservableObject {
         try await productService.deleteProduct(productId: id)
         await MainActor.run {
             NotificationCenter.default.post(name: .wearhouseUserProfileDidUpdate, object: nil)
+            NotificationCenter.default.post(name: .wearhouseSellerListingsDidChange, object: nil)
         }
     }
 
@@ -151,6 +152,17 @@ class ItemDetailViewModel: ObservableObject {
         try await productService.updateProductStatus(productId: id, status: "SOLD")
         await MainActor.run {
             NotificationCenter.default.post(name: .wearhouseUserProfileDidUpdate, object: nil)
+            NotificationCenter.default.post(name: .wearhouseSellerListingsDidChange, object: nil)
+        }
+    }
+
+    /// Hide (`HIDDEN`) or restore (`ACTIVE`) own listing. Requires `ProductStatusEnum` support on the API.
+    func updateListingStatus(productId: String, status: String) async throws {
+        guard let id = Int(productId) else { return }
+        try await productService.updateProductStatus(productId: id, status: status)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .wearhouseUserProfileDidUpdate, object: nil)
+            NotificationCenter.default.post(name: .wearhouseSellerListingsDidChange, object: nil)
         }
     }
 
