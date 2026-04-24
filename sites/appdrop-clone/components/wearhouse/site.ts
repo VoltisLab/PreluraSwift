@@ -15,12 +15,12 @@ export const WEARHOUSE = {
 /** Pixel size of hero device image - must match `public/phone-22.png`. */
 export const HERO_PHONE = { width: 2560, height: 5284 } as const;
 
-/** Hero carousel frames (same phone aspect; first is HD home, others Pinnacle exports). */
+/** Hero carousel frames (2560×5284; slide 1 home, slides 2–4 Pinnacle exports). */
 export const HERO_PHONE_SLIDES = [
   { src: "/phone-22.png", alt: "WEARHOUSE app - home and discover", width: 2560, height: 5284 },
-  { src: "/hero-phone-lookbook.png", alt: "WEARHOUSE app - lookbooks", width: 496, height: 1024 },
-  { src: "/hero-phone-profile.png", alt: "WEARHOUSE app - seller profile", width: 496, height: 1024 },
-  { src: "/hero-phone-shop.png", alt: "WEARHOUSE app - shop and bag", width: 496, height: 1024 },
+  { src: "/hero-phone-slide-2.png", alt: "WEARHOUSE app - discover and listings", width: 2560, height: 5284 },
+  { src: "/hero-phone-slide-3.png", alt: "WEARHOUSE app - profile and shop", width: 2560, height: 5284 },
+  { src: "/hero-phone-slide-4.png", alt: "WEARHOUSE app - inbox and orders", width: 2560, height: 5284 },
 ] as const;
 
 /** Pinnacle exports for benefit cards (PHONE-1 / 4 / 5, 2560×5284). */

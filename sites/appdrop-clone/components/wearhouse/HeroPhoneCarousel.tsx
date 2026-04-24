@@ -61,7 +61,7 @@ export function HeroPhoneCarousel() {
       }}
     >
       <div className="relative mx-auto w-full max-w-[280px] sm:max-w-[300px] lg:max-w-[300px] xl:max-w-[320px]">
-        <div className="relative w-full pb-1 [filter:drop-shadow(0_28px_48px_rgba(15,23,42,0.18))_drop-shadow(0_12px_24px_rgba(15,23,42,0.12))]">
+        <div className="relative w-full pb-1">
           <div
             className="relative w-full overflow-hidden rounded-[2rem]"
             style={{ aspectRatio: `${HERO_PHONE_SLIDES[0].width} / ${HERO_PHONE_SLIDES[0].height}` }}
