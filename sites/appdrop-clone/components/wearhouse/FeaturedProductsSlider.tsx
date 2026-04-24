@@ -84,7 +84,7 @@ export function FeaturedProductsSlider({ className = "" }: FeaturedProductsSlide
 
   return (
     <div
-      className={`mt-8 w-full min-[1680px]:relative min-[1680px]:left-1/2 min-[1680px]:w-screen min-[1680px]:max-w-[100vw] min-[1680px]:-translate-x-1/2 ${className}`}
+      className={`mt-8 w-full ${className}`}
       aria-label="Featured products"
     >
       <p className="mb-4 text-center text-sm font-semibold tracking-[-0.01em] text-[#AB28B2]">Featured products</p>

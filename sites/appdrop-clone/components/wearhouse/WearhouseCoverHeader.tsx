@@ -30,7 +30,7 @@ type WearhouseCoverHeaderProps = {
 export function WearhouseCoverHeader({ trailing }: WearhouseCoverHeaderProps) {
   return (
     <header className="sticky top-0 z-50 border-b border-black/[0.06] bg-white/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
-      <div className="mx-auto flex w-full max-w-screen-2xl min-[1680px]:max-w-none items-center justify-between gap-4 px-5 py-4 md:px-10">
+      <div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between gap-4 px-5 py-4 md:px-10">
         <Link href="/" className="flex min-w-0 shrink-0 items-center gap-2">
           <WearhouseLogo />
         </Link>
