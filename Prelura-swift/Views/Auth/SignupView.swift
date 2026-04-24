@@ -3,8 +3,6 @@ import SwiftUI
 struct SignupView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authService: AuthService
-    var prefilledEmail: String? = nil
-    var prefilledUsername: String? = nil
     @State private var signupVideoURL: URL?
     @State private var email: String = ""
     @State private var firstName: String = ""
@@ -191,12 +189,6 @@ struct SignupView: View {
         .onAppear {
             if signupVideoURL == nil {
                 signupVideoURL = AuthVideo.signupVideoURL()
-            }
-            if email.isEmpty, let prefilledEmail, !prefilledEmail.isEmpty {
-                email = prefilledEmail
-            }
-            if username.isEmpty, let prefilledUsername, !prefilledUsername.isEmpty {
-                username = prefilledUsername
             }
             usernameIsValid = isUsernameFormatValid(username)
         }

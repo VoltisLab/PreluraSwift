@@ -508,8 +508,6 @@ struct HomeItemCard: View {
                     }
                     .frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .compositingGroup()
-                    .shadow(color: Color.black.opacity(0.14), radius: 8, x: 0, y: 4)
                 } else {
                     Color.clear
                         .aspectRatio(squareImageSlot ? 1.0 : 1.0 / 1.3, contentMode: .fit)
@@ -562,8 +560,6 @@ struct HomeItemCard: View {
                             }
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .compositingGroup()
-                        .shadow(color: Color.black.opacity(0.14), radius: 8, x: 0, y: 4)
                 }
             }
             

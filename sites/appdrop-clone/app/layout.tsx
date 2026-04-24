@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { DM_Sans, Inter } from "next/font/google";
-import { WearhouseCoverFooter } from "@/components/wearhouse/WearhouseCoverFooter";
 import "./globals.css";
 
 const inter = Inter({
@@ -37,10 +36,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${dmSans.variable}`}>
-      <body className="min-h-screen bg-white font-sans text-ink antialiased">
-        {children}
-        <WearhouseCoverFooter />
-      </body>
+      <body className="min-h-screen bg-white font-sans text-ink antialiased">{children}</body>
     </html>
   );
 }

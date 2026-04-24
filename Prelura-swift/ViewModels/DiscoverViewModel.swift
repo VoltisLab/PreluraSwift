@@ -152,7 +152,6 @@ class DiscoverViewModel: ObservableObject {
             async let onSaleTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, discountPrice: true)
             async let shopBargainsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, maxPrice: 15.0)
             async let recommendedTask = userService.getRecommendedSellers(pageNumber: 1, pageCount: 20)
-            async let featuredShopsTask = userService.getDiscoverFeaturedShops()
 
             // 1) Recently viewed - does not depend on full catalog.
             let (recentlyViewedProducts, discoverFeatured) = try await (recentlyViewedTask, discoverFeaturedTask)
@@ -204,13 +203,9 @@ class DiscoverViewModel: ObservableObject {
             isLoadingBrandsYouLoveSection = false
             StartupTiming.mark("DiscoverViewModel - brands you love section ready")
 
-            // 3) Top shops - prefer curated list, fallback to recommended ranking.
-            let featuredShops = (try? await featuredShopsTask) ?? []
-            if !featuredShops.isEmpty {
-                topShops = featuredShops.map { rec in
-                    ShopInfo(username: rec.seller.username, avatarURL: rec.seller.avatarURL)
-                }
-            } else if let recommended = try? await recommendedTask {
+            // 3) Top shops - `recommendedTask` has been running since the start.
+            let recommended = try? await recommendedTask
+            if let recommended {
                 topShops = recommended.map { rec in
                     ShopInfo(username: rec.seller.username, avatarURL: rec.seller.avatarURL)
                 }

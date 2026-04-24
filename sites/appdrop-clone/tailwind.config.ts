@@ -8,15 +8,6 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      keyframes: {
-        wearhouseMarquee: {
-          from: { transform: "translateX(0)" },
-          to: { transform: "translateX(-50%)" },
-        },
-      },
-      animation: {
-        "wh-marquee": "wearhouseMarquee var(--wh-marquee-duration, 40s) linear infinite",
-      },
       colors: {
         ink: "#000000",
         muted: "#787878",
