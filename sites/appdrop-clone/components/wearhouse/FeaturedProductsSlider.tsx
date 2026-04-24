@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { WEARHOUSE } from "./site";
@@ -25,16 +26,12 @@ function ProductCard({ item }: { item: FeaturedItem }) {
       className="block w-[200px] shrink-0 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition hover:-translate-y-0.5"
     >
       <div className="relative aspect-[3/4] w-full bg-[#f6f6f6]">
-        {/* eslint-disable-next-line @next/next/no-img-element -- remote listing URLs from many hosts; avoid next/image allowlist drift */}
-        <img
+        <Image
           src={item.image}
           alt={item.name}
-          width={200}
-          height={267}
-          className="h-full w-full object-cover"
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
+          fill
+          className="object-cover"
+          sizes="200px"
         />
       </div>
       <div className="space-y-0.5 p-3">

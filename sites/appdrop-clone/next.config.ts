@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     unoptimized: true,
     remotePatterns: [
       { protocol: "https", hostname: "framerusercontent.com", pathname: "/**" },
+      { protocol: "https", hostname: "d1q0jm5ujs3rwb.cloudfront.net", pathname: "/**" },
       { protocol: "https", hostname: "fonts.gstatic.com", pathname: "/**" },
     ],
   },
