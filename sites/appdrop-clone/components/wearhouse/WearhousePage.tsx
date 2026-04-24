@@ -173,9 +173,9 @@ export default function WearhousePage() {
         </section>
 
         <section id="challenge" className="scroll-mt-28 px-5 py-10 md:px-10">
-          <div className="mx-auto flex max-w-[520px] flex-col items-center gap-[18px] pb-24 pt-5 text-center">
+          <div className="mx-auto flex max-w-[520px] flex-col items-center gap-3 pb-14 pt-5 text-center md:gap-4 md:pb-16">
             <p className={`text-base font-semibold tracking-[-0.02em] ${whPrimary}`}>Why we built it</p>
-            <h2 className="text-[26px] font-semibold leading-[1.4] tracking-[-0.04em]">
+            <h2 className="m-0 text-[26px] font-semibold leading-[1.4] tracking-[-0.04em]">
               <span className="text-muted">
                 Jumping between random resale groups, DMs, and unclear postage makes second-hand shopping harder than it should be.{" "}
               </span>

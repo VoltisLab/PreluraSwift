@@ -14,6 +14,10 @@ struct LoginView: View {
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
     @State private var showSignup: Bool = false
+    /// Prefill for `SignupView` when routing from Sign in with Apple (no Wearhouse account yet).
+    @State private var appleSignupPrefillEmail: String?
+    @State private var appleSignupPrefillFirstName: String?
+    @State private var appleSignupPrefillLastName: String?
     @State private var showForgotPassword: Bool = false
     @State private var showEmailVerificationCode: Bool = false
     @State private var loginVideoURL: URL?
@@ -105,7 +109,12 @@ struct LoginView: View {
                                 Text(L10n.string("Don't have an account?"))
                                     .font(Theme.Typography.body)
                                     .foregroundColor(Theme.Colors.authOverVideoText)
-                                Button(action: { showSignup = true }) {
+                                Button(action: {
+                                    appleSignupPrefillEmail = nil
+                                    appleSignupPrefillFirstName = nil
+                                    appleSignupPrefillLastName = nil
+                                    showSignup = true
+                                }) {
                                     Text(L10n.string("Sign up"))
                                         .font(Theme.Typography.body)
                                         .foregroundColor(Theme.primaryColor)
@@ -162,7 +171,17 @@ struct LoginView: View {
                 }
             }
             .navigationDestination(isPresented: $showSignup) {
-                SignupView()
+                SignupView(
+                    prefilledEmail: appleSignupPrefillEmail,
+                    prefilledFirstName: appleSignupPrefillFirstName,
+                    prefilledLastName: appleSignupPrefillLastName
+                )
+                .environmentObject(authService)
+                .onDisappear {
+                    appleSignupPrefillEmail = nil
+                    appleSignupPrefillFirstName = nil
+                    appleSignupPrefillLastName = nil
+                }
             }
             .sheet(isPresented: $showForgotPassword) {
                 NavigationStack {
@@ -194,7 +213,7 @@ struct LoginView: View {
     private func handleAppleSignInCompletion(_ result: Result<ASAuthorization, Error>) async {
         switch result {
         case .failure(let error):
-            errorMessage = error.localizedDescription
+            errorMessage = L10n.userFacingError(error)
         case .success(let authorization):
             guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
                   let tokenData = credential.identityToken,
@@ -210,7 +229,15 @@ struct LoginView: View {
             do {
                 try await authService.loginWithApple(identityToken: token, rawNonce: nonce)
             } catch {
-                errorMessage = L10n.userFacingError(error)
+                if case AuthError.appleAccountNotLinkedToWearhouse = error {
+                    appleSignupPrefillEmail = credential.email
+                    appleSignupPrefillFirstName = credential.fullName?.givenName
+                    appleSignupPrefillLastName = credential.fullName?.familyName
+                    errorMessage = nil
+                    showSignup = true
+                } else {
+                    errorMessage = L10n.userFacingError(error)
+                }
             }
         }
     }

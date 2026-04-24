@@ -146,9 +146,6 @@ struct SettingsMenuView: View {
                 NavigationLink(destination: SecurityMenuView()) {
                     settingsRow(L10n.string("Security & Privacy"), icon: "lock.shield")
                 }
-                NavigationLink(destination: VerifyIdentityView()) {
-                    settingsRow(L10n.string("Identity verification"), icon: "checkmark.shield")
-                }
                 NavigationLink(destination: LookbookSettingsView()) {
                     settingsRow(L10n.string("Lookbook settings"), icon: "rectangle.stack.fill")
                 }

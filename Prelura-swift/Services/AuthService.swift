@@ -381,6 +381,7 @@ class AuthService: ObservableObject {
     }
 
     /// Attempts Sign in with Apple against the GraphQL API (`appleIdLogin`). The backend must expose this field; otherwise callers receive `AuthError.appleSignInNotConfigured`.
+    /// When Apple is valid but no Wearhouse user exists yet, the API may return null tokens or a GraphQL error; callers should offer **Sign up** (see `AuthError.appleAccountNotLinkedToWearhouse`).
     func loginWithApple(identityToken: String, rawNonce: String) async throws {
         struct AppleGraphQL: Decodable {
             struct Session: Decodable {
@@ -405,28 +406,87 @@ class AuthService: ObservableObject {
             "identityToken": identityToken,
             "nonce": rawNonce,
         ]
+        let response: AppleGraphQL
         do {
-            let response: AppleGraphQL = try await client.execute(
+            response = try await client.execute(
                 query: mutation,
                 variables: variables,
+                additionalHeaders: appleLoginGraphQLHeaders(),
                 includeAuthorization: false,
                 responseType: AppleGraphQL.self
             )
-            guard let loginData = response.appleIdLogin,
-                  let token = loginData.token,
-                  let refreshToken = loginData.refreshToken else {
+        } catch let gql as GraphQLError {
+            if case .graphQLErrors(let errs) = gql, Self.graphQLErrorsIndicateMissingAppleIdLogin(errs) {
                 throw AuthError.appleSignInNotConfigured
             }
-            storeTokens(
-                token: token,
-                refreshToken: refreshToken,
-                username: loginData.user?.username ?? ""
-            )
-            Task { await refreshAccountModerationFromServer() }
-            objectWillChange.send()
-        } catch {
-            throw AuthError.appleSignInNotConfigured
+            if case .graphQLErrors(let errs) = gql, Self.graphQLErrorsIndicateAppleAccountNotRegistered(errs) {
+                throw AuthError.appleAccountNotLinkedToWearhouse
+            }
+            throw gql
         }
+        guard let loginData = response.appleIdLogin else {
+            throw AuthError.appleAccountNotLinkedToWearhouse
+        }
+        guard let token = loginData.token,
+              let refreshToken = loginData.refreshToken,
+              !token.isEmpty,
+              !refreshToken.isEmpty else {
+            throw AuthError.appleAccountNotLinkedToWearhouse
+        }
+        storeTokens(
+            token: token,
+            refreshToken: refreshToken,
+            username: loginData.user?.username ?? ""
+        )
+        Task { await refreshAccountModerationFromServer() }
+        objectWillChange.send()
+    }
+
+    /// GraphQL host has no `appleIdLogin` (undeployed / wrong API URL) or returned a stale “unavailable” message.
+    private static func graphQLErrorsIndicateMissingAppleIdLogin(_ errors: [GraphQLErrorResponse]) -> Bool {
+        for e in errors {
+            let lower = e.message.lowercased()
+            let namesAppleField = lower.contains("appleidlogin") || lower.contains("apple_id_login")
+            let schemaMissingField =
+                lower.contains("cannot query field")
+                || lower.contains("unknown field")
+                || lower.contains("undefined field")
+                || lower.contains("field 'appleidlogin'")
+                || lower.contains("field \"appleidlogin\"")
+            if namesAppleField && schemaMissingField { return true }
+            if lower.contains("sign in with apple") && lower.contains("available") && lower.contains("wearhouse") {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Backend rejected Apple login because this Apple ID has no Wearhouse profile yet (wording varies by server).
+    private static func graphQLErrorsIndicateAppleAccountNotRegistered(_ errors: [GraphQLErrorResponse]) -> Bool {
+        for e in errors {
+            let lower = e.message.lowercased()
+            let mentionsApple =
+                lower.contains("appleidlogin")
+                || lower.contains("apple_id_login")
+                || lower.contains("apple id")
+                || lower.contains("sign in with apple")
+                || lower.contains("apple login")
+            let suggestsNoAccount =
+                lower.contains("not found")
+                || lower.contains("no user")
+                || lower.contains("unknown user")
+                || lower.contains("does not exist")
+                || lower.contains("no account")
+                || lower.contains("not registered")
+                || lower.contains("not linked")
+                || lower.contains("no wearhouse")
+                || lower.contains("create an account")
+                || lower.contains("register first")
+                || lower.contains("must register")
+            if mentionsApple && suggestsNoAccount { return true }
+            if lower.contains("apple") && lower.contains("no account") { return true }
+        }
+        return false
     }
 
     private func loginDeviceInstallId() -> String {
@@ -439,6 +499,17 @@ class AuthService: ObservableObject {
         let next = UUID().uuidString.lowercased()
         defaults.set(next, forKey: Self.kLoginDeviceInstallId)
         return next
+    }
+
+    /// Native Sign in with Apple puts the app bundle identifier in the identity token `aud` claim; optional hint for the resolver.
+    private func appleLoginGraphQLHeaders() -> [String: String] {
+        var headers: [String: String] = [
+            "X-Prelura-Device-Install-Id": loginDeviceInstallId(),
+        ]
+        if let bid = Bundle.main.bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines), !bid.isEmpty {
+            headers["X-Wearhouse-Apple-Client-Id"] = bid
+        }
+        return headers
     }
 
     private func loginAttemptHeaders(username: String, password: String) -> [String: String] {
@@ -807,6 +878,8 @@ enum AuthError: Error, LocalizedError {
     case loginRateLimited(remainingSeconds: Int)
     /// GraphQL `appleIdLogin` is missing or rejected - keep username/password until the backend ships the mutation.
     case appleSignInNotConfigured
+    /// Apple credentials are valid but no Wearhouse user is linked; UI should open **Sign up** (optionally prefilled from Apple).
+    case appleAccountNotLinkedToWearhouse
 
     var errorDescription: String? {
         switch self {
@@ -818,6 +891,8 @@ enum AuthError: Error, LocalizedError {
             return L10n.userFacingError(error)
         case .appleSignInNotConfigured:
             return L10n.string("Sign in with Apple isn’t available for Wearhouse accounts yet. Use your username and password, or create an account.")
+        case .appleAccountNotLinkedToWearhouse:
+            return L10n.string("No Wearhouse account is linked to this Apple ID yet. Create one on the next screen.")
         case .loginRateLimited(let remainingSeconds):
             let mins = max(1, Int(ceil(Double(remainingSeconds) / 60.0)))
             if mins == 1 {

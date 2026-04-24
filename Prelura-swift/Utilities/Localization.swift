@@ -922,6 +922,8 @@ enum L10n {
         "Gold unlocks more mystery box listings and priority visibility. Complete payment in Apple’s sheet - Apple Pay appears automatically when you have it set up.": "Το Gold ξεκλειδώνει περισσότερα mystery box και προτεραιότητα. Ολοκληρώστε την πληρωμή στο φύλλο της Apple - το Apple Pay εμφανίζεται αυτόματα όταν το έχετε ρυθμίσει.",
         "Could not read Apple credentials.": "Δεν ήταν δυνατή η ανάγνωση των διαπιστευτηρίων Apple.",
         "Sign in with Apple isn’t available for Wearhouse accounts yet. Use your username and password, or create an account.": "Η σύνδεση με Apple δεν είναι ακόμα διαθέσιμη για λογαριασμούς Wearhouse. Χρησιμοποιήστε όνομα χρήστη και κωδικό ή δημιουργήστε λογαριασμό.",
+        "No Wearhouse account is linked to this Apple ID yet. Create one on the next screen.": "Δεν υπάρχει ακόμα λογαριασμός Wearhouse συνδεδεμένος με αυτό το Apple ID. Δημιουργήστε έναν στην επόμενη οθόνη.",
+        "The server couldn’t verify your Apple sign-in token. If Sign in with Apple is already enabled for this target in Xcode, the fix is usually on the API: verify the Apple JWT using this app’s bundle ID as audience (com.prelura.preloved), not only a web Services ID. You can use your password meanwhile.": "Ο διακομιστής δεν μπόρεσε να επαληθεύσει το token σύνδεσης Apple. Αν το Sign in with Apple είναι ήδη ενεργό για αυτό το target στο Xcode, η διόρθωση είναι συνήθως στο API: επαλήθευση του JWT της Apple με audience το bundle ID της εφαρμογής iOS (com.prelura.preloved), όχι μόνο το Services ID του ιστότοπου. Μπορείτε προσωρινά να χρησιμοποιήσετε τον κωδικό σας.",
 
     ]
 }
@@ -961,6 +963,9 @@ extension L10n {
     static func userFacingError(_ error: Error) -> String {
         if isCancellationLikeError(error) {
             return ""
+        }
+        if let auth = error as? AuthError {
+            return auth.errorDescription ?? L10n.string("Something went wrong. Please try again.")
         }
         if let graphQLMapped = userFacingMessageForGraphQLError(error) {
             return graphQLMapped
@@ -1095,6 +1100,17 @@ extension L10n {
                 || lower.contains("invalid username or password")
             if looksLikeBadLogin {
                 return L10n.string("Please enter valid credentials")
+            }
+            // Backend failed verifying Apple’s identity JWT (wording varies); not fixed by toggling an extra Xcode toggle if entitlements already include Sign in with Apple.
+            let looksLikeAppleIdentityTokenRejected =
+                lower.contains("app verification token")
+                || lower.contains("apple token verification")
+                || lower.contains("identity token verification")
+                || (lower.contains("verification") && lower.contains("token") && lower.contains("apple"))
+            if looksLikeAppleIdentityTokenRejected {
+                return L10n.string(
+                    "The server couldn’t verify your Apple sign-in token. If Sign in with Apple is already enabled for this target in Xcode, the fix is usually on the API: verify the Apple JWT using this app’s bundle ID as audience (com.prelura.preloved), not only a web Services ID. You can use your password meanwhile."
+                )
             }
             let looksLikeLoginRateLimit =
                 lower.contains("too many login attempts")

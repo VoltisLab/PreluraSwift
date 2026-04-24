@@ -3,6 +3,11 @@ import SwiftUI
 struct SignupView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authService: AuthService
+    /// Set when opening signup from Sign in with Apple (email/name only available from Apple on first authorization).
+    var prefilledEmail: String? = nil
+    var prefilledFirstName: String? = nil
+    var prefilledLastName: String? = nil
+
     @State private var signupVideoURL: URL?
     @State private var email: String = ""
     @State private var firstName: String = ""
@@ -189,6 +194,15 @@ struct SignupView: View {
         .onAppear {
             if signupVideoURL == nil {
                 signupVideoURL = AuthVideo.signupVideoURL()
+            }
+            if email.isEmpty, let e = prefilledEmail?.trimmingCharacters(in: .whitespacesAndNewlines), !e.isEmpty {
+                email = e
+            }
+            if firstName.isEmpty, let f = prefilledFirstName?.trimmingCharacters(in: .whitespacesAndNewlines), !f.isEmpty {
+                firstName = f
+            }
+            if lastName.isEmpty, let l = prefilledLastName?.trimmingCharacters(in: .whitespacesAndNewlines), !l.isEmpty {
+                lastName = l
             }
             usernameIsValid = isUsernameFormatValid(username)
         }

@@ -83,22 +83,32 @@ export function FeaturedProductsSlider({ className = "" }: FeaturedProductsSlide
   } as CSSProperties;
 
   return (
-    <div
-      className={`mt-8 w-full ${className}`}
-      aria-label="Featured products"
-    >
-      <p className="mb-4 text-center text-sm font-semibold tracking-[-0.01em] text-[#AB28B2]">Featured products</p>
-      <div className="group overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]">
-        <div className="inline-flex w-max wh-featured-marquee-track" style={marqueeStyle}>
-          <div className="flex shrink-0 gap-4 py-1">
-            {items.map((item) => (
-              <ProductCard key={item.id} item={item} />
-            ))}
-          </div>
-          <div className="flex shrink-0 gap-4 py-1" aria-hidden>
-            {items.map((item) => (
-              <ProductCard key={`dup-${item.id}`} item={item} />
-            ))}
+    <div className={`w-full ${className}`} aria-label="Featured products">
+      <p className="mb-3 text-center text-sm font-semibold tracking-[-0.01em] text-[#AB28B2]">Featured products</p>
+      <div className="relative">
+        {/* Edge fades (white page bg) — keeps cards readable while marquee scrolls */}
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-white via-white/95 to-transparent sm:w-16"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-white via-white/95 to-transparent sm:w-16"
+          aria-hidden
+        />
+        <div
+          className="group overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)] [-webkit-mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]"
+        >
+          <div className="inline-flex w-max wh-featured-marquee-track" style={marqueeStyle}>
+            <div className="flex shrink-0 gap-4 py-1">
+              {items.map((item) => (
+                <ProductCard key={item.id} item={item} />
+              ))}
+            </div>
+            <div className="flex shrink-0 gap-4 py-1" aria-hidden>
+              {items.map((item) => (
+                <ProductCard key={`dup-${item.id}`} item={item} />
+              ))}
+            </div>
           </div>
         </div>
       </div>

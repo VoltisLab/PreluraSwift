@@ -5,8 +5,7 @@ struct GuestSignInPromptView: View {
     @EnvironmentObject var authService: AuthService
 
     var body: some View {
-        VStack(spacing: Theme.Spacing.xl) {
-            Spacer(minLength: 60)
+        VStack(spacing: Theme.Spacing.lg) {
             Image(systemName: "person.crop.circle.badge.questionmark")
                 .font(.system(size: 64))
                 .foregroundColor(Theme.Colors.secondaryText)
@@ -31,9 +30,8 @@ struct GuestSignInPromptView: View {
             .cornerRadius(24)
             .padding(.horizontal, Theme.Spacing.xl)
             .padding(.top, Theme.Spacing.sm)
-            Spacer(minLength: 60)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .background(Theme.Colors.background)
     }
 }

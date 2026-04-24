@@ -21,7 +21,6 @@ enum MenuDestination: Identifiable, Hashable {
     case payments
     case postage
     case securityPrivacy
-    case identityVerification
     case pushNotifications
     case emailNotifications
     case adminActions
