@@ -5,3 +5,27 @@
 html {
   scroll-behavior: smooth;
 }
+
+@keyframes wearhouseMarqueeX {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.wh-featured-marquee-track {
+  animation: wearhouseMarqueeX var(--wmq-dur, 40s) linear infinite;
+  will-change: transform;
+}
+
+.group:hover .wh-featured-marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wh-featured-marquee-track {
+    animation: none;
+  }
+}

@@ -35,19 +35,30 @@ const QUERY = `
   }
 `;
 
+const API_ORIGIN = "https://prelura.voltislabs.uk";
+
+function absolutizeImageURL(raw: string): string {
+  const u = raw.trim();
+  if (!u) return u;
+  if (u.startsWith("//")) return `https:${u}`;
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  if (u.startsWith("/")) return `${API_ORIGIN}${u}`;
+  return u;
+}
+
 function extractImageURL(imagesUrl?: string[]): string | null {
   if (!imagesUrl || imagesUrl.length === 0) return null;
   for (const entry of imagesUrl) {
     if (!entry) continue;
-    if (entry.startsWith("http://") || entry.startsWith("https://")) return entry;
+    if (entry.startsWith("http://") || entry.startsWith("https://") || entry.startsWith("//") || entry.startsWith("/")) {
+      return absolutizeImageURL(entry);
+    }
     try {
       const parsed = JSON.parse(entry) as GraphQLImageValue;
-      if (parsed.url && (parsed.url.startsWith("http://") || parsed.url.startsWith("https://"))) {
-        return parsed.url;
-      }
-      if (parsed.thumbnail && (parsed.thumbnail.startsWith("http://") || parsed.thumbnail.startsWith("https://"))) {
-        return parsed.thumbnail;
-      }
+      const fromUrl = parsed.url?.trim();
+      if (fromUrl) return absolutizeImageURL(fromUrl);
+      const fromThumb = parsed.thumbnail?.trim();
+      if (fromThumb) return absolutizeImageURL(fromThumb);
     } catch {
       // Ignore malformed JSON entries and continue scanning.
     }

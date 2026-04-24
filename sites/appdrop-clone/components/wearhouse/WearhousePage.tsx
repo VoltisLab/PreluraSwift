@@ -115,12 +115,12 @@ function StoreBadgeLinks({ className = "" }: { className?: string }) {
 
 export default function WearhousePage() {
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-screen-2xl flex-col bg-white text-ink">
+    <div className="mx-auto flex min-h-screen w-full max-w-screen-2xl min-[1680px]:max-w-none flex-col overflow-x-hidden bg-white text-ink">
       <WearhouseCoverHeader />
 
       <main className="flex-1">
         <section id="hero" className="scroll-mt-28 px-5 pb-16 pt-10 md:px-10 md:pb-24 md:pt-14">
-          <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-8">
+          <div className="mx-auto grid max-w-6xl min-[1680px]:max-w-none items-center gap-12 lg:grid-cols-2 lg:gap-8">
             <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
               <div className="mb-8 flex flex-col items-center gap-3 sm:flex-row sm:gap-4 lg:items-start">
                 <div className="flex items-center gap-2">
@@ -173,7 +173,7 @@ export default function WearhousePage() {
         </section>
 
         <section id="challenge" className="scroll-mt-28 px-5 py-10 md:px-10">
-          <div className="mx-auto flex max-w-[520px] flex-col items-center gap-[18px] pb-24 pt-5 text-center">
+          <div className="mx-auto flex max-w-[520px] min-[1680px]:max-w-none flex-col items-center gap-[18px] px-2 pt-5 text-center sm:px-0">
             <p className={`text-base font-semibold tracking-[-0.02em] ${whPrimary}`}>Why we built it</p>
             <h2 className="text-[26px] font-semibold leading-[1.4] tracking-[-0.04em]">
               <span className="text-muted">
@@ -181,16 +181,16 @@ export default function WearhousePage() {
               </span>
               WEARHOUSE gives you one trusted place to browse, chat, and complete orders - on the web and in the app.
             </h2>
-            <FeaturedProductsSlider />
           </div>
+          <FeaturedProductsSlider className="pb-24" />
         </section>
 
         <section
           id="benefits"
           className="scroll-mt-28 border-t border-white/20 bg-[#AB28B2] px-5 py-16 md:px-10 md:py-24"
         >
-          <div className="mx-auto max-w-6xl">
-            <div className="mx-auto mb-12 max-w-3xl text-center md:mb-16">
+          <div className="mx-auto max-w-6xl min-[1680px]:max-w-none">
+            <div className="mx-auto mb-12 max-w-3xl min-[1680px]:max-w-none text-center md:mb-16">
               <p className="text-base font-semibold tracking-[-0.02em] text-white">Why WEARHOUSE</p>
               <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white md:text-4xl">
                 <span className="text-white/85">Everything you need </span>to move preloved fashion.
@@ -240,8 +240,8 @@ export default function WearhousePage() {
         </section>
 
         <section id="features" className="scroll-mt-28 px-5 py-16 md:px-10 md:py-24">
-          <div className="mx-auto max-w-6xl">
-            <div className="mx-auto mb-12 max-w-3xl text-center md:mb-16">
+          <div className="mx-auto max-w-6xl min-[1680px]:max-w-none">
+            <div className="mx-auto mb-12 max-w-3xl min-[1680px]:max-w-none text-center md:mb-16">
               <p className={`text-base font-semibold tracking-[-0.02em] ${whPrimary}`}>Features</p>
               <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
                 <span className="text-muted">Built for wardrobes </span>
@@ -273,8 +273,8 @@ export default function WearhousePage() {
         </section>
 
         <section id="intelligence" className="scroll-mt-28 border-y border-line bg-white px-5 py-16 md:px-10 md:py-24">
-          <div className="mx-auto max-w-6xl">
-            <div className="mx-auto mb-12 max-w-3xl text-center md:mb-16">
+          <div className="mx-auto max-w-6xl min-[1680px]:max-w-none">
+            <div className="mx-auto mb-12 max-w-3xl min-[1680px]:max-w-none text-center md:mb-16">
               <p className={`text-base font-semibold tracking-[-0.02em] ${whPrimary}`}>Delivery & protection</p>
               <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
                 <span className="text-muted">Straightforward guidance </span>
@@ -311,7 +311,7 @@ export default function WearhousePage() {
         </section>
 
         <section id="connect" className="scroll-mt-28 px-5 py-16 md:px-10 md:py-24">
-          <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
+          <div className="mx-auto grid max-w-6xl min-[1680px]:max-w-none items-center gap-12 lg:grid-cols-2">
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <a
                 href={WEARHOUSE.site}
@@ -368,7 +368,7 @@ export default function WearhousePage() {
         </section>
 
         <section id="reviews" className="scroll-mt-28 border-t border-white/20 bg-[#AB28B2] px-5 py-16 md:px-10 md:py-24">
-          <div className="mx-auto max-w-3xl text-center">
+          <div className="mx-auto max-w-3xl min-[1680px]:max-w-none text-center">
             <p className="text-base font-semibold tracking-[-0.02em] text-white">Community</p>
             <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white md:text-4xl">
               <span className="text-white/85">Made for people </span>
@@ -396,7 +396,7 @@ export default function WearhousePage() {
         </section>
 
         <section id="pricing" className="scroll-mt-28 px-5 py-16 md:px-10 md:py-24">
-          <div className="mx-auto max-w-4xl">
+          <div className="mx-auto max-w-4xl min-[1680px]:max-w-none">
             <div className="mb-10 text-center">
               <h2 className={`text-base font-semibold ${whPrimary}`}>For buyers & sellers</h2>
               <p className="mx-auto mt-3 max-w-xl text-muted">
@@ -451,25 +451,25 @@ export default function WearhousePage() {
         </section>
 
         <section id="faqs" className="scroll-mt-28 border-t border-line bg-white px-5 py-16 md:px-10 md:py-24">
-          <div className="mx-auto max-w-3xl text-center">
+          <div className="mx-auto max-w-3xl min-[1680px]:max-w-none text-center">
             <p className={`text-base font-semibold tracking-[-0.02em] ${whPrimary}`}>FAQs</p>
             <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
               Answers before you hit checkout.
             </h2>
           </div>
-          <div className="mx-auto mt-12 max-w-3xl">
+          <div className="mx-auto mt-12 max-w-3xl min-[1680px]:max-w-none">
             <FaqAccordion />
           </div>
         </section>
 
         <section id="download" className="scroll-mt-28 border-t border-line bg-surface/80 px-5 py-16 md:px-10 md:py-24">
-          <div className="mx-auto max-w-6xl text-center">
+          <div className="mx-auto max-w-6xl min-[1680px]:max-w-none text-center">
             <p className={`text-base font-semibold tracking-[-0.02em] ${whPrimary}`}>Get started in a few steps</p>
             <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
               <span className="text-muted">Open WEARHOUSE </span>
               on the web or your phone.
             </h2>
-            <div className="mx-auto mt-12 grid max-w-4xl gap-6 text-left sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mx-auto mt-12 grid max-w-4xl min-[1680px]:max-w-none gap-6 text-left sm:grid-cols-2 lg:grid-cols-4">
               {(
                 [
                   { t: "Visit", d: "Head to mywearhouse.co.uk or install the WEARHOUSE app from your usual store." },
@@ -491,7 +491,7 @@ export default function WearhousePage() {
       </main>
 
       <footer className="border-t border-line bg-white px-5 py-14 md:px-10">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-6xl min-[1680px]:max-w-none">
           <div className="grid gap-10 md:grid-cols-[1fr_auto] md:items-start">
             <div>
               <Link href="/" className="inline-flex min-w-0 items-center gap-2">
