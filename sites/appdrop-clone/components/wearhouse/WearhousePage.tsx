@@ -165,7 +165,7 @@ export default function WearhousePage() {
               <PrimaryCtas className="mt-8 justify-center lg:justify-start" />
               <StoreBadgeLinks className="mt-5 w-full max-w-lg lg:mx-0" />
             </div>
-            <div className="relative mx-auto w-full max-w-[min(100%,440px)] rounded-[40px] border border-black/[0.06] bg-white p-8 shadow-[0_24px_60px_rgba(15,23,42,0.08)] sm:p-10 lg:mx-0 lg:ml-auto lg:max-w-[min(100%,480px)] lg:p-12">
+            <div className="relative mx-auto w-full max-w-[min(100%,440px)] lg:mx-0 lg:ml-auto lg:max-w-[min(100%,480px)]">
               <div className="relative mx-auto w-full max-w-[280px] sm:max-w-[300px] lg:max-w-[300px] xl:max-w-[320px]">
                 <div className="relative w-full pb-1 [filter:drop-shadow(0_28px_48px_rgba(15,23,42,0.18))_drop-shadow(0_12px_24px_rgba(15,23,42,0.12))]">
                   <Image

@@ -13,7 +13,7 @@ export const WEARHOUSE = {
 } as const;
 
 /** Pixel size of hero device image - must match `public/phone-22.png`. */
-export const HERO_PHONE = { width: 496, height: 1024 } as const;
+export const HERO_PHONE = { width: 2560, height: 5284 } as const;
 
 /** Pinnacle exports for benefit cards (PHONE-1 / 4 / 5, 2560×5284). */
 export const BENEFIT_PHONE = { width: 2560, height: 5284 } as const;
