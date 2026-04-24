@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { WEARHOUSE } from "./site";
 
@@ -48,7 +48,6 @@ export function FeaturedProductsSlider() {
 
   if (items.length === 0) return null;
 
-  // 30% slower than previous speed.
   const durationSeconds = Math.max(18, items.length * 3 * 1.3);
 
   return (
@@ -56,10 +55,12 @@ export function FeaturedProductsSlider() {
       <p className="mb-4 text-center text-sm font-semibold tracking-[-0.01em] text-[#AB28B2]">Featured products</p>
       <div className="group overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]">
         <div
-          className="flex w-max gap-4 py-1 group-hover:[animation-play-state:paused]"
-          style={{
-            animation: `wearhouse-marquee ${durationSeconds}s linear infinite`,
-          }}
+          className="flex w-max gap-4 py-1 will-change-transform motion-reduce:!animate-none animate-wh-marquee group-hover:[animation-play-state:paused]"
+          style={
+            {
+              "--wh-marquee-duration": `${durationSeconds}s`,
+            } as CSSProperties
+          }
         >
           {loopItems.map((item, index) => (
             <a
@@ -67,8 +68,15 @@ export function FeaturedProductsSlider() {
               href={`${WEARHOUSE.site}/item/${encodeURIComponent(item.listingCode || item.id)}`}
               className="block w-[200px] shrink-0 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition hover:-translate-y-0.5"
             >
-              <div className="relative aspect-[3/4] w-full bg-[#f6f6f6]">
-                <Image src={item.image} alt={item.name} fill className="object-cover" sizes="200px" />
+              <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#f6f6f6]">
+                {/* eslint-disable-next-line @next/next/no-img-element -- listing image hosts vary */}
+                <img
+                  src={item.image}
+                  alt={item.name}
+                  className="absolute inset-0 h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
               </div>
               <div className="space-y-0.5 p-3">
                 <p className="truncate text-xs font-semibold text-[#AB28B2]">{item.brand ?? "Featured"}</p>
@@ -80,16 +88,6 @@ export function FeaturedProductsSlider() {
           ))}
         </div>
       </div>
-      <style jsx>{`
-        @keyframes wearhouse-marquee {
-          from {
-            transform: translateX(0);
-          }
-          to {
-            transform: translateX(-50%);
-          }
-        }
-      `}</style>
     </div>
   );
 }

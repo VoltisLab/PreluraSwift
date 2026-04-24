@@ -12,15 +12,14 @@ export const WEARHOUSE = {
   helpRefunds: "https://mywearhouse.co.uk/help/refunds",
 } as const;
 
-/** Pixel size of hero device image - must match `public/phone-22.png`. */
+/** Hero aspect + slide 1 blueprint — `public/phone-22.png` (2560×5284). */
 export const HERO_PHONE = { width: 2560, height: 5284 } as const;
 
-/** Hero carousel frames (same phone aspect; first is HD home, others Pinnacle exports). */
+/** Hero carousel: 1 = `phone-22.png` (blueprint); 2 = PHONE-3; 3 = PHONE-12 (`Pinnacle images`). */
 export const HERO_PHONE_SLIDES = [
-  { src: "/phone-22.png", alt: "WEARHOUSE app - home and discover", width: 2560, height: 5284 },
-  { src: "/hero-phone-lookbook.png", alt: "WEARHOUSE app - lookbooks", width: 496, height: 1024 },
-  { src: "/hero-phone-profile.png", alt: "WEARHOUSE app - seller profile", width: 496, height: 1024 },
-  { src: "/hero-phone-shop.png", alt: "WEARHOUSE app - shop and bag", width: 496, height: 1024 },
+  { src: "/phone-22.png", alt: "WEARHOUSE app - home and discover", ...HERO_PHONE },
+  { src: "/hero-slide-2.png", alt: "WEARHOUSE app - shop", ...HERO_PHONE },
+  { src: "/hero-slide-3.png", alt: "WEARHOUSE app - lookbook", ...HERO_PHONE },
 ] as const;
 
 /** Pinnacle exports for benefit cards (PHONE-1 / 4 / 5, 2560×5284). */

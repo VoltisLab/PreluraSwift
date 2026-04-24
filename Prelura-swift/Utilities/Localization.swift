@@ -921,7 +921,14 @@ enum L10n {
         "Billed monthly. Cancel anytime in Settings → Apple ID → Subscriptions.": "Χρέωση μηνιαία. Ακύρωση ανά πάσα στιγμή από Ρυθμίσεις → Apple ID → Συνδρομές.",
         "Gold unlocks more mystery box listings and priority visibility. Complete payment in Apple’s sheet - Apple Pay appears automatically when you have it set up.": "Το Gold ξεκλειδώνει περισσότερα mystery box και προτεραιότητα. Ολοκληρώστε την πληρωμή στο φύλλο της Apple - το Apple Pay εμφανίζεται αυτόματα όταν το έχετε ρυθμίσει.",
         "Could not read Apple credentials.": "Δεν ήταν δυνατή η ανάγνωση των διαπιστευτηρίων Apple.",
-        "Sign in with Apple isn’t available for Wearhouse accounts yet. Use your username and password, or create an account.": "Η σύνδεση με Apple δεν είναι ακόμα διαθέσιμη για λογαριασμούς Wearhouse. Χρησιμοποιήστε όνομα χρήστη και κωδικό ή δημιουργήστε λογαριασμό.",
+        "Apple sign-in isn’t enabled on this GraphQL endpoint yet. Use your username and password, or confirm the server has appleIdLogin deployed.": "Η σύνδεση με Apple δεν είναι ενεργοποιημένη ακόμα σε αυτό το GraphQL endpoint. Χρησιμοποιήστε όνομα χρήστη και κωδικό ή επιβεβαιώστε ότι ο διακομιστής έχει αναπτύξει το appleIdLogin.",
+        "The server sent no data for this request. Try again or use your password.": "Ο διακομιστής δεν έστειλε δεδομένα για αυτό το αίτημα. Δοκιμάστε ξανά ή χρησιμοποιήστε τον κωδικό σας.",
+        "The server response could not be read. Update the app if you can, or sign in with your password.": "Η απάντηση του διακομιστή δεν μπόρεσε να αναγνωστεί. Ενημερώστε την εφαρμογή αν μπορείτε ή συνδεθείτε με τον κωδικό σας.",
+        "The server returned an error. Try again later or use your password.": "Ο διακομιστής επέστρεψε σφάλμα. Δοκιμάστε αργότερα ή χρησιμοποιήστε τον κωδικό σας.",
+        "Sign in with Apple didn’t finish. Try again or use your username and password.": "Η σύνδεση με Apple δεν ολοκληρώθηκε. Δοκιμάστε ξανά ή χρησιμοποιήστε όνομα χρήστη και κωδικό.",
+        "Apple couldn’t verify this sign-in. Try again or use your password.": "Η Apple δεν μπόρεσε να επαληθεύσει αυτή τη σύνδεση. Δοκιμάστε ξανά ή χρησιμοποιήστε τον κωδικό σας.",
+        "Apple sign-in didn’t return usable tokens. Try again or use your username and password.": "Η σύνδεση με Apple δεν επέστρεψε έγκυρα tokens. Δοκιμάστε ξανά ή χρησιμοποιήστε όνομα χρήστη και κωδικό.",
+        "Sign in with Apple was rejected. Try again or use your username and password.": "Η σύνδεση με Apple απορρίφθηκε. Δοκιμάστε ξανά ή χρησιμοποιήστε όνομα χρήστη και κωδικό.",
 
     ]
 }
@@ -936,12 +943,19 @@ extension L10n {
             if let url = e as? URLError, url.code == .cancelled { return true }
             let ns = e as NSError
             if ns.code == NSURLErrorCancelled { return true }
+            // Sign in with Apple: dismissed sheet (1001) or not presented (1004). Must match here or `userFacingError`
+            // surfaces `localizedDescription` via `userFacingMessageFromNSErrorChain` (looks “safe” to heuristics).
+            if ns.domain == "com.apple.AuthenticationServices.AuthorizationError" {
+                if ns.code == 1001 || ns.code == 1004 { return true }
+            }
         }
         let desc = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if desc == "cancelled" || desc == "canceled" { return true }
         if desc == "operation cancelled" || desc == "operation canceled" { return true }
         if desc.hasPrefix("cancelled") && desc.count <= 48 { return true }
         if desc.hasPrefix("canceled") && desc.count <= 48 { return true }
+        if desc.contains("authenticationservices.authorizationerror"), desc.contains("error 1001") { return true }
+        if desc.contains("authenticationservices.authorizationerror"), desc.contains("error 1004") { return true }
         return false
     }
 
@@ -1030,6 +1044,7 @@ extension L10n {
         if lower.contains("decoding") && lower.contains("signature") { return false }
         if lower.contains("jwt") && (lower.contains("invalid") || lower.contains("expired") || lower.contains("malformed")) { return false }
         if lower == "the operation couldn’t be completed." { return false }
+        if lower.contains("authenticationservices.authorizationerror") { return false }
         if lower.hasPrefix("error domain=") { return false }
         return true
     }
@@ -1059,11 +1074,12 @@ extension L10n {
         guard let gq = error as? GraphQLError else { return nil }
         switch gq {
         case .noData:
-            return L10n.string("Something went wrong. Please try again.")
+            return L10n.string("The server sent no data for this request. Try again or use your password.")
         case .decodingError:
-            return L10n.string("Something went wrong. Please try again.")
-        case .httpError:
-            return L10n.string("Something went wrong. Please try again.")
+            return L10n.string("The server response could not be read. Update the app if you can, or sign in with your password.")
+        case .httpError(let code):
+            let base = L10n.string("The server returned an error. Try again later or use your password.")
+            return "\(base) (\(code))"
         case .networkError(let message):
             let lower = message.lowercased()
             if lower.contains("cancel") { return "" }
@@ -1079,6 +1095,9 @@ extension L10n {
                 return L10n.string("Something went wrong. Please try again.")
             }
             let lower = raw.lowercased()
+            if lower.contains("invalid apple nonce") || lower.contains("apple token verification failed") {
+                return L10n.string("Apple couldn’t verify this sign-in. Try again or use your password.")
+            }
             if lower.contains("updatelookbookpost"),
                lower.contains("cannot query field") || lower.contains("unknown field") {
                 return L10n.string("Lookbook edits aren’t supported on this server yet. Deploy the updateLookbookPost API (see docs/lookbooks-backend-spec.md).")
@@ -1086,6 +1105,21 @@ extension L10n {
             if lower.contains("setlookbookproducttags"),
                lower.contains("cannot query field") || lower.contains("unknown field") {
                 return L10n.string("Updating tagged products isn’t available on this server yet. Your team can deploy setLookbookProductTags when ready.")
+            }
+            let appleField = lower.contains("appleidlogin") || lower.contains("apple_id_login")
+            let schemaMissingApple =
+                lower.contains("cannot query field")
+                || lower.contains("unknown field")
+                || lower.contains("undefined field")
+            if appleField && schemaMissingApple {
+                return L10n.string(
+                    "Apple sign-in isn’t enabled on this GraphQL endpoint yet. Use your username and password, or confirm the server has appleIdLogin deployed."
+                )
+            }
+            if lower.contains("sign in with apple") && lower.contains("available") && lower.contains("wearhouse") {
+                return L10n.string(
+                    "Apple sign-in isn’t enabled on this GraphQL endpoint yet. Use your username and password, or confirm the server has appleIdLogin deployed."
+                )
             }
             let looksLikeBadLogin =
                 lower.contains("please enter valid")

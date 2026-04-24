@@ -626,6 +626,52 @@ class UserService: ObservableObject {
         }
     }
 
+    /// Staff-curated shops for Discover "Top Shops".
+    func getDiscoverFeaturedShops() async throws -> [RecommendedSeller] {
+        let query = """
+        query DiscoverFeaturedShops {
+          discoverFeaturedShops {
+            id
+            username
+            displayName
+            profilePictureUrl
+          }
+        }
+        """
+        struct Payload: Decodable {
+            let discoverFeaturedShops: [SellerRow]?
+        }
+        struct SellerRow: Decodable {
+            let id: AnyCodable?
+            let username: String?
+            let displayName: String?
+            let profilePictureUrl: String?
+        }
+        let response: Payload = try await client.execute(query: query, responseType: Payload.self)
+        return (response.discoverFeaturedShops ?? []).compactMap { s -> RecommendedSeller? in
+            let idStr: String
+            if let any = s.id {
+                if let i = any.value as? Int { idStr = String(i) }
+                else if let str = any.value as? String { idStr = str }
+                else { idStr = "" }
+            } else { idStr = "" }
+            let user = User(
+                id: UUID(uuidString: idStr) ?? UUID(),
+                username: s.username ?? "",
+                displayName: s.displayName ?? s.username ?? "",
+                avatarURL: s.profilePictureUrl
+            )
+            return RecommendedSeller(
+                seller: user,
+                totalSales: nil,
+                totalShopValue: nil,
+                productViews: 0,
+                sellerScore: 0,
+                activeListings: 0
+            )
+        }
+    }
+
     /// Fetch blocked users. Matches Flutter getBlockedUsers.
     func getBlockedUsers(pageNumber: Int = 1, pageCount: Int = 20, search: String? = nil) async throws -> [BlockedUser] {
         let query = """

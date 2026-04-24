@@ -330,6 +330,19 @@ class AuthService: ObservableObject {
         return msg.contains("valid credentials") || msg.contains("please enter valid")
     }
 
+    /// Heuristic for login UX routing: true when backend says the account/identifier does not exist.
+    static func loginErrorIndicatesMissingAccount(_ error: Error) -> Bool {
+        guard case let GraphQLError.graphQLErrors(errors) = error else { return false }
+        return errors.contains { item in
+            let m = item.message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return m.contains("user does not exist")
+                || m.contains("no user found")
+                || m.contains("account not found")
+                || m.contains("no active account found")
+                || m.contains("could not find user")
+        }
+    }
+
     private func loginWithCredentials(username: String, password: String) async throws -> LoginResponse {
         let query = """
         mutation Login($username: String!, $password: String!) {
@@ -380,7 +393,7 @@ class AuthService: ObservableObject {
         return loginData
     }
 
-    /// Attempts Sign in with Apple against the GraphQL API (`appleIdLogin`). The backend must expose this field; otherwise callers receive `AuthError.appleSignInNotConfigured`.
+    /// Attempts Sign in with Apple against the backend `appleIdLogin` mutation only (no client fallbacks).
     func loginWithApple(identityToken: String, rawNonce: String) async throws {
         struct AppleGraphQL: Decodable {
             struct Session: Decodable {
@@ -389,7 +402,6 @@ class AuthService: ObservableObject {
                 struct U: Decodable { let username: String? }
                 let user: U?
             }
-
             let appleIdLogin: Session?
         }
         let mutation = """
@@ -401,32 +413,54 @@ class AuthService: ObservableObject {
           }
         }
         """
-        let variables: [String: Any] = [
-            "identityToken": identityToken,
-            "nonce": rawNonce,
-        ]
+        let variables: [String: Any] = ["identityToken": identityToken, "nonce": rawNonce]
+
+        let response: AppleGraphQL
         do {
-            let response: AppleGraphQL = try await client.execute(
+            response = try await client.execute(
                 query: mutation,
                 variables: variables,
                 includeAuthorization: false,
                 responseType: AppleGraphQL.self
             )
-            guard let loginData = response.appleIdLogin,
-                  let token = loginData.token,
-                  let refreshToken = loginData.refreshToken else {
+        } catch let gql as GraphQLError {
+            if case .graphQLErrors(let errs) = gql, Self.graphQLErrorsIndicateMissingAppleIdLogin(errs) {
                 throw AuthError.appleSignInNotConfigured
             }
-            storeTokens(
-                token: token,
-                refreshToken: refreshToken,
-                username: loginData.user?.username ?? ""
-            )
-            Task { await refreshAccountModerationFromServer() }
-            objectWillChange.send()
-        } catch {
-            throw AuthError.appleSignInNotConfigured
+            throw gql
         }
+        guard let loginData = response.appleIdLogin,
+              let token = loginData.token,
+              let refreshToken = loginData.refreshToken else {
+            throw AuthError.invalidResponse
+        }
+        storeTokens(
+            token: token,
+            refreshToken: refreshToken,
+            username: loginData.user?.username ?? ""
+        )
+        Task { await refreshAccountModerationFromServer() }
+        objectWillChange.send()
+    }
+
+    /// True when the GraphQL host rejects the mutation (stale schema / wrong environment), not an Apple credential problem.
+    private static func graphQLErrorsIndicateMissingAppleIdLogin(_ errors: [GraphQLErrorResponse]) -> Bool {
+        for e in errors {
+            let lower = e.message.lowercased()
+            let namesAppleField = lower.contains("appleidlogin") || lower.contains("apple_id_login")
+            let schemaMissingField =
+                lower.contains("cannot query field")
+                || lower.contains("unknown field")
+                || lower.contains("undefined field")
+                || lower.contains("field 'appleidlogin'")
+                || lower.contains("field \"appleidlogin\"")
+            if namesAppleField && schemaMissingField { return true }
+            // Stale client copy / gateway sometimes echoes this exact product string as the error message.
+            if lower.contains("sign in with apple") && lower.contains("available") && lower.contains("wearhouse") {
+                return true
+            }
+        }
+        return false
     }
 
     private func loginDeviceInstallId() -> String {
@@ -805,7 +839,7 @@ enum AuthError: Error, LocalizedError {
     case registrationError(String)
     case networkError(Error)
     case loginRateLimited(remainingSeconds: Int)
-    /// GraphQL `appleIdLogin` is missing or rejected - keep username/password until the backend ships the mutation.
+    /// GraphQL host has no `appleIdLogin` (undeployed / wrong API URL) or returned a stale “unavailable” message.
     case appleSignInNotConfigured
 
     var errorDescription: String? {
@@ -817,7 +851,9 @@ enum AuthError: Error, LocalizedError {
         case .networkError(let error):
             return L10n.userFacingError(error)
         case .appleSignInNotConfigured:
-            return L10n.string("Sign in with Apple isn’t available for Wearhouse accounts yet. Use your username and password, or create an account.")
+            return L10n.string(
+                "Apple sign-in isn’t enabled on this GraphQL endpoint yet. Use your username and password, or confirm the server has appleIdLogin deployed."
+            )
         case .loginRateLimited(let remainingSeconds):
             let mins = max(1, Int(ceil(Double(remainingSeconds) / 60.0)))
             if mins == 1 {
