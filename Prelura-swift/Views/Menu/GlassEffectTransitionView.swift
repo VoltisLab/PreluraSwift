@@ -111,7 +111,7 @@ struct GlassEffectTransitionView: View {
     }
 }
 
-/// Demo: two glass views with the same glassEffectID swap visibility — glass shape morphs between them.
+/// Demo: two glass views with the same glassEffectID swap visibility - glass shape morphs between them.
 private struct MatchedGeometryDemo: View {
     let namespace: Namespace.ID
     @State private var showA = true

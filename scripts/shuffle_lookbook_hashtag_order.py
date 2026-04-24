@@ -158,7 +158,7 @@ def reorder_hashtags_in_caption(
         i = new_tags.index(swap)
         new_tags[0], new_tags[i] = new_tags[i], new_tags[0]
     elif not non_primary and len(new_tags) > 1:
-        # Every token is a configured anchor — still break the always-same-first habit
+        # Every token is a configured anchor - still break the always-same-first habit
         rot = rng.randint(1, len(new_tags) - 1)
         new_tags = new_tags[rot:] + new_tags[:rot]
 

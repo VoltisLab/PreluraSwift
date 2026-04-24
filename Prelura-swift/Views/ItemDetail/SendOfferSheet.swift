@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Form body (use inside `OptionsSheet` only — no sheet chrome or full-bleed background)
+// MARK: - Form body (use inside `OptionsSheet` only - no sheet chrome or full-bleed background)
 
 /// Offer form for marketplace item detail and chat counter-offer. Parent supplies `OptionsSheet` surface; this view must not add a second full-screen background.
 struct SendOfferFormContent: View {

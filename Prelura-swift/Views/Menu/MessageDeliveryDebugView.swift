@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// End-to-end DM test helper: send a probe message and verify it is persisted in the thread.
-/// **Release builds:** entry point is removed from `MenuView` (`#if DEBUG` only). This still sends **real** messages and **push notifications** to the other chat participant — never re-expose without a staff gate.
+/// **Release builds:** entry point is removed from `MenuView` (`#if DEBUG` only). This still sends **real** messages and **push notifications** to the other chat participant - never re-expose without a staff gate.
 struct MessageDeliveryDebugView: View {
     @EnvironmentObject private var authService: AuthService
     @StateObject private var chatService = ChatService()

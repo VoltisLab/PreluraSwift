@@ -15,7 +15,7 @@ struct OfferInfo: Codable, Hashable {
     let products: [OfferProduct]?
     /// When the offer was sent; used for card timestamp. Set locally when not from server.
     let createdAt: Date?
-    /// When true, this offer was sent by the current user. Always set — never guess from buyer.
+    /// When true, this offer was sent by the current user. Always set - never guess from buyer.
     let sentByCurrentUser: Bool
     /// Username of the user who last changed offer status (e.g. who accepted); from GraphQL `updatedBy`.
     let updatedByUsername: String?

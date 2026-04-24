@@ -34,8 +34,8 @@ Each child category should have:
 
 - `id` (Int or String as in your schema)
 - `name` (String)
-- `hasChildren` (Boolean) — set to `false` for these dress types (leaf categories)
-- `fullPath` (String, optional) — e.g. `"Women > Dresses > Mini Dress"` if your schema has it
+- `hasChildren` (Boolean) - set to `false` for these dress types (leaf categories)
+- `fullPath` (String, optional) - e.g. `"Women > Dresses > Mini Dress"` if your schema has it
 
 ### Subcategory names to add under Dresses
 

@@ -25,7 +25,7 @@ extension Notification.Name {
     static let wearhouseDeviceTokenDidUpdate = Notification.Name("WearhouseDeviceTokenDidUpdate")
     /// Posted when vacation mode (or other profile flags) are updated so Profile can refresh.
     static let wearhouseUserProfileDidUpdate = Notification.Name("WearhouseUserProfileDidUpdate")
-    /// Seller listing hide/show or status changed — refresh my-profile shop grid.
+    /// Seller listing hide/show or status changed - refresh my-profile shop grid.
     static let wearhouseSellerListingsDidChange = Notification.Name("WearhouseSellerListingsDidChange")
     /// Posted when the user views a product so Discover (and Recently viewed) can refresh.
     static let wearhouseRecentlyViewedDidUpdate = Notification.Name("WearhouseRecentlyViewedDidUpdate")
@@ -33,9 +33,9 @@ extension Notification.Name {
     static let wearhouseSellerEarningsShouldRefresh = Notification.Name("WearhouseSellerEarningsShouldRefresh")
     /// In-app notification list changed (read/delete/refresh) so Home bell badge can update.
     static let wearhouseInAppNotificationsDidChange = Notification.Name("WearhouseInAppNotificationsDidChange")
-    /// GraphQL returned ACCOUNT_SUSPENDED / ACCOUNT_BANNED — refresh `viewMe` moderation flags.
+    /// GraphQL returned ACCOUNT_SUSPENDED / ACCOUNT_BANNED - refresh `viewMe` moderation flags.
     static let wearhouseAccountRestrictionShouldRefresh = Notification.Name("WearhouseAccountRestrictionShouldRefresh")
-    /// GraphQL reported the access (or refresh) token is no longer valid — sign out instead of trapping the user on error banners.
+    /// GraphQL reported the access (or refresh) token is no longer valid - sign out instead of trapping the user on error banners.
     static let wearhouseAuthSessionInvalidShouldSignOut = Notification.Name("WearhouseAuthSessionInvalidShouldSignOut")
     /// Local plan / unlimited-mystery flags changed (Settings → Plan).
     static let wearhouseSellerPlanDidChange = Notification.Name("WearhouseSellerPlanDidChange")
@@ -109,7 +109,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         StartupTiming.bootstrap()
-        StartupTiming.mark("AppDelegate.didFinishLaunching — begin")
+        StartupTiming.mark("AppDelegate.didFinishLaunching - begin")
         configureFirebaseIfPossible()
         if Self.isFirebaseConfigured {
             Messaging.messaging().delegate = self
@@ -127,7 +127,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             Self.logChatPushPayloadIfRelevant(remote, context: "Cold start remote")
         }
         requestNotificationPermissionAndRegister(application: application)
-        StartupTiming.mark("AppDelegate.didFinishLaunching — end")
+        StartupTiming.mark("AppDelegate.didFinishLaunching - end")
         return true
     }
 
@@ -135,22 +135,22 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     private func configureFirebaseIfPossible() {
         guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
               FileManager.default.fileExists(atPath: path) else {
-            pushBootstrapLog.error("GoogleService-Info.plist missing from app bundle — Firebase push disabled. Add from Firebase Console (docs/FIREBASE_IOS_SETUP.md).")
+            pushBootstrapLog.error("GoogleService-Info.plist missing from app bundle - Firebase push disabled. Add from Firebase Console (docs/FIREBASE_IOS_SETUP.md).")
             NotificationDebugLog.append(source: "firebase", message: "GoogleService-Info.plist missing from app bundle", isError: true)
             #if DEBUG
-            print("[Push] No GoogleService-Info.plist in bundle — add Prelura-swift/GoogleService-Info.plist for FCM.")
+            print("[Push] No GoogleService-Info.plist in bundle - add Prelura-swift/GoogleService-Info.plist for FCM.")
             #endif
             return
         }
         guard let plist = NSDictionary(contentsOfFile: path) as? [String: Any] else {
-            pushBootstrapLog.error("GoogleService-Info.plist could not be read — Firebase push disabled.")
+            pushBootstrapLog.error("GoogleService-Info.plist could not be read - Firebase push disabled.")
             NotificationDebugLog.append(source: "firebase", message: "GoogleService-Info.plist could not be read", isError: true)
             return
         }
         let apiKey = (plist["API_KEY"] as? String) ?? ""
         let googleAppId = (plist["GOOGLE_APP_ID"] as? String) ?? ""
         if apiKey.contains("REPLACE_ME") || googleAppId.contains("REPLACE_ME") {
-            pushBootstrapLog.warning("GoogleService-Info.plist still has REPLACE_ME placeholders — Firebase not configured.")
+            pushBootstrapLog.warning("GoogleService-Info.plist still has REPLACE_ME placeholders - Firebase not configured.")
             NotificationDebugLog.append(source: "firebase", message: "GoogleService-Info.plist still has REPLACE_ME placeholders", isError: true)
             #if DEBUG
             print("[Push] Replace placeholders in GoogleService-Info.plist with values from Firebase Console.")
@@ -158,7 +158,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             return
         }
         guard let options = FirebaseOptions(contentsOfFile: path) else {
-            pushBootstrapLog.error("FirebaseOptions could not load GoogleService-Info.plist — Firebase push disabled.")
+            pushBootstrapLog.error("FirebaseOptions could not load GoogleService-Info.plist - Firebase push disabled.")
             NotificationDebugLog.append(source: "firebase", message: "FirebaseOptions could not load plist path", isError: true)
             return
         }
@@ -166,7 +166,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         FirebaseApp.configure(options: options)
         StartupTiming.mark("FirebaseApp.configure completed")
         if let projectId = plist["PROJECT_ID"] as? String {
-            pushBootstrapLog.info("Firebase PROJECT_ID=\(projectId, privacy: .public) — must match server GOOGLE_CRED_PROJECT_ID.")
+            pushBootstrapLog.info("Firebase PROJECT_ID=\(projectId, privacy: .public) - must match server GOOGLE_CRED_PROJECT_ID.")
             #if DEBUG
             print("[Push] Firebase PROJECT_ID=\(projectId)")
             #endif
@@ -176,7 +176,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 isError: false
             )
         }
-        // TestFlight needs this too — wrong plist (e.g. Flutter’s GOOGLE_APP_ID) breaks APNs-linked FCM.
+        // TestFlight needs this too - wrong plist (e.g. Flutter’s GOOGLE_APP_ID) breaks APNs-linked FCM.
         diagnoseFirebasePlistVersusRuntime(plist: plist)
     }
 
@@ -186,7 +186,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         let runtimeBundle = Bundle.main.bundleIdentifier ?? ""
         let googleAppId = (plist["GOOGLE_APP_ID"] as? String) ?? ""
         if !plistBundle.isEmpty, !runtimeBundle.isEmpty, plistBundle != runtimeBundle {
-            pushBootstrapLog.warning("GoogleService BUNDLE_ID (\(plistBundle, privacy: .public)) ≠ executable (\(runtimeBundle, privacy: .public)) — replace plist from Firebase for this target.")
+            pushBootstrapLog.warning("GoogleService BUNDLE_ID (\(plistBundle, privacy: .public)) ≠ executable (\(runtimeBundle, privacy: .public)) - replace plist from Firebase for this target.")
             print("[Push] WARNING: plist BUNDLE_ID (\(plistBundle)) ≠ app bundle (\(runtimeBundle)).")
             NotificationDebugLog.append(
                 source: "firebase",
@@ -201,7 +201,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             print("[Push] WARNING: plist still uses Flutter’s GOOGLE_APP_ID. Download a new plist from Firebase → iOS app com.prelura.preloved (not com.prelura.app).")
             NotificationDebugLog.append(
                 source: "firebase",
-                message: "WARNING: GOOGLE_APP_ID matches Flutter app — use Firebase iOS app for com.prelura.preloved",
+                message: "WARNING: GOOGLE_APP_ID matches Flutter app - use Firebase iOS app for com.prelura.preloved",
                 isError: false
             )
         }
@@ -271,7 +271,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                                     NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
                                 }
                             } else {
-                                pushBootstrapLog.warning("User declined notification permission — enable in Settings → WEARHOUSE → Notifications.")
+                                pushBootstrapLog.warning("User declined notification permission - enable in Settings → WEARHOUSE → Notifications.")
                                 NotificationDebugLog.append(
                                     source: "permission",
                                     message: "User declined notification permission in system prompt",
@@ -281,7 +281,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                         }
                     }
                 case .denied:
-                    pushBootstrapLog.warning("Notifications denied for WEARHOUSE — enable in Settings → Notifications.")
+                    pushBootstrapLog.warning("Notifications denied for WEARHOUSE - enable in Settings → Notifications.")
                     NotificationDebugLog.append(
                         source: "permission",
                         message: "Notifications authorization denied (Settings → WEARHOUSE → Notifications)",
@@ -301,7 +301,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         } else {
             NotificationDebugLog.append(
                 source: "apns",
-                message: "APNs device token received (\(deviceToken.count) bytes) but Firebase is not configured — not passed to FCM (fix GoogleService-Info.plist)",
+                message: "APNs device token received (\(deviceToken.count) bytes) but Firebase is not configured - not passed to FCM (fix GoogleService-Info.plist)",
                 isError: true
             )
             return
@@ -369,7 +369,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             message: "FCM registration token refreshed (\(fcmToken.count) chars)",
             isError: false
         )
-        pushBootstrapLog.info("FCM token length=\(fcmToken.count, privacy: .public) — stored; upload runs when logged in.")
+        pushBootstrapLog.info("FCM token length=\(fcmToken.count, privacy: .public) - stored; upload runs when logged in.")
         // Log prefix in Release too so Console.app / TestFlight feedback helps without DEBUG.
         let prefix = fcmToken.prefix(16)
         print("[Push] FCM token received (\(fcmToken.count) chars), prefix: \(prefix)…")
@@ -432,7 +432,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         if isLocalDebug {
             NotificationDebugLog.append(
                 source: "local",
-                message: "willPresent — local test banner (app was foreground; for lock-screen test, background the app before it fires)",
+                message: "willPresent - local test banner (app was foreground; for lock-screen test, background the app before it fires)",
                 isError: false
             )
             completionHandler([.banner, .badge, .sound])
@@ -447,7 +447,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             Self.enqueueReplacementSaleNotification(from: notification)
             NotificationDebugLog.append(
                 source: "present",
-                message: "willPresent — reposted seller-sale push with normalized body",
+                message: "willPresent - reposted seller-sale push with normalized body",
                 isError: false
             )
             Self.logChatPushPayloadIfRelevant(u, context: "Foreground willPresent (sale copy replaced)")
@@ -462,7 +462,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             Self.enqueueUsernameLowercasedForegroundCopy(from: notification)
             NotificationDebugLog.append(
                 source: "present",
-                message: "willPresent — reposted push with lowercase username (foreground)",
+                message: "willPresent - reposted push with lowercase username (foreground)",
                 isError: false
             )
             Self.logChatPushPayloadIfRelevant(u, context: "Foreground willPresent (username casing)")
@@ -479,7 +479,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         let midStr = u["gcm.message_id"].map { String(describing: $0) } ?? "?"
         NotificationDebugLog.append(
             source: "present",
-            message: "willPresent — remote FCM banner/sound (foreground) gcm.message_id=\(midStr)",
+            message: "willPresent - remote FCM banner/sound (foreground) gcm.message_id=\(midStr)",
             isError: false
         )
         Self.logChatPushPayloadIfRelevant(u, context: "Foreground willPresent")

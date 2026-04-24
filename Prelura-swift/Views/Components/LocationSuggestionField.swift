@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Location text field with dropdown suggestions from a bundled list of cities, towns, and countries only (no street addresses).
-/// User can type to filter and tap a suggestion to fill the field. No external API — all data is local.
+/// User can type to filter and tap a suggestion to fill the field. No external API - all data is local.
 struct LocationSuggestionField: View {
     let placeholder: String
     @Binding var text: String

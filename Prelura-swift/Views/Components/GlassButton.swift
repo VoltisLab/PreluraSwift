@@ -38,7 +38,7 @@ struct GlassButton: View {
 
 // MARK: - Toolbar/nav icons: Liquid Glass circle (system .regular material in circle).
 
-/// Liquid Glass circle behind toolbar icons — system glass material for consistent look.
+/// Liquid Glass circle behind toolbar icons - system glass material for consistent look.
 private struct GlassIconCircleStyle: ViewModifier {
     let size: CGFloat
 
@@ -101,7 +101,7 @@ struct GlassIconView: View {
     }
 }
 
-/// Toolbar bell: matches **WEARHOUSE Pro** admin sidebar (`bell.badge`) — **white/light bell**, **red** badge dot; shopper with unread shows a **red** count capsule + white `bell` (numeric badge replaces the dot).
+/// Toolbar bell: matches **WEARHOUSE Pro** admin sidebar (`bell.badge`) - **white/light bell**, **red** badge dot; shopper with unread shows a **red** count capsule + white `bell` (numeric badge replaces the dot).
 struct NotificationToolbarBellVisual: View {
     private enum Kind {
         case shopper(unreadCount: Int)
@@ -127,7 +127,7 @@ struct NotificationToolbarBellVisual: View {
     private static let bellBadgeRimNudgeX: CGFloat = -3
     private static let bellBadgeRimNudgeY: CGFloat = 3
 
-    /// Admin / `NotificationIconDebugView.adminBellGlyph`: `bell.badge` palette — bell = label, dot = red.
+    /// Admin / `NotificationIconDebugView.adminBellGlyph`: `bell.badge` palette - bell = label, dot = red.
     private static let adminBellBadgeSymbol = "bell.badge"
 
     /// Opaque fill: `Color.red` in toolbar + `glassEffect` can pick up bar vibrancy and look translucent over the bell.
@@ -207,7 +207,7 @@ struct NotificationToolbarBellVisual: View {
 
 // MARK: - Home toolbar (admin `bell.badge` look, no counter)
 
-/// Homepage-only: the real **`bell.badge`** SF Symbol when there is unread (dot **overlaps** the bell). For this glyph, **palette index 0 is the badge**, index 1 is the bell outline — use `(red, label)` so the bell stays light and the dot stays red (reversed order vs naive “left-to-right” reading).
+/// Homepage-only: the real **`bell.badge`** SF Symbol when there is unread (dot **overlaps** the bell). For this glyph, **palette index 0 is the badge**, index 1 is the bell outline - use `(red, label)` so the bell stays light and the dot stays red (reversed order vs naive “left-to-right” reading).
 struct HomeToolbarNotificationBellVisual: View {
     let unreadCount: Int
 

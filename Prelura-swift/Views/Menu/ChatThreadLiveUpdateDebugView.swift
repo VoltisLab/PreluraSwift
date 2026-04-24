@@ -9,7 +9,7 @@ struct ChatThreadLiveUpdateDebugView: View {
         List {
             Section {
                 Text(
-                    "Open the thread **before** reproducing. Push can arrive while the app is backgrounded — the chat socket is disconnected then, so no live row until you foreground and refetch. "
+                    "Open the thread **before** reproducing. Push can arrive while the app is backgrounded - the chat socket is disconnected then, so no live row until you foreground and refetch. "
                         + "This screen shows whether a **WebSocket JSON** arrived, whether it **parsed** as a `Message`, whether the **bridge** queued it, and whether **`onChange` drained** it into the thread handler."
                 )
                 .font(.caption)
@@ -31,7 +31,7 @@ struct ChatThreadLiveUpdateDebugView: View {
             } header: {
                 Text("Counters (session)")
             } footer: {
-                Text("If **serverErr** > 0, Django sent `{\"error\":...}` (handler exception) — no `chat_message` broadcast. If parseOk > 0 but uiDrain stays 0, the bridge / onChange path did not run. If uiOutcome > 0 but no bubble, merge or displayedMessages filtered the row out.")
+                Text("If **serverErr** > 0, Django sent `{\"error\":...}` (handler exception) - no `chat_message` broadcast. If parseOk > 0 but uiDrain stays 0, the bridge / onChange path did not run. If uiOutcome > 0 but no bubble, merge or displayedMessages filtered the row out.")
             }
 
             Section {

@@ -455,8 +455,8 @@ struct OrderIssueDetailView: View {
     private func humanReadableStatus(_ issue: OrderIssueDetails) -> String {
         let s = (issue.status ?? "").uppercased()
         switch s {
-        case "PENDING": return "Pending — under review"
-        case "WITHDRAWN": return "Withdrawn — buyer accepted the order"
+        case "PENDING": return "Pending - under review"
+        case "WITHDRAWN": return "Withdrawn - buyer accepted the order"
         case "DECLINED": return "Declined"
         case "RESOLVED": return "Resolved"
         default:
@@ -514,10 +514,10 @@ struct OrderIssueDetailView: View {
         }
         if res == Self.refundWithReturn {
             if issue.returnPostagePaidBy == Self.postageSeller {
-                return "Refund with return — seller pays return postage"
+                return "Refund with return - seller pays return postage"
             }
             if issue.returnPostagePaidBy == Self.postageBuyer {
-                return "Refund with return — buyer pays return postage"
+                return "Refund with return - buyer pays return postage"
             }
             return "Refund with return"
         }

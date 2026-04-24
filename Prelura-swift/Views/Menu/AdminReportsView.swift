@@ -139,8 +139,8 @@ struct AdminReportsView: View {
     @ViewBuilder
     private func detail(_ report: AdminReportRow) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            labeled("Reason", report.reason ?? "—")
-            labeled("Details", report.context ?? "—")
+            labeled("Reason", report.reason ?? "-")
+            labeled("Details", report.context ?? "-")
             if let target = report.accountReportedUsername, !target.isEmpty {
                 labeled("Reported account", target)
             }

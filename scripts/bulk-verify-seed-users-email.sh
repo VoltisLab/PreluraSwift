@@ -125,7 +125,7 @@ while IFS= read -r uname; do
     sleep 0.1
     continue
   fi
-  # id may be float from jq for large ints — coerce to int string
+  # id may be float from jq for large ints - coerce to int string
   uid=$(printf '%.0f' "$uid_raw" 2>/dev/null || echo "$uid_raw")
 
   if verify_user_id "$uid" "$uname"; then

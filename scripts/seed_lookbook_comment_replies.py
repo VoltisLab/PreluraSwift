@@ -113,35 +113,35 @@ def comment_bucket(text: str) -> str:
 # Large pool so consecutive replies rarely repeat verbatim; buckets tuned for marketplace / fashion tone.
 REPLIES: dict[str, list[str]] = {
     "question": [
-        "Honestly mostly second-hand finds — happy to share more detail if you want!",
-        "Good question — mix of thrift + a couple of newer staples.",
+        "Honestly mostly second-hand finds - happy to share more detail if you want!",
+        "Good question - mix of thrift + a couple of newer staples.",
         "It’s a bit of a mashup tbh, mostly pieced together over time.",
-        "Depends on the day — I rotate a few favourites.",
+        "Depends on the day - I rotate a few favourites.",
         "Nothing too fancy, just stuff I actually wear on repeat.",
         "A little bit of hunting, a little bit of luck.",
-        "I try to keep it simple — layers help.",
+        "I try to keep it simple - layers help.",
         "Still figuring it out myself, but I’m glad it reads well on camera.",
     ],
     "hype": [
         "Thank you so much, that means a lot.",
-        "Appreciate you saying that — made my day.",
+        "Appreciate you saying that - made my day.",
         "You’re way too kind, thank you.",
         "Thank you! Really glad you like the vibe.",
         "That’s so nice of you, thank you.",
         "Means a lot, thank you for the love.",
-        "Thank you — always nice to hear.",
+        "Thank you - always nice to hear.",
         "Haha thank you, I’ll take the hype.",
     ],
     "commerce": [
-        "Thanks for asking — I’ll keep an eye on messages for you.",
+        "Thanks for asking - I’ll keep an eye on messages for you.",
         "Appreciate the interest! I’ll follow up when I can.",
-        "Thanks — best to check listings / messages for the details.",
-        "Good shout — I’ll try to get back to you soon.",
+        "Thanks - best to check listings / messages for the details.",
+        "Good shout - I’ll try to get back to you soon.",
         "Thanks! I’ll reply properly when I’m at my desk.",
-        "Appreciate it — I’m a bit slow on replies sometimes but I’ll get there.",
+        "Appreciate it - I’m a bit slow on replies sometimes but I’ll get there.",
     ],
     "playful": [
-        "Haha thank you — I’ll allow it.",
+        "Haha thank you - I’ll allow it.",
         "Okay okay I’ll take that energy.",
         "Stop you’re gonna make me smile at my phone.",
         "Haha love that, thank you.",
@@ -153,10 +153,10 @@ REPLIES: dict[str, list[str]] = {
         "Appreciate you taking a look.",
         "Thanks for the comment.",
         "Means a lot, thank you.",
-        "Glad this one landed — thank you.",
+        "Glad this one landed - thank you.",
         "Thank you for the kind words.",
-        "Always nice to hear — thanks.",
-        "Thanks — hope you’re having a good week too.",
+        "Always nice to hear - thanks.",
+        "Thanks - hope you’re having a good week too.",
         "Thank you, really appreciate it.",
         "Thanks for engaging with the post.",
         "Appreciate the support, thank you.",
@@ -169,7 +169,7 @@ REPLIES: dict[str, list[str]] = {
 GENERIC_EXTRAS: list[str] = [
     "Thanks for commenting!",
     "Appreciate you!",
-    "Thank you — more coming soon.",
+    "Thank you - more coming soon.",
     "Thanks, means a lot.",
     "Really appreciate you taking the time.",
 ]
@@ -184,7 +184,7 @@ def pick_reply_text(rng: random.Random, original: str) -> str:
         base = rng.choice(pool)
     # Light uniqueness: optional trailing fragment (not every time).
     if rng.random() < 0.22:
-        suffixes = [" 🙏", " ✨", " — thank you again", ""]
+        suffixes = [" 🙏", " ✨", " - thank you again", ""]
         base = base.rstrip() + rng.choice(suffixes)
     return base.strip()
 
@@ -439,7 +439,7 @@ def main() -> None:
         if rng.random() < args.reply_ratio:
             selected.append(row)
 
-    # Unique reply text per row (re-pick if collision with same text on another row — rare)
+    # Unique reply text per row (re-pick if collision with same text on another row - rare)
     work: list[dict[str, Any]] = []
     seen_texts: set[str] = set()
     for row in selected:

@@ -180,7 +180,7 @@ class ProfileViewModel: ObservableObject {
         }
     }
     
-    /// Uploads profile photo to backend (GraphQL UploadFile + updateProfile) and refreshes user. No local storage — avatar is always from backend.
+    /// Uploads profile photo to backend (GraphQL UploadFile + updateProfile) and refreshes user. No local storage - avatar is always from backend.
     /// Pass current authToken so the upload uses the latest token (e.g. after refresh).
     func uploadProfileImage(_ image: UIImage, authToken: String?) {
         let resized = Self.resizeForProfileUpload(image, maxLongSide: 1200)

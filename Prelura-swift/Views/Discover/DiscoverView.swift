@@ -121,7 +121,7 @@ struct DiscoverView: View {
     private func discoverScrollContent() -> some View {
         ScrollViewReader { proxy in
             ScrollView {
-                // Hero + Shop Categories / style banners use **local assets** — show immediately. Product strips use per-section shimmers.
+                // Hero + Shop Categories / style banners use **local assets** - show immediately. Product strips use per-section shimmers.
                 discoverMainStack
             }
             .scrollBounceBehavior(.always, axes: .vertical)
@@ -154,7 +154,7 @@ struct DiscoverView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// Women / Men rows + Shop by style / Lookbook — local assets + navigation only; not gated on GraphQL.
+    /// Women / Men rows + Shop by style / Lookbook - local assets + navigation only; not gated on GraphQL.
     private var discoverStaticShopCategoriesBlock: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Theme.Spacing.sm) {

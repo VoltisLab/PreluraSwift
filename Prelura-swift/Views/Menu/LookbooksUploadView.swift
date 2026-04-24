@@ -199,7 +199,7 @@ private struct HashtagTextEditorRepresentable: UIViewRepresentable {
 // MARK: - Models
 
 struct LookbookTagData: Codable, Identifiable, Equatable {
-    /// Stable id for `ForEach` / drag — must not change when `x`/`y` update (otherwise gestures break).
+    /// Stable id for `ForEach` / drag - must not change when `x`/`y` update (otherwise gestures break).
     let clientId: String
     var productId: String
     var x: Double
@@ -438,7 +438,7 @@ struct LookbooksUploadView: View {
                     )
                     .font(Theme.Typography.body)
                     .foregroundColor(Theme.Colors.secondaryText)
-                    Text("Up to \(Self.maxPhotosPerPost) — shows as one carousel post")
+                    Text("Up to \(Self.maxPhotosPerPost) - shows as one carousel post")
                         .font(Theme.Typography.caption)
                         .foregroundColor(Theme.Colors.secondaryText)
                 }
@@ -1516,7 +1516,7 @@ struct LookbookTagProductsView: View {
                 ItemDetailView(item: item, authService: authService)
             }
         }
-        // Sheet must attach here (inside fullScreenCover), not on LookbooksUploadView — otherwise
+        // Sheet must attach here (inside fullScreenCover), not on LookbooksUploadView - otherwise
         // iOS never presents it above the tag UI and "Choose product" appears to do nothing.
         .sheet(isPresented: $showProductPicker) {
             ProductSearchSheet(

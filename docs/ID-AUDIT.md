@@ -49,7 +49,7 @@ Audit of all ID-like fields and `Identifiable` types: type (String / Int / UUID)
 | **Order.id** | `String` | Order list/detail, cancelOrder, generateShippingLabel, confirmShipping, createPaymentIntent, rateUser | **Backend** | `"98765"` |
 | | | API uses **Int** (e.g. cancelOrder(orderId: Int)); app stores as **String** and parses `Int(order.id)` when calling. | | |
 | **CreateOrderResult.orderId** | `String` | Returned after createOrder; then parsed to Int for payment | **Backend** | `"98765"` |
-| **CreateOrderDeliveryDetails** | (N/A) | Order creation payload | — | — |
+| **CreateOrderDeliveryDetails** | (N/A) | Order creation payload | - | - |
 | **Message.orderID** | `String?` | Order reference in chat message | **Backend** | `"98765"` |
 | **Message.SoldConfirmationData.orderId** | `Int?` | Parsed from JSON in message content | **Backend** | `98765` |
 | **UserService.cancelOrder(orderId:, ...)** | `Int` | Cancel order | **Backend** | `98765` |

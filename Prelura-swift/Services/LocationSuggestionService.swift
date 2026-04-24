@@ -1,7 +1,7 @@
 import Foundation
 
 /// Loads and searches a bundled list of cities, towns, and countries only (no street addresses).
-/// No API dependency — all data is local. Suggestions are restricted to locality/country level.
+/// No API dependency - all data is local. Suggestions are restricted to locality/country level.
 struct LocationSuggestionService {
     struct Entry: Decodable {
         /// Display string shown in the field when selected (e.g. "Peterborough, UK", "United Kingdom").
@@ -23,7 +23,7 @@ struct LocationSuggestionService {
         self.entries = decoded
     }
 
-    /// Returns suggestions whose search terms match the query (prefix or contains). Only cities, towns, countries — no addresses.
+    /// Returns suggestions whose search terms match the query (prefix or contains). Only cities, towns, countries - no addresses.
     func suggestions(for query: String) -> [String] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return [] }

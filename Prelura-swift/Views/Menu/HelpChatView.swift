@@ -240,7 +240,7 @@ struct HelpChatView: View {
     /// Admin opened thread from Order issues list.
     var isAdminSupportThread: Bool = false
     var customerUsername: String? = nil
-    /// When true, chat is read-only (e.g. after submitting "Item not as described" — user already sent context).
+    /// When true, chat is read-only (e.g. after submitting "Item not as described" - user already sent context).
     var hidesMessageComposer: Bool = false
     /// Seller order-issue "Help and support" thread: allow only one normal message from the seller (backend-enforced).
     var sellerOrderIssueSupportSingleUserMessage: Bool = false

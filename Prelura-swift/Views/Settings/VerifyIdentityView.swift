@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Identity verification — reimagined: hero, benefits, clear CTA.
+/// Identity verification - reimagined: hero, benefits, clear CTA.
 struct VerifyIdentityView: View {
     var body: some View {
         ZStack(alignment: .bottom) {

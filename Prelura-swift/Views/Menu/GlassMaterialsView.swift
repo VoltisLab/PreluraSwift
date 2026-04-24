@@ -35,7 +35,7 @@ struct GlassMaterialsView: View {
                 .buttonStyle(PlainTappableButtonStyle())
                 .glassEffect(.regular, in: .rect(cornerRadius: 12))
 
-                // Glass clear button (fully glassy — used for Discover category buttons)
+                // Glass clear button (fully glassy - used for Discover category buttons)
                 Button(action: {}) {
                     Text("Hello, World!")
                         .font(Theme.Typography.headline)
@@ -59,7 +59,7 @@ struct GlassMaterialsView: View {
                 .buttonStyle(PlainTappableButtonStyle())
                 .glassEffect(.clear.tint(Theme.primaryColor), in: .rect(cornerRadius: 12))
 
-                // Liquid Glass (clear + primary tint, corner radius 30) — PrimaryGlassButton component
+                // Liquid Glass (clear + primary tint, corner radius 30) - PrimaryGlassButton component
                 PrimaryGlassButton("Hello, World!", action: {})
 
                 // Solid (no glass) for comparison
@@ -128,19 +128,19 @@ struct GlassMaterialsView: View {
 
     private var borderLabelsSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("Border — Glass (regular)")
+            Text("Border - Glass (regular)")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
-            Text("Border — Glass (clear)")
+            Text("Border - Glass (clear)")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
-            Text("Border — Glass (clear + primary tint)")
+            Text("Border - Glass (clear + primary tint)")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
-            Text("Border — Glass (clear + primary tint, radius 30)")
+            Text("Border - Glass (clear + primary tint, radius 30)")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
-            Text("Border — Solid (no glass)")
+            Text("Border - Solid (no glass)")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
         }

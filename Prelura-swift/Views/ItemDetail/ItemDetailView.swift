@@ -552,7 +552,7 @@ struct ItemDetailView: View {
                 if isMystery { selectedImageIndex = 0 }
             }
             
-            // Heart Icon Overlay (bottom right) — on top so it always receives touch
+            // Heart Icon Overlay (bottom right) - on top so it always receives touch
             VStack {
                 Spacer()
                 HStack {
@@ -616,7 +616,7 @@ struct ItemDetailView: View {
                 .foregroundColor(Theme.Colors.primaryText)
                 .lineLimit(4)
             
-            // Brand and size — full brand string on PDP; keep ≥50pt gap before size; brands may wrap to two lines.
+            // Brand and size - full brand string on PDP; keep ≥50pt gap before size; brands may wrap to two lines.
             HStack(alignment: .top, spacing: 0) {
                 if let brand = effectiveItem.brand {
                     NavigationLink(destination: FilteredProductsView(title: brand, filterType: .byBrand(brandName: brand), authService: authService)) {
@@ -695,7 +695,7 @@ struct ItemDetailView: View {
             // Colour field: round swatch then text (e.g. 🔵 Blue), always shown just above seller
             HStack(spacing: Theme.Spacing.sm) {
                 if effectiveItem.colors.isEmpty {
-                    Text("—")
+                    Text("-")
                         .font(Theme.Typography.body)
                         .foregroundColor(Theme.Colors.secondaryText)
                 } else {
@@ -788,7 +788,7 @@ struct ItemDetailView: View {
     }
     
     private var descriptionBody: some View {
-        let lines = effectiveItem.description.isEmpty ? ["—"] : effectiveItem.description.components(separatedBy: "\n").filter { !$0.isEmpty }
+        let lines = effectiveItem.description.isEmpty ? ["-"] : effectiveItem.description.components(separatedBy: "\n").filter { !$0.isEmpty }
         return VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             ForEach(lines, id: \.self) { line in
                 textWithHashtags(line.trimmingCharacters(in: .whitespaces))
@@ -1103,7 +1103,7 @@ struct FullScreenImageViewer: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea()
             
-            // Close button — visible in both light and dark mode
+            // Close button - visible in both light and dark mode
             VStack {
                 HStack {
                     Spacer()

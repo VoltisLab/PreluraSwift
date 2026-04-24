@@ -74,7 +74,7 @@ ADD_COMMENT = """mutation AddLookbookComment($postId: UUID!, $text: String!, $pa
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
 
-# Exactly 50 caption lines — autumn / layers / cozy (some emoji-only)
+# Exactly 50 caption lines - autumn / layers / cozy (some emoji-only)
 CAPTION_POOL = [
     "🍂",
     "🧥",
@@ -97,7 +97,7 @@ CAPTION_POOL = [
     "Neutral stack, high rotation.",
     "When the wind picks up, the fit holds.",
     "Cardigan diplomacy: warm but polished.",
-    "Denim under wool — classic math.",
+    "Denim under wool - classic math.",
     "Plaid because October said so.",
     "Turtleneck trust issues: solved.",
     "Puddle-proof mood.",
@@ -639,7 +639,7 @@ def main() -> None:
     upload_url = os.environ.get("UPLOAD_URL", DEFAULT_UPLOAD)
     if not upload_url.endswith("/"):
         upload_url += "/"
-    email_domain = os.environ.get("SEED_EMAIL_DOMAIN", "wearhouse.co.uk")
+    email_domain = os.environ.get("SEED_EMAIL_DOMAIN", "mywearhouse.co.uk")
 
     results: list[dict[str, Any]] = []
     styles_ok = 0

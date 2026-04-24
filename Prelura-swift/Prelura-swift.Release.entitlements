@@ -2,14 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
 	<key>aps-environment</key>
 	<string>production</string>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:mywearhouse.co.uk</string>
 		<string>applinks:www.mywearhouse.co.uk</string>
-		<string>applinks:wearhouse.co.uk</string>
-		<string>applinks:www.wearhouse.co.uk</string>
 		<string>applinks:prelura.uk</string>
 		<string>applinks:www.prelura.uk</string>
 		<string>applinks:prelura.com</string>

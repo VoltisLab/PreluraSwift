@@ -6,22 +6,22 @@
 # Env:
 #   STAGING_SEED_PASSWORD (required)
 #   GRAPHQL_URL (default: https://prelura.voltislabs.uk/graphql/)
-#   SEED_USER_COUNT — how many users to create this run (default: 10, max: 1000 per run)
-#   SEED_START_INDEX — loop index for name generation (default: 1). Use 51 after a batch of 50 to avoid duplicate handles.
-#   SEED_APPEND_CSV=1 — append to SEED_OUTPUT_CSV and preload existing usernames so suffixes don’t collide.
-#   SEED_EMAIL_DOMAIN (default: wearhouse.co.uk) — email is always ${username}@${SEED_EMAIL_DOMAIN}
+#   SEED_USER_COUNT - how many users to create this run (default: 10, max: 1000 per run)
+#   SEED_START_INDEX - loop index for name generation (default: 1). Use 51 after a batch of 50 to avoid duplicate handles.
+#   SEED_APPEND_CSV=1 - append to SEED_OUTPUT_CSV and preload existing usernames so suffixes don’t collide.
+#   SEED_EMAIL_DOMAIN (default: mywearhouse.co.uk) - email is always ${username}@${SEED_EMAIL_DOMAIN}
 #   Duplicate handling: if register returns "already exists" for username/email (e.g. soft-deleted row),
 #   retries with base1, base2, … so the address is unused (same password).
 #   SEED_BATCH_ID (logged only)
-#   SEED_OUTPUT_CSV (default: seed-users-report.csv) — full audit trail: username,email,status
-#   SEED_LEGACY_NUMERIC_USERNAMES=1 — if set, use old sxu0000001 style instead
+#   SEED_OUTPUT_CSV (default: seed-users-report.csv) - full audit trail: username,email,status
+#   SEED_LEGACY_NUMERIC_USERNAMES=1 - if set, use old sxu0000001 style instead
 #
 set -euo pipefail
 
 GRAPHQL_URL="${GRAPHQL_URL:-https://prelura.voltislabs.uk/graphql/}"
 SEED_USER_COUNT="${SEED_USER_COUNT:-10}"
 SEED_START_INDEX="${SEED_START_INDEX:-1}"
-SEED_EMAIL_DOMAIN="${SEED_EMAIL_DOMAIN:-wearhouse.co.uk}"
+SEED_EMAIL_DOMAIN="${SEED_EMAIL_DOMAIN:-mywearhouse.co.uk}"
 SEED_BATCH_ID="${SEED_BATCH_ID:-${GITHUB_RUN_ID:-$(date +%s)}}"
 SEED_OUTPUT_CSV="${SEED_OUTPUT_CSV:-seed-users-report.csv}"
 SEED_USERNAME_PREFIX="${SEED_USERNAME_PREFIX:-sxu}"

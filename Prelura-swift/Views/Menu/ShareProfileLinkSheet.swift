@@ -47,7 +47,7 @@ private enum ShareProfileGradientPalette {
         }
     }
 
-    /// Midpoint between animated endpoints — sensible defaults when switching to a custom gradient.
+    /// Midpoint between animated endpoints - sensible defaults when switching to a custom gradient.
     static func defaultCustomColors(for colorScheme: ColorScheme) -> [Color] {
         colors(at: Date(timeIntervalSinceReferenceDate: 0), colorScheme: colorScheme)
     }
@@ -116,7 +116,7 @@ private struct ShareProfileCustomGradientBackground: View {
 
 // MARK: - Gradient settings helpers
 
-/// Manual panel navigation — avoids nesting `NavigationStack` inside a `NavigationLink` destination (which can pop the parent).
+/// Manual panel navigation - avoids nesting `NavigationStack` inside a `NavigationLink` destination (which can pop the parent).
 private enum ShareProfileGradientPanelStep: Equatable {
     case list
     case topColor
@@ -215,7 +215,7 @@ private func shareProfileMasterControlRowLabel(title: String, codeLine: String?,
     }
 }
 
-/// Gradient settings list — uses `Button` + `panelStep` instead of `NavigationLink` so the parent `NavigationLink` (Profile → Share) is not popped.
+/// Gradient settings list - uses `Button` + `panelStep` instead of `NavigationLink` so the parent `NavigationLink` (Profile → Share) is not popped.
 private struct ShareProfileGradientSettingsList: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -1194,5 +1194,5 @@ private struct ShareProfileActivityView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
-/// Legacy sheet type name — use ``ShareProfileLinkView`` pushed from navigation.
+/// Legacy sheet type name - use ``ShareProfileLinkView`` pushed from navigation.
 typealias ShareProfileLinkSheet = ShareProfileLinkView

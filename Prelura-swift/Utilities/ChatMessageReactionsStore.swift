@@ -80,7 +80,7 @@ final class ChatMessageReactionsStore: ObservableObject {
         saveRaw(conversationId, raw)
     }
 
-    /// Merge a peer’s reaction from WebSocket (absolute set/clear — no toggle).
+    /// Merge a peer’s reaction from WebSocket (absolute set/clear - no toggle).
     func applyRemoteReaction(conversationId: String, messageKey: String, username: String, emoji: String?) {
         var raw = loadRaw(conversationId)
         var map = raw[messageKey] ?? [:]

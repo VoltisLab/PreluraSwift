@@ -3,7 +3,7 @@
 //  Prelura-swift
 //
 //  SwiftUI ScrollView is backed by UIScrollView, which defaults to delaysContentTouches = true.
-//  That can prevent taps on nested controls (e.g. like) from firing reliably — especially inside
+//  That can prevent taps on nested controls (e.g. like) from firing reliably - especially inside
 //  LazyVStack. Anchoring this view in scroll content walks up to the enclosing UIScrollView and
 //  disables touch delay. We re-run when the view attaches to a window because hierarchy timing
 //  can be late on first layout.

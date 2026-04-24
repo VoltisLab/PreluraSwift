@@ -70,6 +70,7 @@ struct StaffUserActionsView: View {
                                 isFollowing: target.isFollowing,
                                 postageOptions: target.postageOptions,
                                 payoutBankAccount: target.payoutBankAccount,
+                                sellerGoldRenewsAt: target.sellerGoldRenewsAt,
                                 isBanned: target.isBanned,
                                 suspendedUntil: target.suspendedUntil
                             )
@@ -116,6 +117,7 @@ struct StaffUserActionsView: View {
                                 isFollowing: target.isFollowing,
                                 postageOptions: target.postageOptions,
                                 payoutBankAccount: target.payoutBankAccount,
+                                sellerGoldRenewsAt: target.sellerGoldRenewsAt,
                                 isBanned: target.isBanned,
                                 suspendedUntil: target.suspendedUntil
                             )
@@ -349,6 +351,7 @@ struct StaffUserActionsView: View {
             isFollowing: target.isFollowing,
             postageOptions: target.postageOptions,
             payoutBankAccount: target.payoutBankAccount,
+            sellerGoldRenewsAt: target.sellerGoldRenewsAt,
             isBanned: target.isBanned,
             suspendedUntil: target.suspendedUntil
         )
@@ -384,6 +387,7 @@ struct StaffUserActionsView: View {
             isFollowing: target.isFollowing,
             postageOptions: target.postageOptions,
             payoutBankAccount: target.payoutBankAccount,
+            sellerGoldRenewsAt: target.sellerGoldRenewsAt,
             isBanned: target.isBanned,
             suspendedUntil: target.suspendedUntil
         )

@@ -406,7 +406,7 @@ struct ChatRowView: View {
         return nil
     }
 
-    /// Order thread or fetched-offer product is a mystery listing — use the same animated tile as chat headers / feed.
+    /// Order thread or fetched-offer product is a mystery listing - use the same animated tile as chat headers / feed.
     private var inboxRowShowsMysteryArt: Bool {
         if conversation.order?.lineItems.first?.isMysteryBox == true { return true }
         if let id = offerThumbProductId {
@@ -552,7 +552,7 @@ struct ChatRowView: View {
 
     /// Keep row layout stable: always show a time label.
     private var displayTimeText: String {
-        guard let t = conversation.lastMessageTime else { return "—" }
+        guard let t = conversation.lastMessageTime else { return "-" }
         return formatTime(t)
     }
 
@@ -593,7 +593,7 @@ struct ChatRowView: View {
         return a == b
     }
 
-    /// Inbox line for order threads: `lastMessage` JSON often uses `type: "order"` (payment / try-cart) while `sold_confirmation` is a separate type — map **CONFIRMED** to "Order confirmed" instead of generic "Order update".
+    /// Inbox line for order threads: `lastMessage` JSON often uses `type: "order"` (payment / try-cart) while `sold_confirmation` is a separate type - map **CONFIRMED** to "Order confirmed" instead of generic "Order update".
     fileprivate static func orderPreviewLine(for conversation: Conversation) -> String {
         guard let order = conversation.order else { return "Order update" }
         let st = order.status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -657,7 +657,7 @@ struct ChatRowView: View {
         return s.contains("\"image_url\"") && (s.contains("\"url\"") || s.contains("poster_username") || s.contains("posterusername"))
     }
 
-    /// Inbox subtitle: show the latest **chat line** (`lastMessage` from API is the latest plain row). Legacy rows may still be JSON — map those to short labels.
+    /// Inbox subtitle: show the latest **chat line** (`lastMessage` from API is the latest plain row). Legacy rows may still be JSON - map those to short labels.
     static func previewText(for raw: String?, conversation: Conversation, currentUsername: String?) -> String? {
         let iSentLastOffer = usernamesMatch(conversation.lastMessageSenderUsername, currentUsername)
         guard let raw = raw, !raw.isEmpty else {

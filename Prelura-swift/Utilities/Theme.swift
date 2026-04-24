@@ -116,7 +116,7 @@ struct Theme {
         static let insetVerticalCompact: CGFloat = Spacing.sm + 6
     }
 
-    /// Default search field chrome: matches the system navigation-bar search drawer (compact continuous corners, secondary background, caret-only focus — no thick accent ring).
+    /// Default search field chrome: matches the system navigation-bar search drawer (compact continuous corners, secondary background, caret-only focus - no thick accent ring).
     struct SearchField {
         static let cornerRadius: CGFloat = 12
         static let singleLineHeight: CGFloat = 44

@@ -623,7 +623,7 @@ struct OfferCardView: View {
                     }
                     .padding(.trailing, Theme.Spacing.sm)
                 }
-                Text(offer.createdAt.map { Self.relativeTimestamp(for: $0) } ?? "—")
+                Text(offer.createdAt.map { Self.relativeTimestamp(for: $0) } ?? "-")
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             }

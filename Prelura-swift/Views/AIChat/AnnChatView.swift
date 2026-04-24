@@ -61,7 +61,7 @@ struct AnnChatView: View {
                         Image(systemName: "bubble.left.and.bubble.right.fill")
                             .font(.system(size: 56))
                             .foregroundStyle(Theme.primaryColor.opacity(0.6))
-                        Text("Welcome to support — I'm Ann. Ask about orders, refunds, or anything else. How can I help?")
+                        Text("Welcome to support - I'm Ann. Ask about orders, refunds, or anything else. How can I help?")
                             .font(Theme.Typography.body)
                             .foregroundColor(Theme.Colors.secondaryText)
                             .multilineTextAlignment(.center)

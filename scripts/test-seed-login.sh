@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prove whether GraphQL accepts login (same mutation as the app).
-# Tries handle first, then username@wearhouse.co.uk (same as seed script emails).
+# Tries handle first, then username@mywearhouse.co.uk (same as seed script emails).
 # Does not print the password.
 #
 #   export STAGING_SEED_PASSWORD='…'
@@ -8,7 +8,7 @@
 #
 set -euo pipefail
 GRAPHQL_URL="${GRAPHQL_URL:-https://prelura.voltislabs.uk/graphql/}"
-SEED_EMAIL_DOMAIN="${SEED_EMAIL_DOMAIN:-wearhouse.co.uk}"
+SEED_EMAIL_DOMAIN="${SEED_EMAIL_DOMAIN:-mywearhouse.co.uk}"
 USER="${1:-}"
 if [[ -z "${STAGING_SEED_PASSWORD:-}" || -z "$USER" ]]; then
   echo "Usage: STAGING_SEED_PASSWORD='…' $0 <username_or_email>"

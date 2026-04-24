@@ -10,7 +10,7 @@ final class ConversationsWebSocketService: NSObject, @unchecked Sendable, URLSes
     private var didManualClose = false
     private(set) var isConnected: Bool = false
 
-    /// Server sent `update_conversation` after `update_conversations` fan-out — refetch GraphQL list for full offer/order rows.
+    /// Server sent `update_conversation` after `update_conversations` fan-out - refetch GraphQL list for full offer/order rows.
     var onShouldRefreshConversationsList: (@MainActor () -> Void)?
     /// `typing_status` from the same socket (relayed from chat rooms for inbox list indicators).
     var onTypingStatus: (@MainActor (String, Bool) -> Void)?

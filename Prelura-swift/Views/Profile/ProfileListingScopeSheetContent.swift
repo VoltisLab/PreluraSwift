@@ -2,9 +2,15 @@ import SwiftUI
 
 /// Which slice of the seller’s `userProducts` the grid shows (client-side; API must return `HIDDEN` / `SOLD` in that query).
 enum ProfileListingScope: String, CaseIterable, Hashable {
-    case all, sold, hidden
+    /// For-sale listings (not sold, not hidden from shop).
+    case active
+    /// Includes sold listings; still excludes hidden-from-shop rows.
+    case all
+    case sold
+    case hidden
     var titleKey: String {
         switch self {
+        case .active: return "Active"
         case .all: return "All"
         case .sold: return "Sold"
         case .hidden: return "Hidden"
@@ -13,7 +19,7 @@ enum ProfileListingScope: String, CaseIterable, Hashable {
     var shortTitle: String { L10n.string(titleKey) }
 }
 
-/// Own profile: choose whether the grid shows all non-hidden shop listings, only sold, or only hidden.
+/// Own profile: choose Active (live shop) vs All (incl. sold), Sold, or Hidden-from-shop listings.
 struct ProfileListingScopeSheetContent: View {
     @Binding var selected: ProfileListingScope
     var onApply: () -> Void
@@ -48,7 +54,7 @@ struct ProfileListingScopeSheetContent: View {
             optionDivider
             VStack(spacing: Theme.Spacing.sm) {
                 BorderGlassButton(L10n.string("Clear")) {
-                    selected = .all
+                    selected = .active
                 }
                 PrimaryGlassButton(L10n.string("Apply"), action: onApply)
             }

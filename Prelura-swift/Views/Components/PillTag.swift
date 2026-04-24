@@ -4,7 +4,7 @@ import SwiftUI
 struct PillTag: View {
     @Environment(\.colorScheme) private var colorScheme
 
-    /// Standard pills (filters, forms). `compactOutline` is border-only, smaller type—e.g. read-only review highlight tags.
+    /// Standard pills (filters, forms). `compactOutline` is border-only, smaller type-e.g. read-only review highlight tags.
     enum VisualStyle {
         case standard
         case compactOutline

@@ -39,6 +39,8 @@ struct User: Identifiable, Hashable {
     let postageOptions: SellerPostageOptions?
     /// Payout bank account (from viewMe meta.payoutBankAccount). Shown on Payments screen; masked for display.
     let payoutBankAccount: PayoutBankAccountDisplay?
+    /// Gold renewal instant from `viewMe.meta.sellerGoldRenewsAt` (ISO8601). Set by backend after IAP / preview sync.
+    let sellerGoldRenewsAt: Date?
     let isBanned: Bool
     let suspendedUntil: Date?
 
@@ -71,6 +73,7 @@ struct User: Identifiable, Hashable {
         isFollowing: Bool? = nil,
         postageOptions: SellerPostageOptions? = nil,
         payoutBankAccount: PayoutBankAccountDisplay? = nil,
+        sellerGoldRenewsAt: Date? = nil,
         isBanned: Bool = false,
         suspendedUntil: Date? = nil
     ) {
@@ -102,6 +105,7 @@ struct User: Identifiable, Hashable {
         self.isFollowing = isFollowing
         self.postageOptions = postageOptions
         self.payoutBankAccount = payoutBankAccount
+        self.sellerGoldRenewsAt = sellerGoldRenewsAt
         self.isBanned = isBanned
         self.suspendedUntil = suspendedUntil
     }

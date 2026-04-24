@@ -53,7 +53,7 @@ So for the card to show **without** polling/refresh we need:
 
 ### C. getConversationById fails (nil) so we never refresh order from API
 
-- **Code:** `let updatedConv: Conversation? = try? await chatService.getConversationById(conversationId: convId)` — errors are swallowed.
+- **Code:** `let updatedConv: Conversation? = try? await chatService.getConversationById(conversationId: convId)` - errors are swallowed.
 - If the **conversationById** request fails (network, or GraphQL error, e.g. wrong field name), **updatedConv** is nil. We then **do not** update **displayedConversation** from the API. We might still have **order** from the **conversations list** (if the list returned it when we opened the chat). So the **top** order card could still show from the list; the **timeline** sold_confirmation banner depends on **getMessages** returning the message, not on getConversationById.
 - **Graphene** default is **auto_camelcase=True**, so the schema exposes **conversationById**, not **conversation_by_id**. The app queries **conversationById**, so a schema field name mismatch is unlikely unless the deployed server disables auto_camelcase.
 

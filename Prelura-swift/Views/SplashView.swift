@@ -37,7 +37,7 @@ struct SplashView: View {
     /// Cap for the WH mark width.
     private let splashWHMaxWidth: CGFloat = 100
 
-    /// WEARHOUSE wordmark width cap — **not** derived from `splashWHMaxWidth` so resizing the monogram does not shrink the wordmark.
+    /// WEARHOUSE wordmark width cap - **not** derived from `splashWHMaxWidth` so resizing the monogram does not shrink the wordmark.
     private let splashWordmarkMaxWidth: CGFloat = 228
 
     /// Vertical gap between WH and wordmark.

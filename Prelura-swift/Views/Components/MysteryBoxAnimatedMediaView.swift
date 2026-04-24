@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Isometric “box” faces on brand (purple / white) — no kraft brown, so small tiles don’t look like a second raster asset.
+/// Isometric “box” faces on brand (purple / white) - no kraft brown, so small tiles don’t look like a second raster asset.
 private enum MysteryBoxGloss {
     static let topA = Color.white.opacity(0.52)
     static let topB = Color.white.opacity(0.22)

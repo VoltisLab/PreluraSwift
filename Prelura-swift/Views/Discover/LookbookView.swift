@@ -323,7 +323,7 @@ struct LookbookFeedRowModel: Identifiable {
     let entry: LookbookEntry
 }
 
-/// Stable per-post id for `ForEach` / `.id`. Do **not** bake like or comment counts into this — that recreates the whole row
+/// Stable per-post id for `ForEach` / `.id`. Do **not** bake like or comment counts into this - that recreates the whole row
 /// (and any `UIViewRepresentable` like the heart) on every count change, which breaks taps.
 func lookbookFeedRowStableId(for entry: LookbookEntry) -> String {
     let k = entry.lookbookPostKey
@@ -492,7 +492,7 @@ func handleLookbookFeedLikeTap(_ tapped: LookbookEntry, authService: AuthService
     }
 }
 
-/// Style raw values for filter pills — same as StyleSelectionView (uploads). Subset used for display.
+/// Style raw values for filter pills - same as StyleSelectionView (uploads). Subset used for display.
 private let lookbookStylePillValues: [String] = [
     "CASUAL", "VINTAGE", "STREETWEAR", "MINIMALIST", "BOHO", "CHIC", "FORMAL_WEAR",
     "PARTY_DRESS", "LOUNGEWEAR", "ACTIVEWEAR", "Y2K", "DRESSES_GOWNS", "DENIM_JEANS",
@@ -756,7 +756,7 @@ private func lookbookAppendEntriesFromNewPosts(
     entries.append(contentsOf: appended)
 }
 
-/// Updates `hasMore` after a load-more. Empty **with** `page.hasNextPage` means the cursor window failed — keep paging (see ``lookbookFeedApplyLoadedPage``). Duplicate slices keep paging when the server says more.
+/// Updates `hasMore` after a load-more. Empty **with** `page.hasNextPage` means the cursor window failed - keep paging (see ``lookbookFeedApplyLoadedPage``). Duplicate slices keep paging when the server says more.
 private func lookbookFeedHasMoreAfterAppend(
     page: LookbookService.LookbooksFeedPageResult,
     entriesCountBefore: Int,
@@ -801,7 +801,7 @@ private func lookbookFeedApplyLoadedPage(
         let lid = LookbookPostIdFormatting.graphQLUUIDString(from: last.id).trimmingCharacters(in: .whitespacesAndNewlines)
         if !lid.isEmpty { feedNextCursor = lid }
     }
-    // API can return the same slice when `after` is a post id (no Relay cursors) — never spin load-more on 0 new rows.
+    // API can return the same slice when `after` is a post id (no Relay cursors) - never spin load-more on 0 new rows.
     if entries.count == countBefore && !page.posts.isEmpty {
         feedCursorRetryIndex = 0
         return false
@@ -1717,7 +1717,7 @@ private struct LookbookFeedScreenView: View {
     }
 }
 
-// MARK: - Single post (deep link / chat) — full Feed row UI, isolated
+// MARK: - Single post (deep link / chat) - full Feed row UI, isolated
 
 /// One lookbook post with the same chrome as the main Feed (like, comment, send, save, tags), not the image-only lightbox.
 struct LookbookSinglePostFeedPresentedView: View {
@@ -2275,7 +2275,7 @@ struct LookbookMyItemsScreenView: View {
                     Text(L10n.string("No uploads yet"))
                         .font(Theme.Typography.title3)
                         .foregroundColor(Theme.Colors.primaryText)
-                    Text(L10n.string("Create a look from Lookbook — it will show up here."))
+                    Text(L10n.string("Create a look from Lookbook - it will show up here."))
                         .font(Theme.Typography.subheadline)
                         .foregroundColor(Theme.Colors.secondaryText)
                         .multilineTextAlignment(.center)
@@ -3240,7 +3240,7 @@ private struct LookbookPostCardShimmer: View {
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, 10)
 
-            // Full-bleed portrait slot (same layout trick as `mediaBlock` / `Color.clear` + aspect in feed rows — avoids a centred “floating” tile in `LazyVStack`).
+            // Full-bleed portrait slot (same layout trick as `mediaBlock` / `Color.clear` + aspect in feed rows - avoids a centred “floating” tile in `LazyVStack`).
             Color.clear
                 .aspectRatio(mediaAspect, contentMode: .fit)
                 .overlay {
@@ -3340,7 +3340,7 @@ private struct LookbookCarouselPageDots: View {
     }
 }
 
-/// Trailing inset for ⋯ / bookmark / caption — tighter than leading `md` so controls align with the nav bar search (trailing toolbar).
+/// Trailing inset for ⋯ / bookmark / caption - tighter than leading `md` so controls align with the nav bar search (trailing toolbar).
 fileprivate let lookbookFeedRowTrailingChromeInset: CGFloat = Theme.Spacing.sm
 
 // MARK: - Feed post action bar (like, comment, send, optional remove-from-folder, save)
@@ -3843,7 +3843,7 @@ struct LookbookFeedRowView: View {
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var savedLookbookFavorites: SavedLookbookFavoritesStore
     @EnvironmentObject private var hideLikeCountsStore: LookbookHideLikeCountsStore
-    /// Horizontal page for multi-image posts (paged `ScrollView`, not `TabView` — TabView steals taps on the row below).
+    /// Horizontal page for multi-image posts (paged `ScrollView`, not `TabView` - TabView steals taps on the row below).
     @State private var carouselScrollId: Int? = 0
     @State private var sharePayload: LookbookSharePayload?
     @State private var showMutualShareSheet = false
@@ -4201,7 +4201,7 @@ struct LookbookFeedRowView: View {
         if let c = entry.caption, !c.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             textParts.append(c)
         }
-        textParts.append("— @\(entry.posterUsername) on WEARHOUSE")
+        textParts.append("- @\(entry.posterUsername) on WEARHOUSE")
         items.append(textParts.joined(separator: "\n"))
         return items
     }

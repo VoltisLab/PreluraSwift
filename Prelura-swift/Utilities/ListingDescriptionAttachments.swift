@@ -50,7 +50,7 @@ enum ProductListingFields {
         if let leg = legacyStyle?.trimmingCharacters(in: .whitespacesAndNewlines), !leg.isEmpty {
             combined.append(leg)
         }
-        // API often sends the same style in both `style` and `styles[0]` — dedupe by canonical enum raw.
+        // API often sends the same style in both `style` and `styles[0]` - dedupe by canonical enum raw.
         return StyleEnumCatalog.normalizedUnique(combined, maxCount: nil)
     }
 }

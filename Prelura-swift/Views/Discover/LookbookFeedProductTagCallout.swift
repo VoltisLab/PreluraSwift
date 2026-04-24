@@ -22,7 +22,7 @@ private struct LookbookFeedTagCurvedTail: Shape {
     }
 }
 
-/// Product title callout for the lookbook feed: full title (wraps), no orange pin — tail aims at the saved anchor.
+/// Product title callout for the lookbook feed: full title (wraps), no orange pin - tail aims at the saved anchor.
 struct LookbookFeedProductTagCallout: View {
     let snapshot: LookbookProductSnapshot
     let imageWidth: CGFloat

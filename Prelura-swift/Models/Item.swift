@@ -26,6 +26,8 @@ struct Item: Identifiable, Hashable {
     let isLiked: Bool
     /// Product status from API (e.g. "ACTIVE", "SOLD"). Used to hide Buy/Offer for sold items and filter marketplace.
     let status: String
+    /// When `status` is `INACTIVE`, a non-nil value usually means scheduled publish (not seller-hidden).
+    let scheduledPublishAt: Date?
     /// GraphQL category id when available (sell prefill).
     let sellCategoryBackendId: String?
     /// GraphQL product size id when available (sell prefill).
@@ -61,6 +63,7 @@ struct Item: Identifiable, Hashable {
         createdAt: Date = Date(),
         isLiked: Bool = false,
         status: String = "ACTIVE",
+        scheduledPublishAt: Date? = nil,
         sellCategoryBackendId: String? = nil,
         sellSizeBackendId: Int? = nil,
         listingMeasurements: String? = nil,
@@ -89,6 +92,7 @@ struct Item: Identifiable, Hashable {
         self.createdAt = createdAt
         self.isLiked = isLiked
         self.status = status
+        self.scheduledPublishAt = scheduledPublishAt
         self.sellCategoryBackendId = sellCategoryBackendId
         self.sellSizeBackendId = sellSizeBackendId
         self.listingMeasurements = listingMeasurements
@@ -115,7 +119,7 @@ struct Item: Identifiable, Hashable {
     }
     
     /// Returns a copy with updated like state (for optimistic/local updates after toggle like).
-    func with(likeCount: Int? = nil, isLiked: Bool? = nil, status: String? = nil, listingCode: String? = nil, isMysteryBox: Bool? = nil) -> Item {
+    func with(likeCount: Int? = nil, isLiked: Bool? = nil, status: String? = nil, scheduledPublishAt: Date? = nil, listingCode: String? = nil, isMysteryBox: Bool? = nil) -> Item {
         Item(
             id: id,
             productId: productId,
@@ -138,6 +142,7 @@ struct Item: Identifiable, Hashable {
             createdAt: createdAt,
             isLiked: isLiked ?? self.isLiked,
             status: status ?? self.status,
+            scheduledPublishAt: scheduledPublishAt ?? self.scheduledPublishAt,
             sellCategoryBackendId: sellCategoryBackendId,
             sellSizeBackendId: sellSizeBackendId,
             listingMeasurements: listingMeasurements,
@@ -176,8 +181,17 @@ struct Item: Identifiable, Hashable {
     /// True when product status is SOLD (hide Buy/Offer, show sold state).
     var isSold: Bool { status.uppercased() == "SOLD" }
 
-    /// Hidden from the public shop (seller or admin) — still returned for the owner in `userProducts` when the API includes it.
-    var isHidden: Bool { status.uppercased() == "HIDDEN" }
+    /// Hidden from the public shop: explicit `HIDDEN`, or `INACTIVE` without a scheduled publish (seller hid listing; API uses `INACTIVE`).
+    var isHidden: Bool {
+        switch status.uppercased() {
+        case "HIDDEN":
+            return true
+        case "INACTIVE":
+            return scheduledPublishAt == nil
+        default:
+            return false
+        }
+    }
 
     /// Path segment for universal links and sharing (`/item/{slug}`).
     var publicWebItemSlug: String {

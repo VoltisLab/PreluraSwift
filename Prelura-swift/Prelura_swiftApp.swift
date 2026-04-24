@@ -20,7 +20,7 @@ let kAppearanceMode = "appearance_mode"
 /// When the user is logged in, read the **current** FCM token from Firebase and send it via `updateProfile(fcmToken:)`.
 /// Uses `WearhouseFCMRegistration` so we wait for APNs before `token()` and do not rely on UserDefaults alone (race after `storeTokens`).
 private func registerPushTokenIfNeeded(authService: AuthService) {
-    StartupTiming.mark("registerPushTokenIfNeeded — entered")
+    StartupTiming.mark("registerPushTokenIfNeeded - entered")
     guard authService.isAuthenticated else {
         pushRegistrationLogger.debug("Skip FCM upload: not authenticated.")
         print("[Push] Skip FCM → backend: not logged in.")
@@ -53,7 +53,7 @@ private func registerPushTokenIfNeeded(authService: AuthService) {
             UserDefaults.standard.set(token, forKey: kDeviceTokenKey)
             let staffMirrored = await authService.registerFCMTokenWithAllStaffSessionsIfNeeded(token)
             if staffMirrored {
-                StartupTiming.mark("registerPushTokenIfNeeded — updateProfile(fcmToken) all staff sessions")
+                StartupTiming.mark("registerPushTokenIfNeeded - updateProfile(fcmToken) all staff sessions")
                 UserDefaults.standard.set(token, forKey: kLastFcmTokenSentToBackendKey)
                 PushRegistrationDebug.recordUploadSuccess()
                 pushRegistrationLogger.info("updateProfile(fcmToken:) mirrored to all staff sessions.")
@@ -61,24 +61,24 @@ private func registerPushTokenIfNeeded(authService: AuthService) {
                 return
             }
             if let last = UserDefaults.standard.string(forKey: kLastFcmTokenSentToBackendKey), last == token {
-                pushRegistrationLogger.debug("FCM token unchanged since last successful upload — skip.")
+                pushRegistrationLogger.debug("FCM token unchanged since last successful upload - skip.")
                 return
             }
             print("[Push] Uploading FCM token to backend via updateProfile (\(token.count) chars)…")
-            StartupTiming.mark("registerPushTokenIfNeeded — FCM token obtained; updateProfile(fcmToken) begin")
+            StartupTiming.mark("registerPushTokenIfNeeded - FCM token obtained; updateProfile(fcmToken) begin")
             let userService = UserService()
             userService.updateAuthToken(authService.authToken)
             do {
                 _ = try await userService.updateProfile(fcmToken: token)
-                StartupTiming.mark("registerPushTokenIfNeeded — updateProfile(fcmToken) success")
+                StartupTiming.mark("registerPushTokenIfNeeded - updateProfile(fcmToken) success")
                 UserDefaults.standard.set(token, forKey: kLastFcmTokenSentToBackendKey)
                 PushRegistrationDebug.recordUploadSuccess()
-                pushRegistrationLogger.info("updateProfile(fcmToken:) succeeded — backend can target this device for FCM.")
+                pushRegistrationLogger.info("updateProfile(fcmToken:) succeeded - backend can target this device for FCM.")
                 print("[Push] updateProfile(fcmToken:) succeeded.")
             } catch {
                 PushRegistrationDebug.recordUploadFailure(error.localizedDescription)
                 pushRegistrationLogger.error("updateProfile(fcmToken:) failed: \(String(describing: error), privacy: .public)")
-                print("[Push] updateProfile(fcmToken:) failed — \(error.localizedDescription)")
+                print("[Push] updateProfile(fcmToken:) failed - \(error.localizedDescription)")
             }
         }
     }
@@ -92,7 +92,7 @@ struct Prelura_swiftApp: App {
     @State private var showSplash = true
 
     private func finishSplash() {
-        StartupTiming.mark("finishSplash — leaving SplashView")
+        StartupTiming.mark("finishSplash - leaving SplashView")
         if let pending = AppDelegate.takePendingPostSplashNotificationUserInfo() {
             appRouter.handle(notificationPayload: pending)
         }
@@ -297,9 +297,9 @@ struct MainTabView: View {
                 openInboxChatFromPendingRouterIfNeeded()
             }
             .task {
-                StartupTiming.mark("MainTabView.task — refreshAccountModeration begin")
+                StartupTiming.mark("MainTabView.task - refreshAccountModeration begin")
                 await authService.refreshAccountModerationFromServer()
-                StartupTiming.mark("MainTabView.task — refreshAccountModeration end")
+                StartupTiming.mark("MainTabView.task - refreshAccountModeration end")
             }
             .onChange(of: appRouter.pendingInboxChat) { _, _ in openInboxChatFromPendingRouterIfNeeded() }
             .onChange(of: authService.isAuthenticated) { _, authed in
@@ -326,7 +326,7 @@ struct MainTabView: View {
     private var mainTabAfterAuthHooks: some View {
         mainTabThemed
             .onAppear {
-                StartupTiming.mark("MainTabView inner onAppear — tab bar + discover/inbox kickoff")
+                StartupTiming.mark("MainTabView inner onAppear - tab bar + discover/inbox kickoff")
                 applyTabBarAppearance()
                 applyNavigationBarAppearance()
                 discoverViewModel.updateAuthToken(authService.authToken)
@@ -334,7 +334,7 @@ struct MainTabView: View {
                 if authService.isAuthenticated {
                     // Discover loads from `DiscoverView.onAppear` when that tab is shown. Eager `refresh()` here
                     // ran the full Discover GraphQL bundle (several large `allProducts` queries) in parallel with
-                    // Home’s first paint and could duplicate work if the Discover tab also mounted — major cold-start contention.
+                    // Home’s first paint and could duplicate work if the Discover tab also mounted - major cold-start contention.
                     // Defer inbox prefetch so Home + moderation `getUser` are less likely to contend on the same connection.
                     StartupTiming.mark("InboxViewModel.prefetch() scheduled (deferred) from MainTabView")
                     Task {
@@ -449,7 +449,7 @@ struct MainTabView: View {
         }
     }
 
-    /// Split **standard** vs **scroll-edge** navigation chrome: opaque at rest (reads white / #0C0C0C like the feed), transparent at scroll edge so list content can move under the bar—same idea as Profile without `.toolbarBackgroundVisibility(.visible)` fighting the system. Home/Discover still set SwiftUI ``Theme/preluraNavigationBarChrome()`` for scheme + tint.
+    /// Split **standard** vs **scroll-edge** navigation chrome: opaque at rest (reads white / #0C0C0C like the feed), transparent at scroll edge so list content can move under the bar-same idea as Profile without `.toolbarBackgroundVisibility(.visible)` fighting the system. Home/Discover still set SwiftUI ``Theme/preluraNavigationBarChrome()`` for scheme + tint.
     private func applyNavigationBarAppearance() {
         let opaque = UINavigationBarAppearance()
         opaque.configureWithOpaqueBackground()

@@ -27,7 +27,7 @@ enum StartupTiming {
     }
 
     private static func emit(ms: Double, label: String) {
-        let line = String(format: "[StartupTiming] +%.0f ms — %@", ms, label)
+        let line = String(format: "[StartupTiming] +%.0f ms - %@", ms, label)
         log.info("\(line, privacy: .public)")
         #if DEBUG
         print(line)

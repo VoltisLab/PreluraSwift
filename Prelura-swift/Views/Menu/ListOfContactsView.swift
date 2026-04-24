@@ -12,7 +12,7 @@ struct ListOfContactsView: View {
 
     private let store = CNContactStore()
     private static var inviteMessage: String {
-        "Join me on WEARHOUSE — buy and sell preloved fashion. \(Constants.inviteFriendsLandingURL)"
+        "Join me on WEARHOUSE - buy and sell preloved fashion. \(Constants.inviteFriendsLandingURL)"
     }
 
     var body: some View {

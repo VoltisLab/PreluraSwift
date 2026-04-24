@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Recent chats, followers, and username search — same UX as lookbook “Send to…”.
+/// Recent chats, followers, and username search - same UX as lookbook “Send to…”.
 struct SendToUserShareSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authService: AuthService

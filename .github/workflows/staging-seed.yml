@@ -1,8 +1,8 @@
 # Manual staging seed: registers N users via GraphQL `register` (same as iOS AuthService).
-# Secret: STAGING_SEED_PASSWORD (shared password for all seed users — not printed in logs).
+# Secret: STAGING_SEED_PASSWORD (shared password for all seed users - not printed in logs).
 #
-# Optional: verify_emails_after_seed — runs scripts/bulk-verify-seed-users-email.sh (needs STAFF_* secrets).
-# Optional: smoke_login_count — after register (and verify if enabled), tests GraphQL login for the first N CSV rows.
+# Optional: verify_emails_after_seed - runs scripts/bulk-verify-seed-users-email.sh (needs STAFF_* secrets).
+# Optional: smoke_login_count - after register (and verify if enabled), tests GraphQL login for the first N CSV rows.
 #
 # Second batch: set seed_start_index so indices don’t collide (e.g. after 3 users use seed_start_index=4).
 
@@ -35,7 +35,7 @@ on:
         required: false
         default: '0'
       seed_email_domain:
-        description: Email domain for seed addresses (empty = wearhouse.co.uk). Usually leave empty; script retries if username/email already exists on server.
+        description: Email domain for seed addresses (empty = mywearhouse.co.uk). Usually leave empty; script retries if username/email already exists on server.
         required: false
         default: ''
 

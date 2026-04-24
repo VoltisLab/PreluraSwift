@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Palette (Gold introduced alongside brand purple)
 
-private enum PlanPalette {
+enum PlanPalette {
     static let goldA = Color(red: 0.98, green: 0.88, blue: 0.42)
     static let goldB = Color(red: 0.78, green: 0.55, blue: 0.12)
     static let goldC = Color(red: 0.42, green: 0.28, blue: 0.06)
@@ -15,7 +15,7 @@ private enum PlanPalette {
 
 // MARK: - Animated mesh backdrop
 
-private struct PlanScreenAnimatedBackground: View {
+struct PlanScreenAnimatedBackground: View {
     /// Slightly lifted from app chrome so purple / gold / cyan reads without going pitch-black.
     private static let planScreenBase = Color(red: 0.09, green: 0.085, blue: 0.11)
 
@@ -132,8 +132,19 @@ private struct PlanSilverTierCard: View {
     let features: [String]
     /// When set, expands the card to this height (matches Gold); `nil` for intrinsic sizing (measurement probes).
     let cardMinHeight: CGFloat?
+    let priceLine: String
+    let primaryTitle: String?
+    let primaryEnabled: Bool
+    let primaryAction: (() -> Void)?
 
     @State private var sparklePhase: CGFloat = 0
+
+    private var hasFooterActions: Bool {
+        primaryTitle != nil && primaryAction != nil
+    }
+
+    /// When the card is given a carousel `minHeight`, expand vertically so a `Spacer` can pin the footer to the bottom edge.
+    private var stretchesToCarouselSlot: Bool { (cardMinHeight ?? 0) > 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -155,6 +166,9 @@ private struct PlanSilverTierCard: View {
                     Text(L10n.string("Essential seller tools"))
                         .font(Theme.Typography.caption)
                         .foregroundStyle(.white.opacity(0.7))
+                    Text(priceLine)
+                        .font(Theme.Typography.subheadline.weight(.semibold))
+                        .foregroundStyle(PlanPalette.silverA.opacity(0.95))
                 }
                 Spacer(minLength: 0)
             }
@@ -170,7 +184,35 @@ private struct PlanSilverTierCard: View {
                     PlanFeatureRow(text: line, accent: PlanPalette.silverA)
                 }
             }
+
+            if hasFooterActions {
+                Spacer(minLength: Theme.Spacing.sm)
+                if let pt = primaryTitle, let pa = primaryAction {
+                    Button(action: {
+                        HapticManager.tap()
+                        pa()
+                    }) {
+                        Text(pt)
+                            .font(Theme.Typography.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(
+                                LinearGradient(
+                                    colors: [PlanPalette.silverB, PlanPalette.silverA.opacity(0.92), PlanPalette.silverB],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!primaryEnabled)
+                    .opacity(primaryEnabled ? 1 : 0.45)
+                }
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: stretchesToCarouselSlot ? .infinity : nil, alignment: .topLeading)
         .padding(Theme.Spacing.lg)
         .modifier(PlanTierCardEqualHeightModifier(minHeight: cardMinHeight))
         .background { silverCardBackground }
@@ -217,6 +259,7 @@ private struct PlanGoldTierCard: View {
     let features: [String]
     /// When set, expands the card to this height (matches Silver); `nil` for intrinsic sizing (measurement probes).
     let cardMinHeight: CGFloat?
+    let priceLine: String
     let primaryTitle: String?
     let primaryEnabled: Bool
     let primaryAction: (() -> Void)?
@@ -230,6 +273,8 @@ private struct PlanGoldTierCard: View {
         let destructive = destructiveTitle != nil && destructiveAction != nil
         return primary || destructive
     }
+
+    private var stretchesToCarouselSlot: Bool { (cardMinHeight ?? 0) > 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -252,6 +297,9 @@ private struct PlanGoldTierCard: View {
                     Text(L10n.string("Grow faster on Wearhouse"))
                         .font(Theme.Typography.caption)
                         .foregroundStyle(.white.opacity(0.7))
+                    Text(priceLine)
+                        .font(Theme.Typography.subheadline.weight(.semibold))
+                        .foregroundStyle(PlanPalette.goldA.opacity(0.95))
                 }
                 Spacer(minLength: 0)
             }
@@ -270,6 +318,7 @@ private struct PlanGoldTierCard: View {
             .animation(.spring(response: 0.45, dampingFraction: 0.82).delay(0.04), value: features.count)
 
             if hasFooterActions {
+                Spacer(minLength: Theme.Spacing.sm)
                 VStack(alignment: .leading, spacing: 0) {
                     if let pt = primaryTitle, let pa = primaryAction {
                         Button(action: {
@@ -304,9 +353,9 @@ private struct PlanGoldTierCard: View {
                         .padding(.top, Theme.Spacing.sm)
                     }
                 }
-                .padding(.top, Theme.Spacing.lg)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: stretchesToCarouselSlot ? .infinity : nil, alignment: .topLeading)
         .padding(Theme.Spacing.lg)
         .modifier(PlanTierCardEqualHeightModifier(minHeight: cardMinHeight))
         .background { goldCardBackground }
@@ -384,16 +433,24 @@ private struct PlanFeatureRow: View {
 
 // MARK: - Settings → Plan
 
-/// Settings → Plan: horizontal carousel of Silver & Gold tier cards.
+/// Settings → Plan: Silver & Gold tier carousel.
+/// Layout is a vertical `ScrollView` so tall tier cards scroll instead of pinning hero text or page dots under the navigation bar or home indicator.
 struct PlanSettingsView: View {
     @EnvironmentObject private var authService: AuthService
+    @Environment(\.dismiss) private var dismiss
     private let userService = UserService()
 
     @State private var profileTier: String = ""
     @State private var showGoldPaywall = false
-    @State private var selectedPage = 0
+    @State private var showServerGoldDowngradeInfo = false
+    /// Starts from local preview tier so Gold users do not paint Silver on the first frame; server tier is applied after fetch without animation.
+    @State private var selectedPage: Int = PlanSettingsView.initialCarouselPageIndex()
     @State private var measuredGoldCardHeight: CGFloat = 0
     @State private var measuredSilverCardHeight: CGFloat = 0
+    /// When false and the user is not on local Gold preview, the TabView stays hidden until `loadProfileTier` finishes so the pager does not flash Silver then Gold.
+    @State private var hasCompletedInitialPlanFetch = false
+    /// From `viewMe.meta.sellerGoldRenewsAt` after `loadProfileTier` / subscribe refresh.
+    @State private var serverGoldRenewsAt: Date?
 
     private var serverGold: Bool { SellerMysteryQuota.apiProfileIndicatesGoldTier(profileTier) }
     private var localGold: Bool { SellerPlanUserDefaults.localPlan == .gold }
@@ -407,37 +464,72 @@ struct PlanSettingsView: View {
     private var silverIsCurrent: Bool { !isGoldEffective }
     private var goldIsCurrent: Bool { isGoldEffective }
 
+    /// Local Gold preview can show the carousel immediately on the correct page; everyone else waits one network round-trip to avoid a wrong first page.
+    private var shouldShowPlanCarousel: Bool {
+        SellerPlanUserDefaults.localPlan == .gold || hasCompletedInitialPlanFetch
+    }
+
+    /// Horizontal inset from the scroll edge to the tier card chrome (smaller = wider cards).
+    private static let planCarouselCardHorizontalInset: CGFloat = 8
+
+    private static func initialCarouselPageIndex() -> Int {
+        SellerPlanUserDefaults.localPlan == .gold ? 1 : 0
+    }
+
     var body: some View {
-        ZStack {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                planHeroTitleSection
+                    .padding(.horizontal, Theme.Spacing.md)
+
+                carousel
+                    .padding(.horizontal, Theme.Spacing.sm)
+
+                pageDots
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.top, Theme.Spacing.sm)
+
+                footnote
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, Theme.Spacing.md)
+            }
+            .padding(.top, Theme.Spacing.md)
+            .padding(.bottom, Theme.Spacing.xl * 2 + Theme.Spacing.lg)
+        }
+        .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.basedOnSize)
+        .background {
             PlanScreenAnimatedBackground()
-
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    heroHeader
-                        .padding(.horizontal, Theme.Spacing.md)
-                        .padding(.top, Theme.Spacing.sm)
-                        .padding(.bottom, Theme.Spacing.md)
-
-                    carousel
-                        .padding(.bottom, Theme.Spacing.sm)
-
-                    pageDots
-                        .padding(.top, Theme.Spacing.xs)
-
-                    footnote
-                        .padding(.horizontal, Theme.Spacing.lg)
-                        .padding(.top, Theme.Spacing.md)
-                        .padding(.bottom, Theme.Spacing.xl)
+                .ignoresSafeArea()
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .navigationTitle("")
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    HapticManager.tap()
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.primaryText)
+                        .frame(width: Theme.AppBar.buttonSize, height: Theme.AppBar.buttonSize)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(HapticTapButtonStyle())
+                .accessibilityLabel(L10n.string("Back"))
+            }
+            ToolbarItem(placement: .principal) {
+                planToolbarPrincipalChrome
             }
         }
-        .navigationTitle(L10n.string("Plan"))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbarBackground(Theme.Colors.background.opacity(0.2), for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .task { await loadProfileTier() }
-        .onAppear { syncCarouselPage() }
         .onChange(of: selectedPage) { _, _ in
             HapticManager.selection()
         }
@@ -456,25 +548,18 @@ struct PlanSettingsView: View {
         .onChange(of: isGoldEffective) { _, _ in
             measuredGoldCardHeight = 0
             measuredSilverCardHeight = 0
+            syncCarouselPage(animated: true)
+        }
+        .alert(L10n.string("Gold plan"), isPresented: $showServerGoldDowngradeInfo) {
+            Button(L10n.string("OK"), role: .cancel) {}
+        } message: {
+            Text(L10n.string("Your Wearhouse account is on Gold. In-app downgrades will be available when App Store billing goes live."))
         }
         .sheet(isPresented: $showGoldPaywall) {
-            PlanPaywallSheet(
-                title: L10n.string("Upgrade to Gold"),
-                message: L10n.string("Gold unlocks more mystery box listings and priority visibility. App Store billing will be available soon; you can enable a preview on this device for testing."),
-                primaryTitle: L10n.string("Enable Gold (preview)"),
-                onConfirm: {
-                    Task {
-                        let svc = UserService()
-                        svc.updateAuthToken(authService.authToken)
-                        if let me = try? await svc.getUser(username: nil) {
-                            let key = SellerScheduledListingQuota.stableUserKey(from: me)
-                            SellerScheduledListingQuota.ensureBillingAnchorIfUnset(userKey: key)
-                        }
-                        await MainActor.run {
-                            SellerPlanUserDefaults.localPlan = .gold
-                            showGoldPaywall = false
-                        }
-                    }
+            PlanGoldSubscribeSheet(
+                authToken: authService.authToken,
+                onSubscribed: {
+                    Task { await subscribedGoldRefresh() }
                 },
                 onDismiss: { showGoldPaywall = false }
             )
@@ -482,20 +567,23 @@ struct PlanSettingsView: View {
         }
     }
 
-    private var heroHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "hands.sparkles.fill")
-                    .font(.title3)
-                    .foregroundStyle(
-                        LinearGradient(colors: [PlanPalette.goldA, Theme.primaryColor], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    )
-                    .symbolEffect(.variableColor.iterative, options: .repeating)
-                Text(L10n.string("Your plan"))
-                    .font(Theme.Typography.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.75))
-            }
+    private var planToolbarPrincipalChrome: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "hands.sparkles.fill")
+                .font(.title3)
+                .foregroundStyle(
+                    LinearGradient(colors: [PlanPalette.goldA, Theme.primaryColor], startPoint: .topLeading, endPoint: .bottomTrailing)
+                )
+                .symbolEffect(.variableColor.iterative, options: .repeating)
+            Text(L10n.string("Your plan"))
+                .font(Theme.Typography.caption.weight(.semibold))
+                .foregroundStyle(Theme.Colors.primaryText.opacity(0.9))
+        }
+        .frame(maxWidth: .infinity)
+    }
 
+    private var planHeroTitleSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text(currentPlanTitle)
                 .font(Theme.Typography.largeTitle.weight(.bold))
                 .minimumScaleFactor(0.75)
@@ -506,7 +594,11 @@ struct PlanSettingsView: View {
                         endPoint: .trailing
                     )
                 )
-
+            if let billing = formattedNextBillingLine() {
+                Text(billing)
+                    .font(Theme.Typography.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.primaryColor.opacity(0.92))
+            }
             Text(L10n.string("Swipe to compare tiers"))
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.primaryColor.opacity(0.9))
@@ -514,9 +606,17 @@ struct PlanSettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private func formattedNextBillingLine() -> String? {
+        guard isGoldEffective else { return nil }
+        guard let d = serverGoldRenewsAt else { return nil }
+        let df = DateFormatter()
+        df.dateStyle = .medium
+        df.timeStyle = .none
+        return "\(L10n.string("Next billing")): \(df.string(from: d))"
+    }
+
     private let planCarouselFallbackSlotHeight: CGFloat = 480
 
-    /// Carousel height = max(Silver intrinsic, Gold intrinsic) so both tier cards can share one `minHeight` without either looking stretched vs the other.
     private var planCarouselSlotHeight: CGFloat {
         let g = measuredGoldCardHeight
         let s = measuredSilverCardHeight
@@ -531,12 +631,15 @@ struct PlanSettingsView: View {
             isCurrent: goldIsCurrent,
             features: [
                 L10n.string("Everything in Silver"),
+                L10n.string("15 scheduled posts"),
+                L10n.string("30 Lookbook products per month"),
                 L10n.string("Up to 5 active mystery box listings"),
                 L10n.string("0% selling fees"),
                 L10n.string("Priority placement in search & category browsing"),
                 L10n.string("Priority seller support"),
             ],
             cardMinHeight: cardMinHeight,
+            priceLine: L10n.string("£10.99/month"),
             primaryTitle: isGoldEffective ? nil : L10n.string("Upgrade to Gold"),
             primaryEnabled: true,
             primaryAction: isGoldEffective ? nil : { showGoldPaywall = true },
@@ -545,35 +648,39 @@ struct PlanSettingsView: View {
         )
     }
 
-    /// Intrinsic-height probe for Silver (TabView may not lay out off-screen pages immediately).
     @ViewBuilder
-    private var planSilverTierCardProbe: some View {
+    private func planSilverTierCard(cardMinHeight: CGFloat?) -> some View {
         PlanSilverTierCard(
             isCurrent: silverIsCurrent,
             features: [
                 L10n.string("Unlimited product uploads"),
                 L10n.string("Up to 1 active mystery box listing"),
+                L10n.string("5 scheduled posts"),
+                L10n.string("10 Lookbook products per month"),
                 L10n.string("0% selling fees"),
             ],
-            cardMinHeight: nil
+            cardMinHeight: cardMinHeight,
+            priceLine: L10n.string("Free"),
+            primaryTitle: isGoldEffective ? L10n.string("Downgrade to Silver") : nil,
+            primaryEnabled: true,
+            primaryAction: isGoldEffective ? { downgradeFromSilverCardTapped() } : nil
         )
     }
 
     private var carousel: some View {
         let slotH = planCarouselSlotHeight
         return ZStack(alignment: .top) {
-            // Invisible probes: measure intrinsic heights (TabView often skips off-screen pages).
             VStack(spacing: 0) {
                 planGoldTierCard(cardMinHeight: nil)
-                    .padding(.horizontal, 18)
+                    .padding(.horizontal, Self.planCarouselCardHorizontalInset)
                     .fixedSize(horizontal: false, vertical: true)
                     .background(
                         GeometryReader { geo in
                             Color.clear.preference(key: PlanMeasuredGoldCardHeightKey.self, value: geo.size.height)
                         }
                     )
-                planSilverTierCardProbe
-                    .padding(.horizontal, 18)
+                planSilverTierCard(cardMinHeight: nil)
+                    .padding(.horizontal, Self.planCarouselCardHorizontalInset)
                     .fixedSize(horizontal: false, vertical: true)
                     .background(
                         GeometryReader { geo in
@@ -586,30 +693,37 @@ struct PlanSettingsView: View {
             .accessibilityHidden(true)
             .zIndex(0)
 
-            TabView(selection: $selectedPage) {
-                silverPage(slotHeight: slotH)
-                    .tag(0)
-                    .padding(.horizontal, 18)
-                goldPage(slotHeight: slotH)
-                    .tag(1)
-                    .padding(.horizontal, 18)
+            if shouldShowPlanCarousel {
+                TabView(selection: $selectedPage) {
+                    silverPage(slotHeight: slotH)
+                        .tag(0)
+                        .padding(.horizontal, Self.planCarouselCardHorizontalInset)
+                    goldPage(slotHeight: slotH)
+                        .tag(1)
+                        .padding(.horizontal, Self.planCarouselCardHorizontalInset)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: slotH)
+                .zIndex(1)
+            } else {
+                ProgressView()
+                    .tint(Theme.primaryColor)
+                    .frame(maxWidth: .infinity, minHeight: max(slotH, planCarouselFallbackSlotHeight))
+                    .zIndex(1)
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: slotH)
-            .zIndex(1)
         }
     }
 
     private func silverPage(slotHeight: CGFloat) -> some View {
-        PlanSilverTierCard(
-            isCurrent: silverIsCurrent,
-            features: [
-                L10n.string("Unlimited product uploads"),
-                L10n.string("Up to 1 active mystery box listing"),
-                L10n.string("0% selling fees"),
-            ],
-            cardMinHeight: slotHeight
-        )
+        planSilverTierCard(cardMinHeight: slotHeight)
+    }
+
+    private func downgradeFromSilverCardTapped() {
+        if serverGold {
+            showServerGoldDowngradeInfo = true
+        } else {
+            SellerPlanUserDefaults.localPlan = .silver
+        }
     }
 
     private func goldPage(slotHeight: CGFloat) -> some View {
@@ -625,14 +739,28 @@ struct PlanSettingsView: View {
                     .animation(.spring(response: 0.35, dampingFraction: 0.75), value: selectedPage)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, Theme.Spacing.sm)
     }
 
     private var footnote: some View {
-        Text(L10n.string("Prices and entitlements will sync from your App Store subscription when billing goes live."))
+        Text(L10n.string("Gold is billed through Apple. Your Wearhouse profile stores a receipt summary in account settings after each successful purchase."))
             .font(Theme.Typography.caption)
             .foregroundStyle(.white.opacity(0.55))
             .multilineTextAlignment(.center)
+            .padding(.horizontal, Theme.Spacing.sm)
+    }
+
+    private func subscribedGoldRefresh() async {
+        let svc = UserService()
+        svc.updateAuthToken(authService.authToken)
+        if let me = try? await svc.getUser(username: nil) {
+            let key = SellerScheduledListingQuota.stableUserKey(from: me)
+            SellerScheduledListingQuota.ensureBillingAnchorIfUnset(userKey: key)
+        }
+        await loadProfileTier()
+        await MainActor.run {
+            showGoldPaywall = false
+        }
     }
 
     private func loadProfileTier() async {
@@ -641,75 +769,32 @@ struct PlanSettingsView: View {
             let user = try await userService.getUser(username: nil)
             await MainActor.run {
                 profileTier = user.profileTier
-                syncCarouselPage()
+                serverGoldRenewsAt = user.sellerGoldRenewsAt
+                syncCarouselPage(animated: false)
+                hasCompletedInitialPlanFetch = true
             }
         } catch {
             await MainActor.run {
                 profileTier = ""
-                syncCarouselPage()
+                serverGoldRenewsAt = nil
+                syncCarouselPage(animated: false)
+                hasCompletedInitialPlanFetch = true
             }
         }
     }
 
-    private func syncCarouselPage() {
-        if isGoldEffective {
-            selectedPage = 1
+    private func syncCarouselPage(animated: Bool) {
+        let next = isGoldEffective ? 1 : 0
+        guard selectedPage != next else { return }
+        if animated {
+            selectedPage = next
         } else {
-            selectedPage = 0
-        }
-    }
-}
-
-// MARK: - Paywall sheet (slightly richer chrome)
-
-private struct PlanPaywallSheet: View {
-    let title: String
-    let message: String
-    let primaryTitle: String
-    let onConfirm: () -> Void
-    let onDismiss: () -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                PlanScreenAnimatedBackground()
-                    .opacity(0.55)
-                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(
-                            LinearGradient(colors: [PlanPalette.goldA, Theme.primaryColor, PlanPalette.mysticB], startPoint: .leading, endPoint: .trailing)
-                        )
-                        .frame(height: 5)
-                        .padding(.top, 4)
-
-                    Text(message)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(.white.opacity(0.88))
-                    Spacer(minLength: 0)
-                    PrimaryGlassButton(primaryTitle, isEnabled: true, isLoading: false) {
-                        onConfirm()
-                        dismiss()
-                    }
-                    BorderGlassButton(L10n.string("Cancel")) {
-                        onDismiss()
-                        dismiss()
-                    }
-                }
-                .padding(Theme.Spacing.lg)
-            }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(Theme.Colors.background.opacity(0.3), for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.string("Close")) {
-                        onDismiss()
-                        dismiss()
-                    }
-                }
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) {
+                selectedPage = next
             }
         }
     }
 }
+

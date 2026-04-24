@@ -59,7 +59,7 @@ private struct MacOnlyImageFileImporterModifier: ViewModifier {
 }
 
 extension View {
-    /// Presents the system file importer (Finder on Mac) for images. Only attaches when `isiOSAppOnMac` — no extra UI on iPhone/iPad.
+    /// Presents the system file importer (Finder on Mac) for images. Only attaches when `isiOSAppOnMac` - no extra UI on iPhone/iPad.
     func macOnlyImageFileImporter(
         isPresented: Binding<Bool>,
         allowsMultipleSelection: Bool,

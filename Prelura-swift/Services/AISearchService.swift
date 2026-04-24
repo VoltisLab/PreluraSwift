@@ -11,7 +11,7 @@ enum DetectedEvent {
 /// Result of parsing a search query for colours, categories, price, and free text.
 /// Used to build API search/filters and to show conversational replies.
 struct ParsedSearch {
-    /// Search string to send to the API (includes colour/category/synonym terms for backend to match). Does not include size — size is applied client-side.
+    /// Search string to send to the API (includes colour/category/synonym terms for backend to match). Does not include size - size is applied client-side.
     var searchText: String
     /// Ordered list of search queries to try in order: multi-term first (e.g. "floral tshirt"), then single terms (e.g. "floral", "tshirt"). Enables hierarchy: try narrow query first, then broader.
     var searchQueryCandidates: [String]
@@ -35,7 +35,7 @@ struct ParsedSearch {
 /// supports typos (fuzzy match) and maps common colour names to app colours.
 /// Backend is not modified; we only produce a search string and optional category.
 ///
-/// Training data: Wearhouse AI Training Dataset — Category & Colour Detection (100 Query Types).
+/// Training data: Wearhouse AI Training Dataset - Category & Colour Detection (100 Query Types).
 /// Covers: Basic + Conversational colour+category, Multi-colour, Relative colour, Style+colour,
 /// Price+colour, Material+colour, Size+colour, Event, Casual/messy queries.
 final class AISearchService {
@@ -114,7 +114,7 @@ final class AISearchService {
         "heel": "heels", "boot": "boots"
     ]
 
-    /// Greetings / non-product words — don't use as fallback term (avoids "here are some hellos").
+    /// Greetings / non-product words - don't use as fallback term (avoids "here are some hellos").
     static let nonProductWords: Set<String> = [
         "hello", "hi", "hey", "thanks", "thank", "bye", "ok", "okay",
         "world", "there", "help", "please", "yes", "no"
@@ -582,7 +582,7 @@ final class AISearchService {
                 continue
             }
 
-            // 3) Fuzzy match colour (typos) — track correction for "Do you mean?"
+            // 3) Fuzzy match colour (typos) - track correction for "Do you mean?"
             if lower.count >= minLengthForFuzzy, let match = fuzzyMatchColour(word: lower) {
                 appliedColours.append(match)
                 remainingWords.append(word)
@@ -592,7 +592,7 @@ final class AISearchService {
                 continue
             }
 
-            // 4) Parent category — exact "women"/"men"/"boys"/"kids" etc. or possessive "women's"/"boys'" so "size 10 jeans women's" → category Women, search "jeans". Category words are not added to search text.
+            // 4) Parent category - exact "women"/"men"/"boys"/"kids" etc. or possessive "women's"/"boys'" so "size 10 jeans women's" → category Women, search "jeans". Category words are not added to search text.
             if let cat = Self.parentCategories.first(where: { $0.lowercased() == lower && $0.lowercased() != "all" }) {
                 appliedCategory = cat
                 continue
@@ -662,7 +662,7 @@ final class AISearchService {
 
     // MARK: - Realistic response sets (Batch 1: 20 query types × 5 responses)
 
-    /// Response sets for contextual replies (Wearhouse AI Training Dataset — Realistic User Queries Batch 1).
+    /// Response sets for contextual replies (Wearhouse AI Training Dataset - Realistic User Queries Batch 1).
     private static let responseBatch1: [(name: String, responses: [String])] = [
         ("birthday_party", [
             "Happy birthday! Let's find some great green dresses for your celebration.",
@@ -1471,11 +1471,11 @@ final class AISearchService {
         "I couldn't find anything matching that right now. Try different colours or categories, or a simpler search like just the item type.",
         "Nothing came up for that. I'd try searching for just the item (e.g. dress or jacket) or a different colour.",
         "No matches at the moment. Try dropping the colour and search for the item, or switch the colour or style.",
-        "I had a look but didn't find that exact combo. Try a different colour or just the category — we might have something close.",
+        "I had a look but didn't find that exact combo. Try a different colour or just the category - we might have something close.",
         "Nothing matching that right now. Try a simpler search or different options; I'm here to help.",
         "I couldn't find that combination. Try searching for just the item type, or change the colour or filters.",
         "No results for that search. Try different colours or categories, or a broader term.",
-        "I looked but didn't find anything for that. Try the item on its own or another colour — new stuff is added often."
+        "I looked but didn't find anything for that. Try the item on its own or another colour - new stuff is added often."
     ]
 
     /// Reply when the main search returned no items. Picks a warm, helpful no-results message.
@@ -1483,7 +1483,7 @@ final class AISearchService {
         (Self.noResultsPhrases.randomElement() ?? Self.noResultsPhrases[0])
     }
 
-    /// True if the query is only a greeting (e.g. "Hello") — show a friendly prompt instead of search.
+    /// True if the query is only a greeting (e.g. "Hello") - show a friendly prompt instead of search.
     /// Normalizes user input for salutation/social matching: lowercase, trim, collapse whitespace, straight apostrophe, strip punctuation so "Hi, how are you?" matches "hi how are you".
     private func normalizedForSalutation(_ query: String) -> String {
         var q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -1514,106 +1514,106 @@ final class AISearchService {
 
     /// Greeting replies when user says "hi", "hello", or social questions. Lenny always identifies himself and welcomes to WEARHOUSE. Used for both salutations and social Q&A.
     private static let greetingReplies: [String] = [
-        "Hi, I'm Lenny — welcome to WEARHOUSE. How can I help?",
+        "Hi, I'm Lenny - welcome to WEARHOUSE. How can I help?",
         "Hello! I'm Lenny, welcome to WEARHOUSE. What can I help you find today?",
-        "Hey there! Lenny here — welcome to WEARHOUSE. How can I help you?",
+        "Hey there! Lenny here - welcome to WEARHOUSE. How can I help you?",
         "Hi! I'm Lenny, welcome to WEARHOUSE. How can I help?",
-        "Hello! Welcome to WEARHOUSE — I'm Lenny. How can I help you today?",
+        "Hello! Welcome to WEARHOUSE - I'm Lenny. How can I help you today?",
         "Hey! I'm Lenny, welcome to WEARHOUSE. What are you looking for?",
-        "Hi there! Lenny here. Welcome to WEARHOUSE — how can I help?",
+        "Hi there! Lenny here. Welcome to WEARHOUSE - how can I help?",
         "Hello! I'm Lenny, welcome to WEARHOUSE. How can I help you find something?",
-        "Hi! Welcome to WEARHOUSE. I'm Lenny — how can I help?",
+        "Hi! Welcome to WEARHOUSE. I'm Lenny - how can I help?",
         "Hey there! I'm Lenny, welcome to WEARHOUSE. What can I help you with?",
-        "Hello! Welcome to the chat — I'm Lenny, and I'm here to help with whatever you need. Just type what you're looking for to get started.",
-        "Hey there! I'm Lenny. Great to have you here. Tell me what you're after — a colour and item like leather jacket or denim jeans works a treat.",
-        "Hi! Lenny here. Welcome in. I'm here to help you find something lovely — try typing something like black jacket or green dress.",
-        "Hello! I'm Lenny, and I'm really here to assist you. You can start by typing what you're looking for — for example, striped top or floral dress.",
-        "Hey! Welcome to the chat. I'm Lenny and I'm here to help you find whatever you need. Just drop a message — try a colour and item like navy blazer or pink skirt.",
-        "Hi there! Lenny at your service. Good to see you. Type anything you're after — dresses, jackets, shoes — or try wool coat or ankle boots.",
-        "Hello! I'm Lenny. Welcome. I'm here to assist you with whatever you need. You can start by typing — e.g. black jacket or white trainers.",
-        "Hey! Welcome — I'm Lenny. I'm here to help you shop. Just type what you're looking for to get started; something like green hoodie or beige coat works.",
-        "Hi! Lenny here — welcome to the chat. I'm here to help with whatever you need. Type a colour and item, like summer dress or sandals, and we'll go from there.",
-        "Hello! Welcome. I'm Lenny and I'm here to assist you. You can start by typing what you'd like to find — try knit jumper or tailored trousers.",
-        "Hey there! I'm Lenny. Glad you're here. I'm here to help you find something — just type what you're looking for. Try black jacket or green dress.",
-        "Hi! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. Start by typing — for example, navy blazer or pink skirt.",
-        "Hello! I'm Lenny — welcome. I'm here to assist you. You can type what you're looking for; try a colour and item like trench coat or loafers.",
-        "Hey! Lenny here. Welcome in. I'm here to help you find whatever you need. Just type to get started — e.g. white trainers or black dress.",
+        "Hello! Welcome to the chat - I'm Lenny, and I'm here to help with whatever you need. Just type what you're looking for to get started.",
+        "Hey there! I'm Lenny. Great to have you here. Tell me what you're after - a colour and item like leather jacket or denim jeans works a treat.",
+        "Hi! Lenny here. Welcome in. I'm here to help you find something lovely - try typing something like black jacket or green dress.",
+        "Hello! I'm Lenny, and I'm really here to assist you. You can start by typing what you're looking for - for example, striped top or floral dress.",
+        "Hey! Welcome to the chat. I'm Lenny and I'm here to help you find whatever you need. Just drop a message - try a colour and item like navy blazer or pink skirt.",
+        "Hi there! Lenny at your service. Good to see you. Type anything you're after - dresses, jackets, shoes - or try wool coat or ankle boots.",
+        "Hello! I'm Lenny. Welcome. I'm here to assist you with whatever you need. You can start by typing - e.g. black jacket or white trainers.",
+        "Hey! Welcome - I'm Lenny. I'm here to help you shop. Just type what you're looking for to get started; something like green hoodie or beige coat works.",
+        "Hi! Lenny here - welcome to the chat. I'm here to help with whatever you need. Type a colour and item, like summer dress or sandals, and we'll go from there.",
+        "Hello! Welcome. I'm Lenny and I'm here to assist you. You can start by typing what you'd like to find - try knit jumper or tailored trousers.",
+        "Hey there! I'm Lenny. Glad you're here. I'm here to help you find something - just type what you're looking for. Try black jacket or green dress.",
+        "Hi! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. Start by typing - for example, navy blazer or pink skirt.",
+        "Hello! I'm Lenny - welcome. I'm here to assist you. You can type what you're looking for; try a colour and item like trench coat or loafers.",
+        "Hey! Lenny here. Welcome in. I'm here to help you find whatever you need. Just type to get started - e.g. white trainers or black dress.",
         "Hi there! Welcome. I'm Lenny and I'm here to assist you. Type what you're after to get started; something like blouse or heels.",
-        "Hello! I'm Lenny. Good to have you. I'm here to help with whatever you need. You can start by typing — try green hoodie or beige coat.",
-        "Hey! Welcome to the chat. I'm Lenny, and I'm here to help you shop. Just type what you're looking for — like cardigan or sneakers.",
+        "Hello! I'm Lenny. Good to have you. I'm here to help with whatever you need. You can start by typing - try green hoodie or beige coat.",
+        "Hey! Welcome to the chat. I'm Lenny, and I'm here to help you shop. Just type what you're looking for - like cardigan or sneakers.",
         "Hi! Lenny at your service. Welcome. I'm here to assist you with whatever you need. Type a message to get started; try black jacket or green dress.",
-        "Hello! I'm Lenny — welcome. I'm here to help you find something. You can start by typing; for example, navy blazer or pink skirt.",
-        "Hey there! Welcome. I'm Lenny and I'm here to help. Just type what you're looking for to get started — maxi dress, espadrilles, whatever you like.",
-        "Hi! I'm Lenny. Welcome to the chat. I'm here to assist you with whatever you need. Start by typing — e.g. linen shirt or chinos.",
+        "Hello! I'm Lenny - welcome. I'm here to help you find something. You can start by typing; for example, navy blazer or pink skirt.",
+        "Hey there! Welcome. I'm Lenny and I'm here to help. Just type what you're looking for to get started - maxi dress, espadrilles, whatever you like.",
+        "Hi! I'm Lenny. Welcome to the chat. I'm here to assist you with whatever you need. Start by typing - e.g. linen shirt or chinos.",
         "Hello! Lenny here. Good to see you. I'm here to help you find whatever you need. Type what you're after; try a colour and item like blazer or midi skirt.",
-        "Hey! Welcome. I'm Lenny, and I'm here to help you shop. You can start by typing what you're looking for — try hoodie or trainers.",
-        "Hi there! I'm Lenny. Welcome in. I'm here to assist you. Just type to get started — something like green hoodie or beige coat.",
-        "Hello! I'm Lenny — welcome to the chat. I'm here to help with whatever you need. You can start by typing; try jacket or boots.",
-        "Hey! Lenny here. Welcome. I'm here to help you find something. Type what you're looking for to get started — e.g. navy blazer or pink skirt.",
+        "Hey! Welcome. I'm Lenny, and I'm here to help you shop. You can start by typing what you're looking for - try hoodie or trainers.",
+        "Hi there! I'm Lenny. Welcome in. I'm here to assist you. Just type to get started - something like green hoodie or beige coat.",
+        "Hello! I'm Lenny - welcome to the chat. I'm here to help with whatever you need. You can start by typing; try jacket or boots.",
+        "Hey! Lenny here. Welcome. I'm here to help you find something. Type what you're looking for to get started - e.g. navy blazer or pink skirt.",
         "Hi! Welcome. I'm Lenny and I'm here to assist you. Just type what you're after; try a colour and item like vintage dress or loafers.",
-        "Hello! I'm Lenny. Welcome in. I'm here to help you shop. You can start by typing — for example, black jacket or green dress.",
-        "Hey there! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. Type to get started — try silk blouse or heels.",
-        "Hi! I'm Lenny — good to have you. I'm here to assist you. You can start by typing what you're looking for; e.g. denim jacket or sneakers.",
-        "Hello! Lenny at your service. Welcome. I'm here to help you find whatever you need. Just type — try navy blazer or pink skirt.",
+        "Hello! I'm Lenny. Welcome in. I'm here to help you shop. You can start by typing - for example, black jacket or green dress.",
+        "Hey there! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. Type to get started - try silk blouse or heels.",
+        "Hi! I'm Lenny - good to have you. I'm here to assist you. You can start by typing what you're looking for; e.g. denim jacket or sneakers.",
+        "Hello! Lenny at your service. Welcome. I'm here to help you find whatever you need. Just type - try navy blazer or pink skirt.",
         "Hey! I'm Lenny. Welcome to the chat. I'm here to help with whatever you need. Start by typing; something like winter coat or boots.",
-        "Hi there! Welcome. I'm Lenny and I'm here to help you find something. You can type what you're after — try black jacket or green dress.",
-        "Hello! I'm Lenny — welcome. I'm here to assist you. Just type what you're looking for to get started. Try floral skirt or sandals.",
-        "Hey! Lenny here. Glad you're here. I'm here to help you shop. Type to get started — e.g. green hoodie or beige coat.",
-        "Hi! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. You can start by typing — dress, jacket, shoes, etc.",
+        "Hi there! Welcome. I'm Lenny and I'm here to help you find something. You can type what you're after - try black jacket or green dress.",
+        "Hello! I'm Lenny - welcome. I'm here to assist you. Just type what you're looking for to get started. Try floral skirt or sandals.",
+        "Hey! Lenny here. Glad you're here. I'm here to help you shop. Type to get started - e.g. green hoodie or beige coat.",
+        "Hi! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. You can start by typing - dress, jacket, shoes, etc.",
         "Hello! I'm Lenny. Welcome in. I'm here to help you find something. Just type what you're after; try a colour and item like camel coat or jeans.",
-        "Hey there! I'm Lenny — welcome. I'm here to assist you. You can start by typing; for example, navy blazer or pink skirt.",
-        "Hi! Lenny at your service. Welcome to the chat. I'm here to help with whatever you need. Type to get started — try printed top or trousers.",
-        "Hello! Welcome. I'm Lenny and I'm here to help you shop. Just type what you're looking for — e.g. black jacket or green dress.",
+        "Hey there! I'm Lenny - welcome. I'm here to assist you. You can start by typing; for example, navy blazer or pink skirt.",
+        "Hi! Lenny at your service. Welcome to the chat. I'm here to help with whatever you need. Type to get started - try printed top or trousers.",
+        "Hello! Welcome. I'm Lenny and I'm here to help you shop. Just type what you're looking for - e.g. black jacket or green dress.",
         "Hey! I'm Lenny. Good to see you. I'm here to assist you. You can start by typing; something like striped jumper or jeans.",
-        "Hi there! I'm Lenny. Welcome. I'm here to help you find whatever you need. Just type — try navy blazer or pink skirt.",
-        "Hello! Lenny here. Welcome to the chat. I'm here to help with whatever you need. Start by typing what you're after — leather bag or scarf.",
+        "Hi there! I'm Lenny. Welcome. I'm here to help you find whatever you need. Just type - try navy blazer or pink skirt.",
+        "Hello! Lenny here. Welcome to the chat. I'm here to help with whatever you need. Start by typing what you're after - leather bag or scarf.",
         "Hey! Welcome in. I'm Lenny, and I'm here to assist you. You can type what you're looking for; try green hoodie or beige coat.",
-        "Hi! I'm Lenny — welcome. I'm here to help you find something. Just type to get started — e.g. blazer or ankle boots.",
-        "Hello! I'm Lenny. Welcome. I'm here to help with whatever you need. You can start by typing — try black jacket or green dress.",
+        "Hi! I'm Lenny - welcome. I'm here to help you find something. Just type to get started - e.g. blazer or ankle boots.",
+        "Hello! I'm Lenny. Welcome. I'm here to help with whatever you need. You can start by typing - try black jacket or green dress.",
         "Hey there! Lenny at your service. Welcome to the chat. I'm here to assist you. Type what you're after; for example, coat or trainers.",
-        "Hi! Welcome. I'm Lenny and I'm here to help you shop. Just type what you're looking for to get started — navy blazer or pink skirt.",
-        "Hello! Lenny here. Good to have you. I'm here to help you find whatever you need. You can start by typing — try midi skirt or heels.",
-        "Hey! I'm Lenny — welcome in. I'm here to assist you. Just type; something like dress or shoes works.",
-        "Hi there! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. Type what you're looking for — e.g. black jacket or green dress.",
-        "Hello! I'm Lenny. Welcome. I'm here to help you find something. You can start by typing — try cropped top or wide-leg trousers.",
-        "Hey! Lenny at your service. Glad you're here. I'm here to help you shop. Just type to get started — navy blazer or pink skirt.",
-        "Hi! I'm Lenny — welcome to the chat. I'm here to assist you with whatever you need. Type what you're after; try bomber jacket or sneakers.",
-        "Hello! Welcome. I'm Lenny and I'm here to help. You can start by typing what you're looking for — e.g. green hoodie or beige coat.",
-        "Hey there! I'm Lenny. Welcome. I'm here to help you find whatever you need. Just type — try wrap dress or flats.",
+        "Hi! Welcome. I'm Lenny and I'm here to help you shop. Just type what you're looking for to get started - navy blazer or pink skirt.",
+        "Hello! Lenny here. Good to have you. I'm here to help you find whatever you need. You can start by typing - try midi skirt or heels.",
+        "Hey! I'm Lenny - welcome in. I'm here to assist you. Just type; something like dress or shoes works.",
+        "Hi there! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. Type what you're looking for - e.g. black jacket or green dress.",
+        "Hello! I'm Lenny. Welcome. I'm here to help you find something. You can start by typing - try cropped top or wide-leg trousers.",
+        "Hey! Lenny at your service. Glad you're here. I'm here to help you shop. Just type to get started - navy blazer or pink skirt.",
+        "Hi! I'm Lenny - welcome to the chat. I'm here to assist you with whatever you need. Type what you're after; try bomber jacket or sneakers.",
+        "Hello! Welcome. I'm Lenny and I'm here to help. You can start by typing what you're looking for - e.g. green hoodie or beige coat.",
+        "Hey there! I'm Lenny. Welcome. I'm here to help you find whatever you need. Just type - try wrap dress or flats.",
         "Hi! Lenny here. Welcome in. I'm here to assist you. You can start by typing; for example, black jacket or green dress.",
-        "Hello! I'm Lenny — good to see you. I'm here to help with whatever you need. Type to get started — dress, jacket, shoes, you name it.",
-        "Hey! Welcome to the chat. I'm Lenny, and I'm here to help you find something. Just type what you're after — try oversized coat or boots.",
-        "Hi there! I'm Lenny. Welcome to the chat. I'm here to assist you. You can start by typing — navy blazer or pink skirt.",
+        "Hello! I'm Lenny - good to see you. I'm here to help with whatever you need. Type to get started - dress, jacket, shoes, you name it.",
+        "Hey! Welcome to the chat. I'm Lenny, and I'm here to help you find something. Just type what you're after - try oversized coat or boots.",
+        "Hi there! I'm Lenny. Welcome to the chat. I'm here to assist you. You can start by typing - navy blazer or pink skirt.",
         "Hello! Lenny at your service. Welcome. I'm here to help you shop. Type what you're looking for to get started; try linen shirt or chinos.",
-        "Hey! I'm Lenny. Welcome in. I'm here to help with whatever you need. Just type — e.g. black jacket or green dress.",
-        "Hi! Welcome. I'm Lenny and I'm here to assist you. You can start by typing what you're after — try puffer jacket or joggers.",
-        "Hello! I'm Lenny — welcome to the chat. I'm here to help you find whatever you need. Type to get started; something like slip dress or mules.",
-        "Hey there! Lenny here. Welcome. I'm here to assist you. Just type what you're looking for — e.g. navy blazer or pink skirt.",
-        "Hi! I'm Lenny. Good to have you. I'm here to help you find something. You can start by typing — try tailored blazer or pumps.",
+        "Hey! I'm Lenny. Welcome in. I'm here to help with whatever you need. Just type - e.g. black jacket or green dress.",
+        "Hi! Welcome. I'm Lenny and I'm here to assist you. You can start by typing what you're after - try puffer jacket or joggers.",
+        "Hello! I'm Lenny - welcome to the chat. I'm here to help you find whatever you need. Type to get started; something like slip dress or mules.",
+        "Hey there! Lenny here. Welcome. I'm here to assist you. Just type what you're looking for - e.g. navy blazer or pink skirt.",
+        "Hi! I'm Lenny. Good to have you. I'm here to help you find something. You can start by typing - try tailored blazer or pumps.",
         "Hello! Welcome to the chat. I'm Lenny, and I'm here to help with whatever you need. Just type; try a colour and item like graphic tee or shorts.",
-        "Hey! Lenny at your service. Welcome in. I'm here to help you shop. You can start by typing — for example, black jacket or green dress.",
-        "Hi there! I'm Lenny — welcome. I'm here to assist you with whatever you need. Type what you're after to get started — biker jacket or boots.",
-        "Hello! I'm Lenny. Welcome to the chat. I'm here to help you find something. Just type to get started — try pleated skirt or loafers.",
+        "Hey! Lenny at your service. Welcome in. I'm here to help you shop. You can start by typing - for example, black jacket or green dress.",
+        "Hi there! I'm Lenny - welcome. I'm here to assist you with whatever you need. Type what you're after to get started - biker jacket or boots.",
+        "Hello! I'm Lenny. Welcome to the chat. I'm here to help you find something. Just type to get started - try pleated skirt or loafers.",
         "Hey! Welcome. I'm Lenny and I'm here to help. You can start by typing what you're looking for; e.g. navy blazer or pink skirt.",
-        "Hi! Lenny here. Welcome to the chat. I'm here to assist you. Type what you're after — try cashmere sweater or trousers.",
-        "Hello! I'm Lenny — welcome in. I'm here to help with whatever you need. Just type; try mini skirt or trainers to get started.",
-        "Hey there! Welcome. I'm Lenny, and I'm here to help you find whatever you need. You can start by typing — black jacket or green dress.",
-        "Hi! I'm Lenny. Welcome. I'm here to assist you. You can start by typing what you're looking for — try gilet or Chelsea boots.",
-        "Hello! Lenny here. Welcome to the chat. I'm here to help you shop. Just type to get started — navy blazer or pink skirt.",
+        "Hi! Lenny here. Welcome to the chat. I'm here to assist you. Type what you're after - try cashmere sweater or trousers.",
+        "Hello! I'm Lenny - welcome in. I'm here to help with whatever you need. Just type; try mini skirt or trainers to get started.",
+        "Hey there! Welcome. I'm Lenny, and I'm here to help you find whatever you need. You can start by typing - black jacket or green dress.",
+        "Hi! I'm Lenny. Welcome. I'm here to assist you. You can start by typing what you're looking for - try gilet or Chelsea boots.",
+        "Hello! Lenny here. Welcome to the chat. I'm here to help you shop. Just type to get started - navy blazer or pink skirt.",
         "Hey! I'm Lenny. Good to see you. I'm here to help with whatever you need. Type what you're after; try satin top or palazzo pants.",
-        "Hi there! I'm Lenny — welcome. I'm here to help you find something. You can start by typing — e.g. turtleneck or ankle boots.",
-        "Hello! Welcome to the chat. I'm Lenny, and I'm here to assist you. Just type what you're looking for to get started — try blouse or ballet flats.",
+        "Hi there! I'm Lenny - welcome. I'm here to help you find something. You can start by typing - e.g. turtleneck or ankle boots.",
+        "Hello! Welcome to the chat. I'm Lenny, and I'm here to assist you. Just type what you're looking for to get started - try blouse or ballet flats.",
         "Hey! Lenny at your service. Welcome in. I'm here to help you find whatever you need. Type to get started; something like parka or trainers.",
-        "Hi! Welcome. I'm Lenny and I'm here to help you find something. You can start by typing — try black jacket or green dress.",
-        "Hello! I'm Lenny. Welcome to the chat. I'm here to assist you. Just type — e.g. sundress or sandals.",
+        "Hi! Welcome. I'm Lenny and I'm here to help you find something. You can start by typing - try black jacket or green dress.",
+        "Hello! I'm Lenny. Welcome to the chat. I'm here to assist you. Just type - e.g. sundress or sandals.",
         "Hey there! Lenny here. Glad you're here. I'm here to help with whatever you need. You can start by typing; try roll neck or smart trousers.",
-        "Hi! I'm Lenny — welcome. I'm here to help you shop. Type what you're looking for to get started — navy blazer or pink skirt.",
-        "Hello! Welcome. I'm Lenny and I'm here to assist you. Just type what you're after — try waistcoat or brogues.",
-        "Hey! I'm Lenny. Welcome. I'm here to help you find whatever you need. You can start by typing — try crop top or high-waist jeans.",
+        "Hi! I'm Lenny - welcome. I'm here to help you shop. Type what you're looking for to get started - navy blazer or pink skirt.",
+        "Hello! Welcome. I'm Lenny and I'm here to assist you. Just type what you're after - try waistcoat or brogues.",
+        "Hey! I'm Lenny. Welcome. I'm here to help you find whatever you need. You can start by typing - try crop top or high-waist jeans.",
         "Hi there! Welcome to the chat. I'm Lenny, and I'm here to help. Just type to get started; for example, black jacket or green dress.",
-        "Hello! Lenny here. Welcome. I'm here to assist you with whatever you need. You can start by typing — red dress or blue shoes.",
-        "Hey! I'm Lenny — good to have you. I'm here to help you find something. Type what you're looking for; try checked shirt or desert boots.",
-        "Hi! Welcome to the chat. I'm Lenny, and I'm here to help you shop. Just type what you're after to get started — try vest or espadrilles."
+        "Hello! Lenny here. Welcome. I'm here to assist you with whatever you need. You can start by typing - red dress or blue shoes.",
+        "Hey! I'm Lenny - good to have you. I'm here to help you find something. Type what you're looking for; try checked shirt or desert boots.",
+        "Hi! Welcome to the chat. I'm Lenny, and I'm here to help you shop. Just type what you're after to get started - try vest or espadrilles."
     ]
 
     /// When the query is in scope but we don't have a product type yet (e.g. only colours). Ask for category so we don't run search too early.
@@ -1623,15 +1623,15 @@ final class AISearchService {
 
     private static let needMoreDetailReplies: [String] = [
         "What type of item are you looking for? For example, dress, jacket, shoes, or bag.",
-        "I'd love to help — what kind of product do you have in mind? Dress, coat, trainers, etc.",
-        "Got it. What are you after — dress, jacket, shoes, or something else?"
+        "I'd love to help - what kind of product do you have in mind? Dress, coat, trainers, etc.",
+        "Got it. What are you after - dress, jacket, shoes, or something else?"
     ]
 
     /// Out-of-scope replies when the query isn't about products. Varied so the bot doesn't feel robotic.
     static let outOfScopeReplies: [String] = [
-        "I don't understand that. I can help you find items by colour, category, or style—try something like \"red dress\" or \"blue shoes\".",
-        "I'm not sure about that. I'm best at finding clothes and accessories—try something like pink skirt or navy blazer.",
-        "That's outside what I can help with. I can search for items by colour and type—e.g. green hoodie or beige coat."
+        "I don't understand that. I can help you find items by colour, category, or style-try something like \"red dress\" or \"blue shoes\".",
+        "I'm not sure about that. I'm best at finding clothes and accessories-try something like pink skirt or navy blazer.",
+        "That's outside what I can help with. I can search for items by colour and type-e.g. green hoodie or beige coat."
     ]
 
     /// Returns a random greeting reply (for use with L10n).

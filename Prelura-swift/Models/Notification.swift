@@ -13,7 +13,7 @@ struct AppNotification: Identifiable, Codable {
     let meta: [String: String]?
     /// From GraphQL: listing JPEG for this row; omit when `relatedProductIsMysteryBox` (client uses animated tile only).
     let productThumbnailUrl: String?
-    /// When true, row uses `MysteryBoxAnimatedMediaView` only—do not load `productThumbnailUrl` as an image.
+    /// When true, row uses `MysteryBoxAnimatedMediaView` only-do not load `productThumbnailUrl` as an image.
     let relatedProductIsMysteryBox: Bool?
 
     struct NotificationSender: Codable {
@@ -24,6 +24,15 @@ struct AppNotification: Identifiable, Codable {
 }
 
 extension AppNotification {
+    /// Integer id for `readNotifications` / `deleteNotification` when the GraphQL schema expects `[Int]` (numeric string or leading digit run).
+    var bellNotificationDatabaseIntId: Int? {
+        let t = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let v = Int(t) { return v }
+        let digits = t.prefix { $0.isNumber }
+        guard !digits.isEmpty, let v = Int(String(digits)) else { return nil }
+        return v
+    }
+
     /// Looks up a meta value by key name (case-insensitive).
     func metaValue(caseInsensitiveKey key: String) -> String? {
         guard let meta = meta else { return nil }
@@ -91,7 +100,7 @@ extension AppNotification {
 // MARK: - Bell thumbnails: meta flags & legacy static mystery JPEG URLs
 
 enum BellNotificationMysteryHelpers {
-    /// Heuristic: generated cover or obvious placeholder paths — prefer animated mystery tile, never as a “normal” product JPEG.
+    /// Heuristic: generated cover or obvious placeholder paths - prefer animated mystery tile, never as a “normal” product JPEG.
     static func isLikelyStaticMysteryOrPlaceholderCoverURL(_ raw: String) -> Bool {
         let l = raw.lowercased()
         if l.contains("mystery") { return true }

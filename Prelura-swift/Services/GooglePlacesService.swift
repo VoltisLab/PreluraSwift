@@ -9,7 +9,7 @@ final class GooglePlacesService {
     private let baseURL = URL(string: "https://maps.googleapis.com/maps/api/place/autocomplete/json")!
     private let maxResults = 20
 
-    /// API key from Secrets.plist only — no Xcode scheme or env vars required. Edit Prelura-swift/Secrets.plist.
+    /// API key from Secrets.plist only - no Xcode scheme or env vars required. Edit Prelura-swift/Secrets.plist.
     private var apiKey: String {
         if let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),
            let dict = NSDictionary(contentsOf: url) as? [String: Any],

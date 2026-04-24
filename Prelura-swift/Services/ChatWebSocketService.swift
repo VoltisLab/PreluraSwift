@@ -477,7 +477,7 @@ final class ChatWebSocketService: NSObject, @unchecked Sendable, URLSessionWebSo
             let offer = parseOfferFromSocket(offerJson)
             let offerId = (json["offerId"] as? String) ?? (json["offer_id"] as? String) ?? (json["offerId"] as? Int).map { String($0) }
             let status = json["status"] as? String
-            // Only explicit top-level sender fields — never infer from offer.buyer (buyer is stable; counters would mis-attribute).
+            // Only explicit top-level sender fields - never infer from offer.buyer (buyer is stable; counters would mis-attribute).
             let senderUsername = (json["senderUsername"] as? String)
                 ?? (json["sender_username"] as? String)
                 ?? (json["senderName"] as? String)

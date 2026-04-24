@@ -33,7 +33,7 @@ echo ""
 echo "Step 1: Creating archive..."
 # Never use CODE_SIGNING_ALLOWED=NO here: the archive must carry the target entitlements
 # (including aps-environment for Push). Export-time signing alone can ship an IPA with
-# no push entitlement — APNs will never call didRegisterForRemoteNotifications.
+# no push entitlement - APNs will never call didRegisterForRemoteNotifications.
 xcodebuild archive \
     -project ${PROJECT_NAME}.xcodeproj \
     -scheme ${SCHEME} \

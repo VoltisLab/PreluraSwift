@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Invite a friend — intro plus contact invite and share profile link.
+/// Invite a friend - intro plus contact invite and share profile link.
 struct InviteFriendView: View {
     @EnvironmentObject private var authService: AuthService
     var body: some View {

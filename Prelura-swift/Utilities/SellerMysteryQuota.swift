@@ -9,6 +9,8 @@ enum WearhouseLocalSellerPlan: String {
 enum SellerPlanUserDefaults {
     static let planTierKey = "wearhouse_seller_plan_tier"
     static let unlimitedMysteryKey = "wearhouse_unlimited_mystery_subscription"
+    /// Legacy key for locally persisted renewal (removed); strip on Silver so stale values never linger.
+    private static let legacyGoldNextRenewalKey = "wearhouse_gold_next_renewal_date"
 
     static var localPlan: WearhouseLocalSellerPlan {
         get {
@@ -17,6 +19,9 @@ enum SellerPlanUserDefaults {
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: planTierKey)
+            if newValue == .silver {
+                UserDefaults.standard.removeObject(forKey: legacyGoldNextRenewalKey)
+            }
             NotificationCenter.default.post(name: .wearhouseSellerPlanDidChange, object: nil)
         }
     }

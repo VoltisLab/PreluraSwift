@@ -72,7 +72,7 @@ struct OrderHelpView: View {
 
                 helpRow(
                     title: "Item Not Received",
-                    content: "If you haven't received your item within the expected delivery window, read our guidance—then contact support if you still need help.",
+                    content: "If you haven't received your item within the expected delivery window, read our guidance-then contact support if you still need help.",
                     destination: ItemNotReceivedGuidanceHelpView(
                         orderId: orderId,
                         conversationId: conversationId,

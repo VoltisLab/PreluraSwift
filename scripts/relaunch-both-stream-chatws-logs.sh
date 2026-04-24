@@ -13,13 +13,13 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Streaming ChatWS logs from simulator \"$DEV\" for ${STREAM_SEC}s"
 echo "  (subsystem com.prelura.preloved, category ChatWS)"
-echo "  Open a chat on that simulator and send/receive — watch for:"
+echo "  Open a chat on that simulator and send/receive - watch for:"
 echo "    chat_message_parsed | json_parse_failed | chat_frame_dropped"
 echo "  Extend: PRELURA_CHATWS_STREAM_SEC=300 $0"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 if ! xcrun simctl list devices available | grep -qF "$DEV"; then
-  echo "Device not found: $DEV — skip log stream."
+  echo "Device not found: $DEV - skip log stream."
   exit 0
 fi
 

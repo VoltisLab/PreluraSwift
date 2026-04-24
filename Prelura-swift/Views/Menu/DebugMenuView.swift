@@ -109,7 +109,7 @@ struct DebugMenuView: View {
     var body: some View {
         List {
             Section {
-                Text("Build: \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")")
+                Text("Build: \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-")")
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             } header: {

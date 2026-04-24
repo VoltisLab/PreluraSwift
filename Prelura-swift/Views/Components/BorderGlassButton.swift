@@ -8,7 +8,7 @@ struct BorderGlassButton: View {
     enum ChromeStyle {
         /// Primary-outline styling (e.g. Try Cart, Shop All, Favourites).
         case standard
-        /// Outline colors for Retro grid; pair with `layout: .compact` — do not change dimensions by style alone.
+        /// Outline colors for Retro grid; pair with `layout: .compact` - do not change dimensions by style alone.
         case retroCompactLightOutline
     }
 

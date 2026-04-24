@@ -4,7 +4,7 @@ Merge ``completed`` edge lists from one or more ``lookbook_likes_seed_checkpoint
 files, grouped by ``plan_fingerprint``.
 
 Same fingerprint → union of ``completed`` (dedupe). Different fingerprints stay separate output
-files — you cannot merge two plans into one resume file meaningfully.
+files - you cannot merge two plans into one resume file meaningfully.
 
 Examples::
 

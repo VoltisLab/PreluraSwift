@@ -242,7 +242,7 @@ struct FilteredProductsView: View {
         }
     }
 
-    /// Search, category/style pills, and filter/sort row — slides off-screen when scrolling down the grid.
+    /// Search, category/style pills, and filter/sort row - slides off-screen when scrolling down the grid.
     @ViewBuilder
     private var filteredProductsFixedHeader: some View {
         VStack(spacing: 0) {

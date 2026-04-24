@@ -43,8 +43,7 @@ final class AppRouter: ObservableObject {
     /// Marketing / public-web hosts that may serve `/item/*` and optional `/{username}` profile paths.
     private static func isWearhouseItemUniversalLinkHost(_ host: String) -> Bool {
         switch host.lowercased() {
-        case "wearhouse.co.uk", "www.wearhouse.co.uk",
-             "mywearhouse.co.uk", "www.mywearhouse.co.uk",
+        case "mywearhouse.co.uk", "www.mywearhouse.co.uk",
              "prelura.uk", "www.prelura.uk", "prelura.com", "www.prelura.com":
             return true
         default:
@@ -60,7 +59,7 @@ final class AppRouter: ObservableObject {
         return isWearhouseItemUniversalLinkHost(h) || apiUniversalLinkHosts.contains(h)
     }
 
-    /// Single path segment on marketing hosts only — avoid treating site routes as usernames.
+    /// Single path segment on marketing hosts only - avoid treating site routes as usernames.
     private static let reservedProfilePathSegments: Set<String> = [
         "item", "join", "app", "profile", "terms", "privacy", "login", "sell", "cart", "checkout",
         "discover", "lookbook", "api", "graphql", "admin", "static", "assets", "_next", "help",
@@ -115,7 +114,7 @@ final class AppRouter: ObservableObject {
         return slug.isEmpty ? nil : slug
     }
 
-    /// Handle URL (e.g. prelura://product/Ab3xY9k2Mn, https://wearhouse.co.uk/item/Ab3xY9k2Mn, prelura://user/john).
+    /// Handle URL (e.g. prelura://product/Ab3xY9k2Mn, https://mywearhouse.co.uk/item/Ab3xY9k2Mn, prelura://user/john).
     func handle(url: URL) {
         var dest: DeepLinkDestination?
         let scheme = (url.scheme ?? "").lowercased()

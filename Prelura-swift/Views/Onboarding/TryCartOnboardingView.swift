@@ -25,21 +25,21 @@ struct TryCartOnboardingView: View {
         [
             TryCartPage(
                 titleKey: "One bag, many sellers",
-                bodyKey: "Try Cart lets you add pieces from different shops into a single bag. Keep browsing—your picks stay with you everywhere on WEARHOUSE.",
+                bodyKey: "Try Cart lets you add pieces from different shops into a single bag. Keep browsing-your picks stay with you everywhere on WEARHOUSE.",
                 heroAsset: "TryCartOnboardBag",
                 accent: Theme.primaryColor,
                 halo: Color(hex: "E8B4FF")
             ),
             TryCartPage(
                 titleKey: "Save time on every haul",
-                bodyKey: "No more jumping seller by seller. Search, tap the bag, and build your haul in one flow—with a running total so you always know where you stand.",
+                bodyKey: "No more jumping seller by seller. Search, tap the bag, and build your haul in one flow-with a running total so you always know where you stand.",
                 heroAsset: "TryCartOnboardBolt",
                 accent: Color(hex: "C77DFF"),
                 halo: Color(hex: "7C5CFF")
             ),
             TryCartPage(
                 titleKey: "Shop smarter, checkout clearer",
-                bodyKey: "Use Try Cart from Shop All and favourites. Mix brands freely, review your bag anytime, then check out when you are ready—on your terms.",
+                bodyKey: "Use Try Cart from Shop All and favourites. Mix brands freely, review your bag anytime, then check out when you are ready-on your terms.",
                 heroAsset: "TryCartOnboardSparkle",
                 accent: Color(hex: "FF6B9D"),
                 halo: Theme.primaryColor
@@ -272,7 +272,7 @@ struct TryCartOnboardingView: View {
             }
             .padding(.top, Theme.Spacing.md)
 
-            // No `PrimaryButtonBar` here — it uses `Theme.Colors.background` (flat black) which clashes with the card gradient.
+            // No `PrimaryButtonBar` here - it uses `Theme.Colors.background` (flat black) which clashes with the card gradient.
             Group {
                 if page < pages.count - 1 {
                     PrimaryGlassButton(L10n.string("Next")) {

@@ -1,7 +1,7 @@
 # Soft-delete every user listed in seed-users-report.csv (staff GraphQL: userAdminStats + flagUser).
 # Same behaviour as iOS Admin → Delete user. This does not hard-purge DB rows; accounts are flagged / soft-deleted per backend rules.
 #
-# Secrets: same as Bulk verify — STAFF_AUTH_TOKEN or STAFF_USERNAME + STAFF_PASSWORD; SEED_USERS_CSV (full CSV) or commit the CSV.
+# Secrets: same as Bulk verify - STAFF_AUTH_TOKEN or STAFF_USERNAME + STAFF_PASSWORD; SEED_USERS_CSV (full CSV) or commit the CSV.
 #
 # Safety: you must type the confirmation phrase in the workflow dispatch form.
 

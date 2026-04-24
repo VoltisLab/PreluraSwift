@@ -18,7 +18,7 @@ When the user runs `/deploy`, follow these steps. **Deploy means: deploy the bac
    - If the deploy **fails**, report the failure (logs, error message) and do **not** proceed to relaunch. Suggest fixes.
    - If the deploy **succeeds**, proceed to step 3.
 
-3. **Rebuild and relaunch the iOS app (after backend deploy success)** — same flow as **`/relaunch-both`**: one build, then install+launch on **iPhone 14** and **iPhone 14 Alt**.
+3. **Rebuild and relaunch the iOS app (after backend deploy success)** - same flow as **`/relaunch-both`**: one build, then install+launch on **iPhone 14** and **iPhone 14 Alt**.
    - From the **iOS project root** (PreluraSwift, this repo):
      - **Build once** (same `.app` for both simulators). Prefer:  
        `xcodebuild -project Prelura-swift.xcodeproj -scheme Prelura-swift -destination 'generic/platform=iOS Simulator' -configuration Debug build`  
@@ -33,13 +33,13 @@ When the user runs `/deploy`, follow these steps. **Deploy means: deploy the bac
      - Boot if needed: `xcrun simctl boot "iPhone 14"` (ignore error if already booted).
      - Terminate: `xcrun simctl terminate "iPhone 14" com.prelura.preloved` (ignore if not running).
      - Install: `xcrun simctl install "iPhone 14" <path-to-.app>`
-     - Launch: `xcrun simctl launch "iPhone 14" com.prelura.preloved` — record PID from output.
+     - Launch: `xcrun simctl launch "iPhone 14" com.prelura.preloved` - record PID from output.
 
    - **iPhone 14 Alt**
      - Boot if needed: `xcrun simctl boot "iPhone 14 Alt"` (ignore error if already booted).
      - Terminate: `xcrun simctl terminate "iPhone 14 Alt" com.prelura.preloved` (ignore if not running).
      - Install: `xcrun simctl install "iPhone 14 Alt" <path-to-.app>`
-     - Launch: `xcrun simctl launch "iPhone 14 Alt" com.prelura.preloved` — record PID from output.
+     - Launch: `xcrun simctl launch "iPhone 14 Alt" com.prelura.preloved` - record PID from output.
 
    - Prefer a **single scripted flow**: build → ensure Alt → install+launch on iPhone 14 → install+launch on iPhone 14 Alt (when available). Use a generous tool timeout if install/launch is slow.
 

@@ -18,14 +18,14 @@ class AuthService: ObservableObject {
     @Published var isGuestMode: Bool = false
     /// Set to true after email verification + login so the app shows onboarding then feed.
     @Published var shouldShowOnboardingAfterLogin: Bool = false
-    /// From `viewMe` — full-screen ban / suspension gate when active.
+    /// From `viewMe` - full-screen ban / suspension gate when active.
     @Published private(set) var accountIsBanned: Bool = false
     @Published private(set) var accountSuspendedUntil: Date?
 
     private static let kGuestMode = "IS_GUEST_MODE"
     private static let kOnboardingCompleted = "ONBOARDING_COMPLETED"
     private static let kLoginDeviceInstallId = "wearhouse_login_device_install_id_v1"
-    /// Cached from last `viewMe` / `getUser` — staff users may use multi-account switching.
+    /// Cached from last `viewMe` / `getUser` - staff users may use multi-account switching.
     private static let kViewMeIsStaff = "wearhouse_viewme_is_staff"
     /// Persisted JWT pairs for staff multi-account (usernames must be unique).
     private static let kStaffMultiSessions = "wearhouse_staff_multi_sessions_v1"
@@ -245,14 +245,14 @@ class AuthService: ObservableObject {
     }
     
     init(client: GraphQLClient = GraphQLClient()) {
-        StartupTiming.mark("AuthService.init — begin")
+        StartupTiming.mark("AuthService.init - begin")
         self.client = client
         loadStoredTokens()
-        StartupTiming.mark("AuthService.init — after loadStoredTokens; scheduling moderation refresh")
+        StartupTiming.mark("AuthService.init - after loadStoredTokens; scheduling moderation refresh")
         Task {
-            StartupTiming.mark("AuthService Task — refreshAccountModerationFromServer started")
+            StartupTiming.mark("AuthService Task - refreshAccountModerationFromServer started")
             await refreshAccountModerationFromServer()
-            StartupTiming.mark("AuthService Task — refreshAccountModerationFromServer finished")
+            StartupTiming.mark("AuthService Task - refreshAccountModerationFromServer finished")
         }
     }
     
@@ -286,8 +286,8 @@ class AuthService: ObservableObject {
         // After login, upload FCM token to backend (same moment GraphQL has Bearer token).
         NotificationCenter.default.post(name: .wearhouseDeviceTokenDidUpdate, object: nil)
         // OSLog: visible when filtering `subsystem == com.prelura.preloved`. Never log raw JWTs.
-        authSessionLogger.info("Session stored for \(username, privacy: .public) — access JWT \(token.count, privacy: .public) chars, refresh \(refreshToken.count, privacy: .public) chars.")
-        print("[Auth] Session stored for \(username) — access JWT \(token.count) chars, refresh \(refreshToken.count) chars.")
+        authSessionLogger.info("Session stored for \(username, privacy: .public) - access JWT \(token.count, privacy: .public) chars, refresh \(refreshToken.count, privacy: .public) chars.")
+        print("[Auth] Session stored for \(username) - access JWT \(token.count) chars, refresh \(refreshToken.count) chars.")
     }
     
     func login(username: String, password: String) async throws -> LoginResponse {
@@ -299,7 +299,7 @@ class AuthService: ObservableObject {
             LoginRateLimitGuard.clearStateForSuccessfulLogin(username: u, password: p, deviceInstallId: loginDeviceInstallId())
             return response
         } catch {
-            // Same domain as scripts/seed-register-users.sh (`username@wearhouse.co.uk`). Some backends only match when the login field is the full email.
+            // Same domain as scripts/seed-register-users.sh (`username@mywearhouse.co.uk`). Some backends only match when the login field is the full email.
             if !u.contains("@"),
                Self.shouldRetrySeedLoginWithEmailDomain(error),
                let email = Self.seedLoginEmail(forUsername: u) {
@@ -315,12 +315,12 @@ class AuthService: ObservableObject {
         }
     }
 
-    /// Matches default `SEED_EMAIL_DOMAIN` in seed scripts (`wearhouse.co.uk`).
-    private static let seedEmailDomainForLoginRetry = "wearhouse.co.uk"
+    /// Matches default `SEED_EMAIL_DOMAIN` in seed scripts (`mywearhouse.co.uk`).
+    private static let seedEmailDomainForLoginRetry = "mywearhouse.co.uk"
 
     private static func seedLoginEmail(forUsername username: String) -> String? {
         guard !username.isEmpty else { return nil }
-        // Seed accounts from scripts typically use lowercase local parts; retry matches `user@wearhouse.co.uk`.
+        // Seed accounts from scripts typically use lowercase local parts; retry matches `user@mywearhouse.co.uk`.
         return "\(username.lowercased())@\(seedEmailDomainForLoginRetry)"
     }
 
@@ -378,6 +378,55 @@ class AuthService: ObservableObject {
         objectWillChange.send()
 
         return loginData
+    }
+
+    /// Attempts Sign in with Apple against the GraphQL API (`appleIdLogin`). The backend must expose this field; otherwise callers receive `AuthError.appleSignInNotConfigured`.
+    func loginWithApple(identityToken: String, rawNonce: String) async throws {
+        struct AppleGraphQL: Decodable {
+            struct Session: Decodable {
+                let token: String?
+                let refreshToken: String?
+                struct U: Decodable { let username: String? }
+                let user: U?
+            }
+
+            let appleIdLogin: Session?
+        }
+        let mutation = """
+        mutation AppleIdLogin($identityToken: String!, $nonce: String!) {
+          appleIdLogin(identityToken: $identityToken, nonce: $nonce) {
+            token
+            refreshToken
+            user { username }
+          }
+        }
+        """
+        let variables: [String: Any] = [
+            "identityToken": identityToken,
+            "nonce": rawNonce,
+        ]
+        do {
+            let response: AppleGraphQL = try await client.execute(
+                query: mutation,
+                variables: variables,
+                includeAuthorization: false,
+                responseType: AppleGraphQL.self
+            )
+            guard let loginData = response.appleIdLogin,
+                  let token = loginData.token,
+                  let refreshToken = loginData.refreshToken else {
+                throw AuthError.appleSignInNotConfigured
+            }
+            storeTokens(
+                token: token,
+                refreshToken: refreshToken,
+                username: loginData.user?.username ?? ""
+            )
+            Task { await refreshAccountModerationFromServer() }
+            objectWillChange.send()
+        } catch {
+            throw AuthError.appleSignInNotConfigured
+        }
     }
 
     private func loginDeviceInstallId() -> String {
@@ -756,7 +805,9 @@ enum AuthError: Error, LocalizedError {
     case registrationError(String)
     case networkError(Error)
     case loginRateLimited(remainingSeconds: Int)
-    
+    /// GraphQL `appleIdLogin` is missing or rejected - keep username/password until the backend ships the mutation.
+    case appleSignInNotConfigured
+
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
@@ -765,6 +816,8 @@ enum AuthError: Error, LocalizedError {
             return message
         case .networkError(let error):
             return L10n.userFacingError(error)
+        case .appleSignInNotConfigured:
+            return L10n.string("Sign in with Apple isn’t available for Wearhouse accounts yet. Use your username and password, or create an account.")
         case .loginRateLimited(let remainingSeconds):
             let mins = max(1, Int(ceil(Double(remainingSeconds) / 60.0)))
             if mins == 1 {

@@ -41,7 +41,7 @@ struct LikedItemSoldSimilarView: View {
                             .foregroundStyle(Theme.Colors.primaryText)
                             .padding(.horizontal, Theme.Spacing.md)
 
-                        Text(L10n.string("Similar picks from brand, size, and title keywords — plus related search results."))
+                        Text(L10n.string("Similar picks from brand, size, and title keywords - plus related search results."))
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Colors.secondaryText)
                             .padding(.horizontal, Theme.Spacing.md)

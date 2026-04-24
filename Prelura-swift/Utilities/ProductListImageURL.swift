@@ -2,7 +2,7 @@ import Foundation
 
 /// Picks smaller product images for inbox rows and chat headers (prefers `thumbnail` in JSON image blobs from upload pipeline).
 enum ProductListImageURL {
-    /// First entry in `imagesUrl` from GraphQL — often a JSON string `{"url":"...","thumbnail":"..."}`.
+    /// First entry in `imagesUrl` from GraphQL - often a JSON string `{"url":"...","thumbnail":"..."}`.
     static func preferredString(fromImagesUrlArray imagesUrl: [String]?) -> String? {
         guard let first = imagesUrl?.first?.trimmingCharacters(in: .whitespacesAndNewlines), !first.isEmpty else { return nil }
         return preferredString(from: first)

@@ -125,6 +125,7 @@ class UserService: ObservableObject {
 
         let postageOptions = SellerPostageOptions.from(decoded: userData.meta?.value?.postage)
         let payoutBankAccount = PayoutBankAccountDisplay.from(decoded: userData.meta?.value?.payoutBankAccount)
+        let sellerGoldRenewsAt = Self.parseBackendDateTime(userData.meta?.value?.sellerGoldRenewsAt)
         return User(
             id: UUID(uuidString: idString) ?? UUID(),
             userId: userIdInt,
@@ -152,6 +153,7 @@ class UserService: ObservableObject {
             shippingAddress: parseShippingAddress(userData.shippingAddress?.normalizedJSONString),
             postageOptions: postageOptions,
             payoutBankAccount: payoutBankAccount,
+            sellerGoldRenewsAt: sellerGoldRenewsAt,
             isBanned: userData.isBanned ?? false,
             suspendedUntil: suspendedParsed
         )
@@ -1815,7 +1817,7 @@ class UserService: ObservableObject {
         return (orders, total)
     }
 
-    /// For notification bell art: the seller’s `userOrders` response still includes per-line `imagesUrl` (same listing the buyer saw). The standalone `product(id:)` query may return **SOLD** listings with empty images for public-style responses—use this to recover the real thumbnail. Mystery rows must not return a JPEG (clients use ``MysteryBoxAnimatedMediaView``).
+    /// For notification bell art: the seller’s `userOrders` response still includes per-line `imagesUrl` (same listing the buyer saw). The standalone `product(id:)` query may return **SOLD** listings with empty images for public-style responses-use this to recover the real thumbnail. Mystery rows must not return a JPEG (clients use ``MysteryBoxAnimatedMediaView``).
     func getSoldOrderLineItemPreviewForBell(orderId: Int) async throws -> (productId: Int, imageUrl: String?, isMysteryBox: Bool)? {
         var page = 1
         let pageCount = 80
@@ -1930,6 +1932,7 @@ class UserService: ObservableObject {
             }
             color
             status
+            scheduledPublishAt
             materials {
               id
               name
@@ -2054,6 +2057,7 @@ class UserService: ObservableObject {
                 createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),
                 isLiked: product.userLiked ?? false,
                 status: product.status ?? "ACTIVE",
+                scheduledPublishAt: Self.parseCreatedAt(product.scheduledPublishAt),
                 sellCategoryBackendId: Self.graphQLStringId(product.category?.id),
                 sellSizeBackendId: Self.graphQLIntId(product.size?.id),
                 listingMeasurements: measurementsNote,
@@ -2395,10 +2399,12 @@ struct LocationData: Decodable {
     let locationName: String?
 }
 
-/// Decoded meta.postage and meta.payoutBankAccount from viewMe (GraphQL JSON).
+/// Decoded viewMe `meta` fields used on-device (postage, payouts, Gold renewal).
 struct MetaDecode: Decodable {
     let postage: PostageMetaDecode?
     let payoutBankAccount: PayoutBankAccountDecode?
+    /// ISO8601 instant when Gold subscription renews (server-written after IAP or preview).
+    let sellerGoldRenewsAt: String?
 }
 
 /// Decoded meta.payoutBankAccount (for display on Payments screen).
@@ -2718,7 +2724,7 @@ struct OrderCancellationSummary: Equatable, Sendable {
 struct OrderReviewSummary: Equatable, Sendable {
     let reviewerUserId: Int
     let reviewedUserId: Int
-    /// When `nil`, the API omitted the flag — do **not** treat as manual (see order-detail review CTA).
+    /// When `nil`, the API omitted the flag - do **not** treat as manual (see order-detail review CTA).
     let isAutoReview: Bool?
 }
 
@@ -2750,13 +2756,13 @@ struct Order: Identifiable {
     let buyerOrderCountWithSeller: Int?
     /// When present, buyer/seller cancellation request flow (PENDING needs counterparty action).
     let cancellation: OrderCancellationSummary?
-    /// From `userOrders.user.id` — buyer on this order (stable id for review UI; does not depend on `viewMe`).
+    /// From `userOrders.user.id` - buyer on this order (stable id for review UI; does not depend on `viewMe`).
     let buyerUserId: Int?
-    /// From `userOrders.seller.id` — seller on this order.
+    /// From `userOrders.seller.id` - seller on this order.
     let sellerUserId: Int?
     /// From `userOrders`: buyer submitted a review (or auto-review after feedback window).
     let buyerHasLeftReview: Bool
-    /// From `userOrders`: PENDING order issue — feedback and payout pause.
+    /// From `userOrders`: PENDING order issue - feedback and payout pause.
     let hasOpenOrderIssue: Bool
     /// When the order first reached DELIVERED (server); used for feedback window messaging.
     let deliveredAt: Date?
@@ -2818,7 +2824,7 @@ struct Order: Identifiable {
         let trimmed = publicId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !trimmed.isEmpty { return trimmed }
         let nid = id.trimmingCharacters(in: .whitespacesAndNewlines)
-        return nid.isEmpty ? "—" : "#\(nid)"
+        return nid.isEmpty ? "-" : "#\(nid)"
     }
 }
 

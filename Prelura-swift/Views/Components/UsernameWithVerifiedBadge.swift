@@ -11,7 +11,7 @@ struct UsernameWithVerifiedBadge: View {
     var textColor: Color = Theme.Colors.primaryText
     var spacing: CGFloat = 5
 
-    /// Centre-aligned stacks read slightly high for this asset; a full `(line − cap) × 0.52` offset read low — use a smaller blend.
+    /// Centre-aligned stacks read slightly high for this asset; a full `(line − cap) × 0.52` offset read low - use a smaller blend.
     private var verifiedBadgeOpticalDownshift: CGFloat {
         let lh = referenceUIFont.lineHeight
         let cap = referenceUIFont.capHeight
@@ -20,7 +20,7 @@ struct UsernameWithVerifiedBadge: View {
 
     var body: some View {
         let badgeAspect: CGFloat = 16.0 / 15.0
-        // Slightly above cap height — readable but not as tall as lineHeight (which looked oversized in the nav bar).
+        // Slightly above cap height - readable but not as tall as lineHeight (which looked oversized in the nav bar).
         let badgeH = referenceUIFont.capHeight * 1.14
         let badgeW = badgeH * badgeAspect
         HStack(alignment: .center, spacing: spacing) {

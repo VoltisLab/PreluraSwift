@@ -159,7 +159,7 @@ struct SellView: View {
         return f.string(from: date)
     }
 
-    /// When false, omit the trailing toolbar item entirely — an empty `HStack` still gets bar-button chrome (grey circle).
+    /// When false, omit the trailing toolbar item entirely - an empty `HStack` still gets bar-button chrome (grey circle).
     private var showsTrailingSellToolbar: Bool {
         guard !isEditMode else { return false }
         if isMysteryListing { return false }
@@ -184,7 +184,7 @@ struct SellView: View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(spacing: 0) {
-                    // 1. Photo upload (Flutter: same) — mystery uses fixed carton hero instead
+                    // 1. Photo upload (Flutter: same) - mystery uses fixed carton hero instead
                     if isMysteryListing {
                         mysteryBoxCartonSection
                         if let items = mysteryIncludedItems, !items.isEmpty {
@@ -2579,7 +2579,7 @@ struct PriceInputView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                // Price field — same styling as SettingsTextField (single rounded container, no extra bg)
+                // Price field - same styling as SettingsTextField (single rounded container, no extra bg)
                 HStack(spacing: Theme.Spacing.sm) {
                     Text("£")
                         .font(Theme.Typography.body)
@@ -2621,7 +2621,7 @@ struct PriceInputView: View {
                         .padding(.horizontal, Theme.Spacing.md)
                 }
 
-                // Similar sold items (feed-style grid) — hidden for mystery box (£ cap) flow
+                // Similar sold items (feed-style grid) - hidden for mystery box (£ cap) flow
                 if maximumPrice == nil, let catId = categoryId, Int(catId) != nil {
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                         Text(L10n.string("Similar sold items"))
@@ -2764,7 +2764,7 @@ private struct PriceSimilarItemCard: View {
     let item: Item
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            // Seller row (avatar + username) above image — matches feed
+            // Seller row (avatar + username) above image - matches feed
             HStack(spacing: Theme.Spacing.xs) {
                 if let avatarURL = item.seller.avatarURL, !avatarURL.isEmpty, let url = URL(string: avatarURL) {
                     AsyncImage(url: url) { phase in
@@ -2801,7 +2801,7 @@ private struct PriceSimilarItemCard: View {
             .padding(.horizontal, Theme.Spacing.xs)
             .padding(.bottom, Theme.Spacing.xs * 1.5)
 
-            // Image only (no price overlay) — matches feed
+            // Image only (no price overlay) - matches feed
             GeometryReader { geo in
                 let w = geo.size.width
                 let h = w * 1.3
@@ -2847,7 +2847,7 @@ private struct PriceSimilarItemCard: View {
             }
             .aspectRatio(1.0 / 1.3, contentMode: .fit)
 
-            // Product details below image — matches feed (brand, title, condition, price)
+            // Product details below image - matches feed (brand, title, condition, price)
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 if let brand = item.brand {
                     Text(brand)
@@ -2908,7 +2908,7 @@ struct DiscountPriceInputView: View {
 
     /// Buyer-facing price from current fields (list price if no discount).
     private var displayedFinalPrice: String {
-        guard let p = basePrice else { return "—" }
+        guard let p = basePrice else { return "-" }
         let fin = resolvedSalePrice(forListPrice: p) ?? p
         return CurrencyFormatter.gbp(fin)
     }
@@ -2992,7 +2992,7 @@ struct DiscountPriceInputView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.top, Theme.Spacing.sm)
 
-                    // Final price — outside the editable rows
+                    // Final price - outside the editable rows
                     VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                         Text(L10n.string("Final price"))
                             .font(Theme.Typography.caption)

@@ -45,7 +45,7 @@ struct AnimatedScreenDebugView: View {
                             icon: "percent",
                             iconColors: [Color.purple.opacity(0.85), Color.blue.opacity(0.6)],
                             title: "Tax‑wrapper sample",
-                            subtitle: "Illustration only — not financial advice.",
+                            subtitle: "Illustration only - not financial advice.",
                             trailing: nil,
                             showChevron: true
                         )

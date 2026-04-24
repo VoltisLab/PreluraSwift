@@ -1,4 +1,4 @@
-# Secrets.plist — how to add your API keys
+# Secrets.plist - how to add your API keys
 
 The app reads keys from **`Prelura-swift/Secrets.plist`**. (If the file doesn’t exist, build the app once; it’s created from `Secrets.plist.example`.)
 
@@ -50,6 +50,6 @@ Then paste your Google key between `<string>` and `</string>`.
 
 ## Rules
 
-- Do **not** put quotes around the key inside `<string>` — only the key, e.g. `<string>AIzaSyxxx</string>`.
+- Do **not** put quotes around the key inside `<string>` - only the key, e.g. `<string>AIzaSyxxx</string>`.
 - Do **not** commit `Secrets.plist` (it’s in `.gitignore`).
 - You can leave a key empty if you don’t use that feature.

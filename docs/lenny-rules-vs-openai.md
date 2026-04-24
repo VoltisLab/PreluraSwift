@@ -21,7 +21,7 @@ So today you always know: **Lenny = rules**. Every reply is from the rule engine
    - Returns the model’s reply (and optionally a **source** flag).
 
 2. **Swift app** then has two paths:
-   - **Path A (rules):** current behaviour — parse locally, search via GraphQL, build reply with `AISearchService` (no OpenAI).
+   - **Path A (rules):** current behaviour - parse locally, search via GraphQL, build reply with `AISearchService` (no OpenAI).
    - **Path B (OpenAI):** send the user message to the backend Lenny endpoint; backend calls OpenAI and returns the reply.
 
 You choose when to use which (e.g. “only use OpenAI for complex/unclear queries” or “use OpenAI for all replies”).

@@ -8,7 +8,7 @@ When the user runs `/relaunch-both`, follow these steps:
 
 **Build:** Use `-destination 'generic/platform=iOS Simulator'` so the build does not depend on a specific simulator OS matching “latest” (see workspace `relaunch-both` in `~/.cursor/commands` for full notes).
 
-1. **Rebuild (once) — full log**
+1. **Rebuild (once) - full log**
    - **Preferred:** `./scripts/relaunch-both-live-build.sh` (tees full `xcodebuild` to `/tmp/prelura-xcodebuild-*.log`; live: `tail -f` that path in another **Cursor** terminal tab).
    - **Or** manual with tee (do not pipe `xcodebuild` only to `tail`):  
      `LOG=/tmp/prelura-xcodebuild-$(date +%Y%m%d-%H%M%S).log && xcodebuild -project Prelura-swift.xcodeproj -scheme Prelura-swift -destination 'generic/platform=iOS Simulator' -configuration Debug build 2>&1 | tee "$LOG"`
@@ -18,13 +18,13 @@ When the user runs `/relaunch-both`, follow these steps:
 2. **Ensure iPhone 14 Alt exists**
    - If `xcrun simctl list devices available | grep -F "iPhone 14 Alt"` is empty, create a second iPhone 14–class simulator with that name using an available runtime (or report and continue with iPhone 14 only).
 
-3. **iPhone 14** — boot, terminate, install, launch  
+3. **iPhone 14** - boot, terminate, install, launch  
    - `xcrun simctl boot "iPhone 14" 2>/dev/null || true`  
    - `xcrun simctl terminate "iPhone 14" com.prelura.preloved 2>/dev/null || true`  
    - `xcrun simctl install "iPhone 14" <path-to-.app>`  
    - `xcrun simctl launch "iPhone 14" com.prelura.preloved` → note PID.
 
-4. **iPhone 14 Alt** — boot, terminate, install, launch  
+4. **iPhone 14 Alt** - boot, terminate, install, launch  
    - `xcrun simctl boot "iPhone 14 Alt" 2>/dev/null || true`  
    - `xcrun simctl terminate "iPhone 14 Alt" com.prelura.preloved 2>/dev/null || true`  
    - `xcrun simctl install "iPhone 14 Alt" <path-to-.app>`  

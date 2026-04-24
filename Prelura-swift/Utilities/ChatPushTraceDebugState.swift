@@ -58,7 +58,7 @@ final class ChatPushTraceDebugState: ObservableObject {
         socketConnected = false
         NotificationDebugLog.append(
             source: "chat_push",
-            message: "WebSocket CLOSED conv=\(conversationId) — \(reason)",
+            message: "WebSocket CLOSED conv=\(conversationId) - \(reason)",
             isError: false
         )
     }
@@ -68,7 +68,7 @@ final class ChatPushTraceDebugState: ObservableObject {
         lastTrafficSummary = summary
         NotificationDebugLog.append(
             source: "chat_push",
-            message: "WebSocket EVENT conv=\(conversationId) — \(summary)",
+            message: "WebSocket EVENT conv=\(conversationId) - \(summary)",
             isError: false
         )
     }
@@ -80,7 +80,7 @@ final class ChatPushTraceDebugState: ObservableObject {
         lastTrafficSummary = summary
         NotificationDebugLog.append(
             source: "chat_ws_diag",
-            message: "conv=\(conversationId) — \(summary)",
+            message: "conv=\(conversationId) - \(summary)",
             isError: isError
         )
     }

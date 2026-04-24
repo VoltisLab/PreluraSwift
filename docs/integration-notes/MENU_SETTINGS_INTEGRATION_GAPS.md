@@ -31,7 +31,7 @@ This document lists the full menu/settings structure from the Flutter app and wh
 |------|--------|--------|--------------------|
 | How to use Prelura | `onTap: () {}` (no route) | `HowToUsePreluraView` | ✅ Screen exists; content static |
 | Legal Information | `LegalInformationRoute` | `LegalInformationView` | ✅ Done |
-| (Push/Email in About – Flutter has duplicate items, not in Swift About) | — | — | — |
+| (Push/Email in About – Flutter has duplicate items, not in Swift About) | - | - | - |
 
 ---
 

@@ -33,12 +33,12 @@ enum VintageShopBannerGradient {
         }
     }
 
-    /// Pastel coral / mint / gold — same hue relationship as `topFrameA` / `topFrameB` / `bottomShared`, blended toward white.
+    /// Pastel coral / mint / gold - same hue relationship as `topFrameA` / `topFrameB` / `bottomShared`, blended toward white.
     private static let lightTopA = blendWithWhite(topFrameA, whiteAmount: 0.52)
     private static let lightTopB = blendWithWhite(topFrameB, whiteAmount: 0.52)
     private static let lightBottom = blendWithWhite(bottomShared, whiteAmount: 0.45)
 
-    /// `amount` in 0...1 — higher = closer to white (softer pastel).
+    /// `amount` in 0...1 - higher = closer to white (softer pastel).
     private static func blendWithWhite(_ color: UIColor, whiteAmount: CGFloat) -> UIColor {
         let t = max(0, min(1, whiteAmount))
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0

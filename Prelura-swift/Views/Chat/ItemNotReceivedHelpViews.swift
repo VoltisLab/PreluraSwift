@@ -25,7 +25,7 @@ struct ItemNotReceivedGuidanceHelpView: View {
                 guidanceCard(
                     icon: "shippingbox.fill",
                     title: "Tracking can move slowly",
-                    body: "Sometimes a label is created before the parcel is scanned. You might see “label created” or no updates for 24–48 hours. That does not always mean the parcel is lost—sorting hubs batch-scan thousands of items. If tracking shows movement but delivery is delayed, the carrier is usually still processing it."
+                    body: "Sometimes a label is created before the parcel is scanned. You might see “label created” or no updates for 24–48 hours. That does not always mean the parcel is lost-sorting hubs batch-scan thousands of items. If tracking shows movement but delivery is delayed, the carrier is usually still processing it."
                 )
 
                 guidanceCard(

@@ -31,7 +31,7 @@ struct BlackScreensMenuView: View {
     var body: some View {
         List {
             Section {
-                Text("20 curated dark backgrounds — tap the row for a quick sheet, or Profile for full layout.")
+                Text("20 curated dark backgrounds - tap the row for a quick sheet, or Profile for full layout.")
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             } header: {

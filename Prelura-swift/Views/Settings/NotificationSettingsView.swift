@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Push vs email channel (do not infer from localized title — e.g. "Email notifications" ≠ `"email"`).
+/// Push vs email channel (do not infer from localized title - e.g. "Email notifications" ≠ `"email"`).
 enum NotificationSettingsChannel {
     case push
     case email

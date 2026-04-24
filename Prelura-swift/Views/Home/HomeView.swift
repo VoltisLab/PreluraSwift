@@ -34,7 +34,6 @@ struct HomeView: View {
         homeMainContent
             .background(Theme.Colors.background)
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarHidden(viewModel.isLoading && viewModel.filteredItems.isEmpty && viewModel.featuredItems.isEmpty)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     WearhouseWordmarkView(style: .toolbar)
@@ -130,7 +129,7 @@ struct HomeView: View {
             }
     }
 
-    /// Search, closest-match hint, and category chips — part of the main vertical scroll (no overlay `ZStack`: that layout caused scroll clipping glitches and stray text fragments above the grid).
+    /// Search, closest-match hint, and category chips - part of the main vertical scroll (no overlay `ZStack`: that layout caused scroll clipping glitches and stray text fragments above the grid).
     @ViewBuilder
     private var homePinnedHeader: some View {
         VStack(spacing: 0) {
@@ -464,7 +463,7 @@ struct HomeItemCard: View {
             .padding(.horizontal, Theme.Spacing.xs)
             .padding(.bottom, Theme.Spacing.xs)
             
-            // Image: avoid a bare `GeometryReader` as the grid cell’s main flexible child (it confuses `LazyVGrid` sizing and can cause scroll clipping glitches). Resolve size from a fixed aspect-ratio slot, then measure inside the overlay — unless we preserve listing aspect ratio at full width (`naturalThumbnailAspect`).
+            // Image: avoid a bare `GeometryReader` as the grid cell’s main flexible child (it confuses `LazyVGrid` sizing and can cause scroll clipping glitches). Resolve size from a fixed aspect-ratio slot, then measure inside the overlay - unless we preserve listing aspect ratio at full width (`naturalThumbnailAspect`).
             Group {
                 if naturalThumbnailAspect {
                     ZStack(alignment: .bottomTrailing) {
@@ -564,7 +563,7 @@ struct HomeItemCard: View {
                 }
             }
             
-            // Product details — tight to image (spacing was visually too large)
+            // Product details - tight to image (spacing was visually too large)
             VStack(alignment: .leading, spacing: 4) {
                 // Brand (purple)
                 if let brandLine = item.brandLineForProductGrid(multipleBrandsLabel: L10n.string("Multiple brands")) {

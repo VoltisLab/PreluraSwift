@@ -1,7 +1,7 @@
 import SwiftUI
 import Shimmer
 
-/// Minimal Home feed skeleton: a few large blocks + simple cards — avoids noisy micro-placeholders (`HomeView` hides the real nav while this shows).
+/// Home feed skeleton below the real navigation chrome: category strip, featured strip, and grid cards. Toolbar wordmark, AI, bell, and system search stay visible (`HomeView` no longer hides the nav during load).
 struct FeedShimmerView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     private let scrollBottomClearance: CGFloat = 112
@@ -11,8 +11,8 @@ struct FeedShimmerView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                topChromeShimmer
-                searchFieldShimmer
+                // Align with loaded `HomeView` scroll (anchor + pinned header); real toolbar + search stay visible - no fake notification/search chrome here.
+                Color.clear.frame(height: 1)
                 categoryFiltersShimmer
                 featuredSectionShimmer
                 productGridShimmer
@@ -23,54 +23,6 @@ struct FeedShimmerView: View {
         .background(Theme.Colors.background)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .shimmering()
-    }
-
-    /// Toolbar-shaped strip: centred title + trailing notification slot (matches feed like-pill chrome, not the old AI + touching circle pair).
-    private var topChromeShimmer: some View {
-        ZStack {
-            HStack {
-                Spacer(minLength: 0)
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Theme.Colors.secondaryBackground)
-                    .frame(width: 150, height: 22)
-                Spacer(minLength: 0)
-            }
-            HStack(alignment: .center) {
-                Spacer(minLength: 0)
-                toolbarNotificationShimmerPill
-                    .frame(height: Theme.SearchField.trailingActionSlotHeight, alignment: .center)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
-    }
-
-    /// Same capsule treatment as `LikeButtonView` on product cards (dark translucent pill + inner glyph stub).
-    private var toolbarNotificationShimmerPill: some View {
-        HStack(spacing: Theme.Spacing.xs) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(Theme.Colors.secondaryBackground)
-                .frame(width: 11, height: 13)
-        }
-        .padding(.horizontal, Theme.Spacing.sm)
-        .padding(.vertical, 6)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Color.black.opacity(0.6))
-        )
-        .shadow(color: Color.black.opacity(0.4), radius: 1, x: 0, y: 1)
-    }
-
-    /// Solid search pill (no magnifier / text stubs).
-    private var searchFieldShimmer: some View {
-        Capsule(style: .continuous)
-            .fill(Theme.Colors.secondaryBackground)
-            .frame(height: Theme.SearchField.singleLineHeight)
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.top, Theme.Spacing.xs)
-            .padding(.bottom, Theme.Spacing.xs)
     }
 
     private var categoryFiltersShimmer: some View {

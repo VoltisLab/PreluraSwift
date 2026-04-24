@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 struct LoginView: View {
@@ -16,6 +17,7 @@ struct LoginView: View {
     @State private var showForgotPassword: Bool = false
     @State private var showEmailVerificationCode: Bool = false
     @State private var loginVideoURL: URL?
+    @State private var appleNonceRaw: String?
 
     var body: some View {
         NavigationStack {
@@ -121,6 +123,19 @@ struct LoginView: View {
                     if !staffAddAccountMode {
                         BorderGlassButton(L10n.string("Continue as guest"), action: { authService.continueAsGuest() })
                             .padding(.horizontal, Theme.Spacing.md)
+
+                        SignInWithAppleButton(.signIn) { request in
+                            let pair = AppleSignInSupport.makeNoncePair()
+                            appleNonceRaw = pair.raw
+                            request.requestedScopes = [.fullName, .email]
+                            request.nonce = pair.hashed
+                        } onCompletion: { result in
+                            Task { await handleAppleSignInCompletion(result) }
+                        }
+                        .signInWithAppleButtonStyle(.black)
+                        .frame(height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+                        .padding(.horizontal, Theme.Spacing.md)
                     }
 
                     PrimaryGlassButton(
@@ -175,6 +190,31 @@ struct LoginView: View {
         }
     }
     
+    @MainActor
+    private func handleAppleSignInCompletion(_ result: Result<ASAuthorization, Error>) async {
+        switch result {
+        case .failure(let error):
+            errorMessage = error.localizedDescription
+        case .success(let authorization):
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let tokenData = credential.identityToken,
+                  let token = String(data: tokenData, encoding: .utf8),
+                  let nonce = appleNonceRaw
+            else {
+                errorMessage = L10n.string("Could not read Apple credentials.")
+                return
+            }
+            isLoading = true
+            errorMessage = nil
+            defer { isLoading = false }
+            do {
+                try await authService.loginWithApple(identityToken: token, rawNonce: nonce)
+            } catch {
+                errorMessage = L10n.userFacingError(error)
+            }
+        }
+    }
+
     private func handleLogin() {
         guard !username.isEmpty, !password.isEmpty else { return }
         

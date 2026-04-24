@@ -47,10 +47,10 @@ struct AdminOrderIssuesView: View {
                                         Text(issue.publicId ?? "Issue #\(issue.id)")
                                             .font(Theme.Typography.headline)
                                             .foregroundColor(Theme.Colors.primaryText)
-                                        Text(issue.issueType ?? "—")
+                                        Text(issue.issueType ?? "-")
                                             .font(Theme.Typography.caption)
                                             .foregroundColor(Theme.Colors.secondaryText)
-                                        Text("Raised by \(issue.raisedBy?.username ?? "—")")
+                                        Text("Raised by \(issue.raisedBy?.username ?? "-")")
                                             .font(Theme.Typography.caption)
                                             .foregroundColor(Theme.Colors.secondaryText)
                                         if let created = issue.createdAt, !created.isEmpty {
@@ -243,7 +243,7 @@ struct AdminOrderIssuesView: View {
     @ViewBuilder
     private func issueDetail(_ issue: AdminOrderIssueRow) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            labeled("Status", issue.status ?? "—")
+            labeled("Status", issue.status ?? "-")
             if let r = issue.resolution, !r.isEmpty {
                 labeled("Resolution", r)
             }
@@ -253,7 +253,7 @@ struct AdminOrderIssuesView: View {
             if let ra = issue.resolvedAt, !ra.isEmpty {
                 labeled("Resolved at", Self.formatAdminDate(iso: ra))
             }
-            labeled("Order ID", issue.order?.id ?? "—")
+            labeled("Order ID", issue.order?.id ?? "-")
             if let created = issue.createdAt, !created.isEmpty {
                 labeled("Issue created", Self.formatAdminDate(iso: created))
             }
@@ -266,7 +266,7 @@ struct AdminOrderIssuesView: View {
             Text("Description")
                 .font(Theme.Typography.caption)
                 .foregroundColor(Theme.Colors.secondaryText)
-            Text(issue.description ?? "—")
+            Text(issue.description ?? "-")
                 .font(Theme.Typography.body)
                 .foregroundColor(Theme.Colors.primaryText)
 
@@ -388,8 +388,8 @@ struct AdminOrderIssuesView: View {
             if let ua = order.updatedAt, !ua.isEmpty {
                 labeled("Order updated", Self.formatAdminDate(iso: ua))
             }
-            labeled("Buyer", order.user?.username ?? "—")
-            labeled("Seller", order.seller?.username ?? "—")
+            labeled("Buyer", order.user?.username ?? "-")
+            labeled("Seller", order.seller?.username ?? "-")
 
             if let st = order.itemsSubtotal {
                 labeled("Items subtotal", Self.formatMoney(st))
@@ -408,8 +408,8 @@ struct AdminOrderIssuesView: View {
             }
 
             if let offer = order.offer {
-                let oid = offer.id ?? "—"
-                let st = offer.status ?? "—"
+                let oid = offer.id ?? "-"
+                let st = offer.status ?? "-"
                 labeled("Linked offer", "\(oid) · \(st)")
             }
 
@@ -441,7 +441,7 @@ struct AdminOrderIssuesView: View {
                     .padding(.top, 4)
                 ForEach(items) { li in
                     let name = li.productName ?? "Product #\(li.productId.map(String.init) ?? "?")"
-                    let price = li.priceAtPurchase.map(Self.formatMoney) ?? "—"
+                    let price = li.priceAtPurchase.map(Self.formatMoney) ?? "-"
                     labeled(name, price)
                 }
             }
@@ -452,9 +452,9 @@ struct AdminOrderIssuesView: View {
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.top, 4)
                 ForEach(pays) { p in
-                    let ref = p.paymentRef ?? "—"
-                    let st = p.paymentStatus ?? "—"
-                    let amt = p.paymentAmount.map(Self.formatMoney) ?? "—"
+                    let ref = p.paymentRef ?? "-"
+                    let st = p.paymentStatus ?? "-"
+                    let amt = p.paymentAmount.map(Self.formatMoney) ?? "-"
                     let created = p.createdAt.map { Self.formatAdminDate(iso: $0) } ?? ""
                     labeled("Payment \(ref)", "\(st) · \(amt)\(created.isEmpty ? "" : " · \(created)")")
                     if let pi = p.paymentIntentId, !pi.isEmpty {
@@ -469,8 +469,8 @@ struct AdminOrderIssuesView: View {
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.top, 4)
                 ForEach(refs) { r in
-                    let amt = r.refundAmount.map(Self.formatMoney) ?? "—"
-                    let st = r.status ?? "—"
+                    let amt = r.refundAmount.map(Self.formatMoney) ?? "-"
+                    let st = r.status ?? "-"
                     labeled("Refund #\(r.id)", "\(st) · \(amt)")
                 }
             }
@@ -481,8 +481,8 @@ struct AdminOrderIssuesView: View {
                     .foregroundColor(Theme.Colors.secondaryText)
                     .padding(.top, 4)
                 ForEach(tl) { ev in
-                    let t = ev.createdAt.map { Self.formatAdminDate(iso: $0) } ?? "—"
-                    labeled(ev.status ?? "—", t)
+                    let t = ev.createdAt.map { Self.formatAdminDate(iso: $0) } ?? "-"
+                    labeled(ev.status ?? "-", t)
                 }
             }
 

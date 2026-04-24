@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// UI for the system support account (`prelura_support` on the backend — unchanged for API compatibility).
+/// UI for the system support account (`prelura_support` on the backend - unchanged for API compatibility).
 enum WearhouseSupportBranding {
     /// Backend default from `SUPPORT_SYSTEM_USERNAME`.
     static let systemUsernameLowercased = "prelura_support"

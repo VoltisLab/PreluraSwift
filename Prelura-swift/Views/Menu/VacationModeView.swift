@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Holiday Mode — fetch on load, toggle via updateProfile(isVacationMode). Matches Flutter HolidayModeScreen.
+/// Holiday Mode - fetch on load, toggle via updateProfile(isVacationMode). Matches Flutter HolidayModeScreen.
 struct VacationModeView: View {
     @EnvironmentObject var authService: AuthService
     var initialIsOn: Bool = false

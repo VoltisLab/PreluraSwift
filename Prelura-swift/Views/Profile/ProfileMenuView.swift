@@ -244,7 +244,7 @@ struct ShippingMenuView: View {
     }
 }
 
-// MARK: - Submenu: About Us. Flat links to wearhouse.co.uk (no nested Legal screen).
+// MARK: - Submenu: About Us. Flat links to mywearhouse.co.uk (no nested Legal screen).
 struct AboutWearhouseMenuView: View {
     var body: some View {
         List {
@@ -286,7 +286,7 @@ struct HelpCentreInsetDivider: View {
     }
 }
 
-// MARK: - Help Centre — inline accordions + same search chrome as home (`HomeFeedSearchField`, no AI icon). Start conversation → AnnChatView.
+// MARK: - Help Centre - inline accordions + same search chrome as home (`HomeFeedSearchField`, no AI icon). Start conversation → AnnChatView.
 struct HelpCentreView: View {
     @State private var searchText: String = ""
     @State private var expandedTopicId: String?

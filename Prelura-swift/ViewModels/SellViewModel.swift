@@ -81,7 +81,7 @@ class SellViewModel: ObservableObject {
                 let brandId = brandTrimmed.isEmpty ? nil : try? await productService.getBrandId(byName: brandTrimmed)
                 let customBrand: String? = (brandId == nil && !brandTrimmed.isEmpty) ? brandTrimmed : nil
 
-                // 3. Resolve material id(s) — we only have one material name
+                // 3. Resolve material id(s) - we only have one material name
                 var materialIds: [Int]? = nil
                 if let mat = material, !mat.isEmpty, let mid = try? await materialsService.getMaterialId(byName: mat) {
                     materialIds = [mid]
@@ -98,7 +98,7 @@ class SellViewModel: ObservableObject {
                 let descriptionForApi = ListingDescriptionAttachments.embedMeasurements(descriptionClean, measurements: measurements)
                 if ProfanityFilter.maskingWouldChange(titleRaw) || ProfanityFilter.maskingWouldChange(descriptionRaw) {
                     userService.updateAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
-                    let snippet = "\(titleClean) — \(descriptionClean)"
+                    let snippet = "\(titleClean) - \(descriptionClean)"
                     _ = try? await userService.recordProfanityUsage(
                         channel: "sell_listing",
                         relatedConversationId: nil,
@@ -255,7 +255,7 @@ class SellViewModel: ObservableObject {
                 let descriptionForApi = ListingDescriptionAttachments.embedMeasurements(descriptionClean, measurements: measurements)
                 if ProfanityFilter.maskingWouldChange(titleRaw) || ProfanityFilter.maskingWouldChange(descriptionRaw) {
                     userService.updateAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
-                    let snippet = "\(titleClean) — \(descriptionClean)"
+                    let snippet = "\(titleClean) - \(descriptionClean)"
                     _ = try? await userService.recordProfanityUsage(
                         channel: "sell_mystery_box",
                         relatedConversationId: nil,
@@ -380,7 +380,7 @@ class SellViewModel: ObservableObject {
                 let descriptionForApi = ListingDescriptionAttachments.embedMeasurements(descriptionClean, measurements: measurements)
                 if ProfanityFilter.maskingWouldChange(titleRaw) || ProfanityFilter.maskingWouldChange(descriptionRaw) {
                     userService.updateAuthToken(authToken ?? UserDefaults.standard.string(forKey: "AUTH_TOKEN"))
-                    let snippet = "\(titleClean) — \(descriptionClean)"
+                    let snippet = "\(titleClean) - \(descriptionClean)"
                     _ = try? await userService.recordProfanityUsage(
                         channel: "sell_listing_edit",
                         relatedConversationId: nil,

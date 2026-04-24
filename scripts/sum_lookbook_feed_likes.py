@@ -120,7 +120,7 @@ def fetch_all_likes_by_post(
     if by_id:
         return by_id, "paginated (stopped: iteration or size cap)"
 
-    # 2) Single-page path (no pageInfo on connection — staging).
+    # 2) Single-page path (no pageInfo on connection - staging).
     first_cap = min(max(1, max_posts), LOOKBOOKS_SINGLE_REQUEST_CAP)
     r = graphql_json(
         graphql_url,
@@ -140,7 +140,7 @@ def fetch_all_likes_by_post(
     _ingest_rows(rows, by_id)
     if first_cap >= len(rows):
         return by_id, f"single request (first={first_cap}; likely full set if server capped lower)"
-    return by_id, f"single request (first={first_cap}; got {len(rows)} rows — server may cap)"
+    return by_id, f"single request (first={first_cap}; got {len(rows)} rows - server may cap)"
 
 
 def main() -> None:
@@ -218,7 +218,7 @@ def main() -> None:
     print(f"Posts counted: {n} (unique ids)")
     print(f"Sum of likesCount on those posts: {total}")
     print(
-        "(Not 'seed script only' — every like the API reports on those posts.)",
+        "(Not 'seed script only' - every like the API reports on those posts.)",
         file=sys.stderr,
     )
 

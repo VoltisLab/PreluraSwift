@@ -223,6 +223,7 @@ class ProductService: ObservableObject {
                 createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),
                 isLiked: product.userLiked ?? false,
                 status: product.status ?? "ACTIVE",
+                scheduledPublishAt: Self.parseCreatedAt(product.scheduledPublishAt),
                 sellCategoryBackendId: Self.graphQLStringId(product.category?.id),
                 sellSizeBackendId: Self.graphQLIntId(product.size?.id),
                 listingMeasurements: measNote,
@@ -379,7 +380,7 @@ class ProductService: ObservableObject {
         return names
     }
 
-    /// Single page of brands — matches Flutter ProductRepo.getBrands / query Brands (search, pageNumber, pageCount).
+    /// Single page of brands - matches Flutter ProductRepo.getBrands / query Brands (search, pageNumber, pageCount).
     private func fetchBrandsPage(search: String?, pageNumber: Int, pageCount: Int) async throws -> (names: [String], totalNumber: Int?) {
         let query = """
         query Brands($search: String, $pageCount: Int, $pageNumber: Int) {
@@ -712,26 +713,43 @@ class ProductService: ObservableObject {
         }
     }
 
-    /// Mark product as sold. Matches Flutter/backend updateProduct status if available.
+    /// Set listing status (ACTIVE / SOLD / INACTIVE). Backend exposes **`updateProduct`**, not `updateProductStatus`.
+    /// Seller “hide from shop” uses **`HIDDEN`** in app code → maps to **`INACTIVE`** (see `ProductStatusEnum`).
     func updateProductStatus(productId: Int, status: String) async throws {
+        let upper = status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let apiStatus: String
+        switch upper {
+        case "HIDDEN":
+            apiStatus = "INACTIVE"
+        case "ACTIVE", "SOLD", "INACTIVE":
+            apiStatus = upper
+        default:
+            apiStatus = upper
+        }
         let mutation = """
-        mutation UpdateProductStatus($productId: Int!, $status: ProductStatusEnum!) {
-          updateProductStatus(productId: $productId, status: $status) {
+        mutation UpdateProductListingStatus($productId: Int!, $status: ProductStatusEnum!) {
+          updateProduct(productId: $productId, status: $status) {
             success
             message
+            product { id }
           }
         }
         """
         struct Payload: Decodable {
-            let updateProductStatus: UpdateStatusPayload?
+            let updateProduct: UpdateProductPayload?
         }
-        struct UpdateStatusPayload: Decodable {
+        struct UpdateProductPayload: Decodable {
             let success: Bool?
             let message: String?
         }
-        let response: Payload = try await client.execute(query: mutation, variables: ["productId": productId, "status": status], responseType: Payload.self)
-        guard response.updateProductStatus?.success == true else {
-            let msg = response.updateProductStatus?.message ?? "Failed to update listing"
+        let response: Payload = try await client.execute(
+            query: mutation,
+            variables: ["productId": productId, "status": apiStatus],
+            operationName: "UpdateProductListingStatus",
+            responseType: Payload.self
+        )
+        guard response.updateProduct?.success == true else {
+            let msg = response.updateProduct?.message ?? "Failed to update listing"
             throw NSError(domain: "ProductService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
         }
     }
@@ -1098,7 +1116,7 @@ class ProductService: ObservableObject {
         }
     }
 
-    /// Default `createProduct` (no server scheduled time — matches existing API).
+    /// Default `createProduct` (no server scheduled time - matches existing API).
     private static let createProductGraphQLMutation = """
     mutation CreateProduct(
       $category: Int!
@@ -1232,6 +1250,8 @@ struct ProductData: Decodable {
     let seller: SellerData?
     let category: CategoryData?
     let status: String?
+    /// When set, `INACTIVE` usually means scheduled publish (not seller-hidden).
+    let scheduledPublishAt: String?
     /// ProductType.materials: [BrandType]
     let materials: [BrandData]?
     let styles: [String]?
@@ -1374,6 +1394,7 @@ extension ProductService {
             styles
             style
             status
+            scheduledPublishAt
             isMysteryBox
           }
         }
@@ -1786,6 +1807,7 @@ extension ProductService {
             createdAt: Self.parseCreatedAt(product.createdAt) ?? Date(),
             isLiked: product.userLiked ?? false,
             status: product.status ?? "ACTIVE",
+            scheduledPublishAt: Self.parseCreatedAt(product.scheduledPublishAt),
             sellCategoryBackendId: Self.graphQLStringId(product.category?.id),
             sellSizeBackendId: Self.graphQLIntId(product.size?.id),
             listingMeasurements: measNote,

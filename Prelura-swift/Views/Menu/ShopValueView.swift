@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// Dashboard screen — seller metrics, KPIs, and charts. Fetches UserEarnings from API; some metrics use derived/placeholder values until backend supports them.
+/// Dashboard screen - seller metrics, KPIs, and charts. Fetches UserEarnings from API; some metrics use derived/placeholder values until backend supports them.
 struct ShopValueView: View {
     @EnvironmentObject var authService: AuthService
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -194,7 +194,7 @@ struct ShopValueView: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.Glass.bannerSurfaceCornerRadius, style: .continuous))
     }
 
-    // MARK: - Performance (Views, Items sold, Conversion, Avg price — Pending orders moved to top section)
+    // MARK: - Performance (Views, Items sold, Conversion, Avg price - Pending orders moved to top section)
     private var secondaryKpiGrid: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text(L10n.string("Performance"))

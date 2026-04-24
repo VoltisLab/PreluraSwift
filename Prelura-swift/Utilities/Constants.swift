@@ -46,9 +46,9 @@ struct Constants {
     }
     
     /// Live consumer site: help, legal, profiles, invites, and **generated share links** (`/item/*`, `/lookbook/*`). Must match production web.
-    static let publicWebsiteBaseURL = "https://wearhouse.co.uk"
+    static let publicWebsiteBaseURL = "https://mywearhouse.co.uk"
 
-    // About WEARHOUSE screen (flat list → WebView on wearhouse.co.uk)
+    // About WEARHOUSE screen (flat list → WebView on mywearhouse.co.uk)
     static var aboutUsURL: String { "\(publicWebsiteBaseURL)/about" }
     static var termsAndConditionsURL: String { "\(publicWebsiteBaseURL)/about" }
     static var privacyPolicyURL: String { "\(publicWebsiteBaseURL)/privacy" }
@@ -76,7 +76,7 @@ struct Constants {
     /// **VacationModeView** and **UserService.updateProfile(isVacationMode:)**; discover/listings hide vacation sellers (**AIChatView** / product queries use `excludingVacationModeSellers`).
     static var helpArticleVacationModeURL: String { "\(publicWebsiteBaseURL)/help/vacation-mode" }
 
-    /// Discover uses “trusted” vendor copy; there is **no** dedicated native “badge” settings screen—web article should state real eligibility from your business rules.
+    /// Discover uses “trusted” vendor copy; there is **no** dedicated native “badge” settings screen-web article should state real eligibility from your business rules.
     static var helpArticleTrustedSellerURL: String { "\(publicWebsiteBaseURL)/help/trusted-seller" }
     
     /// Public profile URL for sharing, QR, and web (`/profile/{username}` on the consumer site).
@@ -90,11 +90,16 @@ struct Constants {
     /// Invite landing (SMS / contacts share). Consumer domain only.
     static var inviteFriendsLandingURL: String { "\(publicWebsiteBaseURL)/join/" }
 
-    /// Product and lookbook share / copy link base — same host as `publicWebsiteBaseURL` (no API/staging domains in user-facing URLs).
+    /// Product and lookbook share / copy link base - same host as `publicWebsiteBaseURL` (no API/staging domains in user-facing URLs).
     static var publicWebItemLinkBaseURL: String { publicWebsiteBaseURL }
     
     // API Configuration
     static let apiTimeout: TimeInterval = 60.0
+
+    // MARK: - Seller Gold (App Store)
+
+    /// Auto-renewable **monthly** Gold subscription product id - create this subscription in App Store Connect and attach to the app.
+    static let wearhouseGoldMonthlyProductId = "com.prelura.preloved.seller.gold.monthly"
 
     // MARK: - Lookbook Discover
 

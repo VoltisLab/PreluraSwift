@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Debug: full-width and card-style **banners** (errors, info strips) — not Discover lookbook/try-cart marketing heroes.
+/// Debug: full-width and card-style **banners** (errors, info strips) - not Discover lookbook/try-cart marketing heroes.
 struct AppBannersDebugGalleryView: View {
     var body: some View {
         ScrollView {
@@ -10,7 +10,7 @@ struct AppBannersDebugGalleryView: View {
                     .foregroundStyle(Theme.Colors.secondaryText)
 
                 group(
-                    title: "FeedNetworkBannerView — timeout + Try again",
+                    title: "FeedNetworkBannerView - timeout + Try again",
                     subtitle: "Home, Featured, Profile (no TLS headline), Lookbook/Filtered when `title` is nil."
                 ) {
                     FeedNetworkBannerView(
@@ -21,7 +21,7 @@ struct AppBannersDebugGalleryView: View {
                 }
 
                 group(
-                    title: "FeedNetworkBannerView — offline + Try again",
+                    title: "FeedNetworkBannerView - offline + Try again",
                     subtitle: "Mapped `L10n.userFacingError` for -1009 / similar."
                 ) {
                     FeedNetworkBannerView(
@@ -32,7 +32,7 @@ struct AppBannersDebugGalleryView: View {
                 }
 
                 group(
-                    title: "FeedNetworkBannerView — pull to refresh only",
+                    title: "FeedNetworkBannerView - pull to refresh only",
                     subtitle: "When `onTryAgain` is nil (same card, hint row)."
                 ) {
                     FeedNetworkBannerView(
@@ -43,7 +43,7 @@ struct AppBannersDebugGalleryView: View {
                 }
 
                 group(
-                    title: "FeedNetworkBannerView — optional TLS title on card",
+                    title: "FeedNetworkBannerView - optional TLS title on card",
                     subtitle: "Component supports `title` (lock icon); production TLS often uses snackbar instead."
                 ) {
                     FeedNetworkBannerView(
@@ -55,7 +55,7 @@ struct AppBannersDebugGalleryView: View {
                 }
 
                 group(
-                    title: "FeedNetworkErrorPresentation — card (no title)",
+                    title: "FeedNetworkErrorPresentation - card (no title)",
                     subtitle: "Lookbook feed, user profile, filtered products when no TLS headline."
                 ) {
                     FeedNetworkErrorPresentation(
@@ -67,8 +67,8 @@ struct AppBannersDebugGalleryView: View {
                 }
 
                 group(
-                    title: "FeedNetworkErrorPresentation — compact snackbar path",
-                    subtitle: "When `userFacingErrorBannerTitle` is non-nil (TLS) — same as `FeedErrorSnackbarView` in production today."
+                    title: "FeedNetworkErrorPresentation - compact snackbar path",
+                    subtitle: "When `userFacingErrorBannerTitle` is non-nil (TLS) - same as `FeedErrorSnackbarView` in production today."
                 ) {
                     FeedNetworkErrorPresentation(
                         message: L10n.string("We couldn't complete a secure connection. Please try again shortly."),
@@ -79,14 +79,14 @@ struct AppBannersDebugGalleryView: View {
                 }
 
                 group(
-                    title: "Chat — support / moderation strip",
+                    title: "Chat - support / moderation strip",
                     subtitle: "Profanity or support text banner under product header in `ChatDetailView`."
                 ) {
                     AppBannersDebugChatSupportStripPreview()
                 }
 
                 group(
-                    title: "Sell — postage info strip",
+                    title: "Sell - postage info strip",
                     subtitle: "Info `HStack` on sell flow: primary tint on `Theme.primaryColor.opacity(0.1)`."
                 ) {
                     HStack(spacing: Theme.Spacing.sm) {
@@ -104,7 +104,7 @@ struct AppBannersDebugGalleryView: View {
                 }
 
                 group(
-                    title: "Forum — guest banner",
+                    title: "Forum - guest banner",
                     subtitle: "`ForumTopicDetailView` when not signed in."
                 ) {
                     Text(L10n.string("Sign in to vote or comment."))

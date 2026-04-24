@@ -1,13 +1,14 @@
 import SwiftUI
 import Shimmer
+import UIKit
 
 /// List of in-app notifications (Flutter NotificationsScreen + NotificationsTab).
 ///
 /// **Row art:** `relatedProductIsMysteryBox` (GraphQL, when present), meta flags, and legacy “static mystery cover” URL heuristics select **animated** mystery art; otherwise JPEG comes from the server field, meta image keys, or a one-shot `product(id:)` when still missing. Chat rows use the same 30-minute unread / hide-read policy as `origin/main` (`AppNotification.shouldShowOnNotificationsPage`).
 ///
-/// **Realtime:** There is no dedicated in-app notifications WebSocket in this client; the list refreshes from GraphQL on open, pull-to-refresh, toolbar reload, app foreground (`scenePhase`), and after push-driven `wearhouseInAppNotificationsDidChange` flows elsewhere. Last successful page is cached per username for instant paint offline.
+/// **Realtime:** There is no dedicated in-app notifications WebSocket in this client; the list refreshes from GraphQL on open, pull-to-refresh (full shimmer reload), app foreground (`scenePhase`), and after push-driven `wearhouseInAppNotificationsDidChange` flows elsewhere. Last successful page is cached per username for instant paint offline.
 ///
-/// **Read / accent rules:** Row fill = unread (`!isRead`). Tapping a row calls `readNotifications` for that id immediately. Untapped unreads stay unread until the user opens this screen **twice** (second visit runs ``NotificationService/markAllBellEligibleUnreadRead()``); pull/foreground reloads do not advance that gate. Primed state is per-account in `UserDefaults` (backend only sees `readNotifications`—no new API).
+/// **Read / accent rules:** Row fill = unread (`!isRead`). Tapping a row calls ``NotificationService/readNotifications`` when the id maps to an ``AppNotification/bellNotificationDatabaseIntId``; opened ids are also stored in ``BellLocallyReadNotificationIds`` so reopening the list stays “read” if the API still returns stale flags. Untapped bell-eligible unreads stay accented until a **second** visit (``NotificationService/markAllBellEligibleUnreadRead()``). Primed state is per-account in `UserDefaults`.
 struct NotificationsListView: View {
     /// Matches `NotificationRowView` vertical tightening (20% less than former 4pt).
     private static let listRowInsetVertical: CGFloat = 4 * 0.8
@@ -36,8 +37,10 @@ struct NotificationsListView: View {
     @State private var backendHasMore = true
     @Environment(\.scenePhase) private var scenePhase
     @State private var imageReloadTokenForRows: Int = 0
+    /// Full-screen shimmer during pull without unmounting the `List` / `ScrollView` that owns `.refreshable` (removing it cancels the refresh task → empty “No notifications” flash).
+    @State private var isPullRefreshOverlay = false
     @State private var lastBecomeActiveReload: Date?
-    /// Set from the two-visit gate in `onAppear` only; consumed on the next **successful** ``reloadFromStart()`` (not pull/foreground).
+    /// Set from the two-visit gate in `onAppear` only; consumed on the next **successful** ``reloadFromStart()`` (not pull/foreground). Pull-to-refresh uses ``reloadFromStart(pullToRefresh:)`` and does not advance this gate.
     @State private var shouldMarkBellEligibleUnreadAfterNextSuccessfulReload = false
     /// One GraphQL page size (matches backend `pageCount`).
     private let pageSize = 15
@@ -79,12 +82,18 @@ struct NotificationsListView: View {
         }
     }
 
+    /// Non-nil only when there is user-visible error copy (treats `""` as nil so cancellation / cleared errors don’t break loading branches).
+    private var nonEmptyErrorMessage: String? {
+        guard let e = errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines), !e.isEmpty else { return nil }
+        return e
+    }
+
     var body: some View {
         Group {
-            if isLoading && errorMessage == nil {
+            if isLoading && nonEmptyErrorMessage == nil {
                 notificationsListShimmerLayout(includeSegmentPicker: true)
-                    .refreshable { await reloadFromStart() }
-            } else if let err = errorMessage, !err.isEmpty, notifications.isEmpty {
+                    .refreshable { await reloadFromStart(pullToRefresh: true) }
+            } else if let err = nonEmptyErrorMessage, notifications.isEmpty {
                 ScrollView {
                     VStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "exclamationmark.triangle")
@@ -96,14 +105,14 @@ struct NotificationsListView: View {
                             .multilineTextAlignment(.center)
                         Button("Retry") {
                             errorMessage = nil
-                            Task { await reloadFromStart() }
+                            Task { await reloadFromStart(pullToRefresh: true) }
                         }
                         .foregroundColor(Theme.primaryColor)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, Theme.Spacing.xl)
                 }
-                .refreshable { await reloadFromStart() }
+                .refreshable { await reloadFromStart(pullToRefresh: true) }
             } else if notifications.isEmpty {
                 ScrollView {
                     VStack(spacing: Theme.Spacing.md) {
@@ -117,7 +126,7 @@ struct NotificationsListView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, Theme.Spacing.xl)
                 }
-                .refreshable { await reloadFromStart() }
+                .refreshable { await reloadFromStart(pullToRefresh: true) }
             } else {
                 VStack(spacing: 0) {
                     Picker("", selection: $segment) {
@@ -156,22 +165,17 @@ struct NotificationsListView: View {
                 .wearhouseChatThreadReadableWidthIfPadMac()
             }
         }
+        .overlay {
+            if isPullRefreshOverlay {
+                notificationsListShimmerLayout(includeSegmentPicker: true)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.Colors.background)
+                    .refreshable { await reloadFromStart(pullToRefresh: true) }
+            }
+        }
         .background(Theme.Colors.background)
         .navigationTitle(L10n.string("Notifications"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    imageReloadTokenForRows += 1
-                    Task { await reloadFromStart() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(Theme.Colors.primaryText)
-                }
-                .accessibilityLabel("Refresh")
-            }
-        }
         .onAppear {
             notificationService.updateAuthToken(authService.authToken)
             bellUnreadStore.scheduleRefresh(authService: authService)
@@ -221,15 +225,29 @@ struct NotificationsListView: View {
         guard let key = InAppNotificationsCache.accountKey(username: authService.username),
               let cached = InAppNotificationsCache.load(accountKey: key),
               !cached.isEmpty else { return }
-        notifications = Self.uniqueByNotificationId(cached)
+        let merged = BellLocallyReadNotificationIds.mergedWithLocalReadState(
+            accountKey: key,
+            notifications: Self.uniqueByNotificationId(cached)
+        )
+        notifications = merged
         isLoading = false
     }
 
-    private func reloadFromStart() async {
+    private func reloadFromStart(pullToRefresh: Bool = false) async {
         await MainActor.run {
             isReloadingNotifications = true
-            // Keep showing the previous list while refreshing when we have data (avoids empty ↔ shimmer flicker).
-            if notifications.isEmpty {
+            if pullToRefresh {
+                imageReloadTokenForRows += 1
+                NotificationRowView.resetCachesForToolbarReload()
+                // Only the cold first-load shimmer is safe to replace entirely: its `ScrollView` owns refresh, not a `List`.
+                let onColdLaunchShimmer = isLoading && notifications.isEmpty && nonEmptyErrorMessage == nil
+                if onColdLaunchShimmer {
+                    isLoading = true
+                    notifications = []
+                } else {
+                    isPullRefreshOverlay = true
+                }
+            } else if notifications.isEmpty {
                 isLoading = true
             }
             errorMessage = nil
@@ -245,29 +263,34 @@ struct NotificationsListView: View {
             )
         } catch {
             await MainActor.run {
-                errorMessage = L10n.userFacingError(error)
+                if L10n.isCancellationLikeError(error) {
+                    errorMessage = nil
+                } else {
+                    errorMessage = L10n.userFacingError(error)
+                }
+                isPullRefreshOverlay = false
                 isLoading = false
                 isReloadingNotifications = false
+                isBackfillingSegment = false
             }
             return
         }
-        await MainActor.run {
-            isLoading = false
-            if let key = InAppNotificationsCache.accountKey(username: authService.username) {
-                if notifications.isEmpty {
-                    // Avoid a poisoned 1-item (or empty) list sticking in UserDefaults and painting before every refresh.
-                    InAppNotificationsCache.clear(accountKey: key)
-                } else {
-                    InAppNotificationsCache.save(notifications, accountKey: key)
-                }
-            }
-        }
+        // Keep `isLoading == true` through segment backfill on cold launch; pull overlay stays until here on normal feeds.
         notificationService.updateAuthToken(authService.authToken)
         await MainActor.run { isBackfillingSegment = true }
         await ensureContentForCurrentSegmentBody()
         await MainActor.run {
             isBackfillingSegment = false
             isReloadingNotifications = false
+            isLoading = false
+            isPullRefreshOverlay = false
+            if let key = InAppNotificationsCache.accountKey(username: authService.username) {
+                if notifications.isEmpty {
+                    InAppNotificationsCache.clear(accountKey: key)
+                } else {
+                    InAppNotificationsCache.save(notifications, accountKey: key)
+                }
+            }
         }
         let runOpenMarkRead = await MainActor.run {
             if shouldMarkBellEligibleUnreadAfterNextSuccessfulReload {
@@ -305,7 +328,7 @@ struct NotificationsListView: View {
                 break
             }
             // A **full** page means more *might* exist. A **short, non-empty** first page (e.g. 2–5 rows) must still allow
-            // a follow-up request—many servers return a short “newest” page first; `notificationsTotalNumber` is unreliable.
+            // a follow-up request-many servers return a short “newest” page first; `notificationsTotalNumber` is unreliable.
             // After the first request (`safety == 1`), a short page means the feed has ended.
             let fullPage = (batch.count == pageSize)
             let shortFirstPageMayHaveMore = (safety == 1) && (batch.count < pageSize) && (batch.count > 0)
@@ -323,12 +346,26 @@ struct NotificationsListView: View {
             } else {
                 notifications = dedupedCollected
             }
+            if let key = InAppNotificationsCache.accountKey(username: authService.username) {
+                notifications = BellLocallyReadNotificationIds.mergedWithLocalReadState(
+                    accountKey: key,
+                    notifications: notifications
+                )
+            }
         }
         return collected
     }
 
     private func loadMoreVisible() async {
-        guard !isReloadingNotifications, !isLoading, !isLoadingMore, backendHasMore else { return }
+        let mayLoad = await MainActor.run { () -> Bool in
+            guard backendHasMore, !isLoadingMore else { return false }
+            if isReloadingNotifications {
+                // Full list reload runs `ensureContentForCurrentSegmentBody` while this flag is set; allow paging only then.
+                return isBackfillingSegment
+            }
+            return !isLoading
+        }
+        guard mayLoad else { return }
         isLoadingMore = true
         defer { isLoadingMore = false }
         do {
@@ -361,7 +398,10 @@ struct NotificationsListView: View {
 
             let shouldLoad = await MainActor.run {
                 if let err = errorMessage, !err.isEmpty { return false }
-                return backendHasMore && !isLoading && !isReloadingNotifications
+                let pagingDuringListReload = isReloadingNotifications && isBackfillingSegment
+                // Idle list: don’t page during initial shimmer. Reload+backfill: allow paging while `isLoading` is still true.
+                return backendHasMore
+                    && (pagingDuringListReload || (!isReloadingNotifications && !isLoading))
             }
             guard shouldLoad else { return }
 
@@ -407,7 +447,7 @@ struct NotificationsListView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, Theme.Spacing.xl)
                 }
-                .refreshable { await reloadFromStart() }
+                .refreshable { await reloadFromStart(pullToRefresh: true) }
             }
         }
     }
@@ -463,6 +503,7 @@ struct NotificationsListView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                 }
+                .id("\(notification.id)-\(notification.isRead)")
                 .buttonStyle(PlainTappableButtonStyle())
                 .listRowBackground(notificationListRowChrome(isUnread: !notification.isRead))
                 .listRowInsets(
@@ -503,15 +544,14 @@ struct NotificationsListView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .refreshable { await reloadFromStart() }
+        .refreshable { await reloadFromStart(pullToRefresh: true) }
     }
 
     /// Unread rows: light primary tint fill across the full row (no stroke). Clears when read (tap) or after a **second** visit to this list without tap (bulk read).
     @ViewBuilder
     private func notificationListRowChrome(isUnread: Bool) -> some View {
-        let corner: CGFloat = 12
         if isUnread {
-            RoundedRectangle(cornerRadius: corner, style: .continuous)
+            Rectangle()
                 .fill(Theme.primaryColor.opacity(0.1))
         } else {
             Theme.Colors.background
@@ -519,13 +559,30 @@ struct NotificationsListView: View {
     }
 
     private func markAsRead(_ notification: AppNotification) {
-        guard let idInt = Int(notification.id) else { return }
+        let nid = notification.id
+        let dbId = notification.bellNotificationDatabaseIntId
         Task {
-            _ = try? await notificationService.readNotifications(notificationIds: [idInt])
+            await MainActor.run {
+                if let key = InAppNotificationsCache.accountKey(username: authService.username) {
+                    BellLocallyReadNotificationIds.record(accountKey: key, notificationId: nid)
+                }
+                if let idx = notifications.firstIndex(where: { $0.id == nid }) {
+                    notifications[idx] = notifications[idx].withIsRead(true)
+                }
+            }
+            if let dbId {
+                do {
+                    try await notificationService.readNotifications(notificationIds: [dbId])
+                } catch {
+                    #if DEBUG
+                    print("Wearhouse: readNotifications failed for id \(dbId): \(error)")
+                    #endif
+                }
+            }
             await MainActor.run {
                 NotificationCenter.default.post(name: .wearhouseInAppNotificationsDidChange, object: nil)
-                if let idx = notifications.firstIndex(where: { $0.id == notification.id }) {
-                    notifications[idx] = notifications[idx].withIsRead(true)
+                if let key = InAppNotificationsCache.accountKey(username: authService.username), !notifications.isEmpty {
+                    InAppNotificationsCache.save(notifications, accountKey: key)
                 }
             }
         }
@@ -546,6 +603,10 @@ struct NotificationsListView: View {
             if let accountKey = InAppNotificationsCache.accountKey(username: authService.username) {
                 UserDefaults.standard.set(false, forKey: Self.notificationsSecondVisitPrimedKey(accountKey: accountKey))
             }
+            if let key = InAppNotificationsCache.accountKey(username: authService.username) {
+                let ids = notifications.filter { $0.shouldCountTowardBellBadge }.map(\.id)
+                BellLocallyReadNotificationIds.recordMany(accountKey: key, notificationIds: ids)
+            }
             notifications = notifications.map { n in
                 n.shouldCountTowardBellBadge ? n.withIsRead(true) : n
             }
@@ -556,7 +617,7 @@ struct NotificationsListView: View {
     }
 
     private func deleteNotification(_ notification: AppNotification) {
-        guard let idInt = Int(notification.id) else { return }
+        guard let idInt = notification.bellNotificationDatabaseIntId else { return }
         Task {
             do {
                 _ = try await notificationService.deleteNotification(notificationId: idInt)
@@ -787,6 +848,109 @@ private struct NotificationLookbookDeepLinkHost: View {
     }
 }
 
+/// In-memory decode cache so notification list rows do not re-hit the network / flash placeholders when `List` recycles cells.
+@MainActor
+private enum NotificationBellUIImageMemoryCache {
+    private static let cache = NSCache<NSString, UIImage>()
+    private static let costLimitBytes = 48 * 1024 * 1024
+
+    static func image(for url: URL) -> UIImage? {
+        cache.object(forKey: url.absoluteString as NSString)
+    }
+
+    static func insert(_ image: UIImage, for url: URL) {
+        cache.totalCostLimit = costLimitBytes
+        let cost = Int(image.size.width * image.size.height * 4)
+        cache.setObject(image, forKey: url.absoluteString as NSString, cost: max(cost, 1))
+    }
+
+    static func remove(for url: URL) {
+        cache.removeObject(forKey: url.absoluteString as NSString)
+    }
+
+    static func removeAll() {
+        cache.removeAllObjects()
+    }
+}
+
+/// URLSession + in-memory cache (not `AsyncImage`) so `List` recycling does not flash placeholders while URLSession’s disk cache warms.
+private struct NotificationBellCachedSessionImage<Placeholder: View, FailurePlaceholder: View>: View {
+    let url: URL
+    let width: CGFloat
+    let height: CGFloat
+    let cornerRadius: CGFloat
+    var maxAutoRetries: Int = 2
+    var externalReloadToken: Int = 0
+    var onAutoRetriesExhausted: (() -> Void)?
+    @ViewBuilder let placeholder: () -> Placeholder
+    @ViewBuilder let failurePlaceholder: () -> FailurePlaceholder
+
+    @State private var loaded: UIImage?
+    @State private var hardFailed = false
+
+    private var loadIdentity: String {
+        "\(url.absoluteString)-\(externalReloadToken)"
+    }
+
+    var body: some View {
+        Group {
+            if let loaded {
+                Image(uiImage: loaded)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: width, height: height)
+                    .clipped()
+            } else if hardFailed {
+                failurePlaceholder()
+            } else {
+                placeholder()
+            }
+        }
+        .frame(width: width, height: height)
+        .clipped()
+        .cornerRadius(cornerRadius)
+        .id(loadIdentity)
+        .task(id: loadIdentity) {
+            let fromMemory = await MainActor.run { () -> Bool in
+                hardFailed = false
+                if let mem = NotificationBellUIImageMemoryCache.image(for: url) {
+                    loaded = mem
+                    return true
+                }
+                loaded = nil
+                return false
+            }
+            if fromMemory { return }
+            var attempt = 0
+            while attempt <= maxAutoRetries {
+                if Task.isCancelled { return }
+                if attempt > 0 {
+                    let delayNs = UInt64((0.65 + 0.55 * Double(attempt - 1)) * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: delayNs)
+                }
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    guard !Task.isCancelled else { return }
+                    if let ui = UIImage(data: data) {
+                        await MainActor.run {
+                            NotificationBellUIImageMemoryCache.insert(ui, for: url)
+                            loaded = ui
+                        }
+                        return
+                    }
+                } catch {
+                    // Retry below.
+                }
+                attempt += 1
+            }
+            await MainActor.run {
+                hardFailed = true
+                onAutoRetriesExhausted?()
+            }
+        }
+    }
+}
+
 /// Loads product/listing art from meta when present; otherwise sender avatar. Retries transient failures, offers a manual reload, then falls back to avatar when both URLs exist.
 private struct NotificationBellThumbnail<FailureIcon: View>: View {
     let productURL: URL?
@@ -824,7 +988,7 @@ private struct NotificationBellThumbnail<FailureIcon: View>: View {
     var body: some View {
         Group {
             if let url = currentURL {
-                RetryAsyncImage(
+                NotificationBellCachedSessionImage(
                     url: url,
                     width: width,
                     height: height,
@@ -855,6 +1019,8 @@ private struct NotificationBellThumbnail<FailureIcon: View>: View {
                                 .frame(width: width, height: height)
                             if showsManualImageReload {
                                 Button {
+                                    if let p = productURL { NotificationBellUIImageMemoryCache.remove(for: p) }
+                                    if let a = avatarURL { NotificationBellUIImageMemoryCache.remove(for: a) }
                                     tapReloadEpoch += 1
                                 } label: {
                                     Image(systemName: "arrow.clockwise.circle.fill")
@@ -934,6 +1100,13 @@ private final class NotificationBellConversationPrefetcher {
     }
 }
 
+private struct NotificationProductThumbResolveCacheEntry: Equatable {
+    var listingURL: URL?
+    var mystery: Bool
+    /// True once ``resolveProductThumbnailIfNeeded()`` finished for this notification + `imageReloadEpoch` (scroll remount skips network re-fetch).
+    var isComplete: Bool
+}
+
 private struct NotificationRowView: View {
     let notification: AppNotification
     /// Screen-level refresh (toolbar) forces AsyncImage remount.
@@ -946,6 +1119,26 @@ private struct NotificationRowView: View {
     private let userService = UserService()
     /// `userOrders` line-item fetch keyed by order id; avoids re-querying the same order on every row refresh.
     private static var orderLinePreviewByOrderId: [Int: (productId: Int, imageUrl: String?, isMysteryBox: Bool)] = [:]
+    /// Survives List row teardown so thumbnails do not flash back to placeholders on vertical scroll.
+    private static var productThumbResolveCache: [String: NotificationProductThumbResolveCacheEntry] = [:]
+
+    private static func productThumbCacheKey(notificationId: String, imageEpoch: Int) -> String {
+        "\(notificationId)-\(imageEpoch)"
+    }
+
+    /// Toolbar full refresh: allow product-id resolution to run again; bust in-memory images so rows match new payloads.
+    fileprivate static func resetCachesForToolbarReload() {
+        productThumbResolveCache.removeAll()
+        NotificationBellUIImageMemoryCache.removeAll()
+    }
+
+    private var productThumbCacheKey: String {
+        Self.productThumbCacheKey(notificationId: notification.id, imageEpoch: imageReloadEpoch)
+    }
+
+    private var cachedProductThumbResolve: NotificationProductThumbResolveCacheEntry? {
+        Self.productThumbResolveCache[productThumbCacheKey]
+    }
 
     /// Slightly larger than `Theme.Typography.caption` (13pt) for readability.
     private static let lineFontSize: CGFloat = 15
@@ -996,6 +1189,7 @@ private struct NotificationRowView: View {
     private var listingMysteryAnimated: Bool {
         if isCelebrationOrBirthdayBellRow { return false }
         if productFetchMystery { return true }
+        if cachedProductThumbResolve?.mystery == true { return true }
         if notification.relatedProductIsMysteryBox == true { return true }
         if notification.bellMysteryFromMeta { return true }
         if let s = notification.productThumbnailUrl, BellNotificationMysteryHelpers.isLikelyStaticMysteryOrPlaceholderCoverURL(s) {
@@ -1021,7 +1215,8 @@ private struct NotificationRowView: View {
         if listingMysteryAnimated { return nil }
         if let u = serverProductThumbnailURL { return u }
         if let u = metaDerivedListingURL { return u }
-        return productFetchListingURL
+        if let u = productFetchListingURL { return u }
+        return cachedProductThumbResolve?.listingURL
     }
 
     private static func metaImageURLFromNotificationExcludingSenderProfile(
@@ -1095,12 +1290,12 @@ private struct NotificationRowView: View {
             || (m.contains("congratulations") && m.contains("sale"))
     }
 
-    /// New offer on your listing(s) — shorten list copy.
+    /// New offer on your listing(s) - shorten list copy.
     private var isNewOfferOnListingMessage: Bool {
         notification.message.lowercased().contains("made an offer on your product")
     }
 
-    /// Someone liked your product — tighten wording.
+    /// Someone liked your product - tighten wording.
     private var isProductLikeMessage: Bool {
         modelGroupLower == "product" && notification.message.lowercased().contains("liked your product")
     }
@@ -1115,13 +1310,13 @@ private struct NotificationRowView: View {
         // Follows
         if m.contains("followed you") { return true }
         if m.contains("started following") || m.contains("is now following you") { return true }
-        // Comments (avoid bare `comment` substring — too broad)
+        // Comments (avoid bare `comment` substring - too broad)
         if mg == "comment" || mg == "comments" { return true }
         if m.contains("commented") { return true }
         if m.contains("comment on your") || m.contains("new comment on your") { return true }
-        // Likes — product
+        // Likes - product
         if isProductLikeMessage { return true }
-        // Likes — lookbook / feed (do not use `modelGroup == lookbook` alone; that catches non-like rows)
+        // Likes - lookbook / feed (do not use `modelGroup == lookbook` alone; that catches non-like rows)
         if m.contains("liked your lookbook") || m.contains("likes your lookbook") { return true }
         if m.contains("lookbook post"), (m.contains("liked") || m.contains("likes")) { return true }
         return false
@@ -1276,7 +1471,7 @@ private struct NotificationRowView: View {
             )
             .circularAvatarHairlineBorder()
         } else {
-            // Non-social rows: server / meta / `getProduct` JPEG, or placeholder — never the sender’s profile in the bell list.
+            // Non-social rows: server / meta / `getProduct` JPEG, or placeholder - never the sender’s profile in the bell list.
             NotificationBellThumbnail(
                 productURL: displayListingJpegURL,
                 avatarURL: nil,
@@ -1331,9 +1526,28 @@ private struct NotificationRowView: View {
     }
 
     @MainActor
+    private func loadProductThumbResolveFromCacheIfPresent() -> Bool {
+        guard let entry = cachedProductThumbResolve, entry.isComplete else { return false }
+        productFetchListingURL = entry.listingURL
+        productFetchMystery = entry.mystery
+        return true
+    }
+
+    @MainActor
+    private func persistProductThumbResolveCache() {
+        Self.productThumbResolveCache[productThumbCacheKey] = NotificationProductThumbResolveCacheEntry(
+            listingURL: productFetchListingURL,
+            mystery: productFetchMystery,
+            isComplete: true
+        )
+    }
+
+    @MainActor
     private func resolveProductThumbnailIfNeeded() async {
-        productFetchMystery = false
+        if loadProductThumbResolveFromCacheIfPresent() { return }
+        defer { persistProductThumbResolveCache() }
         productFetchListingURL = nil
+        productFetchMystery = false
         if isSupportNotification { return }
         if isSocialSenderAvatarThumbnail { return }
         if isCelebrationOrBirthdayBellRow { return }

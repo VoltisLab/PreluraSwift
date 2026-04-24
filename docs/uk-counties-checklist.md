@@ -1,4 +1,4 @@
-# UK counties checklist — county-by-county coverage
+# UK counties checklist - county-by-county coverage
 
 Use this list to track which areas have had all towns, villages, and cities added to `Prelura-swift/Resources/LocationSuggestions.json`. Tick each box when that area is complete.
 
@@ -8,7 +8,7 @@ Use this list to track which areas have had all towns, villages, and cities adde
 
 ---
 
-## England — ceremonial counties (48)
+## England - ceremonial counties (48)
 
 | # | County | Done |
 |---|--------|------|
@@ -62,7 +62,7 @@ Use this list to track which areas have had all towns, villages, and cities adde
 
 ---
 
-## Scotland — council areas (32)
+## Scotland - council areas (32)
 
 | # | Council area | Done |
 |---|--------------|------|
@@ -101,7 +101,7 @@ Use this list to track which areas have had all towns, villages, and cities adde
 
 ---
 
-## Wales — principal areas (22)
+## Wales - principal areas (22)
 
 | # | Principal area | Done |
 |---|----------------|------|
@@ -130,7 +130,7 @@ Use this list to track which areas have had all towns, villages, and cities adde
 
 ---
 
-## Northern Ireland — districts (11)
+## Northern Ireland - districts (11)
 
 | # | District | Done |
 |---|----------|------|

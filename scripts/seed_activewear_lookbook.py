@@ -60,7 +60,7 @@ ADD_COMMENT = """mutation AddLookbookComment($postId: UUID!, $text: String!, $pa
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
 
-# --- Up to 50 caption lines: athleisure / gym / running — some emoji-only for variety ---
+# --- Up to 50 caption lines: athleisure / gym / running - some emoji-only for variety ---
 CAPTION_POOL = [
     "💪",
     "✨",
@@ -99,7 +99,7 @@ CAPTION_POOL = [
     "Gym lighting did its job.",
     "No PR today, just consistency.",
     "Stretching counts as productivity.",
-    "Athletic socks — the real MVP.",
+    "Athletic socks - the real MVP.",
     "Morning miles hit different.",
     "Baggy tee, serious intent.",
     "Foam roller is my therapist.",
@@ -116,7 +116,7 @@ CAPTION_POOL = [
 
 # Primary hashtag appears in ~90% of hashtag blocks (see build_hashtag_line)
 TAG_PRIMARY = "activewear"
-# Mix of IG/TikTok fitness tags — keep generic (no trademarked slogans)
+# Mix of IG/TikTok fitness tags - keep generic (no trademarked slogans)
 TAG_ACTIVE = [
     "activewear",
     "athleisure",
@@ -549,7 +549,7 @@ def main() -> None:
     upload_url = os.environ.get("UPLOAD_URL", DEFAULT_UPLOAD)
     if not upload_url.endswith("/"):
         upload_url += "/"
-    email_domain = os.environ.get("SEED_EMAIL_DOMAIN", "wearhouse.co.uk")
+    email_domain = os.environ.get("SEED_EMAIL_DOMAIN", "mywearhouse.co.uk")
     all_seed = male_users + female_users
 
     results: list[dict[str, Any]] = []

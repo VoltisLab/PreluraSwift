@@ -3,7 +3,7 @@
 Assign one unique profile image per female seed username (115 accounts).
 
 Rules:
-  • Usernames come from scripts/data/seed-usernames-female.txt (exactly one list — never male accounts).
+  • Usernames come from scripts/data/seed-usernames-female.txt (exactly one list - never male accounts).
   • Image folder must contain the same number of image files as usernames (default: 115).
   • Images are sorted by filename (case-insensitive) for a stable, repeatable pairing with file order.
   • Each image is used at most once.
@@ -15,7 +15,7 @@ Env:
   STAGING_SEED_PASSWORD   required (unless --dry-run)
   GRAPHQL_URL             default https://prelura.voltislabs.uk/graphql/
   UPLOAD_URL              default https://prelura.voltislabs.uk/graphql/uploads/
-  SEED_EMAIL_DOMAIN       default wearhouse.co.uk (second login attempt)
+  SEED_EMAIL_DOMAIN       default mywearhouse.co.uk (second login attempt)
 
 Examples:
   python3 scripts/apply_female_seed_profile_pictures.py --dry-run ~/Downloads/female-avatars
@@ -318,7 +318,7 @@ def main() -> None:
     upload_url = os.environ.get("UPLOAD_URL", DEFAULT_UPLOAD)
     if not upload_url.endswith("/"):
         upload_url += "/"
-    email_domain = os.environ.get("SEED_EMAIL_DOMAIN", "wearhouse.co.uk")
+    email_domain = os.environ.get("SEED_EMAIL_DOMAIN", "mywearhouse.co.uk")
 
     for j, (username, img_path) in enumerate(pairs):
         step = args.skip + j + 1

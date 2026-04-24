@@ -6,14 +6,14 @@ Distribute lookbook likes across seeded posts using the seed username lists.
     ``seed-usernames-female.txt`` (override with ``--male-list`` / ``--female-list``).
   • Fetches all lookbook posts from the API (paginated ``lookbooks`` query).
   • Assigns each post a **target like count** in ``[0, max_likes]`` with a skewed distribution
-    (many posts get few likes, some get more — simulates uneven engagement). Default **max 27**.
+    (many posts get few likes, some get more - simulates uneven engagement). Default **max 27**.
   • For each post, picks that many **distinct** likers at random, excluding the poster
     (users cannot like their own post).
   • Logs in **once per liker** and applies likes for all assigned posts: queries ``userLiked``,
     then ``toggleLookbookLike`` only when not already liked (idempotent re-runs).
 
   Required env: ``STAGING_SEED_PASSWORD``. Optional: ``GRAPHQL_URL``, ``SEED_EMAIL_DOMAIN``,
-  ``SEED_RANDOM_SEED`` (integer for reproducible sampling — **set this** if you stop and re-run so
+  ``SEED_RANDOM_SEED`` (integer for reproducible sampling - **set this** if you stop and re-run so
   the like plan matches and the checkpoint can resume). If you omit it, the script picks a seed,
   prints it, and saves it to ``scripts/data/lookbook_likes_last_random_seed.txt``; use
   ``--reuse-saved-seed`` on the next run to reuse that file without setting the env var.

@@ -143,7 +143,7 @@ class DiscoverViewModel: ObservableObject {
     }
 
     private func executeDiscoverLoad() async {
-        StartupTiming.mark("DiscoverViewModel.executeDiscoverLoad — started")
+        StartupTiming.mark("DiscoverViewModel.executeDiscoverLoad - started")
 
         do {
             async let recentlyViewedTask = productService.getRecentlyViewedProducts()
@@ -153,7 +153,7 @@ class DiscoverViewModel: ObservableObject {
             async let shopBargainsTask = productService.getAllProducts(pageNumber: 1, pageCount: 50, maxPrice: 15.0)
             async let recommendedTask = userService.getRecommendedSellers(pageNumber: 1, pageCount: 20)
 
-            // 1) Recently viewed — does not depend on full catalog.
+            // 1) Recently viewed - does not depend on full catalog.
             let (recentlyViewedProducts, discoverFeatured) = try await (recentlyViewedTask, discoverFeaturedTask)
             let recentlyViewedVisible = recentlyViewedProducts.excludingVacationModeSellers().excludingSold()
             recentlyViewedItems = [Item].mergedDiscoverRecentlyStrip(
@@ -162,7 +162,7 @@ class DiscoverViewModel: ObservableObject {
                 maxTotal: 5
             )
             isLoadingRecentlyViewedSection = false
-            StartupTiming.mark("DiscoverViewModel — recently viewed section ready")
+            StartupTiming.mark("DiscoverViewModel - recently viewed section ready")
 
             // 2) Main grid + Brands you love (needs catalog).
             let allProducts = try await allProductsTask
@@ -176,7 +176,7 @@ class DiscoverViewModel: ObservableObject {
                 onSaleItems = []
                 clearAllSectionLoading()
                 isLoading = false
-                StartupTiming.mark("DiscoverViewModel.loadDiscoverContent — empty catalog")
+                StartupTiming.mark("DiscoverViewModel.loadDiscoverContent - empty catalog")
                 return
             }
 
@@ -201,9 +201,9 @@ class DiscoverViewModel: ObservableObject {
             brandsYouLoveItems = Array(brandsYouLove.prefix(5))
             usedProductIds.formUnion(Set(brandsYouLoveItems.map { $0.id }))
             isLoadingBrandsYouLoveSection = false
-            StartupTiming.mark("DiscoverViewModel — brands you love section ready")
+            StartupTiming.mark("DiscoverViewModel - brands you love section ready")
 
-            // 3) Top shops — `recommendedTask` has been running since the start.
+            // 3) Top shops - `recommendedTask` has been running since the start.
             let recommended = try? await recommendedTask
             if let recommended {
                 topShops = recommended.map { rec in
@@ -222,7 +222,7 @@ class DiscoverViewModel: ObservableObject {
                 }
             }
             isLoadingTopShopsSection = false
-            StartupTiming.mark("DiscoverViewModel — top shops section ready")
+            StartupTiming.mark("DiscoverViewModel - top shops section ready")
 
             // 4–5) Bargains + on sale (fetches started at t0; merge uses `usedProductIds` after brands).
             let (onSaleProducts, shopBargainsProducts) = try await (onSaleTask, shopBargainsTask)
@@ -237,7 +237,7 @@ class DiscoverViewModel: ObservableObject {
             }
             usedProductIds.formUnion(Set(shopBargainsItems.map { $0.id }))
             isLoadingShopBargainsSection = false
-            StartupTiming.mark("DiscoverViewModel — shop bargains section ready")
+            StartupTiming.mark("DiscoverViewModel - shop bargains section ready")
 
             let availableOnSale = onSaleVisible.filter { !usedProductIds.contains($0.id) }
             if availableOnSale.count >= 5 {
@@ -248,12 +248,12 @@ class DiscoverViewModel: ObservableObject {
             isLoadingOnSaleSection = false
 
             isLoading = false
-            StartupTiming.mark("DiscoverViewModel.loadDiscoverContent — success (all sections)")
+            StartupTiming.mark("DiscoverViewModel.loadDiscoverContent - success (all sections)")
         } catch {
             isLoading = false
             clearAllSectionLoading()
             errorMessage = L10n.userFacingError(error)
-            StartupTiming.mark("DiscoverViewModel.loadDiscoverContent — failed: \(error.localizedDescription)")
+            StartupTiming.mark("DiscoverViewModel.loadDiscoverContent - failed: \(error.localizedDescription)")
             print("❌ Discover load error: \(error.localizedDescription)")
         }
     }

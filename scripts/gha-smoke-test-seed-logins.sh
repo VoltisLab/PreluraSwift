@@ -9,7 +9,7 @@ set -euo pipefail
 N="${1:-}"
 CSV="${SEED_CSV:-seed-users-report.csv}"
 GRAPHQL_URL="${GRAPHQL_URL:-https://prelura.voltislabs.uk/graphql/}"
-SEED_EMAIL_DOMAIN="${SEED_EMAIL_DOMAIN:-wearhouse.co.uk}"
+SEED_EMAIL_DOMAIN="${SEED_EMAIL_DOMAIN:-mywearhouse.co.uk}"
 
 if [[ -z "${STAGING_SEED_PASSWORD:-}" ]]; then
   echo "Missing STAGING_SEED_PASSWORD"

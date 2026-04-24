@@ -25,7 +25,7 @@ You can still keep analytics or other tooling separate elsewhere; **push deliver
 
 **Recommended order:**
 
-1. **Pick the canonical Firebase project** — the one your team controls (e.g. the Swift app’s project). Same place you already put `GoogleService-Info.plist` for `com.prelura.preloved`.
+1. **Pick the canonical Firebase project** - the one your team controls (e.g. the Swift app’s project). Same place you already put `GoogleService-Info.plist` for `com.prelura.preloved`.
 2. **In that project:** register the iOS app (if needed), upload the **APNs `.p8`** key under **Project settings → Cloud Messaging** (see §3 below).
 3. **On the server:** switch Firebase Admin / FCM to a **service account JSON from this canonical project** (replace env vars, secrets, or key file). Deploy. Until this is done, Swift tokens from the new project will not receive API-sent notifications.
 4. **Apps:** Swift already uses the canonical plist. Any **remaining Flutter** builds must use **`google-services.json` / plist from the same canonical project** if you still ship Flutter; if Swift-only, only the Swift plist matters.
@@ -60,7 +60,7 @@ Only use a **second** Firebase project if you do **not** rely on it for **server
 
 5. Replace any old plist. **Do not commit** this file (it is gitignored; use `GoogleService-Info.plist.example` as a reference).
 
-## 3. Enable Cloud Messaging (FCM) — upload APNs key
+## 3. Enable Cloud Messaging (FCM) - upload APNs key
 
 The Swift app uses **Firebase Cloud Messaging** for device tokens (`AppDelegate` + `FirebaseMessaging`).
 
@@ -85,7 +85,7 @@ Without this step, the app may still run, but **FCM tokens / push from Firebase*
 Do only this:
 
 1. **Run the app** from Xcode (Debug). Tap **Allow** when iOS asks for notifications.
-2. In the **Xcode console**, find the line: **`[FCM TEST] Copy this token into Firebase…`** — copy the **long token** (one line, no spaces).
+2. In the **Xcode console**, find the line: **`[FCM TEST] Copy this token into Firebase…`** - copy the **long token** (one line, no spaces).
 3. In Firebase: open **[Notifications composer](https://console.firebase.google.com/project/marketplace-5e657/notification)** → **New notification** → enter title + body → find **Send test message** (usually on the **right** / preview area, *before* you fully publish to everyone) → paste the token → **Test**.
 
 Then **background the app** (home button / swipe up) so the banner can show.
@@ -105,7 +105,7 @@ This repo does not contain server code; coordinate with whoever owns the GraphQL
 
 | Where | Firebase-related secrets? |
 |-------|---------------------------|
-| **This repo (`PreluraIOS`)** | **No** — there are no `.github/workflows` in this project, and `GoogleService-Info.plist` is not committed. Local/Xcode builds use the plist on disk. **Only if you add CI** (e.g. GitHub Actions) that builds the app would you optionally add a secret such as a base64-encoded `GoogleService-Info.plist` and write it during the job. |
+| **This repo (`PreluraIOS`)** | **No** - there are no `.github/workflows` in this project, and `GoogleService-Info.plist` is not committed. Local/Xcode builds use the plist on disk. **Only if you add CI** (e.g. GitHub Actions) that builds the app would you optionally add a secret such as a base64-encoded `GoogleService-Info.plist` and write it during the job. |
 | **Backend repo** (`VoltisLab/prelura-app`) | **Yes, when you cut over.** FCM is wired in `utils/firebase_service.py` via **python-decouple** env vars (not a single JSON file in repo). Deploy workflow **`.github/workflows/deploy-to-uat.yml`** injects these **GitHub Actions secrets** into `.env` on the server: |
 
 **GitHub secrets to refresh from the new Firebase service account JSON**
@@ -115,7 +115,7 @@ This repo does not contain server code; coordinate with whoever owns the GraphQL
 | `GOOGLE_CRED_TYPE` | `type` (usually `service_account`) |
 | `GOOGLE_CRED_PROJECT_ID` | `project_id` |
 | `GOOGLE_CRED_PRIVATE_KEY_ID` | `private_key_id` |
-| `GOOGLE_CRED_PRIVATE_KEY` | `private_key` — paste **verbatim**; newlines often stored as `\n` in GitHub (code does `.replace("\\n", "\n")`) |
+| `GOOGLE_CRED_PRIVATE_KEY` | `private_key` - paste **verbatim**; newlines often stored as `\n` in GitHub (code does `.replace("\\n", "\n")`) |
 | `GOOGLE_CRED_CLIENT_MAIL` | `client_email` |
 | `GOOGLE_CRED_CLIENT_ID` | `client_id` |
 | `GOOGLE_CRED_AUTH_URI` | `auth_uri` |
@@ -132,7 +132,7 @@ If any of these are missing or still `placeholder_*`, logs show *Firebase creden
 
 1. `GoogleService-Info.plist` is inside the `Prelura-swift` folder (file-system synced with the target).
 2. **Xcode:** open the project and run (⌘R). **Terminal:** `./scripts/ios-device-build.sh` then install/run from Xcode, or pass a device destination if you use `xcodebuild` + `devicectl`.
-3. Invalid plist or bundle mismatch usually crashes immediately at `FirebaseApp.configure()` — check the console.
+3. Invalid plist or bundle mismatch usually crashes immediately at `FirebaseApp.configure()` - check the console.
 
 ## 7. Common mistakes
 
@@ -170,7 +170,7 @@ If any of these are missing or still `placeholder_*`, logs show *Firebase creden
 | File | Purpose |
 |------|--------|
 | `Prelura-swift/AppDelegate.swift` | `FirebaseApp.configure()`, FCM delegate |
-| `Prelura-swift/GoogleService-Info.plist` | **Local only** — from Firebase Console |
+| `Prelura-swift/GoogleService-Info.plist` | **Local only** - from Firebase Console |
 | `Prelura-swift/GoogleService-Info.plist.example` | Template / keys reference (no secrets) |
 
 If you still maintain a Flutter app, its Firebase config must use the **same canonical project** as the API (see migration section above). If Prelura is **Swift-only**, ignore Flutter config; only `Prelura-swift/GoogleService-Info.plist` needs to match the server.

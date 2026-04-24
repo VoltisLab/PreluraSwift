@@ -18,7 +18,7 @@ final class ChatThreadUIUpdateDebugState: ObservableObject {
     @Published private(set) var jsonObjectReceiveCount: Int = 0
     @Published private(set) var parseSuccessCount: Int = 0
     @Published private(set) var parseDropCount: Int = 0
-    /// Django `receive_json` exception path sends `{"error": "..."}` — not a chat row; counted separately from parse drops.
+    /// Django `receive_json` exception path sends `{"error": "..."}` - not a chat row; counted separately from parse drops.
     @Published private(set) var serverErrorFrameCount: Int = 0
     @Published private(set) var bridgeEmitCount: Int = 0
     @Published private(set) var uiOnChangeDrainCount: Int = 0

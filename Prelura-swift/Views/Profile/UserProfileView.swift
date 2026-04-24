@@ -15,7 +15,7 @@ struct UserProfileView: View {
     @State private var filterCondition: String? = nil
     @State private var filterMinPrice: String = ""
     @State private var filterMaxPrice: String = ""
-    @State private var listingScope: ProfileListingScope = .all
+    @State private var listingScope: ProfileListingScope = .active
     @State private var activeListingsSheet: ProfileListingsSheet?
     @State private var topBrandsScrollId: String? = nil
     @State private var showProfilePhotoFullScreen: Bool = false
@@ -781,6 +781,8 @@ struct UserProfileView: View {
     private var itemsGridSection: some View {
         var items = viewModel.items
         switch listingScope {
+        case .active:
+            items = items.filter { $0.status.uppercased() == "ACTIVE" && !$0.isHidden }
         case .all:
             items = items.filter { !$0.isHidden }
         case .sold:
@@ -899,6 +901,9 @@ struct UserProfileView: View {
         if !hasAnyListings { return L10n.string("No listings yet") }
         let all = viewModel.items
         switch scope {
+        case .active:
+            if !all.contains(where: { $0.status.uppercased() == "ACTIVE" && !$0.isHidden }) { return L10n.string("No active listings") }
+            return L10n.string("No items match your filters")
         case .all:
             return L10n.string("No items match your filters")
         case .sold:

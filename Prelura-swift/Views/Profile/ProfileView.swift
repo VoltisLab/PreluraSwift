@@ -43,7 +43,7 @@ struct ProfileView: View {
     @State private var profileImage: UIImage? = nil
     @State private var isVacationMode: Bool = false
     @State private var profileSort: ProfileSortOption = .newestFirst
-    @State private var listingScope: ProfileListingScope = .all
+    @State private var listingScope: ProfileListingScope = .active
     @State private var filterCondition: String? = nil
     @State private var filterMinPrice: String = ""
     @State private var filterMaxPrice: String = ""
@@ -105,7 +105,7 @@ struct ProfileView: View {
                             if viewModel.user?.isVacationMode == true {
                                 vacationModeSection
                             } else {
-                                // Categories, Multi-buy, Top Brands, Filter/Sort — only when user has products
+                                // Categories, Multi-buy, Top Brands, Filter/Sort - only when user has products
                                 if !viewModel.userItems.isEmpty {
                                     filtersSection
                                 }
@@ -472,7 +472,7 @@ struct ProfileView: View {
         return user.username
     }
 
-    /// Stats row next to avatar — compact fonts so we don't increase effective screen width.
+    /// Stats row next to avatar - compact fonts so we don't increase effective screen width.
     private var profileStatsRowCompact: some View {
         HStack(spacing: Theme.Spacing.md) {
             StatColumn(value: "\(viewModel.user?.listingsCount ?? 0)", label: (viewModel.user?.listingsCount ?? 0) == 1 ? L10n.string("Listing") : L10n.string("Listings"), compact: true)
@@ -938,6 +938,8 @@ struct ProfileView: View {
     private var itemsGridSection: some View {
         var items = viewModel.userItems
         switch listingScope {
+        case .active:
+            items = items.filter { $0.status.uppercased() == "ACTIVE" && !$0.isHidden }
         case .all:
             items = items.filter { !$0.isHidden }
         case .sold:
@@ -1070,6 +1072,9 @@ struct ProfileView: View {
         if !hasAnyListings { return L10n.string("No listings yet") }
         let all = viewModel.userItems
         switch scope {
+        case .active:
+            if !all.contains(where: { $0.status.uppercased() == "ACTIVE" && !$0.isHidden }) { return L10n.string("No active listings") }
+            return L10n.string("No items match your filters")
         case .all:
             return L10n.string("No items match your filters")
         case .sold:
@@ -1153,7 +1158,7 @@ struct WardrobeItemCard: View {
                         )
                         .frame(width: imageWidth, height: imageHeight)
                     
-                    // Product image — mystery uses in-app animated art (not the uploaded JPEG).
+                    // Product image - mystery uses in-app animated art (not the uploaded JPEG).
                     Group {
                         if item.isMysteryBox {
                             MysteryBoxAnimatedMediaView()

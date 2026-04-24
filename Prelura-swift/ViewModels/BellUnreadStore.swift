@@ -25,7 +25,7 @@ final class BellUnreadStore: ObservableObject {
                 guard serial == requestSerial else { return }
                 unreadCount = max(0, n)
                 hasUnread = n > 0
-                StartupTiming.mark("BellUnreadStore.scheduleRefresh — unread count=\(n)")
+                StartupTiming.mark("BellUnreadStore.scheduleRefresh - unread count=\(n)")
             } catch {
                 guard serial == requestSerial else { return }
                 hasUnread = false

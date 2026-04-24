@@ -184,7 +184,18 @@ final class NotificationService {
                 model = try c.decodeIfPresent(String.self, forKey: .model)
                 modelId = try c.decodeIfPresent(String.self, forKey: .modelId)
                 modelGroup = try c.decodeIfPresent(String.self, forKey: .modelGroup)
-                isRead = try c.decodeIfPresent(Bool.self, forKey: .isRead)
+                if let b = try? c.decode(Bool.self, forKey: .isRead) {
+                    isRead = b
+                } else if let i = try? c.decode(Int.self, forKey: .isRead) {
+                    isRead = i != 0
+                } else if let s = try? c.decode(String.self, forKey: .isRead) {
+                    let t = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    if ["true", "1", "yes", "y"].contains(t) { isRead = true }
+                    else if ["false", "0", "no", "n"].contains(t) { isRead = false }
+                    else { isRead = nil }
+                } else {
+                    isRead = nil
+                }
                 createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
                 sender = try c.decodeIfPresent(RawSender.self, forKey: .sender)
                 productThumbnailUrl = try c.decodeIfPresent(String.self, forKey: .productThumbnailUrl)
@@ -317,13 +328,13 @@ final class NotificationService {
         return count
     }
 
-    /// Marks every unread notification that counts toward the home bell badge as read (same rules and pagination cap as `countUnreadBellEligibleNotifications`). On iOS, ``NotificationsListView`` calls this on the **second** consecutive visit to the list (or after individual row taps via `readNotifications`); the first visit only primes—no mutation—so “accent = unread” until tap or second open.
+    /// Marks every unread notification that counts toward the home bell badge as read (same rules and pagination cap as `countUnreadBellEligibleNotifications`). On iOS, ``NotificationsListView`` calls this on the **second** consecutive visit to the list (or after individual row taps via `readNotifications`); the first visit only primes-no mutation-so “accent = unread” until tap or second open.
     func markAllBellEligibleUnreadRead(pageCount: Int = 40, maxPages: Int = 6) async throws {
         var ids: [Int] = []
         for page in 1...maxPages {
             let (batch, _) = try await getNotifications(pageCount: pageCount, pageNumber: page)
             for n in batch where n.shouldCountTowardBellBadge {
-                if let id = Int(n.id) { ids.append(id) }
+                if let id = n.bellNotificationDatabaseIntId { ids.append(id) }
             }
             if batch.count < pageCount { break }
         }
@@ -345,7 +356,15 @@ final class NotificationService {
         struct Payload: Decodable { let readNotifications: ReadResult? }
         struct ReadResult: Decodable { let success: Bool? }
         let response: Payload = try await client.execute(query: mutation, variables: variables, responseType: Payload.self)
-        return response.readNotifications?.success ?? false
+        let ok = response.readNotifications?.success ?? false
+        if !ok {
+            throw NSError(
+                domain: "NotificationService",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "readNotifications returned success=false"]
+            )
+        }
+        return true
     }
     
     /// Delete a notification. Matches Flutter deleteNotification(notificationId).

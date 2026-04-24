@@ -52,7 +52,7 @@ enum WearhouseFCMRegistration {
 
     private static var apnsTimeoutError: NSError {
         #if targetEnvironment(simulator)
-        let hint = " Simulator often never receives an APNs token — test FCM + banners on a physical iPhone with Push capability."
+        let hint = " Simulator often never receives an APNs token - test FCM + banners on a physical iPhone with Push capability."
         #else
         let hint =
             " On device: Apple Developer → Identifiers → com.prelura.preloved → enable Push Notifications, then regenerate the provisioning profile / reinstall the app. Also confirm notification permission and that the TestFlight build uses Release signing (production APNs)."

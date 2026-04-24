@@ -3,7 +3,7 @@
 //  Prelura-swift
 //
 //  Lookbooks on the server. Uses createLookbook mutation and lookbooks query.
-//  When the backend does not yet expose these (see docs/lookbooks-backend-spec.md), calls fail — no local fallback.
+//  When the backend does not yet expose these (see docs/lookbooks-backend-spec.md), calls fail - no local fallback.
 //
 
 import Foundation
@@ -705,7 +705,7 @@ final class LookbookService {
         }
     }
 
-    /// Live API (`prelura.voltislabs.uk`): `LookbooksConnectionType` exposes only `nodes` and `edges { node }` — no `pageInfo` or `edge.cursor`.
+    /// Live API (`prelura.voltislabs.uk`): `LookbooksConnectionType` exposes only `nodes` and `edges { node }` - no `pageInfo` or `edge.cursor`.
     /// Requesting those fields makes the whole operation fail; the client used to fall back to `lookbooks(first: ~80)` only.
     private static func lookbooksConnectionInferHasNextPage(nonEmptyBatchCount: Int, requestedFirst: Int) -> Bool {
         guard nonEmptyBatchCount > 0 else { return false }
@@ -863,7 +863,7 @@ final class LookbookService {
                     merged.append(p)
                 }
             }
-            /// Prod: passing the last post id as `after` can return the same slice (no Relay cursors) — detect and stop.
+            /// Prod: passing the last post id as `after` can return the same slice (no Relay cursors) - detect and stop.
             if merged.count == mergedBefore {
                 break
             }

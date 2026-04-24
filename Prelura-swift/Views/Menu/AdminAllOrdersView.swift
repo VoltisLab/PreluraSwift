@@ -33,10 +33,10 @@ struct AdminAllOrdersView: View {
                                 Text(row.publicId ?? "Order #\(row.id)")
                                     .font(Theme.Typography.headline)
                                     .foregroundColor(Theme.Colors.primaryText)
-                                Text(row.status ?? "—")
+                                Text(row.status ?? "-")
                                     .font(Theme.Typography.caption)
                                     .foregroundColor(Theme.Colors.secondaryText)
-                                Text("\(row.user?.username ?? "—") → \(row.seller?.username ?? "—")")
+                                Text("\(row.user?.username ?? "-") → \(row.seller?.username ?? "-")")
                                     .font(Theme.Typography.caption)
                                     .foregroundColor(Theme.Colors.secondaryText)
                                 if let t = row.priceTotal {
@@ -219,15 +219,15 @@ struct AdminOrderAdminDetailView: View {
             if let ua = order.updatedAt, !ua.isEmpty {
                 clickableLabeled("Updated", Self.formatAdminDate(iso: ua))
             }
-            clickableLabeled("Buyer", order.user?.username ?? "—")
-            clickableLabeled("Seller", order.seller?.username ?? "—")
+            clickableLabeled("Buyer", order.user?.username ?? "-")
+            clickableLabeled("Seller", order.seller?.username ?? "-")
             if let st = order.itemsSubtotal { clickableLabeled("Items subtotal", Self.formatMoney(st)) }
             if let fee = order.buyerProtectionFee { clickableLabeled("Buyer protection", Self.formatMoney(fee)) }
             if let ship = order.shippingFee { clickableLabeled("Shipping", Self.formatMoney(ship)) }
             if let disc = order.discountPrice, disc > 0 { clickableLabeled("Discount", Self.formatMoney(disc)) }
             if let total = order.priceTotal { clickableLabeled("Total", Self.formatMoney(total)) }
             if let offer = order.offer {
-                clickableLabeled("Offer", "\(offer.id ?? "—") · \(offer.status ?? "—")")
+                clickableLabeled("Offer", "\(offer.id ?? "-") · \(offer.status ?? "-")")
             }
             if let addr = order.shippingAddressJson, !addr.isEmpty { clickableLabeled("Shipping (JSON)", addr) }
             if let tn = order.trackingNumber, !tn.isEmpty { clickableLabeled("Tracking #", tn) }
@@ -245,7 +245,7 @@ struct AdminOrderAdminDetailView: View {
                     .foregroundColor(Theme.Colors.secondaryText)
                 ForEach(items) { li in
                     let name = li.productName ?? "Product #\(li.productId.map(String.init) ?? "?")"
-                    let price = li.priceAtPurchase.map(Self.formatMoney) ?? "—"
+                    let price = li.priceAtPurchase.map(Self.formatMoney) ?? "-"
                     clickableLabeled(name, price)
                 }
             }
@@ -254,9 +254,9 @@ struct AdminOrderAdminDetailView: View {
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
                 ForEach(pays) { p in
-                    let ref = p.paymentRef ?? "—"
-                    let st = p.paymentStatus ?? "—"
-                    let amt = p.paymentAmount.map(Self.formatMoney) ?? "—"
+                    let ref = p.paymentRef ?? "-"
+                    let st = p.paymentStatus ?? "-"
+                    let amt = p.paymentAmount.map(Self.formatMoney) ?? "-"
                     clickableLabeled("Payment \(ref)", "\(st) · \(amt)")
                     if let pi = p.paymentIntentId, !pi.isEmpty { clickableLabeled("Intent", pi) }
                 }
@@ -266,8 +266,8 @@ struct AdminOrderAdminDetailView: View {
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
                 ForEach(refs) { r in
-                    let amt = r.refundAmount.map(Self.formatMoney) ?? "—"
-                    let st = r.status ?? "—"
+                    let amt = r.refundAmount.map(Self.formatMoney) ?? "-"
+                    let st = r.status ?? "-"
                     clickableLabeled("Refund #\(r.id)", "\(st) · \(amt)")
                 }
             }
@@ -276,8 +276,8 @@ struct AdminOrderAdminDetailView: View {
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
                 ForEach(tl) { ev in
-                    let t = ev.createdAt.map { Self.formatAdminDate(iso: $0) } ?? "—"
-                    clickableLabeled(ev.status ?? "—", t)
+                    let t = ev.createdAt.map { Self.formatAdminDate(iso: $0) } ?? "-"
+                    clickableLabeled(ev.status ?? "-", t)
                 }
             }
             if let c = order.cancelledOrder {

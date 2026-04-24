@@ -149,7 +149,7 @@ struct MessageChatPushTraceDebugView: View {
         guard FirebaseApp.app() != nil else { return "N/A" }
         let t = Messaging.messaging().apnsToken
         if let t, !t.isEmpty { return "OK (\(t.count) bytes)" }
-        return "Missing — remote push may not work until APNs registers"
+        return "Missing - remote push may not work until APNs registers"
     }
 
     private var fcmStoredLine: String {

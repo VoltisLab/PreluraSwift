@@ -1,12 +1,12 @@
 # Mark all seed accounts as email-verified (staff GraphQL: userAdminStats + adminSetUserEmailVerified).
 #
 # Secrets (repository → Settings → Secrets and variables → Actions):
-#   STAFF_USERNAME + STAFF_PASSWORD   — staff login (same as iOS staff session), or
-#   STAFF_AUTH_TOKEN                  — staff JWT (if set, username/password are ignored)
+#   STAFF_USERNAME + STAFF_PASSWORD   - staff login (same as iOS staff session), or
+#   STAFF_AUTH_TOKEN                  - staff JWT (if set, username/password are ignored)
 #
 # CSV of usernames (gitignored locally):
-#   • Option A — paste full file into secret SEED_USERS_CSV (multiline; same columns as seed-users-report.csv)
-#   • Option B — force-add and push: git add -f seed-users-report.csv && git commit && git push
+#   • Option A - paste full file into secret SEED_USERS_CSV (multiline; same columns as seed-users-report.csv)
+#   • Option B - force-add and push: git add -f seed-users-report.csv && git commit && git push
 #
 # Optional repo variable: GRAPHQL_URL (override default in script)
 

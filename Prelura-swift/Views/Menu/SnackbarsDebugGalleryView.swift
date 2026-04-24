@@ -12,7 +12,7 @@ struct SnackbarsDebugGalleryView: View {
 
                 group(
                     title: "FeedErrorSnackbarView",
-                    subtitle: "Home (TLS) & Profile when `errorBannerTitle` is set — text + purple Try again."
+                    subtitle: "Home (TLS) & Profile when `errorBannerTitle` is set - text + purple Try again."
                 ) {
                     FeedErrorSnackbarView(onTryAgain: {})
                 }
@@ -25,14 +25,14 @@ struct SnackbarsDebugGalleryView: View {
                 }
 
                 group(
-                    title: "Inbox — archive undo",
+                    title: "Inbox - archive undo",
                     subtitle: "After swipe archive on `ChatListView` (Archived + Undo)."
                 ) {
                     SnackbarsDebugArchiveUndoRowPreview()
                 }
 
                 group(
-                    title: "Lookbook — save feedback",
+                    title: "Lookbook - save feedback",
                     subtitle: "Capsule on post row when saving to a folder (`LookbookView`)."
                 ) {
                     Text(String(format: L10n.string("Saved to %@"), "Favourites"))
@@ -45,7 +45,7 @@ struct SnackbarsDebugGalleryView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
 
                 group(
-                    title: "Order help — Copied",
+                    title: "Order help - Copied",
                     subtitle: "`OrderHelpView` bottom overlay when copying tracking link."
                 ) {
                     Text("Copied")
@@ -59,7 +59,7 @@ struct SnackbarsDebugGalleryView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
 
                 group(
-                    title: "Order detail — tracking copied",
+                    title: "Order detail - tracking copied",
                     subtitle: "Small capsule on shipping card when tracking is copied."
                 ) {
                     Text("Tracking copied")
@@ -73,7 +73,7 @@ struct SnackbarsDebugGalleryView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 group(
-                    title: "Share profile sheet — link copied / export",
+                    title: "Share profile sheet - link copied / export",
                     subtitle: "`ShareProfileLinkSheet` top inline capsules."
                 ) {
                     VStack(spacing: Theme.Spacing.sm) {
@@ -98,7 +98,7 @@ struct SnackbarsDebugGalleryView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
 
                 group(
-                    title: "Inbox — load error (bottom bar)",
+                    title: "Inbox - load error (bottom bar)",
                     subtitle: "Empty state uses `PrimaryButtonBar` + Retry (`ChatListView`)."
                 ) {
                     VStack(spacing: 0) {

@@ -25,7 +25,7 @@ enum WhatsAppQuickReactions {
     ]
 }
 
-/// Full-screen dim + reaction capsule above the bubble (reactions only — no message delete).
+/// Full-screen dim + reaction capsule above the bubble (reactions only - no message delete).
 struct WhatsAppStyleReactionOverlay: View {
     let bubbleFrame: CGRect
     /// Ordered quick reactions (frequently used first; see `ChatReactionEmojiUsageStore`).

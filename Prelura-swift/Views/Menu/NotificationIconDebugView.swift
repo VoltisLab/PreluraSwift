@@ -103,7 +103,7 @@ struct NotificationIconDebugView: View {
 
     private var retailToolbarSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            sectionHeader("Retail app — NotificationToolbarBellVisual")
+            sectionHeader("Retail app - NotificationToolbarBellVisual")
             Text("Home feed toolbar bell + red count (opaque badge).")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Colors.secondaryText)
@@ -183,7 +183,7 @@ struct NotificationIconDebugView: View {
 
     private var sizeScaleSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            sectionHeader("Admin symbol — size scale")
+            sectionHeader("Admin symbol - size scale")
             HStack(alignment: .bottom, spacing: Theme.Spacing.md) {
                 ForEach([14, 17, 20, 24, 28], id: \.self) { pt in
                     VStack(spacing: 4) {

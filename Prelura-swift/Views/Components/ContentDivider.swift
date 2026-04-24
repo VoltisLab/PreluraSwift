@@ -6,7 +6,7 @@ import UIKit
 /// Do not use for menu card row dividers (those stay as `menuDivider` in ProfileMenuView).
 ///
 /// **Thickness:** Uses **one physical pixel** (`1 / screen scale` in points), not a fixed 0.5pt.
-/// A literal 0.5pt line on @3x is 1.5 device pixels—SwiftUI often anti-aliases across two rows, so identical code
+/// A literal 0.5pt line on @3x is 1.5 device pixels-SwiftUI often anti-aliases across two rows, so identical code
 /// can look thinner or thicker depending on vertical alignment; matching the pixel grid keeps dividers consistent.
 struct ContentDivider: View {
     private var hairlineHeight: CGFloat {

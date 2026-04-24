@@ -86,12 +86,12 @@ struct OrderDetailView: View {
 
     private var effectiveOrder: Order { hydratedOrder ?? order }
 
-    /// My Orders passes an explicit role; chat / deep links may use `nil` — infer from numeric ids once `currentUser` is loaded.
+    /// My Orders passes an explicit role; chat / deep links may use `nil` - infer from numeric ids once `currentUser` is loaded.
     private var viewerIsOrderBuyer: Bool {
         if let s = isSeller { return !s }
         guard let me = currentUser?.userId, me != 0 else { return false }
         if let bid = effectiveOrder.buyerUserId, bid == me { return true }
-        // Chat / partial payloads: seller id known, buyer id missing — if we're not the seller, we're the buyer.
+        // Chat / partial payloads: seller id known, buyer id missing - if we're not the seller, we're the buyer.
         let sellerId = effectiveOrder.sellerUserId ?? effectiveOrder.otherParty?.userId
         if let sid = sellerId, sid != 0, me != sid {
             if let bid = effectiveOrder.buyerUserId, bid != 0, bid != me { return false }
@@ -579,13 +579,13 @@ struct OrderDetailView: View {
 
     private func humanizedOrderIssueType(_ raw: String) -> String {
         let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.isEmpty { return "—" }
+        if t.isEmpty { return "-" }
         return t.replacingOccurrences(of: "_", with: " ").lowercased().capitalized
     }
 
     private func buyerReportedProblemStatusLabel(_ status: String) -> String {
         switch status.uppercased() {
-        case "PENDING": return L10n.string("On hold — under review")
+        case "PENDING": return L10n.string("On hold - under review")
         case "RESOLVED": return L10n.string("Resolved")
         case "DECLINED": return L10n.string("Declined")
         default: return status
@@ -671,7 +671,7 @@ struct OrderDetailView: View {
         let buyerId = effectiveOrder.buyerUserId ?? currentUser?.userId
         if let buyerId, buyerId != 0 {
             let leftManualBuyerReview = effectiveOrder.orderReviews.contains {
-                // Only `false` means “buyer left a real review”. `true` = platform auto; `nil` = unknown — keep CTA visible.
+                // Only `false` means “buyer left a real review”. `true` = platform auto; `nil` = unknown - keep CTA visible.
                 $0.isAutoReview == false && $0.reviewerUserId == buyerId && $0.reviewedUserId == sellerId
             }
             if leftManualBuyerReview { return false }
@@ -884,7 +884,7 @@ struct OrderDetailView: View {
                                     .lineLimit(2)
                             }
                             Spacer(minLength: 6)
-                            Text("£\(p.price ?? "—")")
+                            Text("£\(p.price ?? "-")")
                                 .font(.system(size: 17, weight: .bold))
                                 .foregroundColor(Theme.Colors.primaryText)
                         }

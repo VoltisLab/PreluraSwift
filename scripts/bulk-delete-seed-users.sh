@@ -10,8 +10,8 @@
 #   SEED_CSV (default: repo root seed-users-report.csv)
 #   GRAPHQL_URL (default: https://prelura.voltislabs.uk/graphql/)
 #   DELETE_LOG (default: bulk-delete-seed-users-log.txt next to CSV)
-#   FLAG_REASON (default: OTHER) — TERMS_VIOLATION | SPAM_ACTIVITY | INAPPROPRIATE_CONTENT | HARASSMENT | LEGAL_REQUEST | OTHER
-#   FLAG_NOTES (default: Bulk seed reset — scripts/bulk-delete-seed-users.sh)
+#   FLAG_REASON (default: OTHER) - TERMS_VIOLATION | SPAM_ACTIVITY | INAPPROPRIATE_CONTENT | HARASSMENT | LEGAL_REQUEST | OTHER
+#   FLAG_NOTES (default: Bulk seed reset - scripts/bulk-delete-seed-users.sh)
 #
 set -euo pipefail
 
@@ -32,7 +32,7 @@ fi
 
 DELETE_LOG="${DELETE_LOG:-$(dirname "$SEED_CSV")/bulk-delete-seed-users-log.txt}"
 FLAG_REASON="${FLAG_REASON:-OTHER}"
-FLAG_NOTES="${FLAG_NOTES:-Bulk seed reset — scripts/bulk-delete-seed-users.sh}"
+FLAG_NOTES="${FLAG_NOTES:-Bulk seed reset - scripts/bulk-delete-seed-users.sh}"
 
 echo "Log: $DELETE_LOG"
 echo "bulk-delete started $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$DELETE_LOG"

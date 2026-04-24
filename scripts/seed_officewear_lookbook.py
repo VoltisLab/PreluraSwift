@@ -78,7 +78,7 @@ CAPTION_POOL = [
     "Earbuds in, world out.",
     "That one necklace and done.",
     "Cropped just right.",
-    "Sneakers with structure — not sorry.",
+    "Sneakers with structure - not sorry.",
     "Black on black still counts as a palette.",
     "If it creases, I steam it. Simple.",
     "Meeting ran long; fit still held up.",
@@ -95,12 +95,12 @@ CAPTION_POOL = [
     "Slip dress season meets office AC.",
     "Cardigan because the office is Antarctica.",
     "Pumps that don’t hate me yet.",
-    "Monochrome but not boring — fight me.",
+    "Monochrome but not boring - fight me.",
     "Tailored enough for HR, cool enough for after.",
     "Fabric speaks; I’m just here.",
     "Small details: belt, watch, done.",
     "If you know, you know.",
-    "Structured bag, soft knit — balance.",
+    "Structured bag, soft knit - balance.",
     "Not chasing trends; chasing fit.",
     "Lighting did half the work.",
     "Same rotation, different knot.",
@@ -116,7 +116,7 @@ CAPTION_EXTRA = [
     "Trust the process (and the tailor).",
 ]
 
-# Hashtag pools — #minimalist appears in ~90% of generated hashtag blocks via builder
+# Hashtag pools - #minimalist appears in ~90% of generated hashtag blocks via builder
 TAG_PRIMARY = "minimalist"
 TAG_OFFICE = [
     "officewear",
@@ -498,7 +498,7 @@ def main() -> None:
     upload_url = os.environ.get("UPLOAD_URL", DEFAULT_UPLOAD)
     if not upload_url.endswith("/"):
         upload_url += "/"
-    email_domain = os.environ.get("SEED_EMAIL_DOMAIN", "wearhouse.co.uk")
+    email_domain = os.environ.get("SEED_EMAIL_DOMAIN", "mywearhouse.co.uk")
     all_seed = male_users + female_users
 
     results: list[dict[str, Any]] = []

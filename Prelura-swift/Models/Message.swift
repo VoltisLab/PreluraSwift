@@ -478,7 +478,7 @@ struct Message: Identifiable {
             imageURL: img.flatMap { $0.isEmpty ? nil : $0 },
             thumbnailURL: thumb.flatMap { $0.isEmpty ? nil : $0 },
             caption: cap.flatMap { $0.isEmpty ? nil : $0 },
-            posterUsername: poster.isEmpty ? "—" : poster
+            posterUsername: poster.isEmpty ? "-" : poster
         )
     }
 
@@ -511,7 +511,7 @@ struct Message: Identifiable {
             imageURL: img.flatMap { $0.isEmpty ? nil : $0 },
             thumbnailURL: thumb.flatMap { $0.isEmpty ? nil : $0 },
             title: title,
-            sellerUsername: seller.isEmpty ? "—" : seller,
+            sellerUsername: seller.isEmpty ? "-" : seller,
             productId: pid,
             isMysteryBox: mystery
         )

@@ -714,7 +714,7 @@ struct ChatDetailView: View {
         timestampVisibilityOverrides[message.id] = !cur
     }
 
-    /// True when the previous timeline entry is a message from the same sender within 60 seconds (same group) — use for tight spacing.
+    /// True when the previous timeline entry is a message from the same sender within 60 seconds (same group) - use for tight spacing.
     private func isSameGroupAsPrevious(timelineIndex: Int, message: Message) -> Bool {
         guard timelineIndex > 0, timelineIndex - 1 < timelineOrder.count else { return false }
         guard case .message(let prevId) = timelineOrder[timelineIndex - 1],
@@ -1315,7 +1315,7 @@ struct ChatDetailView: View {
                 guard displayedConversation.id != "0",
                       let token = authService.refreshToken ?? authService.authToken,
                       !token.isEmpty else { return }
-                // Pebble chat_screen: refetch on resume — WS is disconnected while backgrounded, so pull missed rows from GraphQL.
+                // Pebble chat_screen: refetch on resume - WS is disconnected while backgrounded, so pull missed rows from GraphQL.
                 if oldPhase != .active {
                     loadConversationAndMessagesFromBackend()
                 }
@@ -1510,7 +1510,7 @@ struct ChatDetailView: View {
                 self.isLoading = false
                 self.hasFinishedInitialConversationFetch = true
                 self.isLoadingOfferHistory = false
-                // `loadOffers()` often ran before messages existed — merge offer payloads from message history here so every past offer id appears as a card.
+                // `loadOffers()` often ran before messages existed - merge offer payloads from message history here so every past offer id appears as a card.
                 self.mergeOffersFromMessages()
                 if self.offers.isEmpty, self.displayedConversation.offer != nil {
                     self.loadOffers()
@@ -1533,7 +1533,7 @@ struct ChatDetailView: View {
 
     /// Restore offers from cache or seed from `conversation.offer`, then merge offer rows parsed from **message** JSON (`mergeOffersFromMessages`).
     /// When `conversation.offerHistory` is present (from `conversationById`), use it as the primary source of truth, then merge message-derived rows for any ids missing from the server list.
-    /// Important: on first appear, `messages` is usually still empty — we call `mergeOffersFromMessages()` again after `getMessages` in `loadConversationAndMessagesFromBackend()` so full history isn’t dropped.
+    /// Important: on first appear, `messages` is usually still empty - we call `mergeOffersFromMessages()` again after `getMessages` in `loadConversationAndMessagesFromBackend()` so full history isn’t dropped.
     /// When we have a "just added" offer (last offer created in the last 60s), do not overwrite with server/cache so the sent price stays visible.
     private func loadOffers() {
         let convId = displayedConversation.id
@@ -1627,7 +1627,7 @@ struct ChatDetailView: View {
             // If server has an offer that isn't our last cached offer (e.g. counter received), append it so it appears in the thread.
             if let serverOffer = displayedConversation.offer {
                 let serverId = serverOffer.id
-                // Match any row — not only `last`, or we duplicate when server id matches an older card in the list.
+                // Match any row - not only `last`, or we duplicate when server id matches an older card in the list.
                 let alreadyHave = list.contains { $0.backendId == serverId || $0.id == serverId }
                 if !alreadyHave {
                     // Sender = opposite of last offer (turn-based); first offer fallback to lastMessageSenderUsername.
@@ -1654,7 +1654,7 @@ struct ChatDetailView: View {
             offers = list
         } else if let serverOffer = displayedConversation.offer {
             let sid = serverOffer.id
-            // First offer in cache: use lastMessageSender only. Do NOT use offer.buyer — backend often keeps original buyer on counters (mislabels "You offered").
+            // First offer in cache: use lastMessageSender only. Do NOT use offer.buyer - backend often keeps original buyer on counters (mislabels "You offered").
             var fromMe = isCurrentUser(username: displayedConversation.lastMessageSenderUsername)
             var status = serverOffer.status ?? "PENDING"
             var offerPrice = serverOffer.offerPrice
@@ -1736,7 +1736,7 @@ struct ChatDetailView: View {
         return !a.isEmpty && a == b
     }
 
-    /// Index of our in-flight offer row (nil backendId). Never use `offers.last` alone — that can be someone else's card.
+    /// Index of our in-flight offer row (nil backendId). Never use `offers.last` alone - that can be someone else's card.
     private func indexOfMyOptimisticOffer() -> Int? {
         offers.lastIndex(where: { $0.backendId == nil && $0.sentByCurrentUser })
     }
@@ -1855,7 +1855,7 @@ struct ChatDetailView: View {
         timelineOrder = entries.map(\.1)
     }
 
-    /// Create a new offer (same products) when the current offer is declined — backend rejects COUNTER on cancelled offers.
+    /// Create a new offer (same products) when the current offer is declined - backend rejects COUNTER on cancelled offers.
     private func handleCreateNewOffer(offerPrice: Double, targetOffer: OfferInfo? = nil) async {
         guard let offer = targetOffer ?? displayedConversation.offer,
               let productIds = offer.products?.compactMap({ p in p.id.flatMap(Int.init) }),
@@ -1885,7 +1885,7 @@ struct ChatDetailView: View {
                     return rawStatus
                 }()
                 let newBackendId = serverOfferFromCreate?.id
-                // WebSocket may have already appended this offer — only remove our duplicate placeholder, never other cards.
+                // WebSocket may have already appended this offer - only remove our duplicate placeholder, never other cards.
                 if let bid = newBackendId, offers.contains(where: { $0.backendId == bid }) {
                     if let optIdx = indexOfMyOptimisticOffer() {
                         var next = offers
@@ -1978,7 +1978,7 @@ struct ChatDetailView: View {
                     let status: String = (rawStatus.uppercased() == "REJECTED" || rawStatus.uppercased() == "CANCELLED") ? "PENDING" : rawStatus
                     let newBackendId = serverOffer?.id
                     let oldOfferIdStr = String(offerId)
-                    // If server returns the *old* offer we countered (stale), we must not remove our optimistic row — that would collapse the new card into the old one. Only "remove optimistic" when the duplicate is the *new* offer (WS already added it).
+                    // If server returns the *old* offer we countered (stale), we must not remove our optimistic row - that would collapse the new card into the old one. Only "remove optimistic" when the duplicate is the *new* offer (WS already added it).
                     let serverReturnedOldOfferId = newBackendId.map { $0 == oldOfferIdStr } ?? false
                     if let bid = newBackendId, !serverReturnedOldOfferId, offers.contains(where: { $0.backendId == bid }) {
                         if let optIdx = indexOfMyOptimisticOffer() {
@@ -2165,7 +2165,7 @@ struct ChatDetailView: View {
         return prices.reduce(0, +)
     }
 
-    /// Line-item price for the header: agreed offer or fetched product price. Nil until loaded — do not show `order.total` (often items + delivery) to avoid flashing wrong amount.
+    /// Line-item price for the header: agreed offer or fetched product price. Nil until loaded - do not show `order.total` (often items + delivery) to avoid flashing wrong amount.
     private var orderHeaderLinePriceForDisplay: Double? {
         guard displayedConversation.order != nil else { return nil }
         if let sub = orderHeaderMultibuySubtotal { return sub }
@@ -2649,7 +2649,7 @@ struct ChatDetailView: View {
                 guard let s = senderNorm, !s.isEmpty else { return nil }
                 return isCurrentUser(username: s)
             }()
-            // Backend often keeps the same offer row id when someone counters — `contains(backendId)` would skip and we'd show one card. Split history instead.
+            // Backend often keeps the same offer row id when someone counters - `contains(backendId)` would skip and we'd show one card. Split history instead.
             if let dupIdx = offers.firstIndex(where: { $0.backendId == offer.id }),
                abs(offers[dupIdx].offerPrice - offer.offerPrice) > 0.009 {
                 demoteExistingOfferRowForReusedServerId(existingIndex: dupIdx, incoming: offer, event: event)
@@ -2684,7 +2684,7 @@ struct ChatDetailView: View {
                 rebuildTimelineOrder()
                 break
             }
-            // Never replace optimistic rows via WebSocket — only append (dedupe by server offer id).
+            // Never replace optimistic rows via WebSocket - only append (dedupe by server offer id).
             if !offers.contains(where: { $0.backendId == offer.id }) {
                 let isMineForNew: Bool
                 if let explicit = explicitSenderIsMine {
@@ -2694,7 +2694,7 @@ struct ChatDetailView: View {
                           details.offerId == offer.id {
                     isMineForNew = isCurrentUser(username: lastMsg.senderUsername)
                 } else {
-                    // Do NOT infer from `offers.last` — when the peer counters twice in a row or messages lag, `!last.sentByCurrentUser` becomes true and we mis-label their offer as ours (and can hit the optimistic-upgrade path).
+                    // Do NOT infer from `offers.last` - when the peer counters twice in a row or messages lag, `!last.sentByCurrentUser` becomes true and we mis-label their offer as ours (and can hit the optimistic-upgrade path).
                     isMineForNew = false
                 }
                 #if DEBUG
@@ -2993,7 +2993,7 @@ struct ChatDetailView: View {
             Task { @MainActor in
                 guard convIdForPushTrace != "0" else { return }
                 ChatPushTraceDebugState.shared.markSocketDisconnected(conversationId: convIdForPushTrace, reason: reason)
-                // Transient URLSessionWebSocket send failures must not nil the client — that dropped the room and looked like "WS never pushes".
+                // Transient URLSessionWebSocket send failures must not nil the client - that dropped the room and looked like "WS never pushes".
                 if reason.hasPrefix("send_error:") {
                     return
                 }
@@ -3016,7 +3016,7 @@ struct ChatDetailView: View {
             }
             return
         }
-        // Notify immediately on first character — a 350ms debounce meant peers saw nothing until the user paused.
+        // Notify immediately on first character - a 350ms debounce meant peers saw nothing until the user paused.
         if !didSendTypingStart {
             webSocket?.sendTyping(isTyping: true)
             didSendTypingStart = true
@@ -3219,7 +3219,7 @@ struct ChatDetailView: View {
 
 // MARK: - User review card (order thread)
 
-/// Inline card when buyer/seller submits a `UserReview` — mirrors offer/sale WebSocket + push behaviour.
+/// Inline card when buyer/seller submits a `UserReview` - mirrors offer/sale WebSocket + push behaviour.
 private struct UserReviewChatCardView: View {
     let message: Message
     let payload: UserReviewChatPayload
@@ -3258,7 +3258,7 @@ private struct UserReviewChatCardView: View {
 
     private var senderDisplayName: String {
         let u = message.senderUsername.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !u.isEmpty else { return "—" }
+        guard !u.isEmpty else { return "-" }
         return u.hasPrefix("@") ? String(u.dropFirst()) : u
     }
 
@@ -3310,7 +3310,7 @@ private struct UserReviewChatCardView: View {
 
 // MARK: - Offer card (Flutter OfferFirstCard)
 
-/// Offer card at top of chat when conversation has an offer. Shows offer line, status, and actions: Accept/Decline/Send new offer (seller, pending), Pay (buyer when accepted — whoever sent the offer), Send new offer (rejected).
+/// Offer card at top of chat when conversation has an offer. Shows offer line, status, and actions: Accept/Decline/Send new offer (seller, pending), Pay (buyer when accepted - whoever sent the offer), Send new offer (rejected).
 struct OfferCardView: View {
     let offer: OfferInfo
     let currentUsername: String?
@@ -3362,7 +3362,7 @@ struct OfferCardView: View {
     }
 
     private var timestampLabel: String {
-        offer.createdAt.map { Self.relativeTimestamp(for: $0) } ?? "—"
+        offer.createdAt.map { Self.relativeTimestamp(for: $0) } ?? "-"
     }
 
     /// Same relative format as message bubbles (e.g. "Just now", "9 mins ago").
@@ -3590,7 +3590,7 @@ struct ChatProductCardView: View {
 /// Order/offer header thumbnail: shows a spinner while the URL is missing or the image is loading (avoids shimmer placeholder flash).
 private struct ChatHeaderProductThumbnail: View {
     var imageURL: URL?
-    /// Non-empty image string from API that did not parse as a URL — show photo placeholder, not an endless spinner.
+    /// Non-empty image string from API that did not parse as a URL - show photo placeholder, not an endless spinner.
     var invalidURLFromAPI: Bool = false
     /// Same in-feed animated mystery tile (not the static listing JPEG).
     var isMysteryBox: Bool = false
@@ -3718,7 +3718,7 @@ struct OrderConfirmationCardView: View {
             }
             HStack {
                 Spacer(minLength: 0)
-                Text(order.createdAt.map { Self.relativeTimestamp(for: $0) } ?? "—")
+                Text(order.createdAt.map { Self.relativeTimestamp(for: $0) } ?? "-")
                     .font(Theme.Typography.caption)
                     .foregroundColor(Theme.Colors.secondaryText)
             }
@@ -3910,7 +3910,7 @@ private struct OrderCancellationRequestChatCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            // Title on its own row (full width); time on the next row, trailing — avoids wrapping around a top-right timestamp.
+            // Title on its own row (full width); time on the next row, trailing - avoids wrapping around a top-right timestamp.
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(title)
                     .font(Theme.Typography.body)
@@ -4314,8 +4314,8 @@ private struct OrderIssueChatCardView: View {
             case "REFUND_WITH_RETURN":
                 let p = (issue.returnPostagePaidBy ?? "").uppercased()
                 let sub: String
-                if p == "SELLER" { sub = "Return required — seller pays postage. Tap for details." }
-                else if p == "BUYER" { sub = "Return required — buyer pays postage. Tap for details." }
+                if p == "SELLER" { sub = "Return required - seller pays postage. Tap for details." }
+                else if p == "BUYER" { sub = "Return required - buyer pays postage. Tap for details." }
                 else { sub = "Return required before refund completes. Tap for details." }
                 return ("Refund with return", sub, "arrow.uturn.backward.circle.fill", Theme.primaryColor)
             default:
@@ -4602,7 +4602,7 @@ struct MessageBubbleView: View {
             }
     }
 
-    /// Rich card for `lookbook_share` JSON (thumbnail + in-app look overlay — avoids universal-link handoff to another app).
+    /// Rich card for `lookbook_share` JSON (thumbnail + in-app look overlay - avoids universal-link handoff to another app).
     @ViewBuilder
     private func lookbookShareBubble(_ payload: LookbookShareChatPayload) -> some View {
         let imageStr = payload.thumbnailURL ?? payload.imageURL
@@ -4859,7 +4859,7 @@ struct MessageBubbleView: View {
             productPayload: productPayload
         )
             .padding(.top, hasAnyReaction ? 12 : 0)
-        // Lookbook / product share card: inner `Button` must receive taps — no parent tap/double-tap gestures (they still toggled timestamp / fought the button).
+        // Lookbook / product share card: inner `Button` must receive taps - no parent tap/double-tap gestures (they still toggled timestamp / fought the button).
         if lookbookPayload != nil || productPayload != nil {
             padded
         } else if onDoubleTapHeart != nil, onToggleTimestampVisibility != nil {
