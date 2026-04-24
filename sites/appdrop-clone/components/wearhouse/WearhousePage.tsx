@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FaqAccordion } from "./FaqAccordion";
+import { FeaturedProductsSlider } from "./FeaturedProductsSlider";
 import { HeroPhoneCarousel } from "./HeroPhoneCarousel";
 import { WearhouseCoverHeader, WearhouseLogo } from "./WearhouseCoverHeader";
 import {
@@ -180,6 +181,7 @@ export default function WearhousePage() {
               </span>
               WEARHOUSE gives you one trusted place to browse, chat, and complete orders - on the web and in the app.
             </h2>
+            <FeaturedProductsSlider />
           </div>
         </section>
 
@@ -365,11 +367,11 @@ export default function WearhousePage() {
           </div>
         </section>
 
-        <section id="reviews" className="scroll-mt-28 border-t border-line bg-surface/60 px-5 py-16 md:px-10 md:py-24">
+        <section id="reviews" className="scroll-mt-28 border-t border-white/20 bg-[#AB28B2] px-5 py-16 md:px-10 md:py-24">
           <div className="mx-auto max-w-3xl text-center">
-            <p className={`text-base font-semibold tracking-[-0.02em] ${whPrimary}`}>Community</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
-              <span className="text-muted">Made for people </span>
+            <p className="text-base font-semibold tracking-[-0.02em] text-white">Community</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white md:text-4xl">
+              <span className="text-white/85">Made for people </span>
               who love clothes.
             </h2>
             <blockquote className="mt-10 rounded-[32px] border border-black/10 bg-white p-8 text-left shadow-sm md:p-10">
